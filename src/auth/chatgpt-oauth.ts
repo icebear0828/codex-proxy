@@ -247,12 +247,13 @@ export async function loginViaCli(): Promise<{
 
     // Step 1: Send the initialize handshake
     const config = getConfig();
+    const originator = config.client.originator;
     sendRpc(
       "initialize",
       {
         clientInfo: {
-          name: "Codex Desktop",
-          title: "Codex Desktop",
+          name: originator,
+          title: originator,
           version: config.client.app_version,
         },
       },
@@ -380,12 +381,13 @@ export async function refreshTokenViaCli(): Promise<string> {
 
     // Send initialize
     const config = getConfig();
+    const originator = config.client.originator;
     sendRpc(
       "initialize",
       {
         clientInfo: {
-          name: "Codex Desktop",
-          title: "Codex Desktop",
+          name: originator,
+          title: originator,
           version: config.client.app_version,
         },
       },

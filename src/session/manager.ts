@@ -1,4 +1,5 @@
 import { createHash } from "crypto";
+import { getConfig } from "../config.js";
 
 interface Session {
   taskId: string;
@@ -11,10 +12,10 @@ export class SessionManager {
   private sessions = new Map<string, Session>();
   private ttlMs: number;
 
-  constructor(ttlMinutes: number = 60) {
-    this.ttlMs = ttlMinutes * 60 * 1000;
-    // Periodically clean expired sessions
-    setInterval(() => this.cleanup(), 5 * 60 * 1000);
+  constructor() {
+    const { ttl_minutes, cleanup_interval_minutes } = getConfig().session;
+    this.ttlMs = ttl_minutes * 60 * 1000;
+    setInterval(() => this.cleanup(), cleanup_interval_minutes * 60 * 1000);
   }
 
   /**

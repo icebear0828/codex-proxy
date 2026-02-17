@@ -29,6 +29,10 @@ environment:
   default_id: null
   default_branch: "main"
 
+session:
+  ttl_minutes: 60
+  cleanup_interval_minutes: 5
+
 streaming:
   status_as_content: false
   chunk_size: 100
