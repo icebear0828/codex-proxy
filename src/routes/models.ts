@@ -143,11 +143,14 @@ export function getModelCatalog(): CodexModelInfo[] {
 
 // --- Routes ---
 
+/** Stable timestamp used for all model `created` fields (2023-11-14T22:13:20Z). */
+const MODEL_CREATED_TIMESTAMP = 1700000000;
+
 function toOpenAIModel(info: CodexModelInfo): OpenAIModel {
   return {
     id: info.id,
     object: "model",
-    created: 1700000000,
+    created: MODEL_CREATED_TIMESTAMP,
     owned_by: "openai",
   };
 }
@@ -155,11 +158,11 @@ function toOpenAIModel(info: CodexModelInfo): OpenAIModel {
 app.get("/v1/models", (c) => {
   // Include catalog models + aliases as separate entries
   const models: OpenAIModel[] = MODEL_CATALOG.map(toOpenAIModel);
-  for (const [alias, target] of Object.entries(MODEL_ALIASES)) {
+  for (const [alias] of Object.entries(MODEL_ALIASES)) {
     models.push({
       id: alias,
       object: "model",
-      created: 1700000000,
+      created: MODEL_CREATED_TIMESTAMP,
       owned_by: "openai",
     });
   }
@@ -180,7 +183,7 @@ app.get("/v1/models/:modelId", (c) => {
     return c.json({
       id: modelId,
       object: "model",
-      created: 1700000000,
+      created: MODEL_CREATED_TIMESTAMP,
       owned_by: "openai",
     });
   }

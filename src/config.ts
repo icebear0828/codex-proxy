@@ -35,6 +35,10 @@ const ConfigSchema = z.object({
     default_id: z.string().nullable().default(null),
     default_branch: z.string().default("main"),
   }),
+  session: z.object({
+    ttl_minutes: z.number().default(60),
+    cleanup_interval_minutes: z.number().default(5),
+  }),
   streaming: z.object({
     status_as_content: z.boolean().default(false),
     chunk_size: z.number().default(100),
