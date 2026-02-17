@@ -257,6 +257,7 @@ export class AccountPool {
     return false;
   }
 
+  /** @deprecated Use acquire() instead. */
   async getToken(): Promise<string | null> {
     const acq = this.acquire();
     if (!acq) return null;
@@ -265,11 +266,13 @@ export class AccountPool {
     return acq.token;
   }
 
+  /** @deprecated Use acquire() instead. */
   getAccountId(): string | null {
     const first = [...this.accounts.values()].find((a) => a.status === "active");
     return first?.accountId ?? null;
   }
 
+  /** @deprecated Use getAccounts() instead. */
   getUserInfo(): { email?: string; accountId?: string; planType?: string } | null {
     const first = [...this.accounts.values()].find((a) => a.status === "active");
     if (!first) return null;
@@ -280,6 +283,7 @@ export class AccountPool {
     };
   }
 
+  /** @deprecated Use getAccounts() instead. */
   getProxyApiKey(): string | null {
     const first = [...this.accounts.values()].find((a) => a.status === "active");
     return first?.proxyApiKey ?? null;
@@ -292,11 +296,12 @@ export class AccountPool {
     return false;
   }
 
-  /** Alias for addAccount — used by auth routes */
+  /** @deprecated Use addAccount() instead. */
   setToken(token: string): void {
     this.addAccount(token);
   }
 
+  /** @deprecated Use removeAccount() instead. */
   clearToken(): void {
     this.accounts.clear();
     this.acquireLocks.clear();
@@ -390,8 +395,8 @@ export class AccountPool {
       if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
       const data: AccountsFile = { accounts: [...this.accounts.values()] };
       writeFileSync(ACCOUNTS_FILE, JSON.stringify(data, null, 2), "utf-8");
-    } catch {
-      // best-effort
+    } catch (err) {
+      console.error("[AccountPool] Failed to persist accounts:", err instanceof Error ? err.message : err);
     }
   }
 

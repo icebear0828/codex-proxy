@@ -12,12 +12,21 @@ import { createChatRoutes } from "./routes/chat.js";
 import modelsApp from "./routes/models.js";
 import { createWebRoutes } from "./routes/web.js";
 import { CookieJar } from "./proxy/cookie-jar.js";
+import { startUpdateChecker, stopUpdateChecker } from "./update-checker.js";
 
 async function main() {
   // Load configuration
   console.log("[Init] Loading configuration...");
-  const config = loadConfig();
-  loadFingerprint();
+  let config: ReturnType<typeof loadConfig>;
+  try {
+    config = loadConfig();
+    loadFingerprint();
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error(`[Init] Failed to load configuration: ${msg}`);
+    console.error("[Init] Make sure config/default.yaml and config/fingerprint.yaml exist and are valid YAML.");
+    process.exit(1);
+  }
 
   // Initialize managers
   const accountPool = new AccountPool();
@@ -71,6 +80,9 @@ async function main() {
   }
   console.log();
 
+  // Start background update checker
+  startUpdateChecker();
+
   serve({
     fetch: app.fetch,
     hostname: host,
@@ -80,6 +92,7 @@ async function main() {
   // Graceful shutdown
   const shutdown = () => {
     console.log("\n[Shutdown] Cleaning up...");
+    stopUpdateChecker();
     cookieJar.destroy();
     refreshScheduler.destroy();
     accountPool.destroy();

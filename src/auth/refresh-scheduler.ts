@@ -86,16 +86,24 @@ export class RefreshScheduler {
     console.log(`[RefreshScheduler] Refreshing account ${entryId} (${entry.email ?? "?"})`);
     this.pool.markStatus(entryId, "refreshing");
 
-    try {
-      const newToken = await refreshTokenViaCli();
-      this.pool.updateToken(entryId, newToken);
-      console.log(`[RefreshScheduler] Account ${entryId} refreshed successfully`);
-      // Re-schedule for the new token
-      this.scheduleOne(entryId, newToken);
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
-      console.error(`[RefreshScheduler] Failed to refresh ${entryId}: ${msg}`);
-      this.pool.markStatus(entryId, "expired");
+    const maxAttempts = 2;
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+      try {
+        const newToken = await refreshTokenViaCli();
+        this.pool.updateToken(entryId, newToken);
+        console.log(`[RefreshScheduler] Account ${entryId} refreshed successfully`);
+        this.scheduleOne(entryId, newToken);
+        return;
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        if (attempt < maxAttempts) {
+          console.warn(`[RefreshScheduler] Refresh attempt ${attempt} failed for ${entryId}: ${msg}, retrying in 5s...`);
+          await new Promise((r) => setTimeout(r, 5000));
+        } else {
+          console.error(`[RefreshScheduler] Failed to refresh ${entryId} after ${maxAttempts} attempts: ${msg}`);
+          this.pool.markStatus(entryId, "expired");
+        }
+      }
     }
   }
 }

@@ -1,4 +1,7 @@
 import { Hono } from "hono";
+import { readFileSync } from "fs";
+import { resolve } from "path";
+import yaml from "js-yaml";
 import { getConfig } from "../config.js";
 import type { OpenAIModel, OpenAIModelList } from "../types/openai.js";
 
@@ -10,7 +13,6 @@ const app = new Hono();
  */
 export interface CodexModelInfo {
   id: string;
-  model: string;
   displayName: string;
   description: string;
   isDefault: boolean;
@@ -21,99 +23,20 @@ export interface CodexModelInfo {
   upgrade: string | null;
 }
 
-// Static model catalog — sourced from `codex app-server` model/list
-const MODEL_CATALOG: CodexModelInfo[] = [
-  {
-    id: "gpt-5.3-codex",
-    model: "gpt-5.3-codex",
-    displayName: "gpt-5.3-codex",
-    description: "Latest frontier agentic coding model.",
-    isDefault: true,
-    supportedReasoningEfforts: [
-      { reasoningEffort: "low", description: "Fast responses with lighter reasoning" },
-      { reasoningEffort: "medium", description: "Balances speed and reasoning depth for everyday tasks" },
-      { reasoningEffort: "high", description: "Greater reasoning depth for complex problems" },
-      { reasoningEffort: "xhigh", description: "Extra high reasoning depth for complex problems" },
-    ],
-    defaultReasoningEffort: "medium",
-    inputModalities: ["text", "image"],
-    supportsPersonality: true,
-    upgrade: null,
-  },
-  {
-    id: "gpt-5.2-codex",
-    model: "gpt-5.2-codex",
-    displayName: "gpt-5.2-codex",
-    description: "Frontier agentic coding model.",
-    isDefault: false,
-    supportedReasoningEfforts: [
-      { reasoningEffort: "low", description: "Fast responses with lighter reasoning" },
-      { reasoningEffort: "medium", description: "Balances speed and reasoning depth for everyday tasks" },
-      { reasoningEffort: "high", description: "Greater reasoning depth for complex problems" },
-      { reasoningEffort: "xhigh", description: "Extra high reasoning depth for complex problems" },
-    ],
-    defaultReasoningEffort: "medium",
-    inputModalities: ["text", "image"],
-    supportsPersonality: true,
-    upgrade: "gpt-5.3-codex",
-  },
-  {
-    id: "gpt-5.1-codex-max",
-    model: "gpt-5.1-codex-max",
-    displayName: "gpt-5.1-codex-max",
-    description: "Codex-optimized flagship for deep and fast reasoning.",
-    isDefault: false,
-    supportedReasoningEfforts: [
-      { reasoningEffort: "low", description: "Fast responses with lighter reasoning" },
-      { reasoningEffort: "medium", description: "Balances speed and reasoning depth for everyday tasks" },
-      { reasoningEffort: "high", description: "Greater reasoning depth for complex problems" },
-      { reasoningEffort: "xhigh", description: "Extra high reasoning depth for complex problems" },
-    ],
-    defaultReasoningEffort: "medium",
-    inputModalities: ["text", "image"],
-    supportsPersonality: false,
-    upgrade: "gpt-5.3-codex",
-  },
-  {
-    id: "gpt-5.2",
-    model: "gpt-5.2",
-    displayName: "gpt-5.2",
-    description: "Latest frontier model with improvements across knowledge, reasoning and coding.",
-    isDefault: false,
-    supportedReasoningEfforts: [
-      { reasoningEffort: "low", description: "Balances speed with some reasoning" },
-      { reasoningEffort: "medium", description: "Solid balance of reasoning depth and latency" },
-      { reasoningEffort: "high", description: "Maximizes reasoning depth for complex problems" },
-      { reasoningEffort: "xhigh", description: "Extra high reasoning for complex problems" },
-    ],
-    defaultReasoningEffort: "medium",
-    inputModalities: ["text", "image"],
-    supportsPersonality: false,
-    upgrade: "gpt-5.3-codex",
-  },
-  {
-    id: "gpt-5.1-codex-mini",
-    model: "gpt-5.1-codex-mini",
-    displayName: "gpt-5.1-codex-mini",
-    description: "Optimized for codex. Cheaper, faster, but less capable.",
-    isDefault: false,
-    supportedReasoningEfforts: [
-      { reasoningEffort: "medium", description: "Dynamically adjusts reasoning based on the task" },
-      { reasoningEffort: "high", description: "Maximizes reasoning depth for complex problems" },
-    ],
-    defaultReasoningEffort: "medium",
-    inputModalities: ["text", "image"],
-    supportsPersonality: false,
-    upgrade: "gpt-5.3-codex",
-  },
-];
+interface ModelsConfig {
+  models: CodexModelInfo[];
+  aliases: Record<string, string>;
+}
 
-// Short aliases for convenience
-const MODEL_ALIASES: Record<string, string> = {
-  codex: "gpt-5.3-codex",
-  "codex-max": "gpt-5.1-codex-max",
-  "codex-mini": "gpt-5.1-codex-mini",
-};
+function loadModelConfig(): ModelsConfig {
+  const configPath = resolve(process.cwd(), "config/models.yaml");
+  const raw = yaml.load(readFileSync(configPath, "utf-8")) as ModelsConfig;
+  return raw;
+}
+
+const modelConfig = loadModelConfig();
+const MODEL_CATALOG: CodexModelInfo[] = modelConfig.models;
+const MODEL_ALIASES: Record<string, string> = modelConfig.aliases;
 
 /**
  * Resolve a model name (may be an alias) to a canonical model ID.

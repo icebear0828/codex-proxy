@@ -55,6 +55,7 @@ export function translateToCodexRequest(
     input,
     stream: true,
     store: false,
+    tools: [],
   };
 
   // Add reasoning effort if applicable

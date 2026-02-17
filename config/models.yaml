@@ -1,0 +1,76 @@
+# Codex model catalog — sourced from Codex Desktop `model/list`.
+# Updated by scripts/apply-update.ts when new versions are detected.
+
+models:
+  - id: "gpt-5.3-codex"
+    displayName: "gpt-5.3-codex"
+    description: "Latest frontier agentic coding model."
+    isDefault: true
+    supportedReasoningEfforts:
+      - { reasoningEffort: "low", description: "Fast responses with lighter reasoning" }
+      - { reasoningEffort: "medium", description: "Balances speed and reasoning depth for everyday tasks" }
+      - { reasoningEffort: "high", description: "Greater reasoning depth for complex problems" }
+      - { reasoningEffort: "xhigh", description: "Extra high reasoning depth for complex problems" }
+    defaultReasoningEffort: "medium"
+    inputModalities: ["text", "image"]
+    supportsPersonality: true
+    upgrade: null
+
+  - id: "gpt-5.2-codex"
+    displayName: "gpt-5.2-codex"
+    description: "Frontier agentic coding model."
+    isDefault: false
+    supportedReasoningEfforts:
+      - { reasoningEffort: "low", description: "Fast responses with lighter reasoning" }
+      - { reasoningEffort: "medium", description: "Balances speed and reasoning depth for everyday tasks" }
+      - { reasoningEffort: "high", description: "Greater reasoning depth for complex problems" }
+      - { reasoningEffort: "xhigh", description: "Extra high reasoning depth for complex problems" }
+    defaultReasoningEffort: "medium"
+    inputModalities: ["text", "image"]
+    supportsPersonality: true
+    upgrade: "gpt-5.3-codex"
+
+  - id: "gpt-5.1-codex-max"
+    displayName: "gpt-5.1-codex-max"
+    description: "Codex-optimized flagship for deep and fast reasoning."
+    isDefault: false
+    supportedReasoningEfforts:
+      - { reasoningEffort: "low", description: "Fast responses with lighter reasoning" }
+      - { reasoningEffort: "medium", description: "Balances speed and reasoning depth for everyday tasks" }
+      - { reasoningEffort: "high", description: "Greater reasoning depth for complex problems" }
+      - { reasoningEffort: "xhigh", description: "Extra high reasoning depth for complex problems" }
+    defaultReasoningEffort: "medium"
+    inputModalities: ["text", "image"]
+    supportsPersonality: false
+    upgrade: "gpt-5.3-codex"
+
+  - id: "gpt-5.2"
+    displayName: "gpt-5.2"
+    description: "Latest frontier model with improvements across knowledge, reasoning and coding."
+    isDefault: false
+    supportedReasoningEfforts:
+      - { reasoningEffort: "low", description: "Balances speed with some reasoning" }
+      - { reasoningEffort: "medium", description: "Solid balance of reasoning depth and latency" }
+      - { reasoningEffort: "high", description: "Maximizes reasoning depth for complex problems" }
+      - { reasoningEffort: "xhigh", description: "Extra high reasoning for complex problems" }
+    defaultReasoningEffort: "medium"
+    inputModalities: ["text", "image"]
+    supportsPersonality: false
+    upgrade: "gpt-5.3-codex"
+
+  - id: "gpt-5.1-codex-mini"
+    displayName: "gpt-5.1-codex-mini"
+    description: "Optimized for codex. Cheaper, faster, but less capable."
+    isDefault: false
+    supportedReasoningEfforts:
+      - { reasoningEffort: "medium", description: "Dynamically adjusts reasoning based on the task" }
+      - { reasoningEffort: "high", description: "Maximizes reasoning depth for complex problems" }
+    defaultReasoningEffort: "medium"
+    inputModalities: ["text", "image"]
+    supportsPersonality: false
+    upgrade: "gpt-5.3-codex"
+
+aliases:
+  codex: "gpt-5.3-codex"
+  codex-max: "gpt-5.1-codex-max"
+  codex-mini: "gpt-5.1-codex-mini"

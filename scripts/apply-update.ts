@@ -17,7 +17,7 @@ const ROOT = resolve(import.meta.dirname, "..");
 const CONFIG_PATH = resolve(ROOT, "config/default.yaml");
 const FINGERPRINT_PATH = resolve(ROOT, "config/fingerprint.yaml");
 const EXTRACTED_PATH = resolve(ROOT, "data/extracted-fingerprint.json");
-const MODELS_PATH = resolve(ROOT, "src/routes/models.ts");
+const MODELS_PATH = resolve(ROOT, "config/models.yaml");
 const PROMPTS_DIR = resolve(ROOT, "config/prompts");
 
 type ChangeType = "auto" | "semi-auto" | "alert";
@@ -119,9 +119,11 @@ function detectChanges(extracted: ExtractedFingerprint): Change[] {
     });
   }
 
-  // Models — check for additions/removals
-  const modelsTs = readFileSync(MODELS_PATH, "utf-8");
-  const currentModels = [...modelsTs.matchAll(/id:\s*"(gpt-[^"]+)"/g)].map((m) => m[1]);
+  // Models — compare against config/models.yaml
+  const modelsYaml = yaml.load(readFileSync(MODELS_PATH, "utf-8")) as {
+    models: { id: string }[];
+  };
+  const currentModels = modelsYaml.models.map((m) => m.id);
   const extractedModels = extracted.models.filter((m) => m.includes("codex") || currentModels.includes(m));
 
   const newModels = extractedModels.filter((m) => !currentModels.includes(m));

@@ -56,6 +56,7 @@ const FingerprintSchema = z.object({
   auth_domains: z.array(z.string()),
   auth_domain_exclusions: z.array(z.string()),
   header_order: z.array(z.string()),
+  default_headers: z.record(z.string()).optional().default({}),
 });
 
 export type FingerprintConfig = z.infer<typeof FingerprintSchema>;
