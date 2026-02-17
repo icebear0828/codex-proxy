@@ -1,0 +1,306 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Codex Proxy - Login</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: #0d1117;
+      color: #c9d1d9;
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .container {
+      max-width: 420px;
+      width: 100%;
+      padding: 2rem;
+    }
+    .logo {
+      text-align: center;
+      margin-bottom: 2rem;
+    }
+    .logo h1 {
+      font-size: 1.5rem;
+      color: #58a6ff;
+      font-weight: 600;
+    }
+    .logo p {
+      color: #8b949e;
+      margin-top: 0.5rem;
+      font-size: 0.9rem;
+    }
+    .card {
+      background: #161b22;
+      border: 1px solid #30363d;
+      border-radius: 12px;
+      padding: 2rem;
+    }
+    .btn {
+      display: block;
+      width: 100%;
+      padding: 12px 16px;
+      border: none;
+      border-radius: 8px;
+      font-size: 1rem;
+      font-weight: 500;
+      cursor: pointer;
+      text-align: center;
+      text-decoration: none;
+      transition: background 0.2s;
+    }
+    .btn-primary {
+      background: #238636;
+      color: #fff;
+    }
+    .btn-primary:hover {
+      background: #2ea043;
+    }
+    .btn-primary:disabled {
+      background: #1a5e28;
+      cursor: not-allowed;
+      opacity: 0.7;
+    }
+    .divider {
+      text-align: center;
+      margin: 1.5rem 0;
+      color: #484f58;
+      font-size: 0.85rem;
+    }
+    .divider::before, .divider::after {
+      content: '';
+      display: inline-block;
+      width: 30%;
+      height: 1px;
+      background: #30363d;
+      vertical-align: middle;
+      margin: 0 0.5rem;
+    }
+    .input-group {
+      margin-bottom: 1rem;
+    }
+    .input-group label {
+      display: block;
+      font-size: 0.85rem;
+      color: #8b949e;
+      margin-bottom: 0.5rem;
+    }
+    .input-group textarea {
+      width: 100%;
+      padding: 10px;
+      background: #0d1117;
+      border: 1px solid #30363d;
+      border-radius: 6px;
+      color: #c9d1d9;
+      font-family: monospace;
+      font-size: 0.85rem;
+      resize: vertical;
+      min-height: 80px;
+    }
+    .input-group textarea:focus {
+      outline: none;
+      border-color: #58a6ff;
+    }
+    .error {
+      color: #f85149;
+      font-size: 0.85rem;
+      margin-top: 0.5rem;
+      display: none;
+    }
+    .success {
+      color: #3fb950;
+      font-size: 0.85rem;
+      margin-top: 0.5rem;
+      display: none;
+    }
+    .info {
+      color: #58a6ff;
+      font-size: 0.85rem;
+      margin-top: 0.5rem;
+      display: none;
+    }
+    .help {
+      margin-top: 1rem;
+      font-size: 0.8rem;
+      color: #484f58;
+      line-height: 1.5;
+    }
+    .spinner {
+      display: inline-block;
+      width: 14px;
+      height: 14px;
+      border: 2px solid rgba(255,255,255,0.3);
+      border-top-color: #fff;
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+      vertical-align: middle;
+      margin-right: 6px;
+    }
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="logo">
+      <h1>Codex Proxy</h1>
+      <p>OpenAI-compatible API for Codex Desktop</p>
+    </div>
+    <div class="card">
+      <button class="btn btn-primary" id="oauthBtn" onclick="startOAuth()">
+        Login with ChatGPT
+      </button>
+      <div class="info" id="oauthInfo"></div>
+      <div class="error" id="oauthError"></div>
+
+      <div class="divider">or</div>
+
+      <div id="manualSection">
+        <div class="input-group">
+          <label>Paste your ChatGPT access token</label>
+          <textarea id="tokenInput" placeholder="eyJhbGciOiJSUzI1NiIs..."></textarea>
+        </div>
+        <button class="btn btn-primary" id="submitToken" onclick="submitToken()">
+          Submit Token
+        </button>
+        <div class="error" id="errorMsg"></div>
+        <div class="success" id="successMsg"></div>
+        <div class="help">
+          To get your token: Open ChatGPT in browser &rarr; DevTools (F12) &rarr;
+          Application &rarr; Cookies &rarr; find <code>__Secure-next-auth.session-token</code>
+          or check Network tab for <code>Authorization: Bearer ...</code> header.
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    let polling = false;
+
+    async function startOAuth() {
+      const btn = document.getElementById('oauthBtn');
+      const infoEl = document.getElementById('oauthInfo');
+      const errorEl = document.getElementById('oauthError');
+
+      btn.disabled = true;
+      btn.innerHTML = '<span class="spinner"></span>Connecting to Codex CLI...';
+      infoEl.style.display = 'none';
+      errorEl.style.display = 'none';
+
+      try {
+        const resp = await fetch('/auth/login');
+        const data = await resp.json();
+
+        if (data.authenticated) {
+          window.location.href = '/';
+          return;
+        }
+
+        if (data.error) {
+          errorEl.textContent = data.error;
+          errorEl.style.display = 'block';
+          btn.disabled = false;
+          btn.textContent = 'Login with ChatGPT';
+          return;
+        }
+
+        if (data.authUrl) {
+          // Open Auth0 login in new tab
+          window.open(data.authUrl, '_blank');
+
+          btn.innerHTML = '<span class="spinner"></span>Waiting for login...';
+          infoEl.textContent = 'A new tab has been opened for ChatGPT login. Complete the login there, then this page will update automatically.';
+          infoEl.style.display = 'block';
+
+          // Start polling for auth completion
+          startPolling();
+        }
+      } catch (err) {
+        errorEl.textContent = 'Network error: ' + err.message;
+        errorEl.style.display = 'block';
+        btn.disabled = false;
+        btn.textContent = 'Login with ChatGPT';
+      }
+    }
+
+    function startPolling() {
+      if (polling) return;
+      polling = true;
+
+      const poll = async () => {
+        if (!polling) return;
+        try {
+          const resp = await fetch('/auth/status');
+          const data = await resp.json();
+          if (data.authenticated) {
+            polling = false;
+            document.getElementById('oauthInfo').textContent = 'Login successful! Redirecting...';
+            document.getElementById('oauthInfo').style.display = 'block';
+            setTimeout(() => window.location.href = '/', 500);
+            return;
+          }
+        } catch {
+          // ignore polling errors
+        }
+        if (polling) {
+          setTimeout(poll, 2000);
+        }
+      };
+
+      poll();
+
+      // Stop polling after 5 minutes
+      setTimeout(() => {
+        if (polling) {
+          polling = false;
+          const btn = document.getElementById('oauthBtn');
+          btn.disabled = false;
+          btn.textContent = 'Login with ChatGPT';
+          document.getElementById('oauthInfo').style.display = 'none';
+          document.getElementById('oauthError').textContent = 'Login timed out. Please try again.';
+          document.getElementById('oauthError').style.display = 'block';
+        }
+      }, 5 * 60 * 1000);
+    }
+
+    async function submitToken() {
+      const token = document.getElementById('tokenInput').value.trim();
+      const errorEl = document.getElementById('errorMsg');
+      const successEl = document.getElementById('successMsg');
+      errorEl.style.display = 'none';
+      successEl.style.display = 'none';
+
+      if (!token) {
+        errorEl.textContent = 'Please paste a token';
+        errorEl.style.display = 'block';
+        return;
+      }
+
+      try {
+        const resp = await fetch('/auth/token', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ token }),
+        });
+        const data = await resp.json();
+        if (resp.ok) {
+          successEl.textContent = 'Login successful! Redirecting...';
+          successEl.style.display = 'block';
+          setTimeout(() => window.location.href = '/', 1000);
+        } else {
+          errorEl.textContent = data.error || 'Invalid token';
+          errorEl.style.display = 'block';
+        }
+      } catch (err) {
+        errorEl.textContent = 'Network error: ' + err.message;
+        errorEl.style.display = 'block';
+      }
+    }
+  </script>
+</body>
+</html>

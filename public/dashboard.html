@@ -1,0 +1,332 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Codex Proxy - Dashboard</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: #0d1117;
+      color: #c9d1d9;
+      min-height: 100vh;
+      padding: 2rem;
+    }
+    .container { max-width: 720px; margin: 0 auto; }
+    header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 2rem;
+      padding-bottom: 1rem;
+      border-bottom: 1px solid #30363d;
+    }
+    header h1 { font-size: 1.3rem; color: #58a6ff; }
+    .user-info { font-size: 0.85rem; color: #8b949e; }
+    .btn-logout {
+      padding: 6px 14px;
+      background: #21262d;
+      border: 1px solid #30363d;
+      border-radius: 6px;
+      color: #c9d1d9;
+      cursor: pointer;
+      font-size: 0.85rem;
+    }
+    .btn-logout:hover { background: #30363d; }
+    .card {
+      background: #161b22;
+      border: 1px solid #30363d;
+      border-radius: 12px;
+      padding: 1.5rem;
+      margin-bottom: 1.5rem;
+    }
+    .card h2 {
+      font-size: 1rem;
+      margin-bottom: 1rem;
+      color: #f0f6fc;
+    }
+    .field {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      margin-bottom: 0.75rem;
+    }
+    .field label {
+      flex-shrink: 0;
+      width: 100px;
+      font-size: 0.85rem;
+      color: #8b949e;
+    }
+    .field .value {
+      flex: 1;
+      background: #0d1117;
+      padding: 8px 12px;
+      border-radius: 6px;
+      border: 1px solid #30363d;
+      font-family: monospace;
+      font-size: 0.85rem;
+      word-break: break-all;
+    }
+    .btn-copy {
+      padding: 6px 12px;
+      background: #21262d;
+      border: 1px solid #30363d;
+      border-radius: 6px;
+      color: #c9d1d9;
+      cursor: pointer;
+      font-size: 0.8rem;
+      flex-shrink: 0;
+    }
+    .btn-copy:hover { background: #30363d; }
+    .btn-copy.copied { background: #238636; border-color: #238636; }
+    .code-block {
+      background: #0d1117;
+      border: 1px solid #30363d;
+      border-radius: 8px;
+      padding: 1rem;
+      font-family: monospace;
+      font-size: 0.8rem;
+      line-height: 1.6;
+      overflow-x: auto;
+      position: relative;
+      white-space: pre;
+      margin-bottom: 1rem;
+    }
+    .code-block .copy-btn {
+      position: absolute;
+      top: 8px;
+      right: 8px;
+      padding: 4px 10px;
+      background: #21262d;
+      border: 1px solid #30363d;
+      border-radius: 4px;
+      color: #8b949e;
+      cursor: pointer;
+      font-size: 0.75rem;
+    }
+    .code-block .copy-btn:hover { background: #30363d; }
+    .tabs {
+      display: flex;
+      gap: 0.5rem;
+      margin-bottom: 1rem;
+    }
+    .tab {
+      padding: 6px 14px;
+      background: #21262d;
+      border: 1px solid #30363d;
+      border-radius: 6px;
+      color: #8b949e;
+      cursor: pointer;
+      font-size: 0.85rem;
+    }
+    .tab.active { background: #30363d; color: #f0f6fc; }
+    .tab-content { display: none; }
+    .tab-content.active { display: block; }
+    .status-badge {
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: 10px;
+      font-size: 0.75rem;
+      font-weight: 500;
+    }
+    .status-ok { background: #238636; color: #fff; }
+    .loading { color: #8b949e; font-style: italic; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <header>
+      <div>
+        <h1>Codex Proxy</h1>
+        <span class="user-info" id="userInfo">Loading...</span>
+      </div>
+      <button class="btn-logout" onclick="logout()">Logout</button>
+    </header>
+
+    <div class="card">
+      <h2>API Configuration</h2>
+      <div class="field">
+        <label>Base URL</label>
+        <div class="value" id="baseUrl">Loading...</div>
+        <button class="btn-copy" onclick="copyText('baseUrl', this)">Copy</button>
+      </div>
+      <div class="field">
+        <label>API Key</label>
+        <div class="value" id="apiKey">Loading...</div>
+        <button class="btn-copy" onclick="copyText('apiKey', this)">Copy</button>
+      </div>
+      <div class="field">
+        <label>Model</label>
+        <div class="value" id="defaultModel">codex</div>
+      </div>
+      <div class="field">
+        <label>All Models</label>
+        <div class="value" id="allModels" style="font-size:0.75rem;line-height:1.6">Loading...</div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Usage Examples</h2>
+      <div class="tabs">
+        <div class="tab active" onclick="switchTab('python', this)">Python</div>
+        <div class="tab" onclick="switchTab('curl', this)">curl</div>
+        <div class="tab" onclick="switchTab('node', this)">Node.js</div>
+      </div>
+
+      <div class="tab-content active" id="tab-python">
+        <div class="code-block" id="code-python">
+          <button class="copy-btn" onclick="copyCode('code-python')">Copy</button>
+Loading...
+        </div>
+      </div>
+      <div class="tab-content" id="tab-curl">
+        <div class="code-block" id="code-curl">
+          <button class="copy-btn" onclick="copyCode('code-curl')">Copy</button>
+Loading...
+        </div>
+      </div>
+      <div class="tab-content" id="tab-node">
+        <div class="code-block" id="code-node">
+          <button class="copy-btn" onclick="copyCode('code-node')">Copy</button>
+Loading...
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Status</h2>
+      <div id="statusInfo" class="loading">Checking...</div>
+    </div>
+  </div>
+
+  <script>
+    let authData = null;
+
+    async function loadStatus() {
+      try {
+        const resp = await fetch('/auth/status');
+        authData = await resp.json();
+
+        if (!authData.authenticated) {
+          window.location.href = '/';
+          return;
+        }
+
+        // User info
+        const user = authData.user || {};
+        document.getElementById('userInfo').textContent =
+          `${user.email || 'Unknown'} (${user.planType || 'unknown plan'})`;
+
+        // API config
+        const baseUrl = `${window.location.origin}/v1`;
+        const apiKey = authData.proxy_api_key || 'any-string';
+        document.getElementById('baseUrl').textContent = baseUrl;
+        document.getElementById('apiKey').textContent = apiKey;
+
+        // Code examples
+        document.getElementById('code-python').innerHTML =
+          `<button class="copy-btn" onclick="copyCode('code-python')">Copy</button>` +
+`from openai import OpenAI
+
+client = OpenAI(
+    base_url="${baseUrl}",
+    api_key="${apiKey}",
+)
+
+response = client.chat.completions.create(
+    model="codex",
+    messages=[
+        {"role": "user", "content": "Write a hello world in Python"}
+    ],
+    stream=True,
+)
+
+for chunk in response:
+    if chunk.choices[0].delta.content:
+        print(chunk.choices[0].delta.content, end="")`;
+
+        document.getElementById('code-curl').innerHTML =
+          `<button class="copy-btn" onclick="copyCode('code-curl')">Copy</button>` +
+`curl ${baseUrl}/chat/completions \\
+  -H "Content-Type: application/json" \\
+  -H "Authorization: Bearer ${apiKey}" \\
+  -d '{
+    "model": "codex",
+    "messages": [
+      {"role": "user", "content": "Write a hello world in Python"}
+    ],
+    "stream": false
+  }'`;
+
+        document.getElementById('code-node').innerHTML =
+          `<button class="copy-btn" onclick="copyCode('code-node')">Copy</button>` +
+`import OpenAI from "openai";
+
+const client = new OpenAI({
+    baseURL: "${baseUrl}",
+    apiKey: "${apiKey}",
+});
+
+const stream = await client.chat.completions.create({
+    model: "codex",
+    messages: [
+        { role: "user", content: "Write a hello world in Python" },
+    ],
+    stream: true,
+});
+
+for await (const chunk of stream) {
+    process.stdout.write(chunk.choices[0]?.delta?.content || "");
+}`;
+
+        // Fetch models
+        try {
+          const modelsResp = await fetch('/v1/models');
+          const modelsData = await modelsResp.json();
+          const modelNames = modelsData.data.map(m => m.id);
+          const defaultModel = modelNames.find(n => n.includes('5.3-codex')) || modelNames[0];
+          document.getElementById('defaultModel').textContent = defaultModel + ' (default)';
+          document.getElementById('allModels').textContent = modelNames.join(', ');
+        } catch {}
+
+        // Health status
+        const health = await fetch('/health').then(r => r.json());
+        document.getElementById('statusInfo').innerHTML =
+          `<span class="status-badge status-ok">Connected</span> ` +
+          `Server running at ${window.location.origin}`;
+      } catch (err) {
+        document.getElementById('statusInfo').textContent = 'Error: ' + err.message;
+      }
+    }
+
+    function switchTab(tab, el) {
+      document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+      document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
+      el.classList.add('active');
+      document.getElementById('tab-' + tab).classList.add('active');
+    }
+
+    function copyText(id, btn) {
+      const text = document.getElementById(id).textContent;
+      navigator.clipboard.writeText(text);
+      btn.textContent = 'Copied!';
+      btn.classList.add('copied');
+      setTimeout(() => { btn.textContent = 'Copy'; btn.classList.remove('copied'); }, 2000);
+    }
+
+    function copyCode(id) {
+      const el = document.getElementById(id);
+      const code = el.textContent.replace('Copy', '').trim();
+      navigator.clipboard.writeText(code);
+    }
+
+    async function logout() {
+      await fetch('/auth/logout', { method: 'POST' });
+      window.location.href = '/';
+    }
+
+    loadStatus();
+  </script>
+</body>
+</html>

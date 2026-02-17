@@ -1,0 +1,74 @@
+# Regex patterns for extracting values from Codex Desktop's main.js
+# These patterns are applied to the beautified (js-beautify) output.
+# Update these when the minified variable names change across versions.
+#
+# NOTE: Use single-quoted YAML strings for regex patterns. In YAML single quotes,
+# backslashes are literal (no escaping needed). Only '' is special (escaped single quote).
+
+# Version info from package.json (no regex needed — direct JSON parse)
+package_json:
+  version_key: "version"
+  build_number_key: "codexBuildNumber"
+  sparkle_feed_key: "codexSparkleFeedUrl"
+
+# Patterns for main.js content extraction
+main_js:
+  # API base URL
+  api_base_url:
+    pattern: 'https://[^"]+/backend-api'
+    description: "WHAM API base URL"
+
+  # Originator header value — in beautified code: variable = "Codex Desktop";
+  originator:
+    pattern: '= "(Codex [^"]+)"'
+    group: 1
+    description: "originator header sent with requests"
+
+  # Model IDs — match quoted gpt-X.Y(-codex)(-variant) strings
+  # In beautified code: = "gpt-5.3-codex", LF = "gpt-5.1-codex-mini", etc.
+  models:
+    pattern: '"(gpt-[0-9]+[.][0-9]+(?:-codex)?(?:-[a-z]+)?)"'
+    group: 1
+    global: true
+    description: "All model ID strings"
+
+  # WHAM API endpoint paths
+  wham_endpoints:
+    pattern: '"(/wham/[^"]+)"'
+    group: 1
+    global: true
+    description: "WHAM API endpoint paths"
+
+  # User-Agent template
+  user_agent:
+    pattern: "Codex Desktop/"
+    description: "User-Agent prefix check"
+
+  # Desktop context system prompt (variable oF)
+  desktop_context:
+    start_marker: "# Codex desktop context"
+    end_marker: "</app-context>"
+    description: "Full desktop context system prompt"
+
+  # Title generation prompt (function KZ)
+  title_generation:
+    start_marker: "You are a helpful assistant. You will be presented with a user prompt"
+    end_pattern: '.join('
+    description: "Task title generation system prompt"
+
+  # PR generation prompt (function n9)
+  pr_generation:
+    start_marker: "You are a helpful assistant. Generate a pull request title"
+    end_pattern: '.join('
+    description: "PR title/body generation system prompt"
+
+  # Automation response template (constant qK)
+  automation_response:
+    start_marker: "Response MUST end with a remark-directive block"
+    end_pattern: "^`;$"
+    description: "Automation response template with directive rules"
+
+# Info.plist keys (macOS only)
+info_plist:
+  version_key: "CFBundleShortVersionString"
+  build_key: "CFBundleVersion"

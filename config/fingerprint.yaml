@@ -1,0 +1,4 @@
+user_agent_template: "Codex Desktop/{version} ({platform}; {arch})"
+auth_domains: ["chatgpt.com", "*.chatgpt.com", "openai.com", "*.openai.com"]
+auth_domain_exclusions: ["ab.chatgpt.com"]
+header_order: ["Authorization", "ChatGPT-Account-Id", "originator", "User-Agent", "Content-Type"]

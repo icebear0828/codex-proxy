@@ -1,0 +1,38 @@
+api:
+  base_url: "https://chatgpt.com/backend-api"
+  timeout_seconds: 60
+
+client:
+  originator: "Codex Desktop"
+  app_version: "260202.0859"
+  build_number: "517"
+  platform: "darwin"
+  arch: "arm64"
+
+model:
+  default: "gpt-5.3-codex"
+  default_reasoning_effort: "medium"
+
+auth:
+  jwt_token: null
+  chatgpt_oauth: true
+  refresh_margin_seconds: 300
+  rotation_strategy: "least_used"
+  rate_limit_backoff_seconds: 60
+
+server:
+  host: "0.0.0.0"
+  port: 8080
+  proxy_api_key: null
+
+environment:
+  default_id: null
+  default_branch: "main"
+
+streaming:
+  status_as_content: false
+  chunk_size: 100
+  chunk_delay_ms: 10
+  heartbeat_interval_s: 15
+  poll_interval_s: 2
+  timeout_s: 300

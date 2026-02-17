@@ -1,0 +1,41 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(du:*)",
+      "Bash(npx tsc:*)",
+      "Bash(npx tsx --eval:*)",
+      "Bash(npx tsx:*)",
+      "Bash(node -e:*)",
+      "Bash(ping:*)",
+      "Bash(curl:*)",
+      "Bash(netstat:*)",
+      "Bash(taskkill:*)",
+      "Bash(while read pid)",
+      "Bash(do taskkill //PID $pid //F)",
+      "Bash(done echo \"killed\")",
+      "Bash(ssh:*)",
+      "Bash(scp:*)",
+      "Bash(npm run dev:*)",
+      "Bash(tasklist:*)",
+      "Bash(sort:*)",
+      "Bash(done)",
+      "Bash(# Check if there''s a Session Storage with task data for f in \"\"C:/Users/14323/AppData/Roaming/Codex/Session Storage/\"\"*.log; do strings \"\"$f\"\")",
+      "Bash(\"D:/xwechat_files/wxid_l9axc218tplc22_eddc/msg/file/2026-02/Codex-win32-x64/Codex-win32-x64/resources/codex.exe\" features)",
+      "Bash(\"D:/xwechat_files/wxid_l9axc218tplc22_eddc/msg/file/2026-02/Codex-win32-x64/Codex-win32-x64/resources/codex.exe\" features list)",
+      "Bash(\"D:/xwechat_files/wxid_l9axc218tplc22_eddc/msg/file/2026-02/Codex-win32-x64/Codex-win32-x64/resources/codex.exe\" cloud --help)",
+      "Bash(\"D:/xwechat_files/wxid_l9axc218tplc22_eddc/msg/file/2026-02/Codex-win32-x64/Codex-win32-x64/resources/codex.exe\" cloud exec --help)",
+      "Bash(\"D:/xwechat_files/wxid_l9axc218tplc22_eddc/msg/file/2026-02/Codex-win32-x64/Codex-win32-x64/resources/codex.exe\" debug --help)",
+      "Bash(npm run build:*)",
+      "Bash(for model in gpt-5.3-codex gpt-5.2-codex gpt-5.1-codex-max gpt-5.2 gpt-5.1-codex-mini)",
+      "Bash(do echo \"=== $model ===\")",
+      "Bash(python:*)",
+      "WebSearch",
+      "Bash(xargs:*)",
+      "Bash(node:*)",
+      "WebFetch(domain:github.com)",
+      "Bash(python3 -c \"import sys,json; d=json.load\\(sys.stdin\\); print\\(d[''accounts''][0][''accountId'']\\)\" curl -s -o /dev/null -w \"%{http_code}\"  -H \"Authorization: Bearer $TOKEN\"  -H \"ChatGPT-Account-Id: $ACCT_ID\"  -H \"originator: Codex Desktop\"  -H \"User-Agent: Codex Desktop/260202.0859 \\(darwin; arm64\\)\"  -H \"Accept: application/json\"  \"https://chatgpt.com/backend-api/codex/usage\")",
+      "Bash(git init:*)",
+      "Bash(git add:*)"
+    ]
+  }
+}
