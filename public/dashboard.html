@@ -131,7 +131,124 @@
       font-weight: 500;
     }
     .status-ok { background: #238636; color: #fff; }
+    .status-expired { background: #da3633; color: #fff; }
+    .status-rate-limited { background: #d29922; color: #fff; }
+    .status-refreshing { background: #58a6ff; color: #fff; }
+    .status-disabled { background: #484f58; color: #c9d1d9; }
     .loading { color: #8b949e; font-style: italic; }
+
+    /* Account list styles */
+    .account-item {
+      background: #0d1117;
+      border: 1px solid #30363d;
+      border-radius: 8px;
+      padding: 1rem;
+      margin-bottom: 0.75rem;
+    }
+    .account-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 0.5rem;
+    }
+    .account-email {
+      font-weight: 600;
+      font-size: 0.9rem;
+      color: #f0f6fc;
+    }
+    .account-meta {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.5rem 1.5rem;
+      font-size: 0.8rem;
+      color: #8b949e;
+      margin-bottom: 0.5rem;
+    }
+    .account-api-key {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      margin-top: 0.5rem;
+    }
+    .account-api-key .key-value {
+      flex: 1;
+      background: #161b22;
+      padding: 4px 8px;
+      border-radius: 4px;
+      border: 1px solid #30363d;
+      font-family: monospace;
+      font-size: 0.75rem;
+      color: #8b949e;
+      word-break: break-all;
+    }
+    .btn-delete {
+      padding: 4px 10px;
+      background: #21262d;
+      border: 1px solid #da3633;
+      border-radius: 6px;
+      color: #da3633;
+      cursor: pointer;
+      font-size: 0.75rem;
+    }
+    .btn-delete:hover { background: #da3633; color: #fff; }
+    .btn-small {
+      padding: 3px 8px;
+      background: #21262d;
+      border: 1px solid #30363d;
+      border-radius: 4px;
+      color: #c9d1d9;
+      cursor: pointer;
+      font-size: 0.7rem;
+    }
+    .btn-small:hover { background: #30363d; }
+
+    /* Add account */
+    .add-account-section {
+      margin-top: 1rem;
+      padding-top: 1rem;
+      border-top: 1px solid #30363d;
+    }
+    .btn-login {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.5rem;
+      padding: 10px 20px;
+      background: #238636;
+      border: 1px solid #238636;
+      border-radius: 8px;
+      color: #fff;
+      cursor: pointer;
+      font-size: 0.9rem;
+      font-weight: 500;
+    }
+    .btn-login:hover { background: #2ea043; }
+    .btn-login:disabled { opacity: 0.5; cursor: not-allowed; }
+    .login-info {
+      color: #58a6ff;
+      font-size: 0.8rem;
+      margin-top: 0.5rem;
+    }
+    .login-error {
+      color: #da3633;
+      font-size: 0.8rem;
+      margin-top: 0.5rem;
+    }
+    .spinner {
+      display: inline-block;
+      width: 14px;
+      height: 14px;
+      border: 2px solid rgba(255,255,255,0.3);
+      border-top-color: #fff;
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .empty-state {
+      text-align: center;
+      color: #484f58;
+      padding: 1.5rem;
+      font-size: 0.85rem;
+    }
   </style>
 </head>
 <body>
@@ -143,6 +260,17 @@
       </div>
       <button class="btn-logout" onclick="logout()">Logout</button>
     </header>
+
+    <!-- Accounts Card -->
+    <div class="card">
+      <h2>Accounts</h2>
+      <div id="accountList" class="loading">Loading accounts...</div>
+      <div class="add-account-section">
+        <button class="btn-login" id="loginBtn" onclick="startLogin()">Add Account via ChatGPT Login</button>
+        <div class="login-info" id="loginInfo" style="display:none"></div>
+        <div class="login-error" id="loginError" style="display:none"></div>
+      </div>
+    </div>
 
     <div class="card">
       <h2>API Configuration</h2>
@@ -203,6 +331,187 @@ Loading...
   <script>
     let authData = null;
 
+    function statusClass(status) {
+      const map = {
+        active: 'status-ok',
+        expired: 'status-expired',
+        rate_limited: 'status-rate-limited',
+        refreshing: 'status-refreshing',
+        disabled: 'status-disabled',
+      };
+      return map[status] || 'status-disabled';
+    }
+
+    function formatTime(iso) {
+      if (!iso) return '-';
+      const d = new Date(iso);
+      return d.toLocaleDateString() + ' ' + d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    }
+
+    function escapeHtml(str) {
+      const div = document.createElement('div');
+      div.textContent = str;
+      return div.innerHTML;
+    }
+
+    async function loadAccounts() {
+      try {
+        const resp = await fetch('/auth/accounts');
+        const data = await resp.json();
+        const accounts = data.accounts || [];
+        renderAccounts(accounts);
+      } catch (err) {
+        document.getElementById('accountList').innerHTML =
+          '<div class="empty-state">Failed to load accounts: ' + escapeHtml(err.message) + '</div>';
+      }
+    }
+
+    function renderAccounts(accounts) {
+      const container = document.getElementById('accountList');
+
+      if (accounts.length === 0) {
+        container.innerHTML = '<div class="empty-state">No accounts added. Paste a token below to get started.</div>';
+        return;
+      }
+
+      let html = '';
+      for (const acct of accounts) {
+        const usage = acct.usage || {};
+        html += `<div class="account-item">
+          <div class="account-header">
+            <span class="account-email">${escapeHtml(acct.email || 'Unknown email')}</span>
+            <div style="display:flex;gap:0.5rem;align-items:center">
+              <span class="status-badge ${statusClass(acct.status)}">${escapeHtml(acct.status)}</span>
+              <button class="btn-delete" onclick="deleteAccount('${escapeHtml(acct.id)}')">Delete</button>
+            </div>
+          </div>
+          <div class="account-meta">
+            <span>Plan: ${escapeHtml(acct.planType || 'unknown')}</span>
+            <span>Requests: ${usage.request_count ?? 0}</span>
+            <span>Tokens: ${(usage.input_tokens ?? 0) + (usage.output_tokens ?? 0)}</span>
+            <span>Added: ${formatTime(acct.addedAt)}</span>
+            ${acct.expiresAt ? `<span>Expires: ${formatTime(acct.expiresAt)}</span>` : ''}
+            ${usage.last_used ? `<span>Last used: ${formatTime(usage.last_used)}</span>` : ''}
+          </div>
+          <div class="account-api-key">
+            <span style="font-size:0.75rem;color:#8b949e;">ID:</span>
+            <span class="key-value" id="key-${escapeHtml(acct.id)}">${escapeHtml(acct.id)}</span>
+            <button class="btn-small" onclick="copyElText('key-${escapeHtml(acct.id)}', this)">Copy</button>
+          </div>
+        </div>`;
+      }
+      container.innerHTML = html;
+    }
+
+    let loginPolling = false;
+    let knownAccountIds = new Set();
+
+    async function startLogin() {
+      const btn = document.getElementById('loginBtn');
+      const infoEl = document.getElementById('loginInfo');
+      const errorEl = document.getElementById('loginError');
+
+      btn.disabled = true;
+      btn.innerHTML = '<span class="spinner"></span> Connecting to Codex CLI...';
+      infoEl.style.display = 'none';
+      errorEl.style.display = 'none';
+
+      // Snapshot current account IDs so we can detect the new one
+      try {
+        const resp = await fetch('/auth/accounts');
+        const data = await resp.json();
+        knownAccountIds = new Set((data.accounts || []).map(a => a.id));
+      } catch {}
+
+      try {
+        const resp = await fetch('/auth/accounts/login');
+        const data = await resp.json();
+
+        if (data.error) {
+          errorEl.textContent = data.error;
+          errorEl.style.display = 'block';
+          btn.disabled = false;
+          btn.innerHTML = 'Add Account via ChatGPT Login';
+          return;
+        }
+
+        if (data.authUrl) {
+          window.open(data.authUrl, '_blank');
+          btn.innerHTML = '<span class="spinner"></span> Waiting for login...';
+          infoEl.textContent = 'A new tab has been opened. Complete the ChatGPT login there.';
+          infoEl.style.display = 'block';
+          startLoginPolling();
+        }
+      } catch (err) {
+        errorEl.textContent = 'Network error: ' + err.message;
+        errorEl.style.display = 'block';
+        btn.disabled = false;
+        btn.innerHTML = 'Add Account via ChatGPT Login';
+      }
+    }
+
+    function startLoginPolling() {
+      if (loginPolling) return;
+      loginPolling = true;
+
+      const poll = async () => {
+        if (!loginPolling) return;
+        try {
+          const resp = await fetch('/auth/accounts');
+          const data = await resp.json();
+          const accounts = data.accounts || [];
+          const newAccount = accounts.find(a => !knownAccountIds.has(a.id));
+
+          if (newAccount) {
+            loginPolling = false;
+            const btn = document.getElementById('loginBtn');
+            const infoEl = document.getElementById('loginInfo');
+            btn.disabled = false;
+            btn.innerHTML = 'Add Account via ChatGPT Login';
+            infoEl.textContent = 'Account added: ' + (newAccount.email || newAccount.id);
+            infoEl.style.display = 'block';
+            await loadAccounts();
+            await loadStatus();
+            setTimeout(() => { infoEl.style.display = 'none'; }, 4000);
+            return;
+          }
+        } catch {}
+        if (loginPolling) setTimeout(poll, 2000);
+      };
+
+      poll();
+
+      // Timeout after 5 minutes
+      setTimeout(() => {
+        if (loginPolling) {
+          loginPolling = false;
+          const btn = document.getElementById('loginBtn');
+          btn.disabled = false;
+          btn.innerHTML = 'Add Account via ChatGPT Login';
+          document.getElementById('loginInfo').style.display = 'none';
+          document.getElementById('loginError').textContent = 'Login timed out. Please try again.';
+          document.getElementById('loginError').style.display = 'block';
+        }
+      }, 5 * 60 * 1000);
+    }
+
+    async function deleteAccount(id) {
+      if (!confirm('Remove this account?')) return;
+
+      try {
+        const resp = await fetch('/auth/accounts/' + encodeURIComponent(id), { method: 'DELETE' });
+        if (!resp.ok) {
+          const data = await resp.json();
+          alert(data.error || 'Failed to delete account.');
+          return;
+        }
+        await loadAccounts();
+        await loadStatus();
+      } catch (err) {
+        alert('Network error: ' + err.message);
+      }
+    }
+
     async function loadStatus() {
       try {
         const resp = await fetch('/auth/status');
@@ -213,10 +522,12 @@ Loading...
           return;
         }
 
-        // User info
-        const user = authData.user || {};
+        // Header: pool summary
+        const pool = authData.pool || {};
+        const total = pool.total || 0;
+        const active = pool.active || 0;
         document.getElementById('userInfo').textContent =
-          `${user.email || 'Unknown'} (${user.planType || 'unknown plan'})`;
+          `${active} active / ${total} total account${total !== 1 ? 's' : ''}`;
 
         // API config
         const baseUrl = `${window.location.origin}/v1`;
@@ -315,6 +626,13 @@ for await (const chunk of stream) {
       setTimeout(() => { btn.textContent = 'Copy'; btn.classList.remove('copied'); }, 2000);
     }
 
+    function copyElText(id, btn) {
+      const text = document.getElementById(id).textContent;
+      navigator.clipboard.writeText(text);
+      btn.textContent = 'Copied!';
+      setTimeout(() => { btn.textContent = 'Copy'; }, 1500);
+    }
+
     function copyCode(id) {
       const el = document.getElementById(id);
       const code = el.textContent.replace('Copy', '').trim();
@@ -327,6 +645,7 @@ for await (const chunk of stream) {
     }
 
     loadStatus();
+    loadAccounts();
   </script>
 </body>
 </html>

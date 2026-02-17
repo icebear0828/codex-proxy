@@ -35,7 +35,22 @@
       "WebFetch(domain:github.com)",
       "Bash(python3 -c \"import sys,json; d=json.load\\(sys.stdin\\); print\\(d[''accounts''][0][''accountId'']\\)\" curl -s -o /dev/null -w \"%{http_code}\"  -H \"Authorization: Bearer $TOKEN\"  -H \"ChatGPT-Account-Id: $ACCT_ID\"  -H \"originator: Codex Desktop\"  -H \"User-Agent: Codex Desktop/260202.0859 \\(darwin; arm64\\)\"  -H \"Accept: application/json\"  \"https://chatgpt.com/backend-api/codex/usage\")",
       "Bash(git init:*)",
-      "Bash(git add:*)"
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(gh repo create:*)",
+      "Bash(git push:*)",
+      "Bash(git checkout:*)",
+      "Bash(python3:*)",
+      "Bash(gh pr create:*)",
+      "Bash(gh pr merge:*)",
+      "Bash(git pull:*)",
+      "Bash(git branch:*)",
+      "Bash(wc:*)",
+      "Bash(git status:*)",
+      "Bash(rsync:*)",
+      "Bash(tar:*)",
+      "Bash(/usr/bin/scp:*)",
+      "WebFetch(domain:auth.openai.com)"
     ]
   }
 }
