@@ -14,6 +14,30 @@ import {
 import { getConfig } from "../config.js";
 import type { CookieJar } from "../proxy/cookie-jar.js";
 
+/** Retry a function on 5xx errors with exponential backoff. */
+async function withRetry<T>(
+  fn: () => Promise<T>,
+  { maxRetries = 2, baseDelayMs = 1000 }: { maxRetries?: number; baseDelayMs?: number } = {},
+): Promise<T> {
+  let lastError: unknown;
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    try {
+      return await fn();
+    } catch (err) {
+      lastError = err;
+      const isRetryable =
+        err instanceof CodexApiError && err.status >= 500 && err.status < 600;
+      if (!isRetryable || attempt === maxRetries) throw err;
+      const delay = baseDelayMs * Math.pow(2, attempt);
+      console.warn(
+        `[Chat] Retrying after ${err instanceof CodexApiError ? err.status : "error"} (attempt ${attempt + 1}/${maxRetries}, delay ${delay}ms)`,
+      );
+      await new Promise((r) => setTimeout(r, delay));
+    }
+  }
+  throw lastError;
+}
+
 export function createChatRoutes(
   accountPool: AccountPool,
   sessionManager: SessionManager,
@@ -97,7 +121,7 @@ export function createChatRoutes(
     let usageInfo: UsageInfo | undefined;
 
     try {
-      const rawResponse = await codexApi.createResponse(codexRequest);
+      const rawResponse = await withRetry(() => codexApi.createResponse(codexRequest));
 
       if (req.stream) {
         c.header("Content-Type", "text/event-stream");

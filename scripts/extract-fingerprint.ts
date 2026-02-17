@@ -155,12 +155,26 @@ function extractFromMainJs(
     if (m) apiBaseUrl = m[0];
   }
 
+  // Fail fast on critical fields
+  if (!apiBaseUrl) {
+    console.error("[extract] CRITICAL: Failed to extract API base URL from main.js");
+    console.error("[extract] The extraction pattern may need updating for this version.");
+    throw new Error("Failed to extract critical field: api_base_url");
+  }
+
   // Originator
   let originator: string | null = null;
   const origPattern = patterns.originator;
   if (origPattern?.pattern) {
     const m = content.match(new RegExp(origPattern.pattern));
     if (m) originator = m[origPattern.group ?? 0] ?? m[0];
+  }
+
+  // Fail fast on critical fields
+  if (!originator) {
+    console.error("[extract] CRITICAL: Failed to extract originator from main.js");
+    console.error("[extract] The extraction pattern may need updating for this version.");
+    throw new Error("Failed to extract critical field: originator");
   }
 
   // Models — deduplicate, use capture group if specified

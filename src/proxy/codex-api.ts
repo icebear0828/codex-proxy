@@ -25,7 +25,7 @@ export interface CodexResponsesRequest {
   /** Optional: tools available to the model */
   tools?: unknown[];
   /** Optional: previous response ID for multi-turn */
-  previous_response_id?: string;
+  previous_response_id?: string | null;
 }
 
 export type CodexInputItem =
