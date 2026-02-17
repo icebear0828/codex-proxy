@@ -10,12 +10,13 @@
  * GET    /auth/accounts/:id/cookies — view stored cookies
  * POST   /auth/accounts/:id/cookies — set cookies (for Cloudflare bypass)
  * DELETE /auth/accounts/:id/cookies — clear cookies
+ * GET    /auth/accounts/login      — start OAuth to add a new account
  */
 
 import { Hono } from "hono";
 import type { AccountPool } from "../auth/account-pool.js";
 import type { RefreshScheduler } from "../auth/refresh-scheduler.js";
-import { validateManualToken } from "../auth/chatgpt-oauth.js";
+import { validateManualToken, isCodexCliAvailable, loginViaCli } from "../auth/chatgpt-oauth.js";
 import { CodexApi } from "../proxy/codex-api.js";
 import type { CodexUsageResponse } from "../proxy/codex-api.js";
 import type { CodexQuota, AccountInfo } from "../auth/types.js";
@@ -54,6 +55,38 @@ export function createAccountRoutes(
   function makeApi(entryId: string, token: string, accountId: string | null): CodexApi {
     return new CodexApi(token, accountId, cookieJar, entryId);
   }
+
+  // Start OAuth flow to add a new account
+  app.get("/auth/accounts/login", async (c) => {
+    const cliAvailable = await isCodexCliAvailable();
+    if (!cliAvailable) {
+      return c.json(
+        { error: "Codex CLI not available. Please use manual token entry." },
+        503,
+      );
+    }
+
+    try {
+      const session = await loginViaCli();
+
+      // Background: wait for OAuth to complete, then add account to pool
+      session.waitForCompletion().then((result) => {
+        if (result.success && result.token) {
+          const entryId = pool.addAccount(result.token);
+          scheduler.scheduleOne(entryId, result.token);
+          console.log("[Accounts] OAuth login completed — new account added:", entryId);
+        } else {
+          console.error("[Accounts] OAuth login failed:", result.error);
+        }
+      });
+
+      return c.json({ authUrl: session.authUrl });
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      console.error("[Accounts] CLI OAuth failed:", msg);
+      return c.json({ error: msg }, 500);
+    }
+  });
 
   // List all accounts (with optional ?quota=true)
   app.get("/auth/accounts", async (c) => {
