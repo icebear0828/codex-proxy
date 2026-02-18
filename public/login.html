@@ -61,9 +61,8 @@
       background: #2ea043;
     }
     .btn-primary:disabled {
-      background: #1a5e28;
+      opacity: 0.5;
       cursor: not-allowed;
-      opacity: 0.7;
     }
     .divider {
       text-align: center;
@@ -117,17 +116,74 @@
       margin-top: 0.5rem;
       display: none;
     }
-    .info {
-      color: #58a6ff;
-      font-size: 0.85rem;
-      margin-top: 0.5rem;
-      display: none;
-    }
     .help {
       margin-top: 1rem;
       font-size: 0.8rem;
       color: #484f58;
       line-height: 1.5;
+    }
+    #pasteSection {
+      display: none;
+    }
+    .paste-instructions {
+      background: #0d1117;
+      border: 1px solid #30363d;
+      border-radius: 6px;
+      padding: 0.75rem;
+      margin-bottom: 1rem;
+      font-size: 0.82rem;
+      line-height: 1.5;
+      color: #8b949e;
+    }
+    .paste-instructions strong {
+      color: #c9d1d9;
+    }
+    .paste-instructions ol {
+      margin: 0.5rem 0 0 1.2rem;
+    }
+    .btn-secondary {
+      display: block;
+      width: 100%;
+      padding: 12px 16px;
+      border: 1px solid #30363d;
+      border-radius: 8px;
+      background: #21262d;
+      color: #c9d1d9;
+      font-size: 1rem;
+      font-weight: 500;
+      cursor: pointer;
+      text-align: center;
+      transition: background 0.2s;
+    }
+    .btn-secondary:hover { background: #30363d; }
+    .btn-secondary:disabled { opacity: 0.5; cursor: not-allowed; }
+    .device-code-box {
+      background: #0d1117;
+      border: 1px solid #30363d;
+      border-radius: 8px;
+      padding: 1.5rem;
+      text-align: center;
+      margin-top: 1rem;
+      display: none;
+    }
+    .device-code-box .user-code {
+      font-family: monospace;
+      font-size: 2rem;
+      font-weight: 700;
+      color: #58a6ff;
+      letter-spacing: 0.15em;
+      margin: 0.75rem 0;
+    }
+    .device-code-box .verify-link {
+      color: #3fb950;
+      text-decoration: none;
+      font-size: 0.9rem;
+    }
+    .device-code-box .verify-link:hover { text-decoration: underline; }
+    .device-code-box .status-text {
+      color: #8b949e;
+      font-size: 0.82rem;
+      margin-top: 0.75rem;
     }
     .spinner {
       display: inline-block;
@@ -140,9 +196,7 @@
       vertical-align: middle;
       margin-right: 6px;
     }
-    @keyframes spin {
-      to { transform: rotate(360deg); }
-    }
+    @keyframes spin { to { transform: rotate(360deg); } }
   </style>
 </head>
 <body>
@@ -152,11 +206,51 @@
       <p>OpenAI-compatible API for Codex Desktop</p>
     </div>
     <div class="card">
-      <button class="btn btn-primary" id="oauthBtn" onclick="startOAuth()">
+      <button class="btn btn-primary" id="loginBtn" onclick="startLogin()">
         Login with ChatGPT
       </button>
-      <div class="info" id="oauthInfo"></div>
-      <div class="error" id="oauthError"></div>
+
+      <div id="pasteSection">
+        <div class="paste-instructions">
+          <strong>Remote login:</strong> If the popup shows an error or you're on a different machine:
+          <ol>
+            <li>Complete login in the popup</li>
+            <li>Copy the full URL from the popup's address bar<br>(starts with <code>http://localhost:...</code>)</li>
+            <li>Paste it below and click Submit</li>
+          </ol>
+        </div>
+        <div class="input-group">
+          <label>Paste the callback URL here</label>
+          <textarea id="callbackInput" placeholder="http://localhost:54321/auth/callback?code=...&state=..."></textarea>
+        </div>
+        <button class="btn btn-primary" id="relayBtn" onclick="submitRelay()">
+          Submit Callback URL
+        </button>
+        <div class="error" id="relayError"></div>
+        <div class="success" id="relaySuccess"></div>
+      </div>
+
+      <div class="divider">or</div>
+
+      <button class="btn btn-primary" id="deviceCodeBtn" onclick="startDeviceCode()">
+        Sign in with Device Code
+      </button>
+      <div class="device-code-box" id="deviceCodeBox">
+        <div style="color:#8b949e;font-size:0.85rem">Enter this code at:</div>
+        <a class="verify-link" id="deviceVerifyLink" href="#" target="_blank" rel="noopener"></a>
+        <div class="user-code" id="deviceUserCode"></div>
+        <div class="status-text" id="deviceStatus"><span class="spinner"></span> Waiting for authorization...</div>
+        <div class="error" id="deviceError"></div>
+        <div class="success" id="deviceSuccess"></div>
+      </div>
+
+      <div style="margin-top:0.75rem">
+        <button class="btn-secondary" id="cliImportBtn" onclick="importCli()">
+          Import CLI Token (~/.codex/auth.json)
+        </button>
+        <div class="error" id="cliError"></div>
+        <div class="success" id="cliSuccess"></div>
+      </div>
 
       <div class="divider">or</div>
 
@@ -180,92 +274,219 @@
   </div>
 
   <script>
-    let polling = false;
+    let pollTimer = null;
 
-    async function startOAuth() {
-      const btn = document.getElementById('oauthBtn');
-      const infoEl = document.getElementById('oauthInfo');
-      const errorEl = document.getElementById('oauthError');
+    // Listen for postMessage from OAuth callback popup (cross-port communication)
+    window.addEventListener('message', (event) => {
+      if (event.data?.type === 'oauth-callback-success') {
+        if (pollTimer) clearInterval(pollTimer);
+        window.location.href = '/';
+      }
+    });
 
+    async function startLogin() {
+      const btn = document.getElementById('loginBtn');
       btn.disabled = true;
-      btn.innerHTML = '<span class="spinner"></span>Connecting to Codex CLI...';
-      infoEl.style.display = 'none';
-      errorEl.style.display = 'none';
+      btn.innerHTML = '<span class="spinner"></span> Opening login...';
 
       try {
-        const resp = await fetch('/auth/login');
+        const resp = await fetch('/auth/login-start', { method: 'POST' });
         const data = await resp.json();
 
-        if (data.authenticated) {
-          window.location.href = '/';
-          return;
+        if (!resp.ok || !data.authUrl) {
+          throw new Error(data.error || 'Failed to start login');
         }
 
-        if (data.error) {
-          errorEl.textContent = data.error;
-          errorEl.style.display = 'block';
-          btn.disabled = false;
-          btn.textContent = 'Login with ChatGPT';
-          return;
-        }
+        // Open Auth0 in popup
+        const popup = window.open(data.authUrl, 'oauth_login', 'width=600,height=700,scrollbars=yes');
 
-        if (data.authUrl) {
-          // Open Auth0 login in new tab
-          window.open(data.authUrl, '_blank');
-
-          btn.innerHTML = '<span class="spinner"></span>Waiting for login...';
-          infoEl.textContent = 'A new tab has been opened for ChatGPT login. Complete the login there, then this page will update automatically.';
-          infoEl.style.display = 'block';
-
-          // Start polling for auth completion
-          startPolling();
-        }
-      } catch (err) {
-        errorEl.textContent = 'Network error: ' + err.message;
-        errorEl.style.display = 'block';
+        // Show paste section
+        document.getElementById('pasteSection').style.display = 'block';
+        btn.innerHTML = 'Login with ChatGPT';
         btn.disabled = false;
-        btn.textContent = 'Login with ChatGPT';
+
+        // Poll auth status — if callback server handles it, we auto-redirect
+        startPolling();
+
+      } catch (err) {
+        btn.innerHTML = 'Login with ChatGPT';
+        btn.disabled = false;
+        const errEl = document.getElementById('relayError');
+        errEl.textContent = err.message;
+        errEl.style.display = 'block';
+        document.getElementById('pasteSection').style.display = 'block';
       }
     }
 
     function startPolling() {
-      if (polling) return;
-      polling = true;
-
-      const poll = async () => {
-        if (!polling) return;
+      if (pollTimer) clearInterval(pollTimer);
+      pollTimer = setInterval(async () => {
         try {
           const resp = await fetch('/auth/status');
           const data = await resp.json();
           if (data.authenticated) {
-            polling = false;
-            document.getElementById('oauthInfo').textContent = 'Login successful! Redirecting...';
-            document.getElementById('oauthInfo').style.display = 'block';
-            setTimeout(() => window.location.href = '/', 500);
-            return;
+            clearInterval(pollTimer);
+            window.location.href = '/';
           }
-        } catch {
-          // ignore polling errors
-        }
-        if (polling) {
-          setTimeout(poll, 2000);
-        }
-      };
-
-      poll();
+        } catch {}
+      }, 2000);
 
       // Stop polling after 5 minutes
       setTimeout(() => {
-        if (polling) {
-          polling = false;
-          const btn = document.getElementById('oauthBtn');
-          btn.disabled = false;
-          btn.textContent = 'Login with ChatGPT';
-          document.getElementById('oauthInfo').style.display = 'none';
-          document.getElementById('oauthError').textContent = 'Login timed out. Please try again.';
-          document.getElementById('oauthError').style.display = 'block';
-        }
+        if (pollTimer) clearInterval(pollTimer);
       }, 5 * 60 * 1000);
+    }
+
+    async function submitRelay() {
+      const callbackUrl = document.getElementById('callbackInput').value.trim();
+      const errEl = document.getElementById('relayError');
+      const successEl = document.getElementById('relaySuccess');
+      errEl.style.display = 'none';
+      successEl.style.display = 'none';
+
+      if (!callbackUrl) {
+        errEl.textContent = 'Please paste the callback URL';
+        errEl.style.display = 'block';
+        return;
+      }
+
+      const btn = document.getElementById('relayBtn');
+      btn.disabled = true;
+      btn.innerHTML = '<span class="spinner"></span> Exchanging...';
+
+      try {
+        const resp = await fetch('/auth/code-relay', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ callbackUrl }),
+        });
+        const data = await resp.json();
+
+        if (resp.ok && data.success) {
+          successEl.textContent = 'Login successful! Redirecting...';
+          successEl.style.display = 'block';
+          if (pollTimer) clearInterval(pollTimer);
+          setTimeout(() => window.location.href = '/', 1000);
+        } else {
+          errEl.textContent = data.error || 'Failed to exchange code';
+          errEl.style.display = 'block';
+        }
+      } catch (err) {
+        errEl.textContent = 'Network error: ' + err.message;
+        errEl.style.display = 'block';
+      } finally {
+        btn.innerHTML = 'Submit Callback URL';
+        btn.disabled = false;
+      }
+    }
+
+    // ── Device Code Flow ──────────────────────────────
+    let devicePollTimer = null;
+
+    async function startDeviceCode() {
+      const btn = document.getElementById('deviceCodeBtn');
+      const box = document.getElementById('deviceCodeBox');
+      const errEl = document.getElementById('deviceError');
+      const successEl = document.getElementById('deviceSuccess');
+      const statusEl = document.getElementById('deviceStatus');
+      errEl.style.display = 'none';
+      successEl.style.display = 'none';
+
+      btn.disabled = true;
+      btn.innerHTML = '<span class="spinner"></span> Requesting code...';
+
+      try {
+        const resp = await fetch('/auth/device-login', { method: 'POST' });
+        const data = await resp.json();
+
+        if (!resp.ok || !data.userCode) {
+          throw new Error(data.error || 'Failed to request device code');
+        }
+
+        // Show the code box
+        box.style.display = 'block';
+        document.getElementById('deviceUserCode').textContent = data.userCode;
+        const link = document.getElementById('deviceVerifyLink');
+        link.href = data.verificationUriComplete || data.verificationUri;
+        link.textContent = data.verificationUri;
+        statusEl.innerHTML = '<span class="spinner"></span> Waiting for authorization...';
+
+        btn.innerHTML = 'Sign in with Device Code';
+        btn.disabled = false;
+
+        // Start polling
+        const interval = (data.interval || 5) * 1000;
+        const deviceCode = data.deviceCode;
+        if (devicePollTimer) clearInterval(devicePollTimer);
+
+        devicePollTimer = setInterval(async () => {
+          try {
+            const pollResp = await fetch('/auth/device-poll/' + encodeURIComponent(deviceCode));
+            const pollData = await pollResp.json();
+
+            if (pollData.success) {
+              clearInterval(devicePollTimer);
+              statusEl.innerHTML = '';
+              successEl.textContent = 'Login successful! Redirecting...';
+              successEl.style.display = 'block';
+              if (pollTimer) clearInterval(pollTimer);
+              setTimeout(() => window.location.href = '/', 1000);
+            } else if (pollData.error) {
+              clearInterval(devicePollTimer);
+              statusEl.innerHTML = '';
+              errEl.textContent = pollData.error;
+              errEl.style.display = 'block';
+            }
+            // if pollData.pending, keep polling
+          } catch {}
+        }, interval);
+
+        // Stop after expiry
+        setTimeout(() => {
+          if (devicePollTimer) {
+            clearInterval(devicePollTimer);
+            statusEl.textContent = 'Code expired. Please try again.';
+          }
+        }, (data.expiresIn || 900) * 1000);
+
+      } catch (err) {
+        btn.innerHTML = 'Sign in with Device Code';
+        btn.disabled = false;
+        errEl.textContent = err.message;
+        errEl.style.display = 'block';
+      }
+    }
+
+    // ── CLI Token Import ─────────────────────────────
+    async function importCli() {
+      const btn = document.getElementById('cliImportBtn');
+      const errEl = document.getElementById('cliError');
+      const successEl = document.getElementById('cliSuccess');
+      errEl.style.display = 'none';
+      successEl.style.display = 'none';
+      btn.disabled = true;
+      btn.textContent = 'Importing...';
+
+      try {
+        const resp = await fetch('/auth/import-cli', { method: 'POST' });
+        const data = await resp.json();
+
+        if (resp.ok && data.success) {
+          successEl.textContent = 'CLI token imported! Redirecting...';
+          successEl.style.display = 'block';
+          if (pollTimer) clearInterval(pollTimer);
+          setTimeout(() => window.location.href = '/', 1000);
+        } else {
+          errEl.textContent = data.error || 'Failed to import CLI token';
+          errEl.style.display = 'block';
+        }
+      } catch (err) {
+        errEl.textContent = 'Network error: ' + err.message;
+        errEl.style.display = 'block';
+      } finally {
+        btn.textContent = 'Import CLI Token (~/.codex/auth.json)';
+        btn.disabled = false;
+      }
     }
 
     async function submitToken() {

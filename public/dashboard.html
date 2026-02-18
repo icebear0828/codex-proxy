@@ -233,6 +233,78 @@
       font-size: 0.8rem;
       margin-top: 0.5rem;
     }
+    .paste-section {
+      display: none;
+      margin-top: 1rem;
+      background: #0d1117;
+      border: 1px solid #30363d;
+      border-radius: 8px;
+      padding: 1rem;
+    }
+    .paste-section label {
+      display: block;
+      font-size: 0.82rem;
+      color: #8b949e;
+      margin-bottom: 0.5rem;
+    }
+    .paste-section textarea {
+      width: 100%;
+      padding: 8px;
+      background: #161b22;
+      border: 1px solid #30363d;
+      border-radius: 6px;
+      color: #c9d1d9;
+      font-family: monospace;
+      font-size: 0.8rem;
+      resize: vertical;
+      min-height: 60px;
+      margin-bottom: 0.5rem;
+    }
+    .paste-section textarea:focus {
+      outline: none;
+      border-color: #58a6ff;
+    }
+    .paste-section .hint {
+      font-size: 0.75rem;
+      color: #484f58;
+      margin-bottom: 0.75rem;
+      line-height: 1.4;
+    }
+    .btn-device {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.5rem;
+      padding: 8px 16px;
+      background: #21262d;
+      border: 1px solid #30363d;
+      border-radius: 8px;
+      color: #c9d1d9;
+      cursor: pointer;
+      font-size: 0.85rem;
+      font-weight: 500;
+      margin-top: 0.5rem;
+    }
+    .btn-device:hover { background: #30363d; }
+    .btn-device:disabled { opacity: 0.5; cursor: not-allowed; }
+    .device-code-panel {
+      background: #0d1117;
+      border: 1px solid #30363d;
+      border-radius: 8px;
+      padding: 1.25rem;
+      text-align: center;
+      margin-top: 0.75rem;
+      display: none;
+    }
+    .device-code-panel .code-display {
+      font-family: monospace;
+      font-size: 1.6rem;
+      font-weight: 700;
+      color: #58a6ff;
+      letter-spacing: 0.1em;
+      margin: 0.5rem 0;
+    }
+    .device-code-panel a { color: #3fb950; font-size: 0.85rem; }
+    .device-code-panel .wait-text { color: #8b949e; font-size: 0.8rem; margin-top: 0.5rem; }
     .spinner {
       display: inline-block;
       width: 14px;
@@ -266,9 +338,33 @@
       <h2>Accounts</h2>
       <div id="accountList" class="loading">Loading accounts...</div>
       <div class="add-account-section">
-        <button class="btn-login" id="loginBtn" onclick="startLogin()">Add Account via ChatGPT Login</button>
-        <div class="login-info" id="loginInfo" style="display:none"></div>
-        <div class="login-error" id="loginError" style="display:none"></div>
+        <button class="btn-login" id="addAccountBtn" onclick="startAddAccount()">Add Account via ChatGPT Login</button>
+        <div class="login-info" id="addInfo" style="display:none"></div>
+        <div class="login-error" id="addError" style="display:none"></div>
+        <div class="paste-section" id="addPasteSection">
+          <div class="hint">
+            If the popup shows an error or you're on a different machine,
+            copy the full URL from the popup's address bar and paste it here.
+          </div>
+          <label>Paste the callback URL</label>
+          <textarea id="addCallbackInput" placeholder="http://localhost:54321/auth/callback?code=...&state=..."></textarea>
+          <button class="btn-login" id="addRelayBtn" onclick="submitAddRelay()" style="font-size:0.8rem;padding:6px 14px">Submit</button>
+        </div>
+
+        <div style="display:flex;gap:0.5rem;flex-wrap:wrap;margin-top:0.75rem">
+          <button class="btn-device" id="dashDeviceBtn" onclick="dashStartDeviceCode()">Device Code Login</button>
+          <button class="btn-device" id="dashCliBtn" onclick="dashImportCli()">Import CLI Token</button>
+        </div>
+        <div class="device-code-panel" id="dashDevicePanel">
+          <div style="color:#8b949e;font-size:0.82rem">Enter this code at:</div>
+          <a id="dashVerifyLink" href="#" target="_blank" rel="noopener"></a>
+          <div class="code-display" id="dashUserCode"></div>
+          <div class="wait-text" id="dashDeviceStatus"><span class="spinner"></span> Waiting for authorization...</div>
+          <div class="login-error" id="dashDeviceError" style="display:none"></div>
+          <div class="login-info" id="dashDeviceSuccess" style="display:none"></div>
+        </div>
+        <div class="login-error" id="dashCliError" style="display:none"></div>
+        <div class="login-info" id="dashCliSuccess" style="display:none"></div>
       </div>
     </div>
 
@@ -330,6 +426,19 @@ Loading...
 
   <script>
     let authData = null;
+
+    // Listen for postMessage from OAuth callback popup (cross-port communication)
+    window.addEventListener('message', async (event) => {
+      if (event.data?.type === 'oauth-callback-success') {
+        if (addPollTimer) clearInterval(addPollTimer);
+        document.getElementById('addPasteSection').style.display = 'none';
+        const infoEl = document.getElementById('addInfo');
+        infoEl.textContent = 'Account added successfully!';
+        infoEl.style.display = 'block';
+        await loadAccounts();
+        await loadStatus();
+      }
+    });
 
     function statusClass(status) {
       const map = {
@@ -401,98 +510,6 @@ Loading...
         </div>`;
       }
       container.innerHTML = html;
-    }
-
-    let loginPolling = false;
-    let knownAccountIds = new Set();
-
-    async function startLogin() {
-      const btn = document.getElementById('loginBtn');
-      const infoEl = document.getElementById('loginInfo');
-      const errorEl = document.getElementById('loginError');
-
-      btn.disabled = true;
-      btn.innerHTML = '<span class="spinner"></span> Connecting to Codex CLI...';
-      infoEl.style.display = 'none';
-      errorEl.style.display = 'none';
-
-      // Snapshot current account IDs so we can detect the new one
-      try {
-        const resp = await fetch('/auth/accounts');
-        const data = await resp.json();
-        knownAccountIds = new Set((data.accounts || []).map(a => a.id));
-      } catch {}
-
-      try {
-        const resp = await fetch('/auth/accounts/login');
-        const data = await resp.json();
-
-        if (data.error) {
-          errorEl.textContent = data.error;
-          errorEl.style.display = 'block';
-          btn.disabled = false;
-          btn.innerHTML = 'Add Account via ChatGPT Login';
-          return;
-        }
-
-        if (data.authUrl) {
-          window.open(data.authUrl, '_blank');
-          btn.innerHTML = '<span class="spinner"></span> Waiting for login...';
-          infoEl.textContent = 'A new tab has been opened. Complete the ChatGPT login there.';
-          infoEl.style.display = 'block';
-          startLoginPolling();
-        }
-      } catch (err) {
-        errorEl.textContent = 'Network error: ' + err.message;
-        errorEl.style.display = 'block';
-        btn.disabled = false;
-        btn.innerHTML = 'Add Account via ChatGPT Login';
-      }
-    }
-
-    function startLoginPolling() {
-      if (loginPolling) return;
-      loginPolling = true;
-
-      const poll = async () => {
-        if (!loginPolling) return;
-        try {
-          const resp = await fetch('/auth/accounts');
-          const data = await resp.json();
-          const accounts = data.accounts || [];
-          const newAccount = accounts.find(a => !knownAccountIds.has(a.id));
-
-          if (newAccount) {
-            loginPolling = false;
-            const btn = document.getElementById('loginBtn');
-            const infoEl = document.getElementById('loginInfo');
-            btn.disabled = false;
-            btn.innerHTML = 'Add Account via ChatGPT Login';
-            infoEl.textContent = 'Account added: ' + (newAccount.email || newAccount.id);
-            infoEl.style.display = 'block';
-            await loadAccounts();
-            await loadStatus();
-            setTimeout(() => { infoEl.style.display = 'none'; }, 4000);
-            return;
-          }
-        } catch {}
-        if (loginPolling) setTimeout(poll, 2000);
-      };
-
-      poll();
-
-      // Timeout after 5 minutes
-      setTimeout(() => {
-        if (loginPolling) {
-          loginPolling = false;
-          const btn = document.getElementById('loginBtn');
-          btn.disabled = false;
-          btn.innerHTML = 'Add Account via ChatGPT Login';
-          document.getElementById('loginInfo').style.display = 'none';
-          document.getElementById('loginError').textContent = 'Login timed out. Please try again.';
-          document.getElementById('loginError').style.display = 'block';
-        }
-      }, 5 * 60 * 1000);
     }
 
     async function deleteAccount(id) {
@@ -642,6 +659,210 @@ for await (const chunk of stream) {
     async function logout() {
       await fetch('/auth/logout', { method: 'POST' });
       window.location.href = '/';
+    }
+
+    let addPollTimer = null;
+
+    async function startAddAccount() {
+      const btn = document.getElementById('addAccountBtn');
+      const infoEl = document.getElementById('addInfo');
+      const errEl = document.getElementById('addError');
+      infoEl.style.display = 'none';
+      errEl.style.display = 'none';
+      btn.disabled = true;
+      btn.textContent = 'Opening login...';
+
+      try {
+        const resp = await fetch('/auth/login-start', { method: 'POST' });
+        const data = await resp.json();
+
+        if (!resp.ok || !data.authUrl) {
+          throw new Error(data.error || 'Failed to start login');
+        }
+
+        window.open(data.authUrl, 'oauth_add', 'width=600,height=700,scrollbars=yes');
+
+        document.getElementById('addPasteSection').style.display = 'block';
+        btn.textContent = 'Add Account via ChatGPT Login';
+        btn.disabled = false;
+
+        // Poll for new account (callback server handles same-machine)
+        if (addPollTimer) clearInterval(addPollTimer);
+        const prevCount = (await fetch('/auth/accounts').then(r => r.json())).accounts?.length || 0;
+        addPollTimer = setInterval(async () => {
+          try {
+            const r = await fetch('/auth/accounts');
+            const d = await r.json();
+            if ((d.accounts?.length || 0) > prevCount) {
+              clearInterval(addPollTimer);
+              document.getElementById('addPasteSection').style.display = 'none';
+              infoEl.textContent = 'Account added successfully!';
+              infoEl.style.display = 'block';
+              await loadAccounts();
+              await loadStatus();
+            }
+          } catch {}
+        }, 2000);
+        setTimeout(() => { if (addPollTimer) clearInterval(addPollTimer); }, 5 * 60 * 1000);
+
+      } catch (err) {
+        btn.textContent = 'Add Account via ChatGPT Login';
+        btn.disabled = false;
+        errEl.textContent = err.message;
+        errEl.style.display = 'block';
+      }
+    }
+
+    async function submitAddRelay() {
+      const callbackUrl = document.getElementById('addCallbackInput').value.trim();
+      const infoEl = document.getElementById('addInfo');
+      const errEl = document.getElementById('addError');
+      infoEl.style.display = 'none';
+      errEl.style.display = 'none';
+
+      if (!callbackUrl) {
+        errEl.textContent = 'Please paste the callback URL';
+        errEl.style.display = 'block';
+        return;
+      }
+
+      const btn = document.getElementById('addRelayBtn');
+      btn.disabled = true;
+      btn.textContent = 'Exchanging...';
+
+      try {
+        const resp = await fetch('/auth/code-relay', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ callbackUrl }),
+        });
+        const data = await resp.json();
+
+        if (resp.ok && data.success) {
+          if (addPollTimer) clearInterval(addPollTimer);
+          document.getElementById('addPasteSection').style.display = 'none';
+          document.getElementById('addCallbackInput').value = '';
+          infoEl.textContent = 'Account added successfully!';
+          infoEl.style.display = 'block';
+          await loadAccounts();
+          await loadStatus();
+        } else {
+          errEl.textContent = data.error || 'Failed to exchange code';
+          errEl.style.display = 'block';
+        }
+      } catch (err) {
+        errEl.textContent = 'Network error: ' + err.message;
+        errEl.style.display = 'block';
+      } finally {
+        btn.textContent = 'Submit';
+        btn.disabled = false;
+      }
+    }
+
+    // ── Device Code Flow (dashboard) ─────────────────
+    let dashDevicePollTimer = null;
+
+    async function dashStartDeviceCode() {
+      const btn = document.getElementById('dashDeviceBtn');
+      const panel = document.getElementById('dashDevicePanel');
+      const errEl = document.getElementById('dashDeviceError');
+      const successEl = document.getElementById('dashDeviceSuccess');
+      const statusEl = document.getElementById('dashDeviceStatus');
+      errEl.style.display = 'none';
+      successEl.style.display = 'none';
+
+      btn.disabled = true;
+      btn.textContent = 'Requesting code...';
+
+      try {
+        const resp = await fetch('/auth/device-login', { method: 'POST' });
+        const data = await resp.json();
+
+        if (!resp.ok || !data.userCode) {
+          throw new Error(data.error || 'Failed to request device code');
+        }
+
+        panel.style.display = 'block';
+        document.getElementById('dashUserCode').textContent = data.userCode;
+        const link = document.getElementById('dashVerifyLink');
+        link.href = data.verificationUriComplete || data.verificationUri;
+        link.textContent = data.verificationUri;
+        statusEl.innerHTML = '<span class="spinner"></span> Waiting for authorization...';
+
+        btn.textContent = 'Device Code Login';
+        btn.disabled = false;
+
+        const interval = (data.interval || 5) * 1000;
+        const deviceCode = data.deviceCode;
+        if (dashDevicePollTimer) clearInterval(dashDevicePollTimer);
+
+        dashDevicePollTimer = setInterval(async () => {
+          try {
+            const pollResp = await fetch('/auth/device-poll/' + encodeURIComponent(deviceCode));
+            const pollData = await pollResp.json();
+
+            if (pollData.success) {
+              clearInterval(dashDevicePollTimer);
+              statusEl.innerHTML = '';
+              successEl.textContent = 'Account added successfully!';
+              successEl.style.display = 'block';
+              panel.style.display = 'none';
+              await loadAccounts();
+              await loadStatus();
+            } else if (pollData.error) {
+              clearInterval(dashDevicePollTimer);
+              statusEl.innerHTML = '';
+              errEl.textContent = pollData.error;
+              errEl.style.display = 'block';
+            }
+          } catch {}
+        }, interval);
+
+        setTimeout(() => {
+          if (dashDevicePollTimer) {
+            clearInterval(dashDevicePollTimer);
+            statusEl.textContent = 'Code expired. Please try again.';
+          }
+        }, (data.expiresIn || 900) * 1000);
+
+      } catch (err) {
+        btn.textContent = 'Device Code Login';
+        btn.disabled = false;
+        errEl.textContent = err.message;
+        errEl.style.display = 'block';
+      }
+    }
+
+    // ── CLI Token Import (dashboard) ─────────────────
+    async function dashImportCli() {
+      const btn = document.getElementById('dashCliBtn');
+      const errEl = document.getElementById('dashCliError');
+      const successEl = document.getElementById('dashCliSuccess');
+      errEl.style.display = 'none';
+      successEl.style.display = 'none';
+      btn.disabled = true;
+      btn.textContent = 'Importing...';
+
+      try {
+        const resp = await fetch('/auth/import-cli', { method: 'POST' });
+        const data = await resp.json();
+
+        if (resp.ok && data.success) {
+          successEl.textContent = 'CLI token imported!';
+          successEl.style.display = 'block';
+          await loadAccounts();
+          await loadStatus();
+        } else {
+          errEl.textContent = data.error || 'Failed to import CLI token';
+          errEl.style.display = 'block';
+        }
+      } catch (err) {
+        errEl.textContent = 'Network error: ' + err.message;
+        errEl.style.display = 'block';
+      } finally {
+        btn.textContent = 'Import CLI Token';
+        btn.disabled = false;
+      }
     }
 
     loadStatus();

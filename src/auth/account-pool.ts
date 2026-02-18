@@ -141,7 +141,7 @@ export class AccountPool {
    * Add an account from a raw JWT token. Returns the entry ID.
    * Deduplicates by accountId.
    */
-  addAccount(token: string): string {
+  addAccount(token: string, refreshToken?: string | null): string {
     const accountId = extractChatGptAccountId(token);
     const profile = extractUserProfile(token);
 
@@ -151,6 +151,9 @@ export class AccountPool {
         if (existing.accountId === accountId) {
           // Update the existing entry's token
           existing.token = token;
+          if (refreshToken !== undefined) {
+            existing.refreshToken = refreshToken ?? null;
+          }
           existing.email = profile?.email ?? existing.email;
           existing.planType = profile?.chatgpt_plan_type ?? existing.planType;
           existing.status = isTokenExpired(token) ? "expired" : "active";
@@ -164,6 +167,7 @@ export class AccountPool {
     const entry: AccountEntry = {
       id,
       token,
+      refreshToken: refreshToken ?? null,
       email: profile?.email ?? null,
       accountId,
       planType: profile?.chatgpt_plan_type ?? null,
@@ -194,11 +198,14 @@ export class AccountPool {
   /**
    * Update an account's token (used by refresh scheduler).
    */
-  updateToken(entryId: string, newToken: string): void {
+  updateToken(entryId: string, newToken: string, refreshToken?: string | null): void {
     const entry = this.accounts.get(entryId);
     if (!entry) return;
 
     entry.token = newToken;
+    if (refreshToken !== undefined) {
+      entry.refreshToken = refreshToken ?? null;
+    }
     const profile = extractUserProfile(newToken);
     entry.email = profile?.email ?? entry.email;
     entry.planType = profile?.chatgpt_plan_type ?? entry.planType;
@@ -436,6 +443,7 @@ export class AccountPool {
       const entry: AccountEntry = {
         id,
         token: data.token,
+        refreshToken: null,
         email: data.userInfo?.email ?? null,
         accountId: accountId,
         planType: data.userInfo?.planType ?? null,
