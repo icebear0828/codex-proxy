@@ -42,7 +42,7 @@ async function main() {
   app.use("*", errorHandler);
 
   // Mount routes
-  const authRoutes = createAuthRoutes(accountPool);
+  const authRoutes = createAuthRoutes(accountPool, refreshScheduler);
   const accountRoutes = createAccountRoutes(accountPool, refreshScheduler, cookieJar);
   const chatRoutes = createChatRoutes(accountPool, sessionManager, cookieJar);
   const webRoutes = createWebRoutes(accountPool);

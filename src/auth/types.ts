@@ -20,6 +20,7 @@ export interface AccountUsage {
 export interface AccountEntry {
   id: string;
   token: string;
+  refreshToken: string | null;
   email: string | null;
   accountId: string | null;
   planType: string | null;

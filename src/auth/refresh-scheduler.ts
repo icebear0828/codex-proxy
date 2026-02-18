@@ -1,11 +1,12 @@
 /**
  * RefreshScheduler — per-account JWT auto-refresh.
  * Schedules a refresh at `exp - margin` for each account.
+ * Uses OAuth refresh_token instead of Codex CLI.
  */
 
 import { getConfig } from "../config.js";
 import { decodeJwtPayload } from "./jwt-utils.js";
-import { refreshTokenViaCli } from "./chatgpt-oauth.js";
+import { refreshAccessToken } from "./oauth-pkce.js";
 import type { AccountPool } from "./account-pool.js";
 
 export class RefreshScheduler {
@@ -83,16 +84,29 @@ export class RefreshScheduler {
     const entry = this.pool.getEntry(entryId);
     if (!entry) return;
 
+    if (!entry.refreshToken) {
+      console.warn(
+        `[RefreshScheduler] Account ${entryId} has no refresh_token, cannot auto-refresh`,
+      );
+      this.pool.markStatus(entryId, "expired");
+      return;
+    }
+
     console.log(`[RefreshScheduler] Refreshing account ${entryId} (${entry.email ?? "?"})`);
     this.pool.markStatus(entryId, "refreshing");
 
     const maxAttempts = 2;
     for (let attempt = 1; attempt <= maxAttempts; attempt++) {
       try {
-        const newToken = await refreshTokenViaCli();
-        this.pool.updateToken(entryId, newToken);
+        const tokens = await refreshAccessToken(entry.refreshToken);
+        // Update token and refresh_token (if a new one was issued)
+        this.pool.updateToken(
+          entryId,
+          tokens.access_token,
+          tokens.refresh_token,
+        );
         console.log(`[RefreshScheduler] Account ${entryId} refreshed successfully`);
-        this.scheduleOne(entryId, newToken);
+        this.scheduleOne(entryId, tokens.access_token);
         return;
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);

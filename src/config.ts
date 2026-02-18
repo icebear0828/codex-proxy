@@ -25,6 +25,9 @@ const ConfigSchema = z.object({
     refresh_margin_seconds: z.number().default(300),
     rotation_strategy: z.enum(["least_used", "round_robin"]).default("least_used"),
     rate_limit_backoff_seconds: z.number().default(60),
+    oauth_client_id: z.string().default("app_EMoamEEZ73f0CkXaXp7hrann"),
+    oauth_auth_endpoint: z.string().default("https://auth.openai.com/oauth/authorize"),
+    oauth_token_endpoint: z.string().default("https://auth.openai.com/oauth/token"),
   }),
   server: z.object({
     host: z.string().default("0.0.0.0"),

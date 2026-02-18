@@ -16,7 +16,9 @@
 import { Hono } from "hono";
 import type { AccountPool } from "../auth/account-pool.js";
 import type { RefreshScheduler } from "../auth/refresh-scheduler.js";
-import { validateManualToken, isCodexCliAvailable, loginViaCli } from "../auth/chatgpt-oauth.js";
+import { validateManualToken } from "../auth/chatgpt-oauth.js";
+import { createOAuthSession, startCallbackServer } from "../auth/oauth-pkce.js";
+import { getConfig } from "../config.js";
 import { CodexApi } from "../proxy/codex-api.js";
 import type { CodexUsageResponse } from "../proxy/codex-api.js";
 import type { CodexQuota, AccountInfo } from "../auth/types.js";
@@ -56,36 +58,21 @@ export function createAccountRoutes(
     return new CodexApi(token, accountId, cookieJar, entryId);
   }
 
-  // Start OAuth flow to add a new account
-  app.get("/auth/accounts/login", async (c) => {
-    const cliAvailable = await isCodexCliAvailable();
-    if (!cliAvailable) {
-      return c.json(
-        { error: "Codex CLI not available. Please use manual token entry." },
-        503,
-      );
-    }
+  // Start OAuth flow to add a new account — 302 redirect to Auth0
+  app.get("/auth/accounts/login", (c) => {
+    const config = getConfig();
+    const originalHost = c.req.header("host") || `localhost:${config.server.port}`;
 
-    try {
-      const session = await loginViaCli();
+    const { authUrl, port } = createOAuthSession(originalHost, "dashboard");
 
-      // Background: wait for OAuth to complete, then add account to pool
-      session.waitForCompletion().then((result) => {
-        if (result.success && result.token) {
-          const entryId = pool.addAccount(result.token);
-          scheduler.scheduleOne(entryId, result.token);
-          console.log("[Accounts] OAuth login completed — new account added:", entryId);
-        } else {
-          console.error("[Accounts] OAuth login failed:", result.error);
-        }
-      });
+    // Start temporary callback server for same-machine callback
+    startCallbackServer(port, (accessToken, refreshToken) => {
+      const entryId = pool.addAccount(accessToken, refreshToken);
+      scheduler.scheduleOne(entryId, accessToken);
+      console.log(`[Auth] OAuth via callback server — account ${entryId} added`);
+    });
 
-      return c.json({ authUrl: session.authUrl });
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
-      console.error("[Accounts] CLI OAuth failed:", msg);
-      return c.json({ error: msg }, 500);
-    }
+    return c.redirect(authUrl);
   });
 
   // List all accounts (with optional ?quota=true)
