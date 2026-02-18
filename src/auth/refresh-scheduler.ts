@@ -7,6 +7,7 @@
 import { getConfig } from "../config.js";
 import { decodeJwtPayload } from "./jwt-utils.js";
 import { refreshAccessToken } from "./oauth-pkce.js";
+import { jitter, jitterInt } from "../utils/jitter.js";
 import type { AccountPool } from "./account-pool.js";
 
 export class RefreshScheduler {
@@ -36,7 +37,7 @@ export class RefreshScheduler {
     if (!payload || typeof payload.exp !== "number") return;
 
     const config = getConfig();
-    const refreshAt = payload.exp - config.auth.refresh_margin_seconds;
+    const refreshAt = payload.exp - jitter(config.auth.refresh_margin_seconds, 0.15);
     const delayMs = (refreshAt - Math.floor(Date.now() / 1000)) * 1000;
 
     if (delayMs <= 0) {
@@ -111,8 +112,9 @@ export class RefreshScheduler {
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
         if (attempt < maxAttempts) {
-          console.warn(`[RefreshScheduler] Refresh attempt ${attempt} failed for ${entryId}: ${msg}, retrying in 5s...`);
-          await new Promise((r) => setTimeout(r, 5000));
+          const retryDelay = jitterInt(5000, 0.3);
+          console.warn(`[RefreshScheduler] Refresh attempt ${attempt} failed for ${entryId}: ${msg}, retrying in ${Math.round(retryDelay / 1000)}s...`);
+          await new Promise((r) => setTimeout(r, retryDelay));
         } else {
           console.error(`[RefreshScheduler] Failed to refresh ${entryId} after ${maxAttempts} attempts: ${msg}`);
           this.pool.markStatus(entryId, "expired");

@@ -114,3 +114,8 @@ export function getFingerprint(): FingerprintConfig {
   if (!_fingerprint) throw new Error("Fingerprint not loaded. Call loadFingerprint() first.");
   return _fingerprint;
 }
+
+export function mutateClientConfig(patch: Partial<AppConfig["client"]>): void {
+  if (!_config) throw new Error("Config not loaded");
+  Object.assign(_config.client, patch);
+}

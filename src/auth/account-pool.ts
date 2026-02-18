@@ -13,6 +13,7 @@ import {
 import { resolve, dirname } from "path";
 import { randomBytes } from "crypto";
 import { getConfig } from "../config.js";
+import { jitter } from "../utils/jitter.js";
 import {
   decodeJwtPayload,
   extractChatGptAccountId,
@@ -127,7 +128,7 @@ export class AccountPool {
     if (!entry) return;
 
     const config = getConfig();
-    const backoff = retryAfterSec ?? config.auth.rate_limit_backoff_seconds;
+    const backoff = jitter(retryAfterSec ?? config.auth.rate_limit_backoff_seconds, 0.2);
     const until = new Date(Date.now() + backoff * 1000);
 
     entry.status = "rate_limited";

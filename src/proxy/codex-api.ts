@@ -4,9 +4,12 @@
  * Endpoint: POST /backend-api/codex/responses
  * This is the API the Codex CLI actually uses.
  * It requires: instructions, store: false, stream: true.
+ *
+ * Both GET and POST requests use curl subprocess to avoid
+ * Cloudflare TLS fingerprinting of Node.js/undici.
  */
 
-import { execFile } from "child_process";
+import { spawn, execFile } from "child_process";
 import { getConfig } from "../config.js";
 import {
   buildHeaders,
@@ -37,6 +40,13 @@ export type CodexInputItem =
 export interface CodexSSEEvent {
   event: string;
   data: unknown;
+}
+
+interface CurlResponse {
+  status: number;
+  headers: Headers;
+  body: ReadableStream<Uint8Array>;
+  setCookieHeaders: string[];
 }
 
 export class CodexApi {
@@ -70,11 +80,146 @@ export class CodexApi {
     return headers;
   }
 
-  /** Capture Set-Cookie headers from a response into the jar. */
+  /** Capture Set-Cookie headers from curl response into the jar. */
+  private captureCookiesFromCurl(setCookieHeaders: string[]): void {
+    if (this.cookieJar && this.entryId && setCookieHeaders.length > 0) {
+      this.cookieJar.captureRaw(this.entryId, setCookieHeaders);
+    }
+  }
+
+  /** Capture Set-Cookie headers from a fetch Response into the jar. */
   private captureCookies(response: Response): void {
     if (this.cookieJar && this.entryId) {
       this.cookieJar.capture(this.entryId, response);
     }
+  }
+
+  /**
+   * Execute a POST request via curl subprocess.
+   * Returns headers + streaming body as a CurlResponse.
+   */
+  private curlPost(
+    url: string,
+    headers: Record<string, string>,
+    body: string,
+    signal?: AbortSignal,
+    timeoutSec?: number,
+  ): Promise<CurlResponse> {
+    return new Promise((resolve, reject) => {
+      const args = [
+        "-s", "-S",            // silent but show errors
+        "--compressed",         // curl negotiates compression
+        "-N",                   // no output buffering (SSE)
+        "-i",                   // include response headers in stdout
+        "--http1.1",            // force HTTP/1.1
+        "-X", "POST",
+        "--data-binary", "@-",  // read body from stdin
+      ];
+
+      if (timeoutSec) {
+        args.push("--max-time", String(timeoutSec));
+      }
+
+      // Remove Accept-Encoding — let curl negotiate via --compressed
+      const filteredHeaders = { ...headers };
+      delete filteredHeaders["Accept-Encoding"];
+
+      for (const [key, value] of Object.entries(filteredHeaders)) {
+        args.push("-H", `${key}: ${value}`);
+      }
+      args.push(url);
+
+      const child = spawn("curl", args, {
+        stdio: ["pipe", "pipe", "pipe"],
+      });
+
+      // Abort handling
+      const onAbort = () => {
+        child.kill("SIGTERM");
+      };
+      if (signal) {
+        if (signal.aborted) {
+          child.kill("SIGTERM");
+          reject(new Error("Aborted"));
+          return;
+        }
+        signal.addEventListener("abort", onAbort, { once: true });
+      }
+
+      // Write body to stdin then close
+      child.stdin.write(body);
+      child.stdin.end();
+
+      let headerBuf = Buffer.alloc(0);
+      let headersParsed = false;
+      let bodyController: ReadableStreamDefaultController<Uint8Array> | null = null;
+
+      const bodyStream = new ReadableStream<Uint8Array>({
+        start(c) {
+          bodyController = c;
+        },
+        cancel() {
+          child.kill("SIGTERM");
+        },
+      });
+
+      child.stdout.on("data", (chunk: Buffer) => {
+        if (headersParsed) {
+          bodyController?.enqueue(new Uint8Array(chunk));
+          return;
+        }
+
+        // Accumulate until we find \r\n\r\n header separator
+        headerBuf = Buffer.concat([headerBuf, chunk]);
+        const separatorIdx = headerBuf.indexOf("\r\n\r\n");
+        if (separatorIdx === -1) return;
+
+        headersParsed = true;
+        const headerBlock = headerBuf.subarray(0, separatorIdx).toString("utf-8");
+        const remaining = headerBuf.subarray(separatorIdx + 4);
+
+        // Parse status and headers
+        const { status, headers: parsedHeaders, setCookieHeaders } = parseHeaderDump(headerBlock);
+
+        // Push remaining data (body after separator) into stream
+        if (remaining.length > 0) {
+          bodyController?.enqueue(new Uint8Array(remaining));
+        }
+
+        if (signal) {
+          signal.removeEventListener("abort", onAbort);
+        }
+
+        resolve({
+          status,
+          headers: parsedHeaders,
+          body: bodyStream,
+          setCookieHeaders,
+        });
+      });
+
+      let stderrBuf = "";
+      child.stderr.on("data", (chunk: Buffer) => {
+        stderrBuf += chunk.toString();
+      });
+
+      child.on("close", (code) => {
+        if (signal) {
+          signal.removeEventListener("abort", onAbort);
+        }
+        if (!headersParsed) {
+          reject(new CodexApiError(0, `curl exited with code ${code}: ${stderrBuf}`));
+        }
+        bodyController?.close();
+      });
+
+      child.on("error", (err) => {
+        if (signal) {
+          signal.removeEventListener("abort", onAbort);
+        }
+        reject(new CodexApiError(0, `curl spawn error: ${err.message}`));
+      });
+    });
   }
 
   /**
@@ -132,13 +277,14 @@ export class CodexApi {
   /**
    * Create a response (streaming).
    * Returns the raw Response so the caller can process the SSE stream.
+   * Uses curl subprocess for native TLS fingerprint.
    */
   async createResponse(
     request: CodexResponsesRequest,
     signal?: AbortSignal,
   ): Promise<Response> {
     const config = getConfig();
-    const baseUrl = config.api.base_url; // https://chatgpt.com/backend-api
+    const baseUrl = config.api.base_url;
     const url = `${baseUrl}/codex/responses`;
 
     const headers = this.applyHeaders(
@@ -146,33 +292,30 @@ export class CodexApi {
     );
     headers["Accept"] = "text/event-stream";
 
-    const timeout = config.api.timeout_seconds * 1000;
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), timeout);
-    const mergedSignal = signal
-      ? AbortSignal.any([signal, controller.signal])
-      : controller.signal;
+    const timeout = config.api.timeout_seconds;
 
-    const res = await fetch(url, {
-      method: "POST",
-      headers,
-      body: JSON.stringify(request),
-      signal: mergedSignal,
-    }).finally(() => clearTimeout(timer));
+    const curlRes = await this.curlPost(url, headers, JSON.stringify(request), signal, timeout);
 
-    this.captureCookies(res);
+    // Capture cookies
+    this.captureCookiesFromCurl(curlRes.setCookieHeaders);
 
-    if (!res.ok) {
-      let errorBody: string;
-      try {
-        errorBody = await res.text();
-      } catch {
-        errorBody = `HTTP ${res.status}`;
+    if (curlRes.status < 200 || curlRes.status >= 300) {
+      // Read the body for error details
+      const reader = curlRes.body.getReader();
+      const chunks: Uint8Array[] = [];
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        chunks.push(value);
       }
-      throw new CodexApiError(res.status, errorBody);
+      const errorBody = Buffer.concat(chunks).toString("utf-8");
+      throw new CodexApiError(curlRes.status, errorBody);
     }
 
-    return res;
+    return new Response(curlRes.body, {
+      status: curlRes.status,
+      headers: curlRes.headers,
+    });
   }
 
   /**
@@ -243,6 +386,38 @@ export class CodexApi {
 
     return { event, data };
   }
+}
+
+/** Parse the HTTP response header block from curl -i output. */
+function parseHeaderDump(headerBlock: string): {
+  status: number;
+  headers: Headers;
+  setCookieHeaders: string[];
+} {
+  const lines = headerBlock.split("\r\n");
+  let status = 0;
+  const headers = new Headers();
+  const setCookieHeaders: string[] = [];
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    if (i === 0) {
+      // Status line: HTTP/1.1 200 OK
+      const match = line.match(/^HTTP\/[\d.]+ (\d+)/);
+      if (match) status = parseInt(match[1], 10);
+      continue;
+    }
+    const colonIdx = line.indexOf(":");
+    if (colonIdx === -1) continue;
+    const key = line.slice(0, colonIdx).trim();
+    const value = line.slice(colonIdx + 1).trim();
+    if (key.toLowerCase() === "set-cookie") {
+      setCookieHeaders.push(value);
+    }
+    headers.append(key, value);
+  }
+
+  return { status, headers, setCookieHeaders };
 }
 
 /** Response from GET /backend-api/codex/usage */

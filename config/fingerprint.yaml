@@ -6,11 +6,23 @@ header_order:
   - "ChatGPT-Account-Id"
   - "originator"
   - "User-Agent"
+  - "sec-ch-ua"
+  - "sec-ch-ua-mobile"
+  - "sec-ch-ua-platform"
   - "Accept-Encoding"
   - "Accept-Language"
+  - "sec-fetch-site"
+  - "sec-fetch-mode"
+  - "sec-fetch-dest"
   - "Content-Type"
   - "Accept"
   - "Cookie"
 default_headers:
   Accept-Encoding: "gzip, deflate, br, zstd"
   Accept-Language: "en-US,en;q=0.9"
+  sec-ch-ua: '"Chromium";v="134", "Not:A-Brand";v="24"'
+  sec-ch-ua-mobile: "?0"
+  sec-ch-ua-platform: '"macOS"'
+  sec-fetch-site: "same-origin"
+  sec-fetch-mode: "cors"
+  sec-fetch-dest: "empty"

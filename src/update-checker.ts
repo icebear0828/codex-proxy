@@ -1,11 +1,13 @@
 /**
  * Update checker — polls the Codex Sparkle appcast for new versions.
- * Integrates with the main server process.
+ * Automatically applies version updates to config file and runtime.
  */
 
 import { readFileSync, writeFileSync, mkdirSync } from "fs";
 import { resolve } from "path";
 import yaml from "js-yaml";
+import { mutateClientConfig } from "./config.js";
+import { jitterInt } from "./utils/jitter.js";
 
 const CONFIG_PATH = resolve(process.cwd(), "config/default.yaml");
 const STATE_PATH = resolve(process.cwd(), "data/update-state.json");
@@ -23,7 +25,7 @@ export interface UpdateState {
 }
 
 let _currentState: UpdateState | null = null;
-let _pollTimer: ReturnType<typeof setInterval> | null = null;
+let _pollTimer: ReturnType<typeof setTimeout> | null = null;
 
 function loadCurrentConfig(): { app_version: string; build_number: string } {
   const raw = yaml.load(readFileSync(CONFIG_PATH, "utf-8")) as Record<string, unknown>;
@@ -50,6 +52,14 @@ function parseAppcast(xml: string): {
     build: buildMatch?.[1] ?? null,
     downloadUrl: urlMatch?.[1] ?? null,
   };
+}
+
+function applyVersionUpdate(version: string, build: string): void {
+  let content = readFileSync(CONFIG_PATH, "utf-8");
+  content = content.replace(/app_version:\s*"[^"]+"/, `app_version: "${version}"`);
+  content = content.replace(/build_number:\s*"[^"]+"/, `build_number: "${build}"`);
+  writeFileSync(CONFIG_PATH, content, "utf-8");
+  mutateClientConfig({ app_version: version, build_number: build });
 }
 
 export async function checkForUpdate(): Promise<UpdateState> {
@@ -88,6 +98,11 @@ export async function checkForUpdate(): Promise<UpdateState> {
     console.log(
       `[UpdateChecker] *** UPDATE AVAILABLE: v${version} (build ${build}) — current: v${current.app_version} (build ${current.build_number})`,
     );
+    applyVersionUpdate(version!, build!);
+    state.current_version = version!;
+    state.current_build = build!;
+    state.update_available = false;
+    console.log(`[UpdateChecker] Auto-applied: v${version} (build ${build})`);
   }
 
   return state;
@@ -98,9 +113,19 @@ export function getUpdateState(): UpdateState | null {
   return _currentState;
 }
 
+function scheduleNextPoll(): void {
+  _pollTimer = setTimeout(() => {
+    checkForUpdate().catch((err) => {
+      console.warn(`[UpdateChecker] Poll failed: ${err instanceof Error ? err.message : err}`);
+    });
+    scheduleNextPoll();
+  }, jitterInt(POLL_INTERVAL_MS, 0.1));
+  if (_pollTimer.unref) _pollTimer.unref();
+}
+
 /**
  * Start periodic update checking.
- * Runs an initial check immediately (non-blocking), then polls every 30 minutes.
+ * Runs an initial check immediately (non-blocking), then polls with jittered intervals.
  */
 export function startUpdateChecker(): void {
   // Initial check (non-blocking)
@@ -108,21 +133,14 @@ export function startUpdateChecker(): void {
     console.warn(`[UpdateChecker] Initial check failed: ${err instanceof Error ? err.message : err}`);
   });
 
-  // Periodic polling
-  _pollTimer = setInterval(() => {
-    checkForUpdate().catch((err) => {
-      console.warn(`[UpdateChecker] Poll failed: ${err instanceof Error ? err.message : err}`);
-    });
-  }, POLL_INTERVAL_MS);
-
-  // Don't keep the process alive just for update checks
-  if (_pollTimer.unref) _pollTimer.unref();
+  // Periodic polling with jitter
+  scheduleNextPoll();
 }
 
 /** Stop the periodic update checker. */
 export function stopUpdateChecker(): void {
   if (_pollTimer) {
-    clearInterval(_pollTimer);
+    clearTimeout(_pollTimer);
     _pollTimer = null;
   }
 }

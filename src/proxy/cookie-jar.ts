@@ -99,6 +99,35 @@ export class CookieJar {
     }
   }
 
+  /**
+   * Capture cookies from raw Set-Cookie header strings (e.g. from curl).
+   */
+  captureRaw(accountId: string, setCookies: string[]): void {
+    if (setCookies.length === 0) return;
+
+    const existing = this.cookies.get(accountId) ?? {};
+    let changed = false;
+
+    for (const raw of setCookies) {
+      const semi = raw.indexOf(";");
+      const pair = semi === -1 ? raw : raw.slice(0, semi);
+      const eq = pair.indexOf("=");
+      if (eq === -1) continue;
+
+      const name = pair.slice(0, eq).trim();
+      const value = pair.slice(eq + 1).trim();
+      if (name && existing[name] !== value) {
+        existing[name] = value;
+        changed = true;
+      }
+    }
+
+    if (changed) {
+      this.cookies.set(accountId, existing);
+      this.schedulePersist();
+    }
+  }
+
   /** Get raw cookie record for an account. */
   get(accountId: string): Record<string, string> | null {
     return this.cookies.get(accountId) ?? null;
