@@ -94,9 +94,13 @@ export class CodexApi {
       buildHeaders(this.token, this.accountId),
     );
     headers["Accept"] = "application/json";
+    // Remove Accept-Encoding — let curl negotiate its own supported encodings
+    // via --compressed. Passing unsupported encodings (br, zstd) causes curl
+    // to fail when it can't decompress the response.
+    delete headers["Accept-Encoding"];
 
     // Build curl args
-    const args = ["-s", "--max-time", "15"];
+    const args = ["-s", "--compressed", "--max-time", "15"];
     for (const [key, value] of Object.entries(headers)) {
       args.push("-H", `${key}: ${value}`);
     }

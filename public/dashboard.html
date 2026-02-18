@@ -4,307 +4,488 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Codex Proxy - Dashboard</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
     body {
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-      background: #0d1117;
-      color: #c9d1d9;
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: #f5f5f5;
+      color: #111827;
       min-height: 100vh;
-      padding: 2rem;
     }
-    .container { max-width: 720px; margin: 0 auto; }
-    header {
+
+    /* Top Nav */
+    .topnav {
+      background: #fff;
+      border-bottom: 1px solid #e5e7eb;
+      padding: 0 2rem;
+      height: 56px;
       display: flex;
       align-items: center;
       justify-content: space-between;
-      margin-bottom: 2rem;
-      padding-bottom: 1rem;
-      border-bottom: 1px solid #30363d;
     }
-    header h1 { font-size: 1.3rem; color: #58a6ff; }
-    .user-info { font-size: 0.85rem; color: #8b949e; }
-    .btn-logout {
-      padding: 6px 14px;
-      background: #21262d;
-      border: 1px solid #30363d;
-      border-radius: 6px;
-      color: #c9d1d9;
-      cursor: pointer;
-      font-size: 0.85rem;
-    }
-    .btn-logout:hover { background: #30363d; }
-    .card {
-      background: #161b22;
-      border: 1px solid #30363d;
-      border-radius: 12px;
-      padding: 1.5rem;
-      margin-bottom: 1.5rem;
-    }
-    .card h2 {
-      font-size: 1rem;
-      margin-bottom: 1rem;
-      color: #f0f6fc;
-    }
-    .field {
+    .topnav-left {
       display: flex;
       align-items: center;
       gap: 0.75rem;
-      margin-bottom: 0.75rem;
     }
-    .field label {
-      flex-shrink: 0;
-      width: 100px;
-      font-size: 0.85rem;
-      color: #8b949e;
+    .topnav-logo {
+      width: 28px;
+      height: 28px;
+      background: #e5e7eb;
+      border-radius: 7px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
     }
-    .field .value {
-      flex: 1;
-      background: #0d1117;
-      padding: 8px 12px;
-      border-radius: 6px;
-      border: 1px solid #30363d;
-      font-family: monospace;
-      font-size: 0.85rem;
-      word-break: break-all;
+    .topnav-logo svg {
+      width: 16px;
+      height: 16px;
+      color: #6b7280;
     }
-    .btn-copy {
-      padding: 6px 12px;
-      background: #21262d;
-      border: 1px solid #30363d;
-      border-radius: 6px;
-      color: #c9d1d9;
-      cursor: pointer;
+    .topnav-title {
+      font-size: 1rem;
+      font-weight: 600;
+      color: #111827;
+    }
+    .topnav-right {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+    }
+    .badge-online {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 4px 12px;
+      background: #ecfdf5;
+      color: #10a37f;
+      border-radius: 20px;
       font-size: 0.8rem;
-      flex-shrink: 0;
+      font-weight: 500;
     }
-    .btn-copy:hover { background: #30363d; }
-    .btn-copy.copied { background: #238636; border-color: #238636; }
-    .code-block {
-      background: #0d1117;
-      border: 1px solid #30363d;
+    .badge-online .dot {
+      width: 7px;
+      height: 7px;
+      background: #10a37f;
+      border-radius: 50%;
+    }
+    .btn-add {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.4rem;
+      padding: 7px 16px;
+      background: #10a37f;
+      color: #fff;
+      border: none;
       border-radius: 8px;
-      padding: 1rem;
-      font-family: monospace;
-      font-size: 0.8rem;
-      line-height: 1.6;
-      overflow-x: auto;
-      position: relative;
-      white-space: pre;
+      font-size: 0.85rem;
+      font-weight: 500;
+      font-family: inherit;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+    .btn-add:hover { background: #0e8f6e; }
+    .btn-add:disabled { opacity: 0.6; cursor: not-allowed; }
+
+    /* Main content */
+    .main {
+      max-width: 960px;
+      margin: 0 auto;
+      padding: 2rem;
+    }
+
+    /* Section headings */
+    .section-title {
+      font-size: 1.1rem;
+      font-weight: 600;
+      color: #111827;
       margin-bottom: 1rem;
     }
-    .code-block .copy-btn {
-      position: absolute;
-      top: 8px;
-      right: 8px;
-      padding: 4px 10px;
-      background: #21262d;
-      border: 1px solid #30363d;
-      border-radius: 4px;
-      color: #8b949e;
-      cursor: pointer;
-      font-size: 0.75rem;
+
+    /* Accounts */
+    .accounts-grid {
+      display: flex;
+      gap: 1rem;
+      flex-wrap: wrap;
+      margin-bottom: 2rem;
     }
-    .code-block .copy-btn:hover { background: #30363d; }
-    .tabs {
+    .account-card {
+      background: #fff;
+      border: 1px solid #e5e7eb;
+      border-radius: 12px;
+      padding: 1.25rem;
+      min-width: 280px;
+      flex: 1;
+      position: relative;
+    }
+    .account-top {
+      display: flex;
+      align-items: flex-start;
+      gap: 0.75rem;
+      margin-bottom: 1rem;
+    }
+    .avatar {
+      width: 40px;
+      height: 40px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 1rem;
+      font-weight: 600;
+      color: #fff;
+      flex-shrink: 0;
+    }
+    .avatar-purple { background: #8b5cf6; }
+    .avatar-amber { background: #f59e0b; }
+    .avatar-blue { background: #3b82f6; }
+    .avatar-green { background: #10a37f; }
+    .avatar-red { background: #ef4444; }
+    .account-info { flex: 1; min-width: 0; }
+    .account-email {
+      font-size: 0.9rem;
+      font-weight: 600;
+      color: #111827;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .account-plan {
+      font-size: 0.8rem;
+      color: #6b7280;
+    }
+    .status-badge {
+      display: inline-block;
+      padding: 2px 10px;
+      border-radius: 20px;
+      font-size: 0.75rem;
+      font-weight: 500;
+    }
+    .status-ok { background: #ecfdf5; color: #10a37f; }
+    .status-expired { background: #fef2f2; color: #ef4444; }
+    .status-rate-limited { background: #fffbeb; color: #d97706; }
+    .status-refreshing { background: #eff6ff; color: #3b82f6; }
+    .status-disabled { background: #f3f4f6; color: #6b7280; }
+    .account-stats {
+      display: flex;
+      gap: 1.5rem;
+    }
+    .stat {
+      display: flex;
+      flex-direction: column;
+    }
+    .stat-label {
+      font-size: 0.7rem;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: #9ca3af;
+      margin-bottom: 2px;
+    }
+    .stat-value {
+      font-size: 1rem;
+      font-weight: 600;
+      color: #111827;
+    }
+    .btn-delete-account {
+      position: absolute;
+      top: 12px;
+      right: 12px;
+      padding: 4px 10px;
+      background: #fff;
+      border: 1px solid #fca5a5;
+      border-radius: 6px;
+      color: #ef4444;
+      font-size: 0.7rem;
+      font-family: inherit;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    .btn-delete-account:hover { background: #ef4444; color: #fff; }
+    .empty-state {
+      text-align: center;
+      color: #9ca3af;
+      padding: 2rem;
+      font-size: 0.9rem;
+      background: #fff;
+      border: 1px solid #e5e7eb;
+      border-radius: 12px;
+      margin-bottom: 2rem;
+    }
+
+    /* Add account modal area */
+    .add-section {
+      display: none;
+      background: #fff;
+      border: 1px solid #e5e7eb;
+      border-radius: 12px;
+      padding: 1.25rem;
+      margin-bottom: 2rem;
+    }
+    .add-section.open { display: block; }
+    .add-section .hint {
+      font-size: 0.82rem;
+      color: #6b7280;
+      margin-bottom: 0.75rem;
+      line-height: 1.5;
+    }
+    .add-section .input-row {
       display: flex;
       gap: 0.5rem;
+    }
+    .add-section input {
+      flex: 1;
+      padding: 10px 12px;
+      border: 1px solid #e5e7eb;
+      border-radius: 8px;
+      font-size: 0.85rem;
+      font-family: inherit;
+      color: #111827;
+      outline: none;
+    }
+    .add-section input::placeholder { color: #9ca3af; }
+    .add-section input:focus { border-color: #10a37f; }
+    .btn-submit-add {
+      padding: 10px 16px;
+      border: 1px solid #e5e7eb;
+      border-radius: 8px;
+      background: #fff;
+      color: #111827;
+      font-size: 0.85rem;
+      font-weight: 500;
+      font-family: inherit;
+      cursor: pointer;
+      white-space: nowrap;
+    }
+    .btn-submit-add:hover { background: #f9fafb; }
+    .btn-submit-add:disabled { opacity: 0.5; cursor: not-allowed; }
+    .add-info {
+      color: #10a37f;
+      font-size: 0.8rem;
+      margin-top: 0.5rem;
+      display: none;
+    }
+    .add-error {
+      color: #ef4444;
+      font-size: 0.8rem;
+      margin-top: 0.5rem;
+      display: none;
+    }
+
+    /* API Configuration */
+    .config-card {
+      background: #fff;
+      border: 1px solid #e5e7eb;
+      border-radius: 12px;
+      padding: 1.5rem;
+      margin-bottom: 2rem;
+    }
+    .config-card .card-subtitle {
+      font-size: 0.82rem;
+      color: #6b7280;
+      margin-bottom: 1.25rem;
+    }
+    .config-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 1rem;
+      margin-bottom: 1rem;
+    }
+    .config-field label {
+      display: block;
+      font-size: 0.75rem;
+      font-weight: 500;
+      color: #6b7280;
+      margin-bottom: 0.35rem;
+    }
+    .config-value {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+    .config-value .val {
+      flex: 1;
+      padding: 9px 12px;
+      background: #f9fafb;
+      border: 1px solid #e5e7eb;
+      border-radius: 8px;
+      font-family: 'Inter', monospace;
+      font-size: 0.85rem;
+      color: #111827;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .config-value .val-muted {
+      color: #6b7280;
+      font-size: 0.8rem;
+    }
+    .btn-copy {
+      padding: 8px 10px;
+      background: #f9fafb;
+      border: 1px solid #e5e7eb;
+      border-radius: 8px;
+      color: #6b7280;
+      cursor: pointer;
+      flex-shrink: 0;
+      display: flex;
+      align-items: center;
+      transition: all 0.2s;
+    }
+    .btn-copy:hover { background: #e5e7eb; }
+    .btn-copy.copied { background: #ecfdf5; border-color: #10a37f; color: #10a37f; }
+    .btn-copy svg { width: 16px; height: 16px; }
+    .config-full {
+      grid-column: 1 / -1;
+    }
+    .val-input {
+      background: #fff;
+      outline: none;
+      transition: border-color 0.2s;
+    }
+    .val-input:focus {
+      border-color: #10a37f;
+      box-shadow: 0 0 0 2px rgba(16, 163, 127, 0.1);
+    }
+    select.val-input { cursor: pointer; appearance: auto; }
+    .btn-reset {
+      padding: 7px 16px;
+      background: #f9fafb;
+      border: 1px solid #e5e7eb;
+      border-radius: 8px;
+      color: #6b7280;
+      font-size: 0.8rem;
+      font-family: inherit;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    .btn-reset:hover { background: #e5e7eb; color: #111827; }
+    .quota-section {
+      margin-top: 0.75rem;
+      padding-top: 0.75rem;
+      border-top: 1px solid #f3f4f6;
+    }
+    .quota-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 6px;
+    }
+    .quota-label {
+      font-size: 0.7rem;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: #9ca3af;
+    }
+    .quota-value {
+      font-size: 0.75rem;
+      font-weight: 500;
+      color: #111827;
+    }
+    .quota-bar {
+      width: 100%;
+      height: 6px;
+      background: #f3f4f6;
+      border-radius: 3px;
+      overflow: hidden;
+    }
+    .quota-bar-fill {
+      height: 100%;
+      border-radius: 3px;
+      transition: width 0.3s;
+    }
+    .quota-bar-green { background: #10a37f; }
+    .quota-bar-amber { background: #f59e0b; }
+    .quota-bar-red { background: #ef4444; }
+    .quota-reset {
+      font-size: 0.7rem;
+      color: #9ca3af;
+      margin-top: 4px;
+    }
+    .quota-limit-badge {
+      display: inline-block;
+      padding: 1px 8px;
+      border-radius: 10px;
+      font-size: 0.7rem;
+      font-weight: 500;
+      background: #fef2f2;
+      color: #ef4444;
+    }
+
+    /* Integration Examples */
+    .examples-card {
+      background: #fff;
+      border: 1px solid #e5e7eb;
+      border-radius: 12px;
+      padding: 1.5rem;
+      margin-bottom: 2rem;
+    }
+    .tabs {
+      display: flex;
+      gap: 0;
+      border-bottom: 1px solid #e5e7eb;
       margin-bottom: 1rem;
     }
     .tab {
-      padding: 6px 14px;
-      background: #21262d;
-      border: 1px solid #30363d;
-      border-radius: 6px;
-      color: #8b949e;
-      cursor: pointer;
+      padding: 8px 16px;
+      background: none;
+      border: none;
+      border-bottom: 2px solid transparent;
+      color: #6b7280;
       font-size: 0.85rem;
+      font-family: inherit;
+      cursor: pointer;
+      transition: all 0.2s;
     }
-    .tab.active { background: #30363d; color: #f0f6fc; }
+    .tab:hover { color: #111827; }
+    .tab.active {
+      color: #111827;
+      font-weight: 500;
+      border-bottom-color: #10a37f;
+    }
+    .code-block {
+      background: #1e1e1e;
+      border-radius: 10px;
+      padding: 1.25rem;
+      font-family: 'Courier New', Courier, monospace;
+      font-size: 0.82rem;
+      line-height: 1.7;
+      color: #d4d4d4;
+      overflow-x: auto;
+      white-space: pre;
+      position: relative;
+    }
+    .code-block .copy-code-btn {
+      position: absolute;
+      bottom: 10px;
+      right: 10px;
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      padding: 5px 12px;
+      background: rgba(255,255,255,0.1);
+      border: none;
+      border-radius: 6px;
+      color: #d4d4d4;
+      font-size: 0.75rem;
+      font-family: inherit;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+    .code-block .copy-code-btn:hover { background: rgba(255,255,255,0.2); }
     .tab-content { display: none; }
     .tab-content.active { display: block; }
-    .status-badge {
-      display: inline-block;
-      padding: 2px 8px;
-      border-radius: 10px;
-      font-size: 0.75rem;
-      font-weight: 500;
-    }
-    .status-ok { background: #238636; color: #fff; }
-    .status-expired { background: #da3633; color: #fff; }
-    .status-rate-limited { background: #d29922; color: #fff; }
-    .status-refreshing { background: #58a6ff; color: #fff; }
-    .status-disabled { background: #484f58; color: #c9d1d9; }
-    .loading { color: #8b949e; font-style: italic; }
 
-    /* Account list styles */
-    .account-item {
-      background: #0d1117;
-      border: 1px solid #30363d;
-      border-radius: 8px;
-      padding: 1rem;
-      margin-bottom: 0.75rem;
-    }
-    .account-header {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      margin-bottom: 0.5rem;
-    }
-    .account-email {
-      font-weight: 600;
-      font-size: 0.9rem;
-      color: #f0f6fc;
-    }
-    .account-meta {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 0.5rem 1.5rem;
-      font-size: 0.8rem;
-      color: #8b949e;
-      margin-bottom: 0.5rem;
-    }
-    .account-api-key {
-      display: flex;
-      align-items: center;
-      gap: 0.5rem;
-      margin-top: 0.5rem;
-    }
-    .account-api-key .key-value {
-      flex: 1;
-      background: #161b22;
-      padding: 4px 8px;
-      border-radius: 4px;
-      border: 1px solid #30363d;
-      font-family: monospace;
-      font-size: 0.75rem;
-      color: #8b949e;
-      word-break: break-all;
-    }
-    .btn-delete {
-      padding: 4px 10px;
-      background: #21262d;
-      border: 1px solid #da3633;
-      border-radius: 6px;
-      color: #da3633;
-      cursor: pointer;
-      font-size: 0.75rem;
-    }
-    .btn-delete:hover { background: #da3633; color: #fff; }
-    .btn-small {
-      padding: 3px 8px;
-      background: #21262d;
-      border: 1px solid #30363d;
-      border-radius: 4px;
-      color: #c9d1d9;
-      cursor: pointer;
-      font-size: 0.7rem;
-    }
-    .btn-small:hover { background: #30363d; }
-
-    /* Add account */
-    .add-account-section {
-      margin-top: 1rem;
-      padding-top: 1rem;
-      border-top: 1px solid #30363d;
-    }
-    .btn-login {
-      display: inline-flex;
-      align-items: center;
-      gap: 0.5rem;
-      padding: 10px 20px;
-      background: #238636;
-      border: 1px solid #238636;
-      border-radius: 8px;
-      color: #fff;
-      cursor: pointer;
-      font-size: 0.9rem;
-      font-weight: 500;
-    }
-    .btn-login:hover { background: #2ea043; }
-    .btn-login:disabled { opacity: 0.5; cursor: not-allowed; }
-    .login-info {
-      color: #58a6ff;
-      font-size: 0.8rem;
-      margin-top: 0.5rem;
-    }
-    .login-error {
-      color: #da3633;
-      font-size: 0.8rem;
-      margin-top: 0.5rem;
-    }
-    .paste-section {
-      display: none;
-      margin-top: 1rem;
-      background: #0d1117;
-      border: 1px solid #30363d;
-      border-radius: 8px;
-      padding: 1rem;
-    }
-    .paste-section label {
-      display: block;
-      font-size: 0.82rem;
-      color: #8b949e;
-      margin-bottom: 0.5rem;
-    }
-    .paste-section textarea {
-      width: 100%;
-      padding: 8px;
-      background: #161b22;
-      border: 1px solid #30363d;
-      border-radius: 6px;
-      color: #c9d1d9;
-      font-family: monospace;
-      font-size: 0.8rem;
-      resize: vertical;
-      min-height: 60px;
-      margin-bottom: 0.5rem;
-    }
-    .paste-section textarea:focus {
-      outline: none;
-      border-color: #58a6ff;
-    }
-    .paste-section .hint {
-      font-size: 0.75rem;
-      color: #484f58;
-      margin-bottom: 0.75rem;
-      line-height: 1.4;
-    }
-    .btn-device {
-      display: inline-flex;
-      align-items: center;
-      gap: 0.5rem;
-      padding: 8px 16px;
-      background: #21262d;
-      border: 1px solid #30363d;
-      border-radius: 8px;
-      color: #c9d1d9;
-      cursor: pointer;
-      font-size: 0.85rem;
-      font-weight: 500;
-      margin-top: 0.5rem;
-    }
-    .btn-device:hover { background: #30363d; }
-    .btn-device:disabled { opacity: 0.5; cursor: not-allowed; }
-    .device-code-panel {
-      background: #0d1117;
-      border: 1px solid #30363d;
-      border-radius: 8px;
-      padding: 1.25rem;
+    /* Footer */
+    .footer {
       text-align: center;
-      margin-top: 0.75rem;
-      display: none;
+      padding: 1rem 2rem 2rem;
+      color: #9ca3af;
+      font-size: 0.8rem;
     }
-    .device-code-panel .code-display {
-      font-family: monospace;
-      font-size: 1.6rem;
-      font-weight: 700;
-      color: #58a6ff;
-      letter-spacing: 0.1em;
-      margin: 0.5rem 0;
-    }
-    .device-code-panel a { color: #3fb950; font-size: 0.85rem; }
-    .device-code-panel .wait-text { color: #8b949e; font-size: 0.8rem; margin-top: 0.5rem; }
+
     .spinner {
       display: inline-block;
       width: 14px;
@@ -313,125 +494,124 @@
       border-top-color: #fff;
       border-radius: 50%;
       animation: spin 0.8s linear infinite;
+      vertical-align: middle;
+    }
+    .spinner-dark {
+      border-color: rgba(0,0,0,0.1);
+      border-top-color: #10a37f;
     }
     @keyframes spin { to { transform: rotate(360deg); } }
-    .empty-state {
-      text-align: center;
-      color: #484f58;
-      padding: 1.5rem;
-      font-size: 0.85rem;
-    }
   </style>
 </head>
 <body>
-  <div class="container">
-    <header>
-      <div>
-        <h1>Codex Proxy</h1>
-        <span class="user-info" id="userInfo">Loading...</span>
+  <!-- Top Navigation -->
+  <nav class="topnav">
+    <div class="topnav-left">
+      <div class="topnav-logo">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="12" r="10"/>
+          <path d="M8 12l2 2 4-4"/>
+        </svg>
       </div>
-      <button class="btn-logout" onclick="logout()">Logout</button>
-    </header>
+      <span class="topnav-title">Codex Proxy</span>
+    </div>
+    <div class="topnav-right">
+      <span class="badge-online" id="serverBadge"><span class="dot"></span> Server Online</span>
+      <button class="btn-add" id="addAccountBtn" onclick="startAddAccount()">+ Add Account</button>
+    </div>
+  </nav>
 
-    <!-- Accounts Card -->
-    <div class="card">
-      <h2>Accounts</h2>
-      <div id="accountList" class="loading">Loading accounts...</div>
-      <div class="add-account-section">
-        <button class="btn-login" id="addAccountBtn" onclick="startAddAccount()">Add Account via ChatGPT Login</button>
-        <div class="login-info" id="addInfo" style="display:none"></div>
-        <div class="login-error" id="addError" style="display:none"></div>
-        <div class="paste-section" id="addPasteSection">
-          <div class="hint">
-            If the popup shows an error or you're on a different machine,
-            copy the full URL from the popup's address bar and paste it here.
+  <div class="main">
+    <!-- Add Account Section (hidden by default) -->
+    <div class="add-section" id="addSection">
+      <div class="hint">
+        If the popup shows an error or you're on a different machine,
+        copy the full callback URL and paste it below.
+      </div>
+      <div class="input-row">
+        <input type="text" id="addCallbackInput" placeholder="Paste callback URL">
+        <button class="btn-submit-add" id="addRelayBtn" onclick="submitAddRelay()">Submit</button>
+      </div>
+      <div class="add-info" id="addInfo"></div>
+      <div class="add-error" id="addError"></div>
+    </div>
+
+    <!-- Connected Accounts -->
+    <h2 class="section-title">Connected Accounts</h2>
+    <div class="accounts-grid" id="accountList">
+      <div class="empty-state" style="width:100%">Loading accounts...</div>
+    </div>
+
+    <!-- API Configuration -->
+    <div class="config-card">
+      <h2 class="section-title" style="margin-bottom:0.25rem">API Configuration</h2>
+      <p class="card-subtitle">Configure your client to use these settings.</p>
+      <div class="config-grid">
+        <div class="config-field">
+          <label>Base URL</label>
+          <div class="config-value">
+            <input type="text" class="val val-input" id="baseUrl" value="Loading...">
+            <button class="btn-copy" onclick="copyField('baseUrl', this)" title="Copy">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>
+            </button>
           </div>
-          <label>Paste the callback URL</label>
-          <textarea id="addCallbackInput" placeholder="http://localhost:54321/auth/callback?code=...&state=..."></textarea>
-          <button class="btn-login" id="addRelayBtn" onclick="submitAddRelay()" style="font-size:0.8rem;padding:6px 14px">Submit</button>
         </div>
-
-        <div style="display:flex;gap:0.5rem;flex-wrap:wrap;margin-top:0.75rem">
-          <button class="btn-device" id="dashDeviceBtn" onclick="dashStartDeviceCode()">Device Code Login</button>
-          <button class="btn-device" id="dashCliBtn" onclick="dashImportCli()">Import CLI Token</button>
+        <div class="config-field">
+          <label>Default Model</label>
+          <div class="config-value">
+            <select class="val val-input" id="defaultModel">
+              <option value="codex">codex</option>
+            </select>
+          </div>
+          <div class="val-muted" style="margin-top:4px;font-size:0.75rem;color:#9ca3af">This model will be used if no specific model is requested in the API call.</div>
         </div>
-        <div class="device-code-panel" id="dashDevicePanel">
-          <div style="color:#8b949e;font-size:0.82rem">Enter this code at:</div>
-          <a id="dashVerifyLink" href="#" target="_blank" rel="noopener"></a>
-          <div class="code-display" id="dashUserCode"></div>
-          <div class="wait-text" id="dashDeviceStatus"><span class="spinner"></span> Waiting for authorization...</div>
-          <div class="login-error" id="dashDeviceError" style="display:none"></div>
-          <div class="login-info" id="dashDeviceSuccess" style="display:none"></div>
+        <div class="config-field config-full">
+          <label>API Key</label>
+          <div class="config-value">
+            <input type="text" class="val val-input" id="apiKey" value="Loading...">
+            <button class="btn-copy" onclick="copyField('apiKey', this)" title="Copy">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>
+            </button>
+          </div>
         </div>
-        <div class="login-error" id="dashCliError" style="display:none"></div>
-        <div class="login-info" id="dashCliSuccess" style="display:none"></div>
       </div>
+      <button class="btn-reset" onclick="resetConfigDefaults()">Reset to defaults</button>
     </div>
 
-    <div class="card">
-      <h2>API Configuration</h2>
-      <div class="field">
-        <label>Base URL</label>
-        <div class="value" id="baseUrl">Loading...</div>
-        <button class="btn-copy" onclick="copyText('baseUrl', this)">Copy</button>
-      </div>
-      <div class="field">
-        <label>API Key</label>
-        <div class="value" id="apiKey">Loading...</div>
-        <button class="btn-copy" onclick="copyText('apiKey', this)">Copy</button>
-      </div>
-      <div class="field">
-        <label>Model</label>
-        <div class="value" id="defaultModel">codex</div>
-      </div>
-      <div class="field">
-        <label>All Models</label>
-        <div class="value" id="allModels" style="font-size:0.75rem;line-height:1.6">Loading...</div>
-      </div>
-    </div>
-
-    <div class="card">
-      <h2>Usage Examples</h2>
+    <!-- Integration Examples -->
+    <div class="examples-card">
+      <h2 class="section-title">Integration Examples</h2>
       <div class="tabs">
-        <div class="tab active" onclick="switchTab('python', this)">Python</div>
-        <div class="tab" onclick="switchTab('curl', this)">curl</div>
-        <div class="tab" onclick="switchTab('node', this)">Node.js</div>
+        <button class="tab active" onclick="switchTab('python', this)">Python</button>
+        <button class="tab" onclick="switchTab('curl', this)">cURL</button>
+        <button class="tab" onclick="switchTab('node', this)">Node.js</button>
       </div>
-
       <div class="tab-content active" id="tab-python">
-        <div class="code-block" id="code-python">
-          <button class="copy-btn" onclick="copyCode('code-python')">Copy</button>
-Loading...
-        </div>
+        <div class="code-block" id="code-python">Loading...
+<button class="copy-code-btn" onclick="copyCode('code-python')">&#9112; Copy Code</button></div>
       </div>
       <div class="tab-content" id="tab-curl">
-        <div class="code-block" id="code-curl">
-          <button class="copy-btn" onclick="copyCode('code-curl')">Copy</button>
-Loading...
-        </div>
+        <div class="code-block" id="code-curl">Loading...
+<button class="copy-code-btn" onclick="copyCode('code-curl')">&#9112; Copy Code</button></div>
       </div>
       <div class="tab-content" id="tab-node">
-        <div class="code-block" id="code-node">
-          <button class="copy-btn" onclick="copyCode('code-node')">Copy</button>
-Loading...
-        </div>
+        <div class="code-block" id="code-node">Loading...
+<button class="copy-code-btn" onclick="copyCode('code-node')">&#9112; Copy Code</button></div>
       </div>
     </div>
-
-    <div class="card">
-      <h2>Status</h2>
-      <div id="statusInfo" class="loading">Checking...</div>
-    </div>
   </div>
+
+  <footer class="footer">&copy; 2025 Codex Proxy. All rights reserved.</footer>
 
   <script>
     let authData = null;
 
-    // Listen for postMessage from OAuth callback popup (cross-port communication)
+    const avatarColors = ['avatar-purple', 'avatar-amber', 'avatar-blue', 'avatar-green', 'avatar-red'];
+
     window.addEventListener('message', async (event) => {
       if (event.data?.type === 'oauth-callback-success') {
         if (addPollTimer) clearInterval(addPollTimer);
-        document.getElementById('addPasteSection').style.display = 'none';
+        document.getElementById('addSection').classList.remove('open');
         const infoEl = document.getElementById('addInfo');
         infoEl.textContent = 'Account added successfully!';
         infoEl.style.display = 'block';
@@ -451,10 +631,15 @@ Loading...
       return map[status] || 'status-disabled';
     }
 
-    function formatTime(iso) {
-      if (!iso) return '-';
-      const d = new Date(iso);
-      return d.toLocaleDateString() + ' ' + d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    function statusLabel(status) {
+      const map = {
+        active: 'Active',
+        expired: 'Expired',
+        rate_limited: 'Rate Limited',
+        refreshing: 'Refreshing',
+        disabled: 'Disabled',
+      };
+      return map[status] || status;
     }
 
     function escapeHtml(str) {
@@ -463,15 +648,21 @@ Loading...
       return div.innerHTML;
     }
 
+    function formatNumber(n) {
+      if (n >= 1000000) return (n / 1000000).toFixed(1) + 'M';
+      if (n >= 1000) return (n / 1000).toFixed(1) + 'k';
+      return String(n);
+    }
+
     async function loadAccounts() {
       try {
-        const resp = await fetch('/auth/accounts');
+        const resp = await fetch('/auth/accounts?quota=true');
         const data = await resp.json();
         const accounts = data.accounts || [];
         renderAccounts(accounts);
       } catch (err) {
         document.getElementById('accountList').innerHTML =
-          '<div class="empty-state">Failed to load accounts: ' + escapeHtml(err.message) + '</div>';
+          '<div class="empty-state" style="width:100%">Failed to load accounts: ' + escapeHtml(err.message) + '</div>';
       }
     }
 
@@ -479,42 +670,75 @@ Loading...
       const container = document.getElementById('accountList');
 
       if (accounts.length === 0) {
-        container.innerHTML = '<div class="empty-state">No accounts added. Paste a token below to get started.</div>';
+        container.innerHTML = '<div class="empty-state" style="width:100%">No accounts connected. Click "+ Add Account" to get started.</div>';
         return;
       }
 
       let html = '';
-      for (const acct of accounts) {
+      accounts.forEach((acct, i) => {
         const usage = acct.usage || {};
-        html += `<div class="account-item">
-          <div class="account-header">
-            <span class="account-email">${escapeHtml(acct.email || 'Unknown email')}</span>
-            <div style="display:flex;gap:0.5rem;align-items:center">
-              <span class="status-badge ${statusClass(acct.status)}">${escapeHtml(acct.status)}</span>
-              <button class="btn-delete" onclick="deleteAccount('${escapeHtml(acct.id)}')">Delete</button>
+        const email = acct.email || 'Unknown';
+        const initial = email.charAt(0).toUpperCase();
+        const colorClass = avatarColors[i % avatarColors.length];
+        const requests = usage.request_count ?? 0;
+        const tokens = (usage.input_tokens ?? 0) + (usage.output_tokens ?? 0);
+
+        // Build quota HTML if available
+        let quotaHtml = '';
+        const q = acct.quota;
+        if (q && q.rate_limit) {
+          const rl = q.rate_limit;
+          const pct = rl.used_percent != null ? Math.round(rl.used_percent) : null;
+          const barColor = pct == null ? 'quota-bar-green'
+            : pct >= 90 ? 'quota-bar-red'
+            : pct >= 60 ? 'quota-bar-amber'
+            : 'quota-bar-green';
+          const resetAt = rl.reset_at
+            ? new Date(rl.reset_at * 1000).toLocaleTimeString()
+            : null;
+
+          quotaHtml = `<div class="quota-section">
+            <div class="quota-header">
+              <span class="quota-label">Rate Limit</span>
+              ${rl.limit_reached
+                ? '<span class="quota-limit-badge">Limit Reached</span>'
+                : pct != null
+                  ? `<span class="quota-value">${pct}% used</span>`
+                  : '<span class="quota-value">OK</span>'}
+            </div>
+            ${pct != null ? `<div class="quota-bar"><div class="quota-bar-fill ${barColor}" style="width:${pct}%"></div></div>` : ''}
+            ${resetAt ? `<div class="quota-reset">Resets at ${escapeHtml(resetAt)}</div>` : ''}
+          </div>`;
+        }
+
+        html += `<div class="account-card">
+          <button class="btn-delete-account" onclick="deleteAccount('${escapeHtml(acct.id)}')">Delete</button>
+          <div class="account-top">
+            <div class="avatar ${colorClass}">${initial}</div>
+            <div class="account-info">
+              <div class="account-email">${escapeHtml(email)}</div>
+              <div class="account-plan">${escapeHtml(acct.planType || 'Free Tier')}</div>
+            </div>
+            <span class="status-badge ${statusClass(acct.status)}">${escapeHtml(statusLabel(acct.status))}</span>
+          </div>
+          <div class="account-stats">
+            <div class="stat">
+              <span class="stat-label">Requests</span>
+              <span class="stat-value">${formatNumber(requests)}</span>
+            </div>
+            <div class="stat">
+              <span class="stat-label">Tokens</span>
+              <span class="stat-value">${formatNumber(tokens)}</span>
             </div>
           </div>
-          <div class="account-meta">
-            <span>Plan: ${escapeHtml(acct.planType || 'unknown')}</span>
-            <span>Requests: ${usage.request_count ?? 0}</span>
-            <span>Tokens: ${(usage.input_tokens ?? 0) + (usage.output_tokens ?? 0)}</span>
-            <span>Added: ${formatTime(acct.addedAt)}</span>
-            ${acct.expiresAt ? `<span>Expires: ${formatTime(acct.expiresAt)}</span>` : ''}
-            ${usage.last_used ? `<span>Last used: ${formatTime(usage.last_used)}</span>` : ''}
-          </div>
-          <div class="account-api-key">
-            <span style="font-size:0.75rem;color:#8b949e;">ID:</span>
-            <span class="key-value" id="key-${escapeHtml(acct.id)}">${escapeHtml(acct.id)}</span>
-            <button class="btn-small" onclick="copyElText('key-${escapeHtml(acct.id)}', this)">Copy</button>
-          </div>
+          ${quotaHtml}
         </div>`;
-      }
+      });
       container.innerHTML = html;
     }
 
     async function deleteAccount(id) {
       if (!confirm('Remove this account?')) return;
-
       try {
         const resp = await fetch('/auth/accounts/' + encodeURIComponent(id), { method: 'DELETE' });
         if (!resp.ok) {
@@ -529,6 +753,10 @@ Loading...
       }
     }
 
+    // --- Server defaults (set once by loadStatus) ---
+    let serverBaseUrl = '';
+    let serverApiKey = '';
+
     async function loadStatus() {
       try {
         const resp = await fetch('/auth/status');
@@ -539,56 +767,74 @@ Loading...
           return;
         }
 
-        // Header: pool summary
-        const pool = authData.pool || {};
-        const total = pool.total || 0;
-        const active = pool.active || 0;
-        document.getElementById('userInfo').textContent =
-          `${active} active / ${total} total account${total !== 1 ? 's' : ''}`;
+        serverBaseUrl = `${window.location.origin}/v1`;
+        serverApiKey = authData.proxy_api_key || 'any-string';
+        document.getElementById('baseUrl').value = serverBaseUrl;
+        document.getElementById('apiKey').value = serverApiKey;
 
-        // API config
-        const baseUrl = `${window.location.origin}/v1`;
-        const apiKey = authData.proxy_api_key || 'any-string';
-        document.getElementById('baseUrl').textContent = baseUrl;
-        document.getElementById('apiKey').textContent = apiKey;
+        await populateModelDropdown();
+        restoreOverrides();
+        updateCodeExamples();
+      } catch (err) {
+        console.error('Status load error:', err);
+      }
+    }
 
-        // Code examples
-        document.getElementById('code-python').innerHTML =
-          `<button class="copy-btn" onclick="copyCode('code-python')">Copy</button>` +
-`from openai import OpenAI
+    async function populateModelDropdown() {
+      const sel = document.getElementById('defaultModel');
+      try {
+        const resp = await fetch('/v1/models');
+        const data = await resp.json();
+        const models = data.data.map(m => m.id);
+        if (models.length > 0) {
+          sel.innerHTML = '';
+          models.forEach(id => {
+            const opt = document.createElement('option');
+            opt.value = id;
+            opt.textContent = id;
+            sel.appendChild(opt);
+          });
+          const preferred = models.find(n => n.includes('5.3-codex'));
+          if (preferred) sel.value = preferred;
+        }
+      } catch {
+        sel.innerHTML = '<option value="codex">codex</option>';
+      }
+    }
 
-client = OpenAI(
-    base_url="${baseUrl}",
-    api_key="${apiKey}",
-)
+    function updateCodeExamples() {
+      const baseUrl = escapeHtml(document.getElementById('baseUrl').value);
+      const apiKey = escapeHtml(document.getElementById('apiKey').value || 'any-string');
+      const model = escapeHtml(document.getElementById('defaultModel').value);
 
-response = client.chat.completions.create(
-    model="codex",
+      document.getElementById('code-python').innerHTML =
+`import openai
+
+openai.api_base = "${baseUrl}"
+openai.api_key = "${apiKey}"
+response = openai.ChatCompletion.create(
+    model="${model}",
     messages=[
-        {"role": "user", "content": "Write a hello world in Python"}
-    ],
-    stream=True,
+        {"role": "user", "content": "Explain quantum computing in simple terms"}
+    ]
 )
 
-for chunk in response:
-    if chunk.choices[0].delta.content:
-        print(chunk.choices[0].delta.content, end="")`;
+print(response.choices[0].message.content)
+<button class="copy-code-btn" onclick="copyCode('code-python')">&#9112; Copy Code</button>`;
 
-        document.getElementById('code-curl').innerHTML =
-          `<button class="copy-btn" onclick="copyCode('code-curl')">Copy</button>` +
+      document.getElementById('code-curl').innerHTML =
 `curl ${baseUrl}/chat/completions \\
   -H "Content-Type: application/json" \\
   -H "Authorization: Bearer ${apiKey}" \\
   -d '{
-    "model": "codex",
+    "model": "${model}",
     "messages": [
-      {"role": "user", "content": "Write a hello world in Python"}
-    ],
-    "stream": false
-  }'`;
+      {"role": "user", "content": "Explain quantum computing in simple terms"}
+    ]
+  }'
+<button class="copy-code-btn" onclick="copyCode('code-curl')">&#9112; Copy Code</button>`;
 
-        document.getElementById('code-node').innerHTML =
-          `<button class="copy-btn" onclick="copyCode('code-node')">Copy</button>` +
+      document.getElementById('code-node').innerHTML =
 `import OpenAI from "openai";
 
 const client = new OpenAI({
@@ -597,35 +843,62 @@ const client = new OpenAI({
 });
 
 const stream = await client.chat.completions.create({
-    model: "codex",
+    model: "${model}",
     messages: [
-        { role: "user", content: "Write a hello world in Python" },
+        { role: "user", content: "Explain quantum computing in simple terms" },
     ],
     stream: true,
 });
 
 for await (const chunk of stream) {
     process.stdout.write(chunk.choices[0]?.delta?.content || "");
-}`;
+}
+<button class="copy-code-btn" onclick="copyCode('code-node')">&#9112; Copy Code</button>`;
+    }
 
-        // Fetch models
-        try {
-          const modelsResp = await fetch('/v1/models');
-          const modelsData = await modelsResp.json();
-          const modelNames = modelsData.data.map(m => m.id);
-          const defaultModel = modelNames.find(n => n.includes('5.3-codex')) || modelNames[0];
-          document.getElementById('defaultModel').textContent = defaultModel + ' (default)';
-          document.getElementById('allModels').textContent = modelNames.join(', ');
-        } catch {}
+    function saveOverrides() {
+      try {
+        const overrides = {
+          baseUrl: document.getElementById('baseUrl').value,
+          apiKey: document.getElementById('apiKey').value,
+          model: document.getElementById('defaultModel').value,
+        };
+        localStorage.setItem('codex-proxy-config-overrides', JSON.stringify(overrides));
+      } catch {}
+    }
 
-        // Health status
-        const health = await fetch('/health').then(r => r.json());
-        document.getElementById('statusInfo').innerHTML =
-          `<span class="status-badge status-ok">Connected</span> ` +
-          `Server running at ${window.location.origin}`;
-      } catch (err) {
-        document.getElementById('statusInfo').textContent = 'Error: ' + err.message;
-      }
+    function restoreOverrides() {
+      try {
+        const raw = localStorage.getItem('codex-proxy-config-overrides');
+        if (!raw) return;
+        const overrides = JSON.parse(raw);
+        if (overrides.baseUrl) document.getElementById('baseUrl').value = overrides.baseUrl;
+        if (overrides.apiKey) document.getElementById('apiKey').value = overrides.apiKey;
+        if (overrides.model) {
+          const sel = document.getElementById('defaultModel');
+          // Only apply if the option exists in the dropdown
+          const opts = Array.from(sel.options).map(o => o.value);
+          if (opts.includes(overrides.model)) sel.value = overrides.model;
+        }
+      } catch {}
+    }
+
+    function resetConfigDefaults() {
+      try { localStorage.removeItem('codex-proxy-config-overrides'); } catch {}
+      document.getElementById('baseUrl').value = serverBaseUrl;
+      document.getElementById('apiKey').value = serverApiKey;
+      // Re-select preferred model
+      const sel = document.getElementById('defaultModel');
+      const preferred = Array.from(sel.options).find(o => o.value.includes('5.3-codex'));
+      if (preferred) sel.value = preferred.value;
+      else if (sel.options.length) sel.selectedIndex = 0;
+      updateCodeExamples();
+    }
+
+    function setupReactiveBindings() {
+      document.getElementById('baseUrl').addEventListener('input', () => { updateCodeExamples(); saveOverrides(); });
+      document.getElementById('apiKey').addEventListener('input', () => { updateCodeExamples(); saveOverrides(); });
+      document.getElementById('defaultModel').addEventListener('change', () => { updateCodeExamples(); saveOverrides(); });
     }
 
     function switchTab(tab, el) {
@@ -635,24 +908,21 @@ for await (const chunk of stream) {
       document.getElementById('tab-' + tab).classList.add('active');
     }
 
-    function copyText(id, btn) {
-      const text = document.getElementById(id).textContent;
+    function copyField(id, btn) {
+      const el = document.getElementById(id);
+      const text = el.value !== undefined ? el.value : el.textContent;
       navigator.clipboard.writeText(text);
-      btn.textContent = 'Copied!';
       btn.classList.add('copied');
-      setTimeout(() => { btn.textContent = 'Copy'; btn.classList.remove('copied'); }, 2000);
-    }
-
-    function copyElText(id, btn) {
-      const text = document.getElementById(id).textContent;
-      navigator.clipboard.writeText(text);
-      btn.textContent = 'Copied!';
-      setTimeout(() => { btn.textContent = 'Copy'; }, 1500);
+      setTimeout(() => btn.classList.remove('copied'), 2000);
     }
 
     function copyCode(id) {
       const el = document.getElementById(id);
-      const code = el.textContent.replace('Copy', '').trim();
+      // Get text content excluding the copy button
+      const clone = el.cloneNode(true);
+      const btns = clone.querySelectorAll('.copy-code-btn');
+      btns.forEach(b => b.remove());
+      const code = clone.textContent.trim();
       navigator.clipboard.writeText(code);
     }
 
@@ -670,7 +940,7 @@ for await (const chunk of stream) {
       infoEl.style.display = 'none';
       errEl.style.display = 'none';
       btn.disabled = true;
-      btn.textContent = 'Opening login...';
+      btn.textContent = 'Opening...';
 
       try {
         const resp = await fetch('/auth/login-start', { method: 'POST' });
@@ -682,11 +952,10 @@ for await (const chunk of stream) {
 
         window.open(data.authUrl, 'oauth_add', 'width=600,height=700,scrollbars=yes');
 
-        document.getElementById('addPasteSection').style.display = 'block';
-        btn.textContent = 'Add Account via ChatGPT Login';
+        document.getElementById('addSection').classList.add('open');
+        btn.textContent = '+ Add Account';
         btn.disabled = false;
 
-        // Poll for new account (callback server handles same-machine)
         if (addPollTimer) clearInterval(addPollTimer);
         const prevCount = (await fetch('/auth/accounts').then(r => r.json())).accounts?.length || 0;
         addPollTimer = setInterval(async () => {
@@ -695,7 +964,7 @@ for await (const chunk of stream) {
             const d = await r.json();
             if ((d.accounts?.length || 0) > prevCount) {
               clearInterval(addPollTimer);
-              document.getElementById('addPasteSection').style.display = 'none';
+              document.getElementById('addSection').classList.remove('open');
               infoEl.textContent = 'Account added successfully!';
               infoEl.style.display = 'block';
               await loadAccounts();
@@ -706,7 +975,7 @@ for await (const chunk of stream) {
         setTimeout(() => { if (addPollTimer) clearInterval(addPollTimer); }, 5 * 60 * 1000);
 
       } catch (err) {
-        btn.textContent = 'Add Account via ChatGPT Login';
+        btn.textContent = '+ Add Account';
         btn.disabled = false;
         errEl.textContent = err.message;
         errEl.style.display = 'block';
@@ -728,7 +997,7 @@ for await (const chunk of stream) {
 
       const btn = document.getElementById('addRelayBtn');
       btn.disabled = true;
-      btn.textContent = 'Exchanging...';
+      btn.textContent = 'Submitting...';
 
       try {
         const resp = await fetch('/auth/code-relay', {
@@ -740,7 +1009,7 @@ for await (const chunk of stream) {
 
         if (resp.ok && data.success) {
           if (addPollTimer) clearInterval(addPollTimer);
-          document.getElementById('addPasteSection').style.display = 'none';
+          document.getElementById('addSection').classList.remove('open');
           document.getElementById('addCallbackInput').value = '';
           infoEl.textContent = 'Account added successfully!';
           infoEl.style.display = 'block';
@@ -759,113 +1028,8 @@ for await (const chunk of stream) {
       }
     }
 
-    // ── Device Code Flow (dashboard) ─────────────────
-    let dashDevicePollTimer = null;
-
-    async function dashStartDeviceCode() {
-      const btn = document.getElementById('dashDeviceBtn');
-      const panel = document.getElementById('dashDevicePanel');
-      const errEl = document.getElementById('dashDeviceError');
-      const successEl = document.getElementById('dashDeviceSuccess');
-      const statusEl = document.getElementById('dashDeviceStatus');
-      errEl.style.display = 'none';
-      successEl.style.display = 'none';
-
-      btn.disabled = true;
-      btn.textContent = 'Requesting code...';
-
-      try {
-        const resp = await fetch('/auth/device-login', { method: 'POST' });
-        const data = await resp.json();
-
-        if (!resp.ok || !data.userCode) {
-          throw new Error(data.error || 'Failed to request device code');
-        }
-
-        panel.style.display = 'block';
-        document.getElementById('dashUserCode').textContent = data.userCode;
-        const link = document.getElementById('dashVerifyLink');
-        link.href = data.verificationUriComplete || data.verificationUri;
-        link.textContent = data.verificationUri;
-        statusEl.innerHTML = '<span class="spinner"></span> Waiting for authorization...';
-
-        btn.textContent = 'Device Code Login';
-        btn.disabled = false;
-
-        const interval = (data.interval || 5) * 1000;
-        const deviceCode = data.deviceCode;
-        if (dashDevicePollTimer) clearInterval(dashDevicePollTimer);
-
-        dashDevicePollTimer = setInterval(async () => {
-          try {
-            const pollResp = await fetch('/auth/device-poll/' + encodeURIComponent(deviceCode));
-            const pollData = await pollResp.json();
-
-            if (pollData.success) {
-              clearInterval(dashDevicePollTimer);
-              statusEl.innerHTML = '';
-              successEl.textContent = 'Account added successfully!';
-              successEl.style.display = 'block';
-              panel.style.display = 'none';
-              await loadAccounts();
-              await loadStatus();
-            } else if (pollData.error) {
-              clearInterval(dashDevicePollTimer);
-              statusEl.innerHTML = '';
-              errEl.textContent = pollData.error;
-              errEl.style.display = 'block';
-            }
-          } catch {}
-        }, interval);
-
-        setTimeout(() => {
-          if (dashDevicePollTimer) {
-            clearInterval(dashDevicePollTimer);
-            statusEl.textContent = 'Code expired. Please try again.';
-          }
-        }, (data.expiresIn || 900) * 1000);
-
-      } catch (err) {
-        btn.textContent = 'Device Code Login';
-        btn.disabled = false;
-        errEl.textContent = err.message;
-        errEl.style.display = 'block';
-      }
-    }
-
-    // ── CLI Token Import (dashboard) ─────────────────
-    async function dashImportCli() {
-      const btn = document.getElementById('dashCliBtn');
-      const errEl = document.getElementById('dashCliError');
-      const successEl = document.getElementById('dashCliSuccess');
-      errEl.style.display = 'none';
-      successEl.style.display = 'none';
-      btn.disabled = true;
-      btn.textContent = 'Importing...';
-
-      try {
-        const resp = await fetch('/auth/import-cli', { method: 'POST' });
-        const data = await resp.json();
-
-        if (resp.ok && data.success) {
-          successEl.textContent = 'CLI token imported!';
-          successEl.style.display = 'block';
-          await loadAccounts();
-          await loadStatus();
-        } else {
-          errEl.textContent = data.error || 'Failed to import CLI token';
-          errEl.style.display = 'block';
-        }
-      } catch (err) {
-        errEl.textContent = 'Network error: ' + err.message;
-        errEl.style.display = 'block';
-      } finally {
-        btn.textContent = 'Import CLI Token';
-        btn.disabled = false;
-      }
-    }
-
     loadStatus();
+    setupReactiveBindings();
     loadAccounts();
   </script>
 </body>

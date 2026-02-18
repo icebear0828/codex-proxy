@@ -4,3 +4,4 @@ data/
 .env
 *.log
 .asar-out/
+.claude/settings.local.json
