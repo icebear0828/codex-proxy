@@ -1,0 +1,19 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --primary: 16 162 53;
+  --primary-hover: 14 140 46;
+}
+
+.dark {
+  --primary: 16 163 127;
+  --primary-hover: 14 140 108;
+}
+
+/* Dark scrollbar for code blocks */
+pre::-webkit-scrollbar { height: 8px; }
+pre::-webkit-scrollbar-track { background: #0d1117; }
+pre::-webkit-scrollbar-thumb { background: #30363d; border-radius: 4px; }
+pre::-webkit-scrollbar-thumb:hover { background: #8b949e; }

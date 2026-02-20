@@ -68,14 +68,15 @@ async function main() {
   const host = config.server.host;
 
   const poolSummary = accountPool.getPoolSummary();
+  const displayHost = (host === "0.0.0.0" || host === "::") ? "localhost" : host;
 
   console.log(`
 ╔══════════════════════════════════════════╗
 ║           Codex Proxy Server             ║
 ╠══════════════════════════════════════════╣
 ║  Status: ${accountPool.isAuthenticated() ? "Authenticated ✓" : "Not logged in  "}             ║
-║  Listen: http://${host}:${port}              ║
-║  API:    http://${host}:${port}/v1            ║
+║  Listen: http://${displayHost}:${port}              ║
+║  API:    http://${displayHost}:${port}/v1            ║
 ╚══════════════════════════════════════════╝
 `);
 
@@ -86,7 +87,6 @@ async function main() {
     console.log(`  Key:  ${accountPool.getProxyApiKey()}`);
     console.log(`  Pool: ${poolSummary.active} active / ${poolSummary.total} total accounts`);
   } else {
-    const displayHost = host === "0.0.0.0" ? "localhost" : host;
     console.log(`  Open http://${displayHost}:${port} to login`);
   }
   console.log();

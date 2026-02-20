@@ -1,0 +1,19 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Codex Proxy Developer Dashboard</title>
+  <script>
+    try {
+      const t = localStorage.getItem('codex-proxy-theme');
+      if (t === 'dark' || (!t && window.matchMedia('(prefers-color-scheme: dark)').matches))
+        document.documentElement.classList.add('dark');
+    } catch {}
+  </script>
+</head>
+<body class="bg-bg-light dark:bg-bg-dark font-display text-slate-900 dark:text-text-main antialiased min-h-screen flex flex-col transition-colors">
+  <div id="app"></div>
+  <script type="module" src="/src/main.tsx"></script>
+</body>
+</html>

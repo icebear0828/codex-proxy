@@ -5,7 +5,9 @@
   "type": "module",
   "scripts": {
     "dev": "tsx watch src/index.ts",
-    "build": "tsc",
+    "dev:web": "cd web && npm run dev",
+    "build:web": "cd web && npm install && npm run build",
+    "build": "npm run build:web && tsc",
     "start": "node dist/index.js",
     "check-update": "tsx scripts/check-update.ts",
     "check-update:watch": "tsx scripts/check-update.ts --watch",

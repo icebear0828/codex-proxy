@@ -1,4 +1,5 @@
 import { Hono } from "hono";
+import { serveStatic } from "@hono/node-server/serve-static";
 import { readFileSync, existsSync } from "fs";
 import { resolve } from "path";
 import type { AccountPool } from "../auth/account-pool.js";
@@ -10,14 +11,17 @@ export function createWebRoutes(accountPool: AccountPool): Hono {
 
   const publicDir = resolve(process.cwd(), "public");
 
+  // Serve Vite build assets
+  app.use("/assets/*", serveStatic({ root: "./public" }));
+
   app.get("/", (c) => {
     try {
-      const html = readFileSync(resolve(publicDir, "dashboard.html"), "utf-8");
+      const html = readFileSync(resolve(publicDir, "index.html"), "utf-8");
       return c.html(html);
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       console.error(`[Web] Failed to read HTML file: ${msg}`);
-      return c.html("<h1>Codex Proxy</h1><p>UI files not found. The API is still available at /v1/chat/completions</p>");
+      return c.html("<h1>Codex Proxy</h1><p>UI files not found. Run 'npm run build:web' first. The API is still available at /v1/chat/completions</p>");
     }
   });
 

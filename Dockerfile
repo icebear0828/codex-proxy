@@ -7,13 +7,21 @@ RUN apt-get update && \
 
 WORKDIR /app
 
-# Install dependencies (postinstall downloads curl-impersonate for Linux)
+# Install backend dependencies (postinstall downloads curl-impersonate for Linux)
 COPY package*.json ./
-RUN npm ci --omit=dev
+RUN npm ci
 
-# Copy source and build
+# Copy source
 COPY . .
-RUN npm run build
+
+# Build frontend (Vite → public/)
+RUN cd web && npm ci && npm run build
+
+# Build backend (TypeScript → dist/)
+RUN npx tsc
+
+# Prune dev dependencies
+RUN npm prune --omit=dev
 
 # Persistent data mount point
 VOLUME /app/data
