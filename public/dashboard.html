@@ -135,7 +135,12 @@
 <div class="space-y-1.5">
 <label class="text-xs font-semibold text-slate-700 dark:text-text-main" data-i18n="defaultModel">Default Model</label>
 <div class="relative">
-<input id="defaultModel" class="w-full pl-3 pr-3 py-2.5 bg-slate-100 dark:bg-bg-dark border border-gray-200 dark:border-border-dark rounded-lg text-[0.78rem] text-slate-500 dark:text-text-dim font-medium outline-none cursor-default" type="text" value="codex" readonly/>
+<select id="defaultModel" class="w-full appearance-none pl-3 pr-10 py-2.5 bg-white dark:bg-bg-dark border border-gray-200 dark:border-border-dark rounded-lg text-[0.78rem] text-slate-700 dark:text-text-main font-medium focus:ring-1 focus:ring-primary focus:border-primary outline-none cursor-pointer transition-colors">
+<option value="codex">codex</option>
+</select>
+<div class="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2 text-slate-500 dark:text-text-dim">
+<svg class="size-[18px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M19.5 8.25l-7.5 7.5-7.5-7.5"/></svg>
+</div>
 </div>
 </div>
 <!-- API Key -->
@@ -625,17 +630,24 @@ async function loadStatus() {
 }
 
 async function populateModelDropdown() {
-  const el = document.getElementById('defaultModel');
+  const sel = document.getElementById('defaultModel');
   try {
     const resp = await fetch('/v1/models');
     const data = await resp.json();
     const models = data.data.map(m => m.id);
     if (models.length > 0) {
-      const preferred = models.find(n => n.includes('5.3-codex')) || models[0];
-      el.value = preferred;
+      sel.innerHTML = '';
+      models.forEach(id => {
+        const opt = document.createElement('option');
+        opt.value = id;
+        opt.textContent = id;
+        sel.appendChild(opt);
+      });
+      const preferred = models.find(n => n.includes('5.3-codex'));
+      if (preferred) sel.value = preferred;
     }
   } catch {
-    el.value = 'codex';
+    sel.innerHTML = '<option value="codex">codex</option>';
   }
 }
 
@@ -843,5 +855,6 @@ applyI18n();
 updateLangToggle();
 loadStatus();
 loadAccounts();
+document.getElementById('defaultModel').addEventListener('change', () => updateCodeExamples());
 </script>
 </body></html>
