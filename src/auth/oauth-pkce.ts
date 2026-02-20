@@ -377,7 +377,7 @@ export async function pollDeviceToken(deviceCode: string): Promise<TokenResponse
   if (!resp.ok) {
     const data = JSON.parse(resp.body) as { error?: string; error_description?: string };
     const err = new Error(data.error_description || data.error || `Poll failed (${resp.status})`);
-    (err as any).code = data.error;
+    (err as Error & { code?: string }).code = data.error;
     throw err;
   }
 

@@ -186,8 +186,8 @@ export function createAuthRoutes(
 
       console.log(`[Auth] Device code flow completed — account ${entryId} added`);
       return c.json({ success: true });
-    } catch (err: any) {
-      const code = err.code || "unknown";
+    } catch (err: unknown) {
+      const code = (err as { code?: string }).code || "unknown";
       if (code === "authorization_pending" || code === "slow_down") {
         return c.json({ pending: true, code });
       }
