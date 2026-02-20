@@ -12,11 +12,7 @@ export function createWebRoutes(accountPool: AccountPool): Hono {
 
   app.get("/", (c) => {
     try {
-      if (accountPool.isAuthenticated()) {
-        const html = readFileSync(resolve(publicDir, "dashboard.html"), "utf-8");
-        return c.html(html);
-      }
-      const html = readFileSync(resolve(publicDir, "login.html"), "utf-8");
+      const html = readFileSync(resolve(publicDir, "dashboard.html"), "utf-8");
       return c.html(html);
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
