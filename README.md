@@ -8,6 +8,7 @@
     <img src="https://img.shields.io/badge/Runtime-Node.js_18+-339933?style=flat-square&logo=nodedotjs&logoColor=white" alt="Node.js">
     <img src="https://img.shields.io/badge/Language-TypeScript-3178C6?style=flat-square&logo=typescript&logoColor=white" alt="TypeScript">
     <img src="https://img.shields.io/badge/Framework-Hono-E36002?style=flat-square" alt="Hono">
+    <img src="https://img.shields.io/badge/Docker-Supported-2496ED?style=flat-square&logo=docker&logoColor=white" alt="Docker">
     <img src="https://img.shields.io/badge/License-Non--Commercial-red?style=flat-square" alt="License">
   </p>
 
@@ -15,6 +16,7 @@
     <a href="#-快速开始-quick-start">快速开始</a> •
     <a href="#-核心功能-features">核心功能</a> •
     <a href="#-技术架构-architecture">技术架构</a> •
+    <a href="#-部署方式-deployment">部署方式</a> •
     <a href="#-客户端接入-client-setup">客户端接入</a> •
     <a href="#-配置说明-configuration">配置说明</a>
   </p>
@@ -60,28 +62,33 @@ curl http://localhost:8080/v1/chat/completions \
 
 ## 🌟 核心功能 (Features)
 
-### 1. 🔌 全协议兼容 (OpenAI-Compatible API)
-- 完全兼容 `/v1/chat/completions` 和 `/v1/models` 端点
+### 1. 🔌 全协议兼容 (Multi-Protocol API)
+- 完全兼容 `/v1/chat/completions`（OpenAI）、`/v1/messages`（Anthropic）和 Gemini 格式
 - 支持 SSE 流式输出，可直接对接所有 OpenAI SDK 和客户端
 - 自动完成 Chat Completions ↔ Codex Responses API 双向协议转换
 
 ### 2. 🔐 账号管理与智能轮换 (Auth & Multi-Account)
 - **OAuth PKCE 登录** — 浏览器一键授权，无需手动复制 Token
 - **多账号轮换** — 支持 `least_used`（最少使用优先）和 `round_robin`（轮询）两种调度策略
-- **Token 自动续期** — JWT 到期前自动刷新，无需人工干预
-- **配额实时监控** — 控制面板展示各账号剩余用量
+- **Token 自动续期** — JWT 到期前自动刷新，指数退避重试（5 次），临时失败 10 分钟恢复调度
+- **配额实时监控** — 控制面板展示各账号剩余用量，限流窗口滚动时自动重置计数器
+- **关键数据即时持久化** — 新增/刷新 Token 立即写盘，不丢失
 
 ### 3. 🛡️ 反检测与协议伪装 (Anti-Detection)
-- **Chrome TLS 指纹** — 通过 curl-impersonate 模拟 Chrome 136 完整 TLS 握手特征
-- **桌面端请求头复现** — `originator`、`User-Agent`、`sec-ch-*` 等请求头按真实 Codex Desktop 顺序排列
+- **Chrome TLS 指纹** — 通过 curl-impersonate 模拟 Chrome 完整 TLS 握手特征
+- **TLS 版本对齐** — `sec-ch-ua` 的 Chromium 版本与 TLS profile 动态同步（如 Chrome 136）
+- **完整 HTTP 指纹** — 所有请求（包括 OAuth、appcast）统一注入 User-Agent、sec-ch-ua、sec-fetch-* 等桌面端请求头
 - **桌面上下文注入** — 每个请求自动注入 Codex Desktop 的系统提示词，实现完整的功能对等
-- **Cookie 持久化** — 自动捕获并回传 Cloudflare Cookie，维持会话连续性
+- **Cookie 持久化** — v2 格式保留过期时间，关键 Cookie（cf_clearance）变更时即时写盘
 - **时间抖动 (Jitter)** — 定时操作加入随机偏移，消除机械化行为特征
 
-### 4. 🔄 会话管理与版本追踪 (Session & Version)
-- **多轮对话关联** — 自动维护 `previous_response_id`，保持上下文连贯
+### 4. 🔄 自动维护与版本追踪 (Auto-Maintenance)
 - **Appcast 版本追踪** — 定时轮询 Codex Desktop 更新源，自动同步 `app_version` 与 `build_number`
-- **Web 控制面板** — 账号管理、用量监控、状态总览，一站式操作
+- **全自动指纹更新** — 检测到新版本后自动触发完整流水线：下载 → 解压 → 提取指纹 → 热更新配置
+- **Chromium 版本提取** — 从 Codex Desktop 安装包自动提取 Electron/Chromium 版本，同步 TLS profile
+- **配置热重载** — full-update 完成后自动重载 config + fingerprint，无需重启
+- **多轮对话关联** — 自动维护 `previous_response_id`，保持上下文连贯
+- **Web 控制面板** — 账号管理、用量监控、状态总览，中英双语
 
 ## 🏗️ 技术架构 (Architecture)
 
@@ -92,6 +99,7 @@ curl http://localhost:8080/v1/chat/completions \
 │  Client (Cursor / Continue / SDK)                   │
 │       │                                             │
 │  POST /v1/chat/completions                          │
+│  POST /v1/messages (Anthropic)                      │
 │       │                                             │
 │       ▼                                             │
 │  ┌──────────┐    ┌───────────────┐    ┌──────────┐  │
@@ -109,6 +117,10 @@ curl http://localhost:8080/v1/chat/completions \
 │  │ OAuth/JWT│  │  Headers/UA   │  │   Manager   │  │
 │  └──────────┘  └───────────────┘  └─────────────┘  │
 │                                                     │
+│  ┌──────────────────────────────────────────────┐   │
+│  │  Auto-Maintenance (update-checker + scripts) │   │
+│  └──────────────────────────────────────────────┘   │
+│                                                     │
 └─────────────────────────────────────────────────────┘
                          │
                     curl subprocess
@@ -123,7 +135,10 @@ curl http://localhost:8080/v1/chat/completions \
 
 | 模型 ID | 别名 | 说明 |
 |---------|------|------|
-| `gpt-5.2-codex` | `codex` | 最新 agentic 编程模型（默认） |
+| `gpt-5.3-codex` | `codex` | 最新旗舰 agentic 编程模型（默认） |
+| `gpt-5.2-codex` | — | 上一代 agentic 编程模型 |
+| `gpt-5.1-codex-max` | `codex-max` | 深度推理编程模型 |
+| `gpt-5.2` | — | 通用旗舰模型 |
 | `gpt-5.1-codex-mini` | `codex-mini` | 轻量快速编程模型 |
 
 > 模型列表会随 Codex Desktop 版本更新自动同步。
@@ -139,7 +154,7 @@ http://localhost:8080/v1
 
 API Key（从控制面板获取）:
 ```
-codex-proxy-xxxxx
+your-api-key
 ```
 
 ### Continue (VS Code)
@@ -152,7 +167,7 @@ codex-proxy-xxxxx
     "provider": "openai",
     "model": "codex",
     "apiBase": "http://localhost:8080/v1",
-    "apiKey": "codex-proxy-xxxxx"
+    "apiKey": "your-api-key"
   }]
 }
 ```
@@ -164,7 +179,7 @@ from openai import OpenAI
 
 client = OpenAI(
     base_url="http://localhost:8080/v1",
-    api_key="codex-proxy-xxxxx"
+    api_key="your-api-key"
 )
 
 response = client.chat.completions.create(
@@ -184,7 +199,7 @@ import OpenAI from "openai";
 
 const client = new OpenAI({
   baseURL: "http://localhost:8080/v1",
-  apiKey: "codex-proxy-xxxxx",
+  apiKey: "your-api-key",
 });
 
 const stream = await client.chat.completions.create({
@@ -209,18 +224,18 @@ docker compose up -d
 # 打开 http://localhost:8080 登录
 ```
 
+数据持久化通过 volume 映射：`data/`（账号、Cookie）和 `config/`（配置文件）。
+
 ### 原生部署（macOS / Linux）
 
 ```bash
 git clone https://github.com/icebear0828/codex-proxy.git
 cd codex-proxy
-npm install
-npm run build
-npm start
+npm install && npm run build && npm start
 # 打开 http://localhost:8080 登录
 ```
 
-> Docker 部署会自动安装 curl-impersonate（Linux 版）。原生部署依赖 `npm install` 的 postinstall 脚本自动下载。
+> Docker 部署自动安装 curl-impersonate（Linux 版）和 unzip（自动更新用）。原生部署依赖 `npm install` 的 postinstall 脚本自动下载 curl-impersonate。
 
 ## ⚙️ 配置说明 (Configuration)
 
@@ -228,29 +243,46 @@ npm start
 
 | 分类 | 关键配置 | 说明 |
 |------|---------|------|
-| `server` | `host`, `port`, `proxy_api_key` | 服务监听地址与 API 密钥 |
+| `server` | `host`, `port`, `proxy_api_key` | 服务监听地址与 API 密钥（见下方说明） |
 | `api` | `base_url`, `timeout_seconds` | 上游 API 地址与请求超时 |
-| `client_identity` | `app_version`, `build_number` | 模拟的 Codex Desktop 版本 |
+| `client` | `app_version`, `build_number`, `chromium_version` | 模拟的 Codex Desktop 版本与 Chromium 版本 |
 | `model` | `default`, `default_reasoning_effort` | 默认模型与推理强度 |
 | `auth` | `rotation_strategy`, `rate_limit_backoff_seconds` | 轮换策略与限流退避 |
+| `tls` | `curl_binary`, `impersonate_profile`, `proxy_url` | TLS 伪装与代理配置 |
+
+### API 密钥 (proxy_api_key)
+
+在 `config/default.yaml` 中设置客户端访问代理时使用的 API Key：
+
+```yaml
+server:
+  proxy_api_key: "pwd"          # 自定义密钥，客户端请求时使用此值
+  # proxy_api_key: null          # 设为 null 则自动生成 codex-proxy-xxxx 格式的密钥
+```
+
+- **自定义密钥**：设置为任意字符串（如 `"pwd"`），客户端使用 `Authorization: Bearer pwd` 访问
+- **自动生成**：设为 `null`，代理会根据账号信息自动生成一个 `codex-proxy-` 前缀的哈希密钥
+- 当前密钥始终显示在控制面板（`http://localhost:8080`）的 API Configuration 区域
 
 ### 环境变量覆盖
 
 | 环境变量 | 覆盖配置 |
 |---------|---------|
 | `PORT` | `server.port` |
-| `CODEX_PLATFORM` | `client_identity.platform` |
-| `CODEX_ARCH` | `client_identity.arch` |
+| `CODEX_PLATFORM` | `client.platform` |
+| `CODEX_ARCH` | `client.arch` |
+| `HTTPS_PROXY` | `tls.proxy_url` |
 
 ## 📡 API 端点一览 (API Endpoints)
 
 | 端点 | 方法 | 说明 |
 |------|------|------|
-| `/v1/chat/completions` | POST | 聊天补全（核心端点） |
+| `/v1/chat/completions` | POST | 聊天补全 — OpenAI 格式（核心端点） |
+| `/v1/messages` | POST | 聊天补全 — Anthropic 格式 |
 | `/v1/models` | GET | 可用模型列表 |
 | `/health` | GET | 健康检查 |
-| `/auth/accounts` | GET | 账号列表与配额查询 |
-| `/auth/login` | GET | OAuth 登录入口 |
+| `/auth/accounts` | GET | 账号列表（`?quota=true` 含配额） |
+| `/auth/accounts/login` | GET | OAuth 登录入口 |
 | `/debug/fingerprint` | GET | 调试：查看当前伪装头信息 |
 
 ## 🔧 命令 (Commands)
@@ -260,18 +292,21 @@ npm start
 | `npm run dev` | 开发模式启动（热重载） |
 | `npm run build` | 编译 TypeScript 到 `dist/` |
 | `npm start` | 运行编译后的生产版本 |
+| `npm run update` | 手动触发完整更新流水线 |
 
 ## 📋 系统要求 (Requirements)
 
-- **Node.js** 18+
-- **curl** — 系统自带即可；安装 [curl-impersonate](https://github.com/lexiforest/curl-impersonate) 可获得完整 Chrome TLS 伪装
-- **ChatGPT 账号** — 普通账号即可
+- **Node.js** 18+（推荐 20+）
+- **curl** — 系统自带即可；`npm install` 自动下载 curl-impersonate 获得完整 Chrome TLS 伪装
+- **ChatGPT 账号** — 普通免费账号即可
+- **Docker**（可选） — 推荐使用 Docker 部署
 
 ## ⚠️ 注意事项 (Notes)
 
 - Codex API 为**流式输出专用**，设置 `stream: false` 时代理会内部流式收集后返回完整 JSON
-- 本项目依赖 Codex Desktop 的公开接口，上游版本更新可能导致接口变动
-- 建议在 **Linux / macOS** 上部署以获得完整 TLS 伪装能力（Windows 下 curl-impersonate 暂不可用）
+- 本项目依赖 Codex Desktop 的公开接口，上游版本更新时会自动检测并更新指纹
+- 建议在 **Linux / macOS** 上部署以获得完整 TLS 伪装能力（Windows 下 curl-impersonate 暂不可用，降级为系统 curl）
+- `config/default.yaml` 中的注释在自动更新后会丢失（使用结构化 YAML 写入）
 
 ## 📄 许可协议 (License)
 

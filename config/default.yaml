@@ -27,7 +27,7 @@ auth:
 server:
   host: "::"
   port: 8080
-  proxy_api_key: null
+  proxy_api_key: "pwd"
 
 environment:
   default_id: null
