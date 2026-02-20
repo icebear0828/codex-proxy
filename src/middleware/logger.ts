@@ -1,4 +1,5 @@
 import type { Context, Next } from "hono";
+import { log } from "../utils/logger.js";
 
 export async function logger(c: Context, next: Next): Promise<void> {
   const start = Date.now();
@@ -6,11 +7,11 @@ export async function logger(c: Context, next: Next): Promise<void> {
   const path = c.req.path;
   const rid = c.get("requestId") ?? "-";
 
-  console.log(`→ ${method} ${path} [${rid}]`);
+  log.info(`→ ${method} ${path}`, { rid, method, path });
 
   await next();
 
   const ms = Date.now() - start;
   const status = c.res.status;
-  console.log(`← ${method} ${path} ${status} ${ms}ms [${rid}]`);
+  log.info(`← ${method} ${path} ${status} ${ms}ms`, { rid, method, path, status, ms });
 }

@@ -150,6 +150,16 @@ export class CodexApi {
       let headersParsed = false;
       let bodyController: ReadableStreamDefaultController<Uint8Array> | null = null;
 
+      // P0-1: Header parse timeout — kill curl if headers aren't received within 30s
+      const HEADER_TIMEOUT_MS = 30_000;
+      const headerTimer = setTimeout(() => {
+        if (!headersParsed) {
+          child.kill("SIGTERM");
+          reject(new CodexApiError(0, `curl header parse timeout after ${HEADER_TIMEOUT_MS}ms`));
+        }
+      }, HEADER_TIMEOUT_MS);
+      if (headerTimer.unref) headerTimer.unref();
+
       const bodyStream = new ReadableStream<Uint8Array>({
         start(c) {
           bodyController = c;
@@ -171,6 +181,7 @@ export class CodexApi {
         if (separatorIdx === -1) return;
 
         headersParsed = true;
+        clearTimeout(headerTimer);
         const headerBlock = headerBuf.subarray(0, separatorIdx).toString("utf-8");
         const remaining = headerBuf.subarray(separatorIdx + 4);
 
@@ -200,6 +211,7 @@ export class CodexApi {
       });
 
       child.on("close", (code) => {
+        clearTimeout(headerTimer);
         if (signal) {
           signal.removeEventListener("abort", onAbort);
         }
@@ -210,6 +222,7 @@ export class CodexApi {
       });
 
       child.on("error", (err) => {
+        clearTimeout(headerTimer);
         if (signal) {
           signal.removeEventListener("abort", onAbort);
         }
@@ -297,13 +310,26 @@ export class CodexApi {
     this.captureCookiesFromCurl(curlRes.setCookieHeaders);
 
     if (curlRes.status < 200 || curlRes.status >= 300) {
-      // Read the body for error details
+      // Read the body for error details (P0-3: cap at 1MB to prevent memory spikes)
+      const MAX_ERROR_BODY = 1024 * 1024; // 1MB
       const reader = curlRes.body.getReader();
       const chunks: Uint8Array[] = [];
+      let totalSize = 0;
       while (true) {
         const { done, value } = await reader.read();
         if (done) break;
-        chunks.push(value);
+        totalSize += value.byteLength;
+        if (totalSize <= MAX_ERROR_BODY) {
+          chunks.push(value);
+        } else {
+          // Truncate: push only the part that fits
+          const overshoot = totalSize - MAX_ERROR_BODY;
+          if (value.byteLength > overshoot) {
+            chunks.push(value.subarray(0, value.byteLength - overshoot));
+          }
+          reader.cancel();
+          break;
+        }
       }
       const errorBody = Buffer.concat(chunks).toString("utf-8");
       throw new CodexApiError(curlRes.status, errorBody);

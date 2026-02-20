@@ -134,16 +134,25 @@ export function mutateClientConfig(patch: Partial<AppConfig["client"]>): void {
   Object.assign(_config.client, patch);
 }
 
-/** Reload config from disk (hot-reload after full-update). */
+/** Reload config from disk (hot-reload after full-update).
+ *  P1-5: Load to temp first, then swap atomically to avoid null window. */
 export function reloadConfig(configDir?: string): AppConfig {
-  _config = null;
-  return loadConfig(configDir);
+  const dir = configDir ?? resolve(process.cwd(), "config");
+  const raw = loadYaml(resolve(dir, "default.yaml")) as Record<string, unknown>;
+  applyEnvOverrides(raw);
+  const fresh = ConfigSchema.parse(raw);
+  _config = fresh;
+  return _config;
 }
 
-/** Reload fingerprint from disk (hot-reload after full-update). */
+/** Reload fingerprint from disk (hot-reload after full-update).
+ *  P1-5: Load to temp first, then swap atomically. */
 export function reloadFingerprint(configDir?: string): FingerprintConfig {
-  _fingerprint = null;
-  return loadFingerprint(configDir);
+  const dir = configDir ?? resolve(process.cwd(), "config");
+  const raw = loadYaml(resolve(dir, "fingerprint.yaml"));
+  const fresh = FingerprintSchema.parse(raw);
+  _fingerprint = fresh;
+  return _fingerprint;
 }
 
 /** Reload both config and fingerprint from disk. */

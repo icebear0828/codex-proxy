@@ -94,35 +94,54 @@ async function main() {
   // Start background update checker
   startUpdateChecker();
 
-  serve({
+  const server = serve({
     fetch: app.fetch,
     hostname: host,
     port,
   });
 
-  // Graceful shutdown with timeout protection
+  // P1-7: Graceful shutdown — stop accepting, drain, then cleanup
   let shutdownCalled = false;
+  const DRAIN_TIMEOUT_MS = 5_000;
   const shutdown = () => {
     if (shutdownCalled) return;
     shutdownCalled = true;
-    console.log("\n[Shutdown] Cleaning up...");
+    console.log("\n[Shutdown] Stopping new connections...");
+
     const forceExit = setTimeout(() => {
       console.error("[Shutdown] Timeout after 10s — forcing exit");
       process.exit(1);
     }, 10_000);
     if (forceExit.unref) forceExit.unref();
 
-    try {
-      stopUpdateChecker();
-      refreshScheduler.destroy();  // Cancel timers first
-      sessionManager.destroy();
-      cookieJar.destroy();         // Flush cookies
-      accountPool.destroy();       // Flush accounts
-    } catch (err) {
-      console.error("[Shutdown] Error during cleanup:", err instanceof Error ? err.message : err);
+    // 1. Stop accepting new connections
+    server.close(() => {
+      console.log("[Shutdown] Server closed, cleaning up resources...");
+      cleanup();
+    });
+
+    // 2. Grace period for active streams, then force cleanup
+    setTimeout(() => {
+      console.log("[Shutdown] Drain timeout reached, cleaning up...");
+      cleanup();
+    }, DRAIN_TIMEOUT_MS);
+
+    let cleanupDone = false;
+    function cleanup() {
+      if (cleanupDone) return;
+      cleanupDone = true;
+      try {
+        stopUpdateChecker();
+        refreshScheduler.destroy();
+        sessionManager.destroy();
+        cookieJar.destroy();
+        accountPool.destroy();
+      } catch (err) {
+        console.error("[Shutdown] Error during cleanup:", err instanceof Error ? err.message : err);
+      }
+      clearTimeout(forceExit);
+      process.exit(0);
     }
-    clearTimeout(forceExit);
-    process.exit(0);
   };
 
   process.on("SIGINT", shutdown);

@@ -31,9 +31,12 @@ import type {
 const ACCOUNTS_FILE = resolve(process.cwd(), "data", "accounts.json");
 const LEGACY_AUTH_FILE = resolve(process.cwd(), "data", "auth.json");
 
+// P1-4: Lock TTL — auto-release locks older than this
+const ACQUIRE_LOCK_TTL_MS = 5 * 60 * 1000; // 5 minutes
+
 export class AccountPool {
   private accounts: Map<string, AccountEntry> = new Map();
-  private acquireLocks: Set<string> = new Set();
+  private acquireLocks: Map<string, number> = new Map(); // entryId → timestamp
   private roundRobinIndex = 0;
   private persistTimer: ReturnType<typeof setTimeout> | null = null;
 
@@ -61,10 +64,19 @@ export class AccountPool {
   acquire(): AcquiredAccount | null {
     const config = getConfig();
     const now = new Date();
+    const nowMs = now.getTime();
 
     // Update statuses before selecting
     for (const entry of this.accounts.values()) {
       this.refreshStatus(entry, now);
+    }
+
+    // P1-4: Auto-release stale locks (older than TTL)
+    for (const [id, lockedAt] of this.acquireLocks) {
+      if (nowMs - lockedAt > ACQUIRE_LOCK_TTL_MS) {
+        console.warn(`[AccountPool] Auto-releasing stale lock for ${id} (locked ${Math.round((nowMs - lockedAt) / 1000)}s ago)`);
+        this.acquireLocks.delete(id);
+      }
     }
 
     // Filter available accounts
@@ -91,7 +103,7 @@ export class AccountPool {
       selected = available[0];
     }
 
-    this.acquireLocks.add(selected.id);
+    this.acquireLocks.set(selected.id, Date.now());
     return {
       entryId: selected.id,
       token: selected.token,
@@ -121,18 +133,31 @@ export class AccountPool {
 
   /**
    * Mark an account as rate-limited after a 429.
+   * P1-6: countRequest option to track 429s as usage without exposing entry internals.
    */
-  markRateLimited(entryId: string, retryAfterSec?: number): void {
+  markRateLimited(
+    entryId: string,
+    options?: { retryAfterSec?: number; countRequest?: boolean },
+  ): void {
     this.acquireLocks.delete(entryId);
     const entry = this.accounts.get(entryId);
     if (!entry) return;
 
     const config = getConfig();
-    const backoff = jitter(retryAfterSec ?? config.auth.rate_limit_backoff_seconds, 0.2);
+    const backoff = jitter(
+      options?.retryAfterSec ?? config.auth.rate_limit_backoff_seconds,
+      0.2,
+    );
     const until = new Date(Date.now() + backoff * 1000);
 
     entry.status = "rate_limited";
     entry.usage.rate_limit_until = until.toISOString();
+
+    if (options?.countRequest) {
+      entry.usage.request_count++;
+      entry.usage.last_used = new Date().toISOString();
+    }
+
     this.schedulePersist();
   }
 

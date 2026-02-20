@@ -89,10 +89,13 @@ export async function handleProxyRequest(
 
   let usageInfo: { input_tokens: number; output_tokens: number } | undefined;
 
+  // P0-2: AbortController to kill curl when client disconnects
+  const abortController = new AbortController();
+
   try {
     // 3. Retry + send to Codex
     const rawResponse = await withRetry(
-      () => codexApi.createResponse(req.codexRequest),
+      () => codexApi.createResponse(req.codexRequest, abortController.signal),
       { tag: fmt.tag },
     );
 
@@ -126,7 +129,16 @@ export async function handleProxyRequest(
           )) {
             await s.write(chunk);
           }
+        } catch (err) {
+          // P2-8: Send error SSE event to client before closing
+          try {
+            const errMsg = err instanceof Error ? err.message : "Stream interrupted";
+            await s.write(`data: ${JSON.stringify({ error: { message: errMsg, type: "stream_error" } })}\n\n`);
+          } catch { /* client already gone */ }
+          throw err;
         } finally {
+          // P0-2: Kill curl subprocess if still running
+          abortController.abort();
           accountPool.release(entryId, usageInfo);
         }
       });
@@ -156,15 +168,8 @@ export async function handleProxyRequest(
         err.message,
       );
       if (err.status === 429) {
-        accountPool.markRateLimited(entryId);
-        // Note: markRateLimited releases the lock but does not increment
-        // request_count. We intentionally count 429s as requests for
-        // accurate load tracking across accounts.
-        const entry = accountPool.getEntry(entryId);
-        if (entry) {
-          entry.usage.request_count++;
-          entry.usage.last_used = new Date().toISOString();
-        }
+        // P1-6: Count 429s as requests via encapsulated API (no direct entry mutation)
+        accountPool.markRateLimited(entryId, { countRequest: true });
         c.status(429);
         return c.json(fmt.format429(err.message));
       }
