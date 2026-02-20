@@ -119,14 +119,13 @@
 <svg class="size-5 text-primary" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path stroke-linecap="round" stroke-linejoin="round" d="M9.594 3.94c.09-.542.56-.94 1.11-.94h2.593c.55 0 1.02.398 1.11.94l.213 1.281c.063.374.313.686.645.87.074.04.147.083.22.127.324.196.72.257 1.075.124l1.217-.456a1.125 1.125 0 011.37.49l1.296 2.247a1.125 1.125 0 01-.26 1.431l-1.003.827c-.293.241-.438.613-.43.992a7.723 7.723 0 010 .255c-.008.378.137.75.43.991l1.004.827c.424.35.534.955.26 1.43l-1.298 2.247a1.125 1.125 0 01-1.369.491l-1.217-.456c-.355-.133-.75-.072-1.076.124a6.47 6.47 0 01-.22.128c-.331.183-.581.495-.644.869l-.213 1.281c-.09.543-.56.94-1.11.94h-2.594c-.55 0-1.019-.398-1.11-.94l-.213-1.281c-.062-.374-.312-.686-.644-.87a6.52 6.52 0 01-.22-.127c-.325-.196-.72-.257-1.076-.124l-1.217.456a1.125 1.125 0 01-1.369-.49l-1.297-2.247a1.125 1.125 0 01.26-1.431l1.004-.827c.292-.24.437-.613.43-.991a6.932 6.932 0 010-.255c.007-.38-.138-.751-.43-.992l-1.004-.827a1.125 1.125 0 01-.26-1.43l1.297-2.247a1.125 1.125 0 011.37-.491l1.216.456c.356.133.751.072 1.076-.124.072-.044.146-.086.22-.128.332-.183.582-.495.644-.869l.214-1.28z"/><path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
 <h2 class="text-[0.95rem] font-bold" data-i18n="apiConfig">API Configuration</h2>
 </div>
-<button onclick="resetConfigDefaults()" class="text-xs text-slate-400 dark:text-text-dim hover:text-slate-600 dark:hover:text-text-main transition-colors" data-i18n="resetDefaults">Reset to defaults</button>
 </div>
 <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
 <!-- Base URL -->
 <div class="space-y-1.5">
 <label class="text-xs font-semibold text-slate-700 dark:text-text-main" data-i18n="baseProxyUrl">Base Proxy URL</label>
 <div class="relative flex items-center">
-<input id="baseUrl" class="w-full pl-3 pr-10 py-2.5 bg-slate-50 dark:bg-bg-dark border border-gray-200 dark:border-border-dark rounded-lg text-[0.78rem] font-mono text-slate-600 dark:text-text-main focus:ring-1 focus:ring-primary focus:border-primary outline-none transition-all" type="text" value="Loading..."/>
+<input id="baseUrl" class="w-full pl-3 pr-10 py-2.5 bg-slate-100 dark:bg-bg-dark border border-gray-200 dark:border-border-dark rounded-lg text-[0.78rem] font-mono text-slate-500 dark:text-text-dim outline-none cursor-default select-all" type="text" value="Loading..." readonly/>
 <button onclick="copyField('baseUrl', this)" class="absolute right-2 p-1.5 text-slate-400 dark:text-text-dim hover:text-primary transition-colors rounded-md hover:bg-slate-100 dark:hover:bg-border-dark" data-i18n-title="copyUrl" title="Copy URL">
 <svg class="size-[18px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>
 </button>
@@ -136,12 +135,7 @@
 <div class="space-y-1.5">
 <label class="text-xs font-semibold text-slate-700 dark:text-text-main" data-i18n="defaultModel">Default Model</label>
 <div class="relative">
-<select id="defaultModel" class="w-full appearance-none pl-3 pr-10 py-2.5 bg-white dark:bg-bg-dark border border-gray-200 dark:border-border-dark rounded-lg text-[0.78rem] text-slate-700 dark:text-text-main font-medium focus:ring-1 focus:ring-primary focus:border-primary outline-none cursor-pointer transition-colors">
-<option value="codex">codex</option>
-</select>
-<div class="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2 text-slate-500 dark:text-text-dim">
-<svg class="size-[18px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M19.5 8.25l-7.5 7.5-7.5-7.5"/></svg>
-</div>
+<input id="defaultModel" class="w-full pl-3 pr-3 py-2.5 bg-slate-100 dark:bg-bg-dark border border-gray-200 dark:border-border-dark rounded-lg text-[0.78rem] text-slate-500 dark:text-text-dim font-medium outline-none cursor-default" type="text" value="codex" readonly/>
 </div>
 </div>
 <!-- API Key -->
@@ -151,7 +145,7 @@
 <div class="absolute left-3 text-slate-400 dark:text-text-dim">
 <svg class="size-[18px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path stroke-linecap="round" stroke-linejoin="round" d="M15.75 5.25a3 3 0 013 3m3 0a6 6 0 01-7.029 5.912c-.563-.097-1.159.026-1.563.43L10.5 17.25H8.25v2.25H6v2.25H2.25v-2.818c0-.597.237-1.17.659-1.591l6.499-6.499c.404-.404.527-1 .43-1.563A6 6 0 1121.75 8.25z"/></svg>
 </div>
-<input id="apiKey" class="w-full pl-10 pr-10 py-2.5 bg-slate-50 dark:bg-bg-dark border border-gray-200 dark:border-border-dark rounded-lg text-[0.78rem] font-mono text-slate-600 dark:text-text-main focus:ring-1 focus:ring-primary focus:border-primary outline-none transition-all tracking-wider" type="text" value="Loading..."/>
+<input id="apiKey" class="w-full pl-10 pr-10 py-2.5 bg-slate-100 dark:bg-bg-dark border border-gray-200 dark:border-border-dark rounded-lg text-[0.78rem] font-mono text-slate-500 dark:text-text-dim outline-none cursor-default select-all tracking-wider" type="text" value="Loading..." readonly/>
 <button onclick="copyField('apiKey', this)" class="absolute right-2 p-1.5 text-slate-400 dark:text-text-dim hover:text-primary transition-colors rounded-md hover:bg-slate-100 dark:hover:bg-border-dark" data-i18n-title="copyApiKey" title="Copy API Key">
 <svg class="size-[18px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>
 </button>
@@ -231,7 +225,6 @@ const LANG = {
     ok: "OK",
     resetsAt: "Resets at",
     apiConfig: "API Configuration",
-    resetDefaults: "Reset to defaults",
     baseProxyUrl: "Base Proxy URL",
     defaultModel: "Default Model",
     yourApiKey: "Your API Key",
@@ -249,6 +242,8 @@ const LANG = {
     failedExchangeCode: "Failed to exchange code",
     failedDeleteAccount: "Failed to delete account.",
     networkError: "Network error: ",
+    copied: "Copied!",
+    copyFailed: "Failed",
     footer: "\u00a9 2025 Codex Proxy. All rights reserved.",
   },
   zh: {
@@ -276,7 +271,6 @@ const LANG = {
     ok: "\u6b63\u5e38",
     resetsAt: "\u91cd\u7f6e\u65f6\u95f4",
     apiConfig: "API \u914d\u7f6e",
-    resetDefaults: "\u6062\u590d\u9ed8\u8ba4",
     baseProxyUrl: "\u4ee3\u7406 URL",
     defaultModel: "\u9ed8\u8ba4\u6a21\u578b",
     yourApiKey: "API \u5bc6\u94a5",
@@ -294,6 +288,8 @@ const LANG = {
     failedExchangeCode: "\u6388\u6743\u7801\u4ea4\u6362\u5931\u8d25",
     failedDeleteAccount: "\u5220\u9664\u8d26\u6237\u5931\u8d25\u3002",
     networkError: "\u7f51\u7edc\u9519\u8bef\uff1a",
+    copied: "\u5df2\u590d\u5236\uff01",
+    copyFailed: "\u5931\u8d25",
     footer: "\u00a9 2025 Codex Proxy\u3002\u4fdd\u7559\u6240\u6709\u6743\u5229\u3002",
   },
 };
@@ -622,7 +618,6 @@ async function loadStatus() {
     document.getElementById('apiKey').value = serverApiKey;
 
     await populateModelDropdown();
-    restoreOverrides();
     updateCodeExamples();
   } catch (err) {
     console.error('Status load error:', err);
@@ -630,24 +625,17 @@ async function loadStatus() {
 }
 
 async function populateModelDropdown() {
-  const sel = document.getElementById('defaultModel');
+  const el = document.getElementById('defaultModel');
   try {
     const resp = await fetch('/v1/models');
     const data = await resp.json();
     const models = data.data.map(m => m.id);
     if (models.length > 0) {
-      sel.innerHTML = '';
-      models.forEach(id => {
-        const opt = document.createElement('option');
-        opt.value = id;
-        opt.textContent = id;
-        sel.appendChild(opt);
-      });
-      const preferred = models.find(n => n.includes('5.3-codex'));
-      if (preferred) sel.value = preferred;
+      const preferred = models.find(n => n.includes('5.3-codex')) || models[0];
+      el.value = preferred;
     }
   } catch {
-    sel.innerHTML = '<option value="codex">codex</option>';
+    el.value = 'codex';
   }
 }
 
@@ -797,73 +785,63 @@ function switchLang(lang, el) {
 }
 
 // ── Copy ───────────────────────────────────────────────────────
-function copyField(id, btn) {
+function fallbackCopy(text) {
+  const ta = document.createElement('textarea');
+  ta.value = text;
+  ta.style.cssText = 'position:fixed;left:-9999px;opacity:0';
+  document.body.appendChild(ta);
+  ta.select();
+  let ok = false;
+  try { ok = document.execCommand('copy'); } catch {}
+  document.body.removeChild(ta);
+  return ok;
+}
+
+async function clipboardCopy(text) {
+  if (navigator.clipboard?.writeText) {
+    try { await navigator.clipboard.writeText(text); return true; } catch {}
+  }
+  return fallbackCopy(text);
+}
+
+async function copyField(id, btn) {
   const el = document.getElementById(id);
   const text = el.value !== undefined ? el.value : el.textContent;
-  navigator.clipboard.writeText(text);
-  const svg = btn.querySelector('svg');
-  if (svg) {
-    btn.innerHTML = SVG_CHECK;
-    btn.classList.add('text-primary');
-    setTimeout(() => { btn.innerHTML = SVG_COPY; btn.classList.remove('text-primary'); }, 2000);
-  }
+  const ok = await clipboardCopy(text);
+  btn.innerHTML = ok ? SVG_CHECK : '<svg class="size-[18px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>';
+  btn.classList.add(ok ? 'text-primary' : 'text-red-500');
+  setTimeout(() => { btn.innerHTML = SVG_COPY; btn.classList.remove('text-primary', 'text-red-500'); }, 2000);
 }
 
-function copyCurrentCode() {
+async function copyCurrentCode() {
   const key = `${currentProtocol}-${currentLang}`;
   const code = window._codeExamples?.[key] || '';
-  navigator.clipboard.writeText(code);
-}
-
-// ── Config Overrides (localStorage) ────────────────────────────
-function saveOverrides() {
-  try {
-    localStorage.setItem('codex-proxy-config-overrides', JSON.stringify({
-      baseUrl: document.getElementById('baseUrl').value,
-      apiKey: document.getElementById('apiKey').value,
-      model: document.getElementById('defaultModel').value,
-    }));
-  } catch {}
-}
-
-function restoreOverrides() {
-  try {
-    const raw = localStorage.getItem('codex-proxy-config-overrides');
-    if (!raw) return;
-    const o = JSON.parse(raw);
-    if (o.baseUrl) document.getElementById('baseUrl').value = o.baseUrl;
-    if (o.apiKey) document.getElementById('apiKey').value = o.apiKey;
-    if (o.model) {
-      const sel = document.getElementById('defaultModel');
-      const opts = Array.from(sel.options).map(op => op.value);
-      if (opts.includes(o.model)) sel.value = o.model;
-    }
-  } catch {}
-}
-
-function resetConfigDefaults() {
-  try { localStorage.removeItem('codex-proxy-config-overrides'); } catch {}
-  document.getElementById('baseUrl').value = serverBaseUrl;
-  document.getElementById('apiKey').value = serverApiKey;
-  const sel = document.getElementById('defaultModel');
-  const preferred = Array.from(sel.options).find(o => o.value.includes('5.3-codex'));
-  if (preferred) sel.value = preferred.value;
-  else if (sel.options.length) sel.selectedIndex = 0;
-  updateCodeExamples();
-}
-
-// ── Reactive bindings ──────────────────────────────────────────
-function setupReactiveBindings() {
-  document.getElementById('baseUrl').addEventListener('input', () => { updateCodeExamples(); saveOverrides(); });
-  document.getElementById('apiKey').addEventListener('input', () => { updateCodeExamples(); saveOverrides(); });
-  document.getElementById('defaultModel').addEventListener('change', () => { updateCodeExamples(); saveOverrides(); });
+  const ok = await clipboardCopy(code);
+  const btn = document.querySelector('#codeContainer button');
+  if (!btn) return;
+  const label = btn.querySelector('span');
+  const svg = btn.querySelector('svg');
+  if (ok) {
+    if (label) label.textContent = t('copied');
+    btn.classList.add('bg-primary', 'hover:bg-primary-hover');
+    btn.classList.remove('bg-slate-700', 'hover:bg-slate-600');
+  } else {
+    if (label) label.textContent = t('copyFailed');
+    btn.classList.add('bg-red-600', 'hover:bg-red-700');
+    btn.classList.remove('bg-slate-700', 'hover:bg-slate-600');
+  }
+  setTimeout(() => {
+    if (label) label.textContent = t('copy');
+    btn.classList.remove('bg-primary', 'hover:bg-primary-hover', 'bg-red-600', 'hover:bg-red-700');
+    btn.classList.add('bg-slate-700', 'hover:bg-slate-600');
+  }, 2000);
 }
 
 // ── Init ───────────────────────────────────────────────────────
+try { localStorage.removeItem('codex-proxy-config-overrides'); } catch {}
 applyI18n();
 updateLangToggle();
 loadStatus();
-setupReactiveBindings();
 loadAccounts();
 </script>
 </body></html>
