@@ -90,9 +90,13 @@
 
 <!-- Add Account Section (hidden by default) -->
 <section id="addSection" class="hidden bg-white dark:bg-card-dark border border-gray-200 dark:border-border-dark rounded-xl p-5 shadow-sm transition-colors">
-  <p class="text-sm text-slate-500 dark:text-text-dim mb-3" data-i18n="addAccountHint">If the popup shows an error or you're on a different machine, copy the full callback URL and paste it below.</p>
+  <ol class="text-sm text-slate-500 dark:text-text-dim mb-4 space-y-1.5 list-decimal list-inside">
+    <li data-i18n-html="addStep1">Complete the login in the popup window (if blocked, right-click "Add Account" and open the link in a new tab).</li>
+    <li data-i18n-html="addStep2">After login, the browser will redirect to a <code class="text-xs bg-slate-100 dark:bg-bg-dark px-1.5 py-0.5 rounded">localhost:1455/auth/callback?...</code> page (it may show "unable to connect" — that's normal).</li>
+    <li data-i18n-html="addStep3">Copy the <strong class="text-slate-700 dark:text-text-main">full URL</strong> from the address bar and paste it below.</li>
+  </ol>
   <div class="flex gap-3">
-    <input id="addCallbackInput" type="text" data-i18n-placeholder="pasteCallback" placeholder="Paste callback URL" class="flex-1 px-3 py-2.5 bg-slate-50 dark:bg-bg-dark border border-gray-200 dark:border-border-dark rounded-lg text-sm font-mono text-slate-600 dark:text-text-main focus:ring-2 focus:ring-primary/50 focus:border-primary outline-none transition-colors"/>
+    <input id="addCallbackInput" type="text" data-i18n-placeholder="pasteCallback" placeholder="Paste callback URL here" class="flex-1 px-3 py-2.5 bg-slate-50 dark:bg-bg-dark border border-gray-200 dark:border-border-dark rounded-lg text-sm font-mono text-slate-600 dark:text-text-main focus:ring-2 focus:ring-primary/50 focus:border-primary outline-none transition-colors"/>
     <button id="addRelayBtn" onclick="submitAddRelay()" class="px-4 py-2.5 bg-white dark:bg-card-dark border border-gray-200 dark:border-border-dark rounded-lg text-sm font-medium text-slate-700 dark:text-text-main hover:bg-slate-50 dark:hover:bg-border-dark transition-colors" data-i18n="submit">Submit</button>
   </div>
   <p id="addInfo" class="text-sm text-primary mt-2 hidden"></p>
@@ -238,8 +242,10 @@ const LANG = {
     copyApiKey: "Copy API Key",
     integrationExamples: "Integration Examples",
     copy: "Copy",
-    addAccountHint: "If the popup shows an error or you're on a different machine, copy the full callback URL and paste it below.",
-    pasteCallback: "Paste callback URL",
+    addStep1: 'Complete the login in the popup window (if blocked, right-click "Add Account" and open the link in a new tab).',
+    addStep2: 'After login, the browser will redirect to a <code class="text-xs bg-slate-100 dark:bg-bg-dark px-1.5 py-0.5 rounded">localhost:1455/auth/callback?...</code> page (it may show "unable to connect" — that\'s normal).',
+    addStep3: 'Copy the <strong class="text-slate-700 dark:text-text-main">full URL</strong> from the address bar and paste it below.',
+    pasteCallback: "Paste callback URL here",
     submit: "Submit",
     submitting: "Submitting...",
     pleasePassCallback: "Please paste the callback URL",
@@ -284,7 +290,9 @@ const LANG = {
     copyApiKey: "\u590d\u5236 API \u5bc6\u94a5",
     integrationExamples: "\u96c6\u6210\u793a\u4f8b",
     copy: "\u590d\u5236",
-    addAccountHint: "\u5982\u679c\u5f39\u7a97\u663e\u793a\u9519\u8bef\u6216\u4f60\u5728\u5176\u4ed6\u8bbe\u5907\u4e0a\uff0c\u8bf7\u590d\u5236\u5b8c\u6574\u7684\u56de\u8c03 URL \u7c98\u8d34\u5230\u4e0b\u65b9\u3002",
+    addStep1: "\u5728\u5f39\u51fa\u7684\u7a97\u53e3\u4e2d\u5b8c\u6210\u767b\u5f55\uff08\u5982\u5f39\u7a97\u88ab\u62e6\u622a\uff0c\u53f3\u952e\u300c\u6dfb\u52a0\u8d26\u6237\u300d\u6309\u94ae\u5728\u65b0\u6807\u7b7e\u9875\u6253\u5f00\u94fe\u63a5\uff09\u3002",
+    addStep2: '\u767b\u5f55\u6210\u529f\u540e\uff0c\u6d4f\u89c8\u5668\u4f1a\u8df3\u8f6c\u5230 <code class="text-xs bg-slate-100 dark:bg-bg-dark px-1.5 py-0.5 rounded">localhost:1455/auth/callback?...</code> \u9875\u9762\uff08\u53ef\u80fd\u663e\u793a\u201c\u65e0\u6cd5\u8bbf\u95ee\u201d\u2014\u2014\u8fd9\u662f\u6b63\u5e38\u7684\uff09\u3002',
+    addStep3: '\u590d\u5236\u5730\u5740\u680f\u4e2d\u7684<strong class="text-slate-700 dark:text-text-main">\u5b8c\u6574 URL</strong>\uff0c\u7c98\u8d34\u5230\u4e0b\u65b9\u8f93\u5165\u6846\u3002',
     pasteCallback: "\u7c98\u8d34\u56de\u8c03 URL",
     submit: "\u63d0\u4ea4",
     submitting: "\u63d0\u4ea4\u4e2d...",
@@ -309,6 +317,9 @@ function t(key) {
 function applyI18n() {
   document.querySelectorAll('[data-i18n]').forEach(el => {
     el.textContent = t(el.dataset.i18n);
+  });
+  document.querySelectorAll('[data-i18n-html]').forEach(el => {
+    el.innerHTML = t(el.dataset.i18nHtml);
   });
   document.querySelectorAll('[data-i18n-placeholder]').forEach(el => {
     el.placeholder = t(el.dataset.i18nPlaceholder);
