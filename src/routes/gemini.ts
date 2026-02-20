@@ -21,7 +21,7 @@ import {
   collectCodexToGeminiResponse,
 } from "../translation/codex-to-gemini.js";
 import { getConfig } from "../config.js";
-import { resolveModelId } from "./models.js";
+import { getModelCatalog } from "./models.js";
 import {
   handleProxyRequest,
   type FormatAdapter,
@@ -167,19 +167,13 @@ export function createGeminiRoutes(
     );
   });
 
-  // List available Gemini models
+  // List available models (Gemini format)
   app.get("/v1beta/models", (c) => {
-    const geminiAliases = [
-      "gemini-2.5-pro",
-      "gemini-2.5-pro-preview",
-      "gemini-2.5-flash",
-      "gemini-2.0-flash",
-    ];
-
-    const models = geminiAliases.map((name) => ({
-      name: `models/${name}`,
-      displayName: name,
-      description: `Proxy alias for ${resolveModelId(name)}`,
+    const catalog = getModelCatalog();
+    const models = catalog.map((m) => ({
+      name: `models/${m.id}`,
+      displayName: m.displayName,
+      description: m.description,
       supportedGenerationMethods: [
         "generateContent",
         "streamGenerateContent",
