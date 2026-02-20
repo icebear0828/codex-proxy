@@ -2,6 +2,8 @@
  * Translate OpenAI Chat Completions request → Codex Responses API request.
  */
 
+import { readFileSync } from "fs";
+import { resolve } from "path";
 import type { ChatCompletionRequest } from "../types/openai.js";
 import type {
   CodexResponsesRequest,
@@ -9,6 +11,19 @@ import type {
 } from "../proxy/codex-api.js";
 import { resolveModelId, getModelInfo } from "../routes/models.js";
 import { getConfig } from "../config.js";
+
+const DESKTOP_CONTEXT = loadDesktopContext();
+
+function loadDesktopContext(): string {
+  try {
+    return readFileSync(
+      resolve(process.cwd(), "config/prompts/desktop-context.md"),
+      "utf-8",
+    );
+  } catch {
+    return "";
+  }
+}
 
 /**
  * Convert a ChatCompletionRequest to a CodexResponsesRequest.
@@ -21,12 +36,16 @@ import { getConfig } from "../config.js";
  */
 export function translateToCodexRequest(
   req: ChatCompletionRequest,
+  previousResponseId?: string | null,
 ): CodexResponsesRequest {
   // Collect system messages as instructions
   const systemMessages = req.messages.filter((m) => m.role === "system");
-  const instructions =
+  const userInstructions =
     systemMessages.map((m) => m.content).join("\n\n") ||
     "You are a helpful assistant.";
+  const instructions = DESKTOP_CONTEXT
+    ? `${DESKTOP_CONTEXT}\n\n${userInstructions}`
+    : userInstructions;
 
   // Build input items from non-system messages
   const input: CodexInputItem[] = [];
@@ -57,6 +76,11 @@ export function translateToCodexRequest(
     store: false,
     tools: [],
   };
+
+  // Add previous response ID for multi-turn conversations
+  if (previousResponseId) {
+    request.previous_response_id = previousResponseId;
+  }
 
   // Add reasoning effort if applicable
   const effort =

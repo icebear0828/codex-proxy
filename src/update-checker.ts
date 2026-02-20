@@ -8,6 +8,7 @@ import { resolve } from "path";
 import yaml from "js-yaml";
 import { mutateClientConfig } from "./config.js";
 import { jitterInt } from "./utils/jitter.js";
+import { curlFetchGet } from "./tls/curl-fetch.js";
 
 const CONFIG_PATH = resolve(process.cwd(), "config/default.yaml");
 const STATE_PATH = resolve(process.cwd(), "data/update-state.json");
@@ -44,8 +45,13 @@ function parseAppcast(xml: string): {
   const itemMatch = xml.match(/<item>([\s\S]*?)<\/item>/i);
   if (!itemMatch) return { version: null, build: null, downloadUrl: null };
   const item = itemMatch[1];
-  const versionMatch = item.match(/sparkle:shortVersionString="([^"]+)"/);
-  const buildMatch = item.match(/sparkle:version="([^"]+)"/);
+  // Support both attribute syntax (sparkle:version="X") and element syntax (<sparkle:version>X</sparkle:version>)
+  const versionMatch =
+    item.match(/sparkle:shortVersionString="([^"]+)"/) ??
+    item.match(/<sparkle:shortVersionString>([^<]+)<\/sparkle:shortVersionString>/);
+  const buildMatch =
+    item.match(/sparkle:version="([^"]+)"/) ??
+    item.match(/<sparkle:version>([^<]+)<\/sparkle:version>/);
   const urlMatch = item.match(/url="([^"]+)"/);
   return {
     version: versionMatch?.[1] ?? null,
@@ -64,11 +70,11 @@ function applyVersionUpdate(version: string, build: string): void {
 
 export async function checkForUpdate(): Promise<UpdateState> {
   const current = loadCurrentConfig();
-  const res = await fetch(APPCAST_URL);
+  const res = await curlFetchGet(APPCAST_URL);
   if (!res.ok) {
-    throw new Error(`Failed to fetch appcast: ${res.status} ${res.statusText}`);
+    throw new Error(`Failed to fetch appcast: ${res.status}`);
   }
-  const xml = await res.text();
+  const xml = res.body;
   const { version, build, downloadUrl } = parseAppcast(xml);
 
   const updateAvailable = !!(version && build &&

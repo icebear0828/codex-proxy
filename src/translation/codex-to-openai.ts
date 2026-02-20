@@ -37,6 +37,7 @@ export async function* streamCodexToOpenAI(
   rawResponse: Response,
   model: string,
   onUsage?: (usage: UsageInfo) => void,
+  onResponseId?: (id: string) => void,
 ): AsyncGenerator<string> {
   const chunkId = `chatcmpl-${randomUUID().replace(/-/g, "").slice(0, 24)}`;
   const created = Math.floor(Date.now() / 1000);
@@ -63,9 +64,12 @@ export async function* streamCodexToOpenAI(
     switch (evt.event) {
       case "response.created":
       case "response.in_progress": {
-        // Extract response ID for headers
+        // Extract response ID for headers and multi-turn
         const resp = data.response as Record<string, unknown> | undefined;
-        if (resp?.id) responseId = resp.id as string;
+        if (resp?.id) {
+          responseId = resp.id as string;
+          onResponseId?.(responseId);
+        }
         break;
       }
 
@@ -135,17 +139,25 @@ export async function collectCodexResponse(
   codexApi: CodexApi,
   rawResponse: Response,
   model: string,
-): Promise<{ response: ChatCompletionResponse; usage: UsageInfo }> {
+): Promise<{ response: ChatCompletionResponse; usage: UsageInfo; responseId: string | null }> {
   const id = `chatcmpl-${randomUUID().replace(/-/g, "").slice(0, 24)}`;
   const created = Math.floor(Date.now() / 1000);
   let fullText = "";
   let promptTokens = 0;
   let completionTokens = 0;
+  let responseId: string | null = null;
 
   for await (const evt of codexApi.parseStream(rawResponse)) {
     const data = evt.data as Record<string, unknown>;
 
     switch (evt.event) {
+      case "response.created":
+      case "response.in_progress": {
+        const resp = data.response as Record<string, unknown> | undefined;
+        if (resp?.id) responseId = resp.id as string;
+        break;
+      }
+
       case "response.output_text.delta": {
         const delta = (data.delta as string) ?? "";
         fullText += delta;
@@ -153,8 +165,8 @@ export async function collectCodexResponse(
       }
 
       case "response.completed": {
-        // Try to extract usage from the completed response
         const resp = data.response as Record<string, unknown> | undefined;
+        if (resp?.id) responseId = resp.id as string;
         if (resp?.usage) {
           const usage = resp.usage as Record<string, number>;
           promptTokens = usage.input_tokens ?? 0;
@@ -191,5 +203,6 @@ export async function collectCodexResponse(
       input_tokens: promptTokens,
       output_tokens: completionTokens,
     },
+    responseId,
   };
 }

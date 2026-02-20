@@ -42,6 +42,10 @@ const ConfigSchema = z.object({
     ttl_minutes: z.number().default(60),
     cleanup_interval_minutes: z.number().default(5),
   }),
+  tls: z.object({
+    curl_binary: z.string().default("auto"),
+    impersonate_profile: z.string().default("chrome136"),
+  }).default({}),
   streaming: z.object({
     status_as_content: z.boolean().default(false),
     chunk_size: z.number().default(100),

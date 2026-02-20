@@ -1,7 +1,7 @@
 {
   "name": "codex-proxy",
   "version": "1.0.0",
-  "description": "Reverse proxy that exposes Codex Desktop WHAM API as OpenAI-compatible /v1/chat/completions",
+  "description": "Reverse proxy that exposes Codex Desktop Responses API as OpenAI-compatible /v1/chat/completions",
   "type": "module",
   "scripts": {
     "dev": "tsx watch src/index.ts",
@@ -11,7 +11,10 @@
     "check-update:watch": "tsx scripts/check-update.ts --watch",
     "extract": "tsx scripts/extract-fingerprint.ts",
     "apply-update": "tsx scripts/apply-update.ts",
-    "apply-update:dry": "tsx scripts/apply-update.ts --dry-run"
+    "apply-update:dry": "tsx scripts/apply-update.ts --dry-run",
+    "setup": "tsx scripts/setup-curl.ts",
+    "update": "tsx scripts/full-update.ts",
+    "postinstall": "tsx scripts/setup-curl.ts"
   },
   "dependencies": {
     "hono": "^4.0.0",

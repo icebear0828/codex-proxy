@@ -808,15 +808,18 @@
       const model = escapeHtml(document.getElementById('defaultModel').value);
 
       document.getElementById('code-python').innerHTML =
-`import openai
+`from openai import OpenAI
 
-openai.api_base = "${baseUrl}"
-openai.api_key = "${apiKey}"
-response = openai.ChatCompletion.create(
+client = OpenAI(
+    base_url="${baseUrl}",
+    api_key="${apiKey}",
+)
+
+response = client.chat.completions.create(
     model="${model}",
     messages=[
         {"role": "user", "content": "Explain quantum computing in simple terms"}
-    ]
+    ],
 )
 
 print(response.choices[0].message.content)

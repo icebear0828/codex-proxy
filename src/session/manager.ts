@@ -5,6 +5,7 @@ interface Session {
   taskId: string;
   turnId: string;
   messageHash: string;
+  responseId: string | null;
   createdAt: number;
 }
 
@@ -63,8 +64,17 @@ export class SessionManager {
       taskId,
       turnId,
       messageHash: hash,
+      responseId: null,
       createdAt: Date.now(),
     });
+  }
+
+  /**
+   * Update the response ID for an existing session (for multi-turn previous_response_id)
+   */
+  updateResponseId(taskId: string, responseId: string): void {
+    const session = this.sessions.get(taskId);
+    if (session) session.responseId = responseId;
   }
 
   /**

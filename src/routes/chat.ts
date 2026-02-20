@@ -112,7 +112,14 @@ export function createChatRoutes(
 
     const { entryId, token, accountId } = acquired;
     const codexApi = new CodexApi(token, accountId, cookieJar, entryId);
-    const codexRequest = translateToCodexRequest(req);
+
+    // Find existing session for multi-turn previous_response_id
+    const existingSession = sessionManager.findSession(req.messages);
+    const previousResponseId = existingSession?.responseId ?? null;
+    const codexRequest = translateToCodexRequest(req, previousResponseId);
+    if (previousResponseId) {
+      console.log(`[Chat] Account ${entryId} | Multi-turn: previous_response_id=${previousResponseId}`);
+    }
     console.log(
       `[Chat] Account ${entryId} | Codex request:`,
       JSON.stringify(codexRequest).slice(0, 300),
@@ -129,12 +136,21 @@ export function createChatRoutes(
         c.header("Connection", "keep-alive");
 
         return stream(c, async (s) => {
+          let sessionTaskId: string | null = null;
           try {
             for await (const chunk of streamCodexToOpenAI(
               codexApi,
               rawResponse,
               codexRequest.model,
               (u) => { usageInfo = u; },
+              (respId) => {
+                if (!sessionTaskId) {
+                  // First call: create session
+                  sessionTaskId = `task-${Date.now()}`;
+                  sessionManager.storeSession(sessionTaskId, "turn-1", req.messages);
+                }
+                sessionManager.updateResponseId(sessionTaskId, respId);
+              },
             )) {
               await s.write(chunk);
             }
@@ -148,6 +164,12 @@ export function createChatRoutes(
           rawResponse,
           codexRequest.model,
         );
+        // Store session with responseId for multi-turn
+        if (result.responseId) {
+          const taskId = `task-${Date.now()}`;
+          sessionManager.storeSession(taskId, "turn-1", req.messages);
+          sessionManager.updateResponseId(taskId, result.responseId);
+        }
         accountPool.release(entryId, result.usage);
         return c.json(result.response);
       }

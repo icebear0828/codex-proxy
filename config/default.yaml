@@ -4,8 +4,8 @@ api:
 
 client:
   originator: "Codex Desktop"
-  app_version: "260202.0859"
-  build_number: "517"
+  app_version: "26.217.1959"
+  build_number: "669"
   platform: "darwin"
   arch: "arm64"
 
@@ -35,6 +35,12 @@ environment:
 session:
   ttl_minutes: 60
   cleanup_interval_minutes: 5
+
+tls:
+  # curl binary path. "auto" = detect bin/curl-impersonate-chrome, fallback to system curl
+  curl_binary: "auto"
+  # Chrome profile for --impersonate flag (auto-detected when curl-impersonate supports it)
+  impersonate_profile: "chrome136"
 
 streaming:
   status_as_content: false

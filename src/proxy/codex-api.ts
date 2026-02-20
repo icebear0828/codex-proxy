@@ -11,6 +11,7 @@
 
 import { spawn, execFile } from "child_process";
 import { getConfig } from "../config.js";
+import { resolveCurlBinary, getChromeTlsArgs } from "../tls/curl-binary.js";
 import {
   buildHeaders,
   buildHeadersWithContentType,
@@ -107,11 +108,11 @@ export class CodexApi {
   ): Promise<CurlResponse> {
     return new Promise((resolve, reject) => {
       const args = [
+        ...getChromeTlsArgs(), // Chrome TLS profile (ciphers, HTTP/2, etc.)
         "-s", "-S",            // silent but show errors
         "--compressed",         // curl negotiates compression
         "-N",                   // no output buffering (SSE)
         "-i",                   // include response headers in stdout
-        "--http1.1",            // force HTTP/1.1
         "-X", "POST",
         "--data-binary", "@-",  // read body from stdin
       ];
@@ -120,16 +121,17 @@ export class CodexApi {
         args.push("--max-time", String(timeoutSec));
       }
 
-      // Remove Accept-Encoding — let curl negotiate via --compressed
-      const filteredHeaders = { ...headers };
-      delete filteredHeaders["Accept-Encoding"];
-
-      for (const [key, value] of Object.entries(filteredHeaders)) {
+      // Pass all headers explicitly in our fingerprint order.
+      // Accept-Encoding is kept so curl doesn't inject its own at position 2.
+      // --compressed still handles auto-decompression of the response.
+      for (const [key, value] of Object.entries(headers)) {
         args.push("-H", `${key}: ${value}`);
       }
+      // Suppress curl's auto Expect: 100-continue (Chromium never sends it)
+      args.push("-H", "Expect:");
       args.push(url);
 
-      const child = spawn("curl", args, {
+      const child = spawn(resolveCurlBinary(), args, {
         stdio: ["pipe", "pipe", "pipe"],
       });
 
@@ -244,15 +246,15 @@ export class CodexApi {
     // to fail when it can't decompress the response.
     delete headers["Accept-Encoding"];
 
-    // Build curl args
-    const args = ["-s", "--compressed", "--max-time", "15"];
+    // Build curl args (Chrome TLS profile + request params)
+    const args = [...getChromeTlsArgs(), "-s", "--compressed", "--max-time", "15"];
     for (const [key, value] of Object.entries(headers)) {
       args.push("-H", `${key}: ${value}`);
     }
     args.push(url);
 
     const body = await new Promise<string>((resolve, reject) => {
-      execFile("curl", args, { maxBuffer: 1024 * 1024 }, (err, stdout, stderr) => {
+      execFile(resolveCurlBinary(), args, { maxBuffer: 1024 * 1024 }, (err, stdout, stderr) => {
         if (err) {
           reject(new CodexApiError(0, `curl failed: ${err.message} ${stderr}`));
         } else {

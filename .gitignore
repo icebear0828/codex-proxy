@@ -1,7 +1,26 @@
 node_modules/
 dist/
 data/
+docs/
+bin/
 .env
 *.log
 .asar-out/
+tmp/
 .claude/settings.local.json
+
+# Maintenance scripts (private — not for public repo)
+scripts/extract-fingerprint.ts
+scripts/full-update.ts
+scripts/apply-update.ts
+scripts/setup-curl.ts
+scripts/check-update.ts
+scripts/test-*.ts
+scripts/cron-update.sh
+config/extraction-patterns.yaml
+
+# Design / internal files
+stitch-designs/
+stitch-screens/
+CLAUDE.md
+*.tar.gz

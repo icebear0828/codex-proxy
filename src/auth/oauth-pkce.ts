@@ -9,6 +9,7 @@ import { readFileSync, existsSync } from "fs";
 import { resolve } from "path";
 import { homedir } from "os";
 import { getConfig } from "../config.js";
+import { curlFetchPost } from "../tls/curl-fetch.js";
 
 export interface PKCEChallenge {
   codeVerifier: string;
@@ -120,18 +121,17 @@ export async function exchangeCode(
     code_verifier: codeVerifier,
   });
 
-  const resp = await fetch(config.auth.oauth_token_endpoint, {
-    method: "POST",
-    headers: { "Content-Type": "application/x-www-form-urlencoded" },
-    body: body.toString(),
-  });
+  const resp = await curlFetchPost(
+    config.auth.oauth_token_endpoint,
+    "application/x-www-form-urlencoded",
+    body.toString(),
+  );
 
   if (!resp.ok) {
-    const text = await resp.text();
-    throw new Error(`Token exchange failed (${resp.status}): ${text}`);
+    throw new Error(`Token exchange failed (${resp.status}): ${resp.body}`);
   }
 
-  return resp.json() as Promise<TokenResponse>;
+  return JSON.parse(resp.body) as TokenResponse;
 }
 
 /**
@@ -148,18 +148,17 @@ export async function refreshAccessToken(
     refresh_token: refreshToken,
   });
 
-  const resp = await fetch(config.auth.oauth_token_endpoint, {
-    method: "POST",
-    headers: { "Content-Type": "application/x-www-form-urlencoded" },
-    body: body.toString(),
-  });
+  const resp = await curlFetchPost(
+    config.auth.oauth_token_endpoint,
+    "application/x-www-form-urlencoded",
+    body.toString(),
+  );
 
   if (!resp.ok) {
-    const text = await resp.text();
-    throw new Error(`Token refresh failed (${resp.status}): ${text}`);
+    throw new Error(`Token refresh failed (${resp.status}): ${resp.body}`);
   }
 
-  return resp.json() as Promise<TokenResponse>;
+  return JSON.parse(resp.body) as TokenResponse;
 }
 
 // ── Pending session management ─────────────────────────────────────
@@ -343,18 +342,17 @@ export async function requestDeviceCode(): Promise<DeviceCodeResponse> {
     scope: "openid profile email offline_access",
   });
 
-  const resp = await fetch("https://auth.openai.com/oauth/device/code", {
-    method: "POST",
-    headers: { "Content-Type": "application/x-www-form-urlencoded" },
-    body: body.toString(),
-  });
+  const resp = await curlFetchPost(
+    "https://auth.openai.com/oauth/device/code",
+    "application/x-www-form-urlencoded",
+    body.toString(),
+  );
 
   if (!resp.ok) {
-    const text = await resp.text();
-    throw new Error(`Device code request failed (${resp.status}): ${text}`);
+    throw new Error(`Device code request failed (${resp.status}): ${resp.body}`);
   }
 
-  return resp.json() as Promise<DeviceCodeResponse>;
+  return JSON.parse(resp.body) as DeviceCodeResponse;
 }
 
 /**
@@ -370,20 +368,20 @@ export async function pollDeviceToken(deviceCode: string): Promise<TokenResponse
     client_id: config.auth.oauth_client_id,
   });
 
-  const resp = await fetch(config.auth.oauth_token_endpoint, {
-    method: "POST",
-    headers: { "Content-Type": "application/x-www-form-urlencoded" },
-    body: body.toString(),
-  });
+  const resp = await curlFetchPost(
+    config.auth.oauth_token_endpoint,
+    "application/x-www-form-urlencoded",
+    body.toString(),
+  );
 
   if (!resp.ok) {
-    const data = (await resp.json()) as { error?: string; error_description?: string };
+    const data = JSON.parse(resp.body) as { error?: string; error_description?: string };
     const err = new Error(data.error_description || data.error || `Poll failed (${resp.status})`);
     (err as any).code = data.error;
     throw err;
   }
 
-  return resp.json() as Promise<TokenResponse>;
+  return JSON.parse(resp.body) as TokenResponse;
 }
 
 // ── CLI Token Import ───────────────────────────────────────────────
