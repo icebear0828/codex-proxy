@@ -484,7 +484,7 @@ async function loadStatus() {
     const resp = await fetch('/auth/status');
     authData = await resp.json();
 
-    if (!authData.authenticated) { window.location.href = '/'; return; }
+    if (!authData.authenticated) return;
 
     serverBaseUrl = `${window.location.origin}/v1`;
     serverApiKey = authData.proxy_api_key || 'any-string';
