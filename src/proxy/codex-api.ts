@@ -88,13 +88,6 @@ export class CodexApi {
     }
   }
 
-  /** Capture Set-Cookie headers from a fetch Response into the jar. */
-  private captureCookies(response: Response): void {
-    if (this.cookieJar && this.entryId) {
-      this.cookieJar.capture(this.entryId, response);
-    }
-  }
-
   /**
    * Execute a POST request via curl subprocess.
    * Returns headers + streaming body as a CurlResponse.

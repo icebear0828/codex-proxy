@@ -2,6 +2,7 @@ import type { Context, Next } from "hono";
 import type { StatusCode } from "hono/utils/http-status";
 import type { OpenAIErrorBody } from "../types/openai.js";
 import type { AnthropicErrorBody, AnthropicErrorType } from "../types/anthropic.js";
+import { GEMINI_STATUS_MAP } from "../types/gemini.js";
 
 function makeOpenAIError(
   message: string,
@@ -37,23 +38,12 @@ function makeGeminiError(
   return { error: { code, message, status } };
 }
 
-const GEMINI_STATUS_MAP: Record<number, string> = {
-  400: "INVALID_ARGUMENT",
-  401: "UNAUTHENTICATED",
-  403: "PERMISSION_DENIED",
-  404: "NOT_FOUND",
-  429: "RESOURCE_EXHAUSTED",
-  500: "INTERNAL",
-  502: "INTERNAL",
-  503: "UNAVAILABLE",
-};
-
 export async function errorHandler(c: Context, next: Next): Promise<void> {
   try {
     await next();
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : "Internal server error";
-    console.error("[ErrorHandler]", message);
+    console.error("[ErrorHandler]", err instanceof Error ? (err.stack ?? message) : message);
 
     const status = (err as { status?: number }).status;
     const path = c.req.path;

@@ -5,8 +5,6 @@ import yaml from "js-yaml";
 import { getConfig } from "../config.js";
 import type { OpenAIModel, OpenAIModelList } from "../types/openai.js";
 
-const app = new Hono();
-
 /**
  * Full model catalog from Codex CLI `model/list`.
  * Each model has reasoning effort levels, description, and capabilities.
@@ -78,60 +76,64 @@ function toOpenAIModel(info: CodexModelInfo): OpenAIModel {
   };
 }
 
-app.get("/v1/models", (c) => {
-  // Include catalog models + aliases as separate entries
-  const models: OpenAIModel[] = MODEL_CATALOG.map(toOpenAIModel);
-  for (const [alias] of Object.entries(MODEL_ALIASES)) {
-    models.push({
-      id: alias,
-      object: "model",
-      created: MODEL_CREATED_TIMESTAMP,
-      owned_by: "openai",
-    });
-  }
-  const response: OpenAIModelList = { object: "list", data: models };
-  return c.json(response);
-});
+export function createModelRoutes(): Hono {
+  const app = new Hono();
 
-app.get("/v1/models/:modelId", (c) => {
-  const modelId = c.req.param("modelId");
-
-  // Try direct match
-  const info = MODEL_CATALOG.find((m) => m.id === modelId);
-  if (info) return c.json(toOpenAIModel(info));
-
-  // Try alias
-  const resolved = MODEL_ALIASES[modelId];
-  if (resolved) {
-    return c.json({
-      id: modelId,
-      object: "model",
-      created: MODEL_CREATED_TIMESTAMP,
-      owned_by: "openai",
-    });
-  }
-
-  c.status(404);
-  return c.json({
-    error: {
-      message: `Model '${modelId}' not found`,
-      type: "invalid_request_error",
-      param: "model",
-      code: "model_not_found",
-    },
+  app.get("/v1/models", (c) => {
+    // Include catalog models + aliases as separate entries
+    const models: OpenAIModel[] = MODEL_CATALOG.map(toOpenAIModel);
+    for (const [alias] of Object.entries(MODEL_ALIASES)) {
+      models.push({
+        id: alias,
+        object: "model",
+        created: MODEL_CREATED_TIMESTAMP,
+        owned_by: "openai",
+      });
+    }
+    const response: OpenAIModelList = { object: "list", data: models };
+    return c.json(response);
   });
-});
 
-// Extended endpoint: model details with reasoning efforts
-app.get("/v1/models/:modelId/info", (c) => {
-  const modelId = c.req.param("modelId");
-  const resolved = MODEL_ALIASES[modelId] ?? modelId;
-  const info = MODEL_CATALOG.find((m) => m.id === resolved);
-  if (!info) {
+  app.get("/v1/models/:modelId", (c) => {
+    const modelId = c.req.param("modelId");
+
+    // Try direct match
+    const info = MODEL_CATALOG.find((m) => m.id === modelId);
+    if (info) return c.json(toOpenAIModel(info));
+
+    // Try alias
+    const resolved = MODEL_ALIASES[modelId];
+    if (resolved) {
+      return c.json({
+        id: modelId,
+        object: "model",
+        created: MODEL_CREATED_TIMESTAMP,
+        owned_by: "openai",
+      });
+    }
+
     c.status(404);
-    return c.json({ error: `Model '${modelId}' not found` });
-  }
-  return c.json(info);
-});
+    return c.json({
+      error: {
+        message: `Model '${modelId}' not found`,
+        type: "invalid_request_error",
+        param: "model",
+        code: "model_not_found",
+      },
+    });
+  });
 
-export default app;
+  // Extended endpoint: model details with reasoning efforts
+  app.get("/v1/models/:modelId/info", (c) => {
+    const modelId = c.req.param("modelId");
+    const resolved = MODEL_ALIASES[modelId] ?? modelId;
+    const info = MODEL_CATALOG.find((m) => m.id === resolved);
+    if (!info) {
+      c.status(404);
+      return c.json({ error: `Model '${modelId}' not found` });
+    }
+    return c.json(info);
+  });
+
+  return app;
+}

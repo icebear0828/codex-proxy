@@ -11,7 +11,7 @@ import { createAccountRoutes } from "./routes/accounts.js";
 import { createChatRoutes } from "./routes/chat.js";
 import { createMessagesRoutes } from "./routes/messages.js";
 import { createGeminiRoutes } from "./routes/gemini.js";
-import modelsApp from "./routes/models.js";
+import { createModelRoutes } from "./routes/models.js";
 import { createWebRoutes } from "./routes/web.js";
 import { CookieJar } from "./proxy/cookie-jar.js";
 import { startUpdateChecker, stopUpdateChecker } from "./update-checker.js";
@@ -60,7 +60,7 @@ async function main() {
   app.route("/", chatRoutes);
   app.route("/", messagesRoutes);
   app.route("/", geminiRoutes);
-  app.route("/", modelsApp);
+  app.route("/", createModelRoutes());
   app.route("/", webRoutes);
 
   // Start server
@@ -86,7 +86,8 @@ async function main() {
     console.log(`  Key:  ${accountPool.getProxyApiKey()}`);
     console.log(`  Pool: ${poolSummary.active} active / ${poolSummary.total} total accounts`);
   } else {
-    console.log(`  Open http://localhost:${port} to login`);
+    const displayHost = host === "0.0.0.0" ? "localhost" : host;
+    console.log(`  Open http://${displayHost}:${port} to login`);
   }
   console.log();
 
@@ -103,6 +104,7 @@ async function main() {
   const shutdown = () => {
     console.log("\n[Shutdown] Cleaning up...");
     stopUpdateChecker();
+    sessionManager.destroy();
     cookieJar.destroy();
     refreshScheduler.destroy();
     accountPool.destroy();

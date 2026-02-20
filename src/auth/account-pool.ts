@@ -402,7 +402,9 @@ export class AccountPool {
       const dir = dirname(ACCOUNTS_FILE);
       if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
       const data: AccountsFile = { accounts: [...this.accounts.values()] };
-      writeFileSync(ACCOUNTS_FILE, JSON.stringify(data, null, 2), "utf-8");
+      const tmpFile = ACCOUNTS_FILE + ".tmp";
+      writeFileSync(tmpFile, JSON.stringify(data, null, 2), "utf-8");
+      renameSync(tmpFile, ACCOUNTS_FILE);
     } catch (err) {
       console.error("[AccountPool] Failed to persist accounts:", err instanceof Error ? err.message : err);
     }
@@ -420,8 +422,8 @@ export class AccountPool {
           }
         }
       }
-    } catch {
-      // corrupt file, start fresh
+    } catch (err) {
+      console.warn("[AccountPool] Failed to load accounts:", err instanceof Error ? err.message : err);
     }
   }
 

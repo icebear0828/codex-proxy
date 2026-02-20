@@ -12,11 +12,20 @@ interface Session {
 export class SessionManager {
   private sessions = new Map<string, Session>();
   private ttlMs: number;
+  private cleanupTimer: ReturnType<typeof setInterval>;
 
   constructor() {
     const { ttl_minutes, cleanup_interval_minutes } = getConfig().session;
     this.ttlMs = ttl_minutes * 60 * 1000;
-    setInterval(() => this.cleanup(), cleanup_interval_minutes * 60 * 1000);
+    this.cleanupTimer = setInterval(
+      () => this.cleanup(),
+      cleanup_interval_minutes * 60 * 1000,
+    );
+    if (this.cleanupTimer.unref) this.cleanupTimer.unref();
+  }
+
+  destroy(): void {
+    clearInterval(this.cleanupTimer);
   }
 
   /**

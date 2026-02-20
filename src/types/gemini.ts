@@ -62,6 +62,19 @@ export interface GeminiGenerateContentResponse {
   modelVersion?: string;
 }
 
+// --- Status map (shared by error-handler and gemini route) ---
+
+export const GEMINI_STATUS_MAP: Record<number, string> = {
+  400: "INVALID_ARGUMENT",
+  401: "UNAUTHENTICATED",
+  403: "PERMISSION_DENIED",
+  404: "NOT_FOUND",
+  429: "RESOURCE_EXHAUSTED",
+  500: "INTERNAL",
+  502: "INTERNAL",
+  503: "UNAVAILABLE",
+};
+
 // --- Error ---
 
 export interface GeminiErrorResponse {

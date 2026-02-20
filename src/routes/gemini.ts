@@ -6,12 +6,12 @@
 
 import { Hono } from "hono";
 import type { StatusCode } from "hono/utils/http-status";
-import { stream } from "hono/streaming";
-import { GeminiGenerateContentRequestSchema } from "../types/gemini.js";
 import type { GeminiErrorResponse } from "../types/gemini.js";
+import { GEMINI_STATUS_MAP } from "../types/gemini.js";
+import { GeminiGenerateContentRequestSchema } from "../types/gemini.js";
 import type { AccountPool } from "../auth/account-pool.js";
-import { CodexApi, CodexApiError } from "../proxy/codex-api.js";
-import { SessionManager } from "../session/manager.js";
+import type { SessionManager } from "../session/manager.js";
+import type { CookieJar } from "../proxy/cookie-jar.js";
 import {
   translateGeminiToCodexRequest,
   geminiContentsToMessages,
@@ -19,46 +19,13 @@ import {
 import {
   streamCodexToGemini,
   collectCodexToGeminiResponse,
-  type GeminiUsageInfo,
 } from "../translation/codex-to-gemini.js";
 import { getConfig } from "../config.js";
-import type { CookieJar } from "../proxy/cookie-jar.js";
 import { resolveModelId } from "./models.js";
-
-/** Retry a function on 5xx errors with exponential backoff. */
-async function withRetry<T>(
-  fn: () => Promise<T>,
-  { maxRetries = 2, baseDelayMs = 1000 }: { maxRetries?: number; baseDelayMs?: number } = {},
-): Promise<T> {
-  let lastError: unknown;
-  for (let attempt = 0; attempt <= maxRetries; attempt++) {
-    try {
-      return await fn();
-    } catch (err) {
-      lastError = err;
-      const isRetryable =
-        err instanceof CodexApiError && err.status >= 500 && err.status < 600;
-      if (!isRetryable || attempt === maxRetries) throw err;
-      const delay = baseDelayMs * Math.pow(2, attempt);
-      console.warn(
-        `[Gemini] Retrying after ${err instanceof CodexApiError ? err.status : "error"} (attempt ${attempt + 1}/${maxRetries}, delay ${delay}ms)`,
-      );
-      await new Promise((r) => setTimeout(r, delay));
-    }
-  }
-  throw lastError;
-}
-
-const GEMINI_STATUS_MAP: Record<number, string> = {
-  400: "INVALID_ARGUMENT",
-  401: "UNAUTHENTICATED",
-  403: "PERMISSION_DENIED",
-  404: "NOT_FOUND",
-  429: "RESOURCE_EXHAUSTED",
-  500: "INTERNAL",
-  502: "INTERNAL",
-  503: "UNAVAILABLE",
-};
+import {
+  handleProxyRequest,
+  type FormatAdapter,
+} from "./shared/proxy-handler.js";
 
 function makeError(
   code: number,
@@ -89,6 +56,21 @@ function parseModelAction(param: string): {
     action: param.slice(lastColon + 1),
   };
 }
+
+const GEMINI_FORMAT: FormatAdapter = {
+  tag: "Gemini",
+  noAccountStatus: 503,
+  formatNoAccount: () =>
+    makeError(
+      503,
+      "No available accounts. All accounts are expired or rate-limited.",
+      "UNAVAILABLE",
+    ),
+  format429: (msg) => makeError(429, msg, "RESOURCE_EXHAUSTED"),
+  formatError: (status, msg) => makeError(status, msg),
+  streamTranslator: streamCodexToGemini,
+  collectTranslator: collectCodexToGeminiResponse,
+};
 
 export function createGeminiRoutes(
   accountPool: AccountPool,
@@ -121,7 +103,7 @@ export function createGeminiRoutes(
       action === "streamGenerateContent" ||
       c.req.query("alt") === "sse";
 
-    // Validate auth — at least one active account
+    // Auth check
     if (!accountPool.isAuthenticated()) {
       c.status(401);
       return c.json(
@@ -155,125 +137,38 @@ export function createGeminiRoutes(
     }
     const req = validationResult.data;
 
-    // Acquire an account from the pool
-    const acquired = accountPool.acquire();
-    if (!acquired) {
-      c.status(503);
-      return c.json(
-        makeError(
-          503,
-          "No available accounts. All accounts are expired or rate-limited.",
-          "UNAVAILABLE",
-        ),
-      );
-    }
-
-    const { entryId, token, accountId } = acquired;
-    const codexApi = new CodexApi(token, accountId, cookieJar, entryId);
-
     // Session lookup for multi-turn
     const sessionMessages = geminiContentsToMessages(
       req.contents,
       req.systemInstruction,
     );
-    const existingSession = sessionManager.findSession(sessionMessages);
-    const previousResponseId = existingSession?.responseId ?? null;
 
     const codexRequest = translateGeminiToCodexRequest(
       req,
       geminiModel,
-      previousResponseId,
     );
-    if (previousResponseId) {
-      console.log(
-        `[Gemini] Account ${entryId} | Multi-turn: previous_response_id=${previousResponseId}`,
-      );
-    }
+
     console.log(
-      `[Gemini] Account ${entryId} | Model: ${geminiModel} → ${codexRequest.model} | Codex request:`,
-      JSON.stringify(codexRequest).slice(0, 300),
+      `[Gemini] Model: ${geminiModel} → ${codexRequest.model}`,
     );
 
-    let usageInfo: GeminiUsageInfo | undefined;
-
-    try {
-      const rawResponse = await withRetry(() =>
-        codexApi.createResponse(codexRequest),
-      );
-
-      if (isStreaming) {
-        c.header("Content-Type", "text/event-stream");
-        c.header("Cache-Control", "no-cache");
-        c.header("Connection", "keep-alive");
-
-        return stream(c, async (s) => {
-          let sessionTaskId: string | null = null;
-          try {
-            for await (const chunk of streamCodexToGemini(
-              codexApi,
-              rawResponse,
-              geminiModel,
-              (u) => {
-                usageInfo = u;
-              },
-              (respId) => {
-                if (!sessionTaskId) {
-                  sessionTaskId = `task-${Date.now()}`;
-                  sessionManager.storeSession(
-                    sessionTaskId,
-                    "turn-1",
-                    sessionMessages,
-                  );
-                }
-                sessionManager.updateResponseId(sessionTaskId, respId);
-              },
-            )) {
-              await s.write(chunk);
-            }
-          } finally {
-            accountPool.release(entryId, usageInfo);
-          }
-        });
-      } else {
-        const result = await collectCodexToGeminiResponse(
-          codexApi,
-          rawResponse,
-          geminiModel,
-        );
-        if (result.responseId) {
-          const taskId = `task-${Date.now()}`;
-          sessionManager.storeSession(taskId, "turn-1", sessionMessages);
-          sessionManager.updateResponseId(taskId, result.responseId);
-        }
-        accountPool.release(entryId, result.usage);
-        return c.json(result.response);
-      }
-    } catch (err) {
-      if (err instanceof CodexApiError) {
-        console.error(
-          `[Gemini] Account ${entryId} | Codex API error:`,
-          err.message,
-        );
-        if (err.status === 429) {
-          accountPool.markRateLimited(entryId);
-          c.status(429);
-          return c.json(makeError(429, err.message, "RESOURCE_EXHAUSTED"));
-        }
-        accountPool.release(entryId);
-        const code = (
-          err.status >= 400 && err.status < 600 ? err.status : 502
-        ) as StatusCode;
-        c.status(code);
-        return c.json(makeError(code, err.message));
-      }
-      accountPool.release(entryId);
-      throw err;
-    }
+    return handleProxyRequest(
+      c,
+      accountPool,
+      sessionManager,
+      cookieJar,
+      {
+        codexRequest,
+        sessionMessages,
+        model: geminiModel,
+        isStreaming,
+      },
+      GEMINI_FORMAT,
+    );
   });
 
   // List available Gemini models
   app.get("/v1beta/models", (c) => {
-    // Import aliases from models.yaml and filter Gemini ones
     const geminiAliases = [
       "gemini-2.5-pro",
       "gemini-2.5-pro-preview",

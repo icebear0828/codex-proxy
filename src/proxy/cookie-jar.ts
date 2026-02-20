@@ -11,6 +11,7 @@
 import {
   readFileSync,
   writeFileSync,
+  renameSync,
   existsSync,
   mkdirSync,
 } from "fs";
@@ -159,9 +160,11 @@ export class CookieJar {
       const dir = dirname(COOKIE_FILE);
       if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
       const data = Object.fromEntries(this.cookies);
-      writeFileSync(COOKIE_FILE, JSON.stringify(data, null, 2), "utf-8");
-    } catch {
-      // best-effort
+      const tmpFile = COOKIE_FILE + ".tmp";
+      writeFileSync(tmpFile, JSON.stringify(data, null, 2), "utf-8");
+      renameSync(tmpFile, COOKIE_FILE);
+    } catch (err) {
+      console.warn("[CookieJar] Failed to persist:", err instanceof Error ? err.message : err);
     }
   }
 
@@ -175,8 +178,8 @@ export class CookieJar {
           this.cookies.set(key, val);
         }
       }
-    } catch {
-      // corrupt file, start fresh
+    } catch (err) {
+      console.warn("[CookieJar] Failed to load cookies:", err instanceof Error ? err.message : err);
     }
   }
 
