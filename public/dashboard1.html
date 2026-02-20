@@ -12,11 +12,14 @@
         theme: {
             extend: {
                 colors: {
-                    "primary": "#10a235",
-                    "primary-hover": "#0e8c2e",
-                    "background-light": "#f6f8f6",
-                    "background-dark": "#112115",
-                    "card-border": "#e5e7eb",
+                    "primary": "rgb(var(--primary) / <alpha-value>)",
+                    "primary-hover": "rgb(var(--primary-hover) / <alpha-value>)",
+                    "bg-light": "#f6f8f6",
+                    "bg-dark": "#0d1117",
+                    "card-dark": "#161b22",
+                    "border-dark": "#30363d",
+                    "text-main": "#e6edf3",
+                    "text-dim": "#8b949e",
                 },
                 fontFamily: {
                     "display": ["Inter", "sans-serif"],
@@ -27,18 +30,36 @@
         },
     }
 </script>
+<style>
+    :root   { --primary: 16 162 53;  --primary-hover: 14 140 46; }
+    .dark   { --primary: 16 163 127; --primary-hover: 14 140 108; }
+
+    /* Dark scrollbar for code blocks */
+    pre::-webkit-scrollbar { height: 8px; }
+    pre::-webkit-scrollbar-track { background: #0d1117; }
+    pre::-webkit-scrollbar-thumb { background: #30363d; border-radius: 4px; }
+    pre::-webkit-scrollbar-thumb:hover { background: #8b949e; }
+</style>
+<!-- Prevent flash: apply theme before render -->
+<script>
+    try {
+        const t = localStorage.getItem('codex-proxy-theme');
+        if (t === 'dark' || (!t && window.matchMedia('(prefers-color-scheme: dark)').matches))
+            document.documentElement.classList.add('dark');
+    } catch {}
+</script>
 </head>
-<body class="bg-background-light dark:bg-background-dark font-display text-slate-900 dark:text-slate-100 antialiased min-h-screen flex flex-col">
+<body class="bg-bg-light dark:bg-bg-dark font-display text-slate-900 dark:text-text-main antialiased min-h-screen flex flex-col transition-colors">
 <!-- Top Navigation -->
-<header class="sticky top-0 z-50 w-full bg-white dark:bg-[#1a1a1a] border-b border-card-border shadow-sm">
+<header class="sticky top-0 z-50 w-full bg-white dark:bg-card-dark border-b border-gray-200 dark:border-border-dark shadow-sm transition-colors">
 <div class="px-4 md:px-8 lg:px-40 flex h-16 items-center justify-center">
 <div class="flex w-full max-w-[960px] items-center justify-between">
 <!-- Logo & Title -->
 <div class="flex items-center gap-3">
-<div class="flex items-center justify-center size-8 rounded-full bg-primary/10 text-primary">
+<div class="flex items-center justify-center size-8 rounded-full bg-primary/10 text-primary border border-primary/20">
 <span class="material-symbols-outlined text-xl font-bold">check_circle</span>
 </div>
-<h1 class="text-lg font-bold tracking-tight text-slate-900 dark:text-white">Codex Proxy</h1>
+<h1 class="text-lg font-bold tracking-tight">Codex Proxy</h1>
 </div>
 <!-- Actions -->
 <div class="flex items-center gap-3">
@@ -49,6 +70,10 @@
 </span>
 <span class="text-xs font-semibold text-primary">Server Online</span>
 </div>
+<!-- Theme Toggle -->
+<button id="themeToggle" onclick="toggleTheme()" class="p-2 rounded-lg text-slate-500 dark:text-text-dim hover:bg-slate-100 dark:hover:bg-border-dark transition-colors" title="Toggle theme">
+<span class="material-symbols-outlined text-xl" id="themeIcon">dark_mode</span>
+</button>
 <button id="addAccountBtn" onclick="startAddAccount()" class="flex items-center gap-2 px-4 py-2 bg-primary hover:bg-primary-hover text-white text-sm font-semibold rounded-lg transition-colors shadow-sm active:scale-95">
 <span class="material-symbols-outlined text-sm">add</span>
 <span>Add Account</span>
@@ -62,11 +87,11 @@
 <div class="flex flex-col w-full max-w-[960px] gap-8">
 
 <!-- Add Account Section (hidden by default) -->
-<section id="addSection" class="hidden bg-white dark:bg-[#1e1e1e] border border-card-border rounded-xl p-5 shadow-sm">
-  <p class="text-sm text-slate-500 mb-3">If the popup shows an error or you're on a different machine, copy the full callback URL and paste it below.</p>
+<section id="addSection" class="hidden bg-white dark:bg-card-dark border border-gray-200 dark:border-border-dark rounded-xl p-5 shadow-sm transition-colors">
+  <p class="text-sm text-slate-500 dark:text-text-dim mb-3">If the popup shows an error or you're on a different machine, copy the full callback URL and paste it below.</p>
   <div class="flex gap-3">
-    <input id="addCallbackInput" type="text" placeholder="Paste callback URL" class="flex-1 px-3 py-2.5 bg-slate-50 border border-card-border rounded-lg text-sm font-mono text-slate-600 focus:ring-2 focus:ring-primary/50 focus:border-primary outline-none"/>
-    <button id="addRelayBtn" onclick="submitAddRelay()" class="px-4 py-2.5 bg-white border border-card-border rounded-lg text-sm font-medium text-slate-700 hover:bg-slate-50 transition-colors">Submit</button>
+    <input id="addCallbackInput" type="text" placeholder="Paste callback URL" class="flex-1 px-3 py-2.5 bg-slate-50 dark:bg-bg-dark border border-gray-200 dark:border-border-dark rounded-lg text-sm font-mono text-slate-600 dark:text-text-main focus:ring-2 focus:ring-primary/50 focus:border-primary outline-none transition-colors"/>
+    <button id="addRelayBtn" onclick="submitAddRelay()" class="px-4 py-2.5 bg-white dark:bg-card-dark border border-gray-200 dark:border-border-dark rounded-lg text-sm font-medium text-slate-700 dark:text-text-main hover:bg-slate-50 dark:hover:bg-border-dark transition-colors">Submit</button>
   </div>
   <p id="addInfo" class="text-sm text-primary mt-2 hidden"></p>
   <p id="addError" class="text-sm text-red-500 mt-2 hidden"></p>
@@ -76,85 +101,85 @@
 <section class="flex flex-col gap-4">
 <div class="flex items-end justify-between">
 <div class="flex flex-col gap-1">
-<h2 class="text-2xl font-bold text-slate-900 dark:text-white tracking-tight">Connected Accounts</h2>
-<p class="text-slate-500 text-sm">Manage your AI model proxy services and usage limits.</p>
+<h2 class="text-2xl font-bold tracking-tight">Connected Accounts</h2>
+<p class="text-slate-500 dark:text-text-dim text-sm">Manage your AI model proxy services and usage limits.</p>
 </div>
 </div>
 <div id="accountList" class="grid grid-cols-1 md:grid-cols-2 gap-4">
-  <div class="md:col-span-2 text-center py-8 text-slate-400 text-sm bg-white dark:bg-[#1e1e1e] border border-card-border rounded-xl">Loading accounts...</div>
+  <div class="md:col-span-2 text-center py-8 text-slate-400 dark:text-text-dim text-sm bg-white dark:bg-card-dark border border-gray-200 dark:border-border-dark rounded-xl transition-colors">Loading accounts...</div>
 </div>
 </section>
 
 <!-- Section 2: API Configuration -->
-<section class="bg-white dark:bg-[#1e1e1e] border border-card-border rounded-xl p-6 shadow-sm">
-<div class="flex items-center justify-between mb-6 border-b border-slate-100 pb-4">
+<section class="bg-white dark:bg-card-dark border border-gray-200 dark:border-border-dark rounded-xl p-6 shadow-sm transition-colors">
+<div class="flex items-center justify-between mb-6 border-b border-slate-100 dark:border-border-dark pb-4">
 <div class="flex items-center gap-2">
 <span class="material-symbols-outlined text-primary">settings</span>
-<h2 class="text-lg font-bold text-slate-900 dark:text-white">API Configuration</h2>
+<h2 class="text-lg font-bold">API Configuration</h2>
 </div>
-<button onclick="resetConfigDefaults()" class="text-xs text-slate-400 hover:text-slate-600 transition-colors">Reset to defaults</button>
+<button onclick="resetConfigDefaults()" class="text-xs text-slate-400 dark:text-text-dim hover:text-slate-600 dark:hover:text-text-main transition-colors">Reset to defaults</button>
 </div>
 <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
 <!-- Base URL -->
 <div class="space-y-1.5">
-<label class="text-sm font-semibold text-slate-700 dark:text-slate-300">Base Proxy URL</label>
+<label class="text-sm font-semibold text-slate-700 dark:text-text-main">Base Proxy URL</label>
 <div class="relative flex items-center">
-<input id="baseUrl" class="w-full pl-3 pr-10 py-2.5 bg-slate-50 border border-card-border rounded-lg text-sm font-mono text-slate-600 focus:ring-2 focus:ring-primary/50 focus:border-primary outline-none transition-all" type="text" value="Loading..."/>
-<button onclick="copyField('baseUrl', this)" class="absolute right-2 p-1.5 text-slate-400 hover:text-primary transition-colors rounded-md hover:bg-slate-100" title="Copy URL">
+<input id="baseUrl" class="w-full pl-3 pr-10 py-2.5 bg-slate-50 dark:bg-bg-dark border border-gray-200 dark:border-border-dark rounded-lg text-sm font-mono text-slate-600 dark:text-text-main focus:ring-1 focus:ring-primary focus:border-primary outline-none transition-all" type="text" value="Loading..."/>
+<button onclick="copyField('baseUrl', this)" class="absolute right-2 p-1.5 text-slate-400 dark:text-text-dim hover:text-primary transition-colors rounded-md hover:bg-slate-100 dark:hover:bg-border-dark" title="Copy URL">
 <span class="material-symbols-outlined text-lg">content_copy</span>
 </button>
 </div>
 </div>
 <!-- Default Model -->
 <div class="space-y-1.5">
-<label class="text-sm font-semibold text-slate-700 dark:text-slate-300">Default Model</label>
+<label class="text-sm font-semibold text-slate-700 dark:text-text-main">Default Model</label>
 <div class="relative">
-<select id="defaultModel" class="w-full appearance-none pl-3 pr-10 py-2.5 bg-white border border-card-border rounded-lg text-sm text-slate-700 font-medium focus:ring-2 focus:ring-primary/50 focus:border-primary outline-none cursor-pointer">
+<select id="defaultModel" class="w-full appearance-none pl-3 pr-10 py-2.5 bg-white dark:bg-bg-dark border border-gray-200 dark:border-border-dark rounded-lg text-sm text-slate-700 dark:text-text-main font-medium focus:ring-1 focus:ring-primary focus:border-primary outline-none cursor-pointer transition-colors">
 <option value="codex">codex</option>
 </select>
-<div class="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2 text-slate-500">
+<div class="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2 text-slate-500 dark:text-text-dim">
 <span class="material-symbols-outlined text-lg">expand_more</span>
 </div>
 </div>
 </div>
 <!-- API Key -->
 <div class="space-y-1.5 md:col-span-2">
-<label class="text-sm font-semibold text-slate-700 dark:text-slate-300">Your API Key</label>
+<label class="text-sm font-semibold text-slate-700 dark:text-text-main">Your API Key</label>
 <div class="relative flex items-center">
-<div class="absolute left-3 text-slate-400">
+<div class="absolute left-3 text-slate-400 dark:text-text-dim">
 <span class="material-symbols-outlined text-lg">key</span>
 </div>
-<input id="apiKey" class="w-full pl-10 pr-10 py-2.5 bg-slate-50 border border-card-border rounded-lg text-sm font-mono text-slate-600 focus:ring-2 focus:ring-primary/50 focus:border-primary outline-none transition-all tracking-wider" type="text" value="Loading..."/>
-<button onclick="copyField('apiKey', this)" class="absolute right-2 p-1.5 text-slate-400 hover:text-primary transition-colors rounded-md hover:bg-slate-100" title="Copy API Key">
+<input id="apiKey" class="w-full pl-10 pr-10 py-2.5 bg-slate-50 dark:bg-bg-dark border border-gray-200 dark:border-border-dark rounded-lg text-sm font-mono text-slate-600 dark:text-text-main focus:ring-1 focus:ring-primary focus:border-primary outline-none transition-all tracking-wider" type="text" value="Loading..."/>
+<button onclick="copyField('apiKey', this)" class="absolute right-2 p-1.5 text-slate-400 dark:text-text-dim hover:text-primary transition-colors rounded-md hover:bg-slate-100 dark:hover:bg-border-dark" title="Copy API Key">
 <span class="material-symbols-outlined text-lg">content_copy</span>
 </button>
 </div>
-<p class="text-xs text-slate-400 mt-1">Use this key to authenticate requests to the proxy. Do not share it.</p>
+<p class="text-xs text-slate-400 dark:text-text-dim mt-1">Use this key to authenticate requests to the proxy. Do not share it.</p>
 </div>
 </div>
 </section>
 
 <!-- Section 3: Integration Examples -->
 <section class="flex flex-col gap-4">
-<h2 class="text-lg font-bold text-slate-900 dark:text-white">Integration Examples</h2>
-<div class="bg-white dark:bg-[#1e1e1e] border border-card-border rounded-xl overflow-hidden shadow-sm">
+<h2 class="text-lg font-bold">Integration Examples</h2>
+<div class="bg-white dark:bg-card-dark border border-gray-200 dark:border-border-dark rounded-xl overflow-hidden shadow-sm transition-colors">
 <!-- Top Tabs: Providers -->
-<div id="protocolTabs" class="flex border-b border-card-border bg-slate-50/50">
-<button onclick="switchProtocol('openai', this)" class="proto-tab px-6 py-3 text-sm font-semibold text-primary border-b-2 border-primary bg-white transition-colors" data-proto="openai">OpenAI</button>
-<button onclick="switchProtocol('anthropic', this)" class="proto-tab px-6 py-3 text-sm font-medium text-slate-500 hover:text-slate-700 hover:bg-slate-50 border-b-2 border-transparent transition-colors" data-proto="anthropic">Anthropic</button>
-<button onclick="switchProtocol('gemini', this)" class="proto-tab px-6 py-3 text-sm font-medium text-slate-500 hover:text-slate-700 hover:bg-slate-50 border-b-2 border-transparent transition-colors" data-proto="gemini">Gemini</button>
+<div id="protocolTabs" class="flex border-b border-gray-200 dark:border-border-dark bg-slate-50/50 dark:bg-bg-dark/30">
+<button onclick="switchProtocol('openai', this)" class="proto-tab px-6 py-3 text-sm font-semibold text-primary border-b-2 border-primary bg-white dark:bg-card-dark transition-colors" data-proto="openai">OpenAI</button>
+<button onclick="switchProtocol('anthropic', this)" class="proto-tab px-6 py-3 text-sm font-medium text-slate-500 dark:text-text-dim hover:text-slate-700 dark:hover:text-text-main hover:bg-slate-50 dark:hover:bg-[#21262d] border-b-2 border-transparent transition-colors" data-proto="anthropic">Anthropic</button>
+<button onclick="switchProtocol('gemini', this)" class="proto-tab px-6 py-3 text-sm font-medium text-slate-500 dark:text-text-dim hover:text-slate-700 dark:hover:text-text-main hover:bg-slate-50 dark:hover:bg-[#21262d] border-b-2 border-transparent transition-colors" data-proto="gemini">Gemini</button>
 </div>
 <!-- Sub Tabs: Languages & Content -->
 <div class="p-6">
 <div class="flex items-center justify-between mb-4">
-<div id="langTabs" class="flex gap-2 p-1 bg-slate-100 rounded-lg">
-<button onclick="switchLang('python', this)" class="lang-tab px-3 py-1.5 text-xs font-semibold rounded bg-white text-slate-800 shadow-sm transition-all" data-lang="python">Python</button>
-<button onclick="switchLang('node', this)" class="lang-tab px-3 py-1.5 text-xs font-medium rounded text-slate-500 hover:text-slate-700 hover:bg-white/50 transition-all" data-lang="node">Node.js</button>
-<button onclick="switchLang('curl', this)" class="lang-tab px-3 py-1.5 text-xs font-medium rounded text-slate-500 hover:text-slate-700 hover:bg-white/50 transition-all" data-lang="curl">cURL</button>
+<div id="langTabs" class="flex gap-2 p-1 bg-slate-100 dark:bg-bg-dark dark:border dark:border-border-dark rounded-lg">
+<button onclick="switchLang('python', this)" class="lang-tab px-3 py-1.5 text-xs font-semibold rounded bg-white dark:bg-[#21262d] text-slate-800 dark:text-text-main shadow-sm border border-transparent dark:border-border-dark transition-all" data-lang="python">Python</button>
+<button onclick="switchLang('node', this)" class="lang-tab px-3 py-1.5 text-xs font-medium rounded text-slate-500 dark:text-text-dim hover:text-slate-700 dark:hover:text-text-main hover:bg-white/50 dark:hover:bg-[#21262d] border border-transparent transition-all" data-lang="node">Node.js</button>
+<button onclick="switchLang('curl', this)" class="lang-tab px-3 py-1.5 text-xs font-medium rounded text-slate-500 dark:text-text-dim hover:text-slate-700 dark:hover:text-text-main hover:bg-white/50 dark:hover:bg-[#21262d] border border-transparent transition-all" data-lang="curl">cURL</button>
 </div>
 </div>
-<!-- Code Panels (one per protocol-lang combo) -->
-<div id="codeContainer" class="relative group rounded-lg overflow-hidden bg-[#0d1117] text-slate-300 font-mono text-sm border border-slate-800">
+<!-- Code Block -->
+<div id="codeContainer" class="relative group rounded-lg overflow-hidden bg-[#0d1117] text-slate-300 font-mono text-sm border border-slate-800 dark:border-border-dark">
 <div class="absolute right-2 top-2 z-10 opacity-0 group-hover:opacity-100 transition-opacity">
 <button onclick="copyCurrentCode()" class="flex items-center gap-1.5 px-3 py-1.5 bg-slate-700 hover:bg-slate-600 text-white rounded text-xs font-medium transition-colors">
 <span class="material-symbols-outlined text-sm">content_copy</span> Copy
@@ -170,9 +195,9 @@
 </div>
 </main>
 <!-- Footer -->
-<footer class="mt-auto border-t border-card-border bg-white dark:bg-[#1a1a1a] py-6">
+<footer class="mt-auto border-t border-gray-200 dark:border-border-dark bg-white dark:bg-card-dark py-6 transition-colors">
 <div class="container mx-auto px-4 text-center">
-<p class="text-sm text-slate-500">&copy; 2025 Codex Proxy. All rights reserved.</p>
+<p class="text-sm text-slate-500 dark:text-text-dim">&copy; 2025 Codex Proxy. All rights reserved.</p>
 </div>
 </footer>
 
@@ -186,12 +211,27 @@ let currentLang = 'python';
 let addPollTimer = null;
 
 const avatarColors = [
-  ['bg-purple-100', 'text-purple-600'],
-  ['bg-amber-100', 'text-amber-600'],
-  ['bg-blue-100', 'text-blue-600'],
-  ['bg-emerald-100', 'text-emerald-600'],
-  ['bg-red-100', 'text-red-600'],
+  ['bg-purple-100 dark:bg-[#2a1a3f]', 'text-purple-600 dark:text-purple-400'],
+  ['bg-amber-100 dark:bg-[#3d2c16]',  'text-amber-600 dark:text-amber-500'],
+  ['bg-blue-100 dark:bg-[#1a2a3f]',   'text-blue-600 dark:text-blue-400'],
+  ['bg-emerald-100 dark:bg-[#112a1f]', 'text-emerald-600 dark:text-emerald-400'],
+  ['bg-red-100 dark:bg-[#3f1a1a]',    'text-red-600 dark:text-red-400'],
 ];
+
+// ── Theme Toggle ───────────────────────────────────────────────
+function toggleTheme() {
+  const html = document.documentElement;
+  const isDark = html.classList.toggle('dark');
+  localStorage.setItem('codex-proxy-theme', isDark ? 'dark' : 'light');
+  updateThemeIcon();
+}
+
+function updateThemeIcon() {
+  const icon = document.getElementById('themeIcon');
+  if (!icon) return;
+  icon.textContent = document.documentElement.classList.contains('dark') ? 'light_mode' : 'dark_mode';
+}
+updateThemeIcon();
 
 // ── Helpers ────────────────────────────────────────────────────
 function escapeHtml(str) {
@@ -208,11 +248,11 @@ function formatNumber(n) {
 
 function statusBadge(status) {
   const map = {
-    active:       ['bg-green-100 text-green-700 border-green-200', 'Active'],
-    expired:      ['bg-red-100 text-red-600 border-red-200', 'Expired'],
-    rate_limited: ['bg-amber-100 text-amber-700 border-amber-200', 'Rate Limited'],
-    refreshing:   ['bg-blue-100 text-blue-600 border-blue-200', 'Refreshing'],
-    disabled:     ['bg-slate-100 text-slate-500 border-slate-200', 'Disabled'],
+    active:       ['bg-green-100 text-green-700 border-green-200 dark:bg-[#11281d] dark:text-primary dark:border-[#1a442e]', 'Active'],
+    expired:      ['bg-red-100 text-red-600 border-red-200 dark:bg-red-900/20 dark:text-red-400 dark:border-red-800/30', 'Expired'],
+    rate_limited: ['bg-amber-100 text-amber-700 border-amber-200 dark:bg-amber-900/20 dark:text-amber-400 dark:border-amber-800/30', 'Rate Limited'],
+    refreshing:   ['bg-blue-100 text-blue-600 border-blue-200 dark:bg-blue-900/20 dark:text-blue-400 dark:border-blue-800/30', 'Refreshing'],
+    disabled:     ['bg-slate-100 text-slate-500 border-slate-200 dark:bg-slate-800/30 dark:text-slate-400 dark:border-slate-700/30', 'Disabled'],
   };
   const [cls, label] = map[status] || map.disabled;
   return `<span class="px-2.5 py-1 rounded-full ${cls} text-xs font-medium border">${escapeHtml(label)}</span>`;
@@ -237,7 +277,7 @@ async function loadAccounts() {
     renderAccounts(data.accounts || []);
   } catch (err) {
     document.getElementById('accountList').innerHTML =
-      `<div class="md:col-span-2 text-center py-8 text-red-400 text-sm bg-white dark:bg-[#1e1e1e] border border-card-border rounded-xl">Failed to load accounts: ${escapeHtml(err.message)}</div>`;
+      `<div class="md:col-span-2 text-center py-8 text-red-400 text-sm bg-white dark:bg-card-dark border border-gray-200 dark:border-border-dark rounded-xl">${escapeHtml(err.message)}</div>`;
   }
 }
 
@@ -245,7 +285,7 @@ function renderAccounts(accounts) {
   const container = document.getElementById('accountList');
 
   if (accounts.length === 0) {
-    container.innerHTML = `<div class="md:col-span-2 text-center py-8 text-slate-400 text-sm bg-white dark:bg-[#1e1e1e] border border-card-border rounded-xl">
+    container.innerHTML = `<div class="md:col-span-2 text-center py-8 text-slate-400 dark:text-text-dim text-sm bg-white dark:bg-card-dark border border-gray-200 dark:border-border-dark rounded-xl">
       No accounts connected. Click "Add Account" to get started.
     </div>`;
     return;
@@ -272,53 +312,51 @@ function renderAccounts(accounts) {
         : 'bg-primary';
       const pctColor = pct == null ? 'text-primary'
         : pct >= 90 ? 'text-red-500'
-        : pct >= 60 ? 'text-amber-600'
+        : pct >= 60 ? 'text-amber-600 dark:text-amber-500'
         : 'text-primary';
-      const resetAt = rl.reset_at
-        ? new Date(rl.reset_at * 1000).toLocaleTimeString()
-        : null;
+      const resetAt = rl.reset_at ? new Date(rl.reset_at * 1000).toLocaleTimeString() : null;
 
       quotaHtml = `
-        <div class="pt-3 mt-3 border-t border-slate-100">
+        <div class="pt-3 mt-3 border-t border-slate-100 dark:border-border-dark">
           <div class="flex justify-between text-sm mb-1.5">
-            <span class="text-slate-500">Rate Limit</span>
+            <span class="text-slate-500 dark:text-text-dim">Rate Limit</span>
             ${rl.limit_reached
-              ? '<span class="px-2 py-0.5 rounded-full bg-red-100 text-red-600 text-xs font-medium">Limit Reached</span>'
+              ? '<span class="px-2 py-0.5 rounded-full bg-red-100 dark:bg-red-900/20 text-red-600 dark:text-red-400 text-xs font-medium">Limit Reached</span>'
               : pct != null
                 ? `<span class="font-medium ${pctColor}">${pct}% Used</span>`
                 : '<span class="font-medium text-primary">OK</span>'}
           </div>
           ${pct != null ? `
-            <div class="w-full bg-slate-100 rounded-full h-2 overflow-hidden">
+            <div class="w-full bg-slate-100 dark:bg-border-dark rounded-full h-2 overflow-hidden">
               <div class="${barColor} h-2 rounded-full transition-all" style="width: ${pct}%"></div>
             </div>` : ''}
-          ${resetAt ? `<p class="text-xs text-slate-400 mt-1">Resets at ${escapeHtml(resetAt)}</p>` : ''}
+          ${resetAt ? `<p class="text-xs text-slate-400 dark:text-text-dim mt-1">Resets at ${escapeHtml(resetAt)}</p>` : ''}
         </div>`;
     }
 
     return `
-    <div class="group bg-white dark:bg-[#1e1e1e] border border-card-border rounded-xl p-5 shadow-sm hover:shadow-md transition-all hover:border-primary/30 relative">
-      <button onclick="deleteAccount('${escapeHtml(acct.id)}')" class="absolute top-3 right-3 opacity-0 group-hover:opacity-100 p-1.5 text-slate-300 hover:text-red-500 transition-all rounded-md hover:bg-red-50" title="Delete account">
+    <div class="group bg-white dark:bg-card-dark border border-gray-200 dark:border-border-dark rounded-xl p-5 shadow-sm hover:shadow-md transition-all hover:border-primary/30 dark:hover:border-primary/50 relative">
+      <button onclick="deleteAccount('${escapeHtml(acct.id)}')" class="absolute top-3 right-3 opacity-0 group-hover:opacity-100 p-1.5 text-slate-300 dark:text-text-dim hover:text-red-500 transition-all rounded-md hover:bg-red-50 dark:hover:bg-red-900/20" title="Delete account">
         <span class="material-symbols-outlined text-lg">delete</span>
       </button>
       <div class="flex justify-between items-start mb-4">
         <div class="flex items-center gap-3">
           <div class="size-10 rounded-full ${bgColor} ${textColor} flex items-center justify-center font-bold text-lg">${initial}</div>
           <div>
-            <h3 class="font-semibold text-slate-900 dark:text-white leading-tight">${escapeHtml(email)}</h3>
-            <p class="text-xs text-slate-500">${escapeHtml(plan)}</p>
+            <h3 class="font-semibold leading-tight">${escapeHtml(email)}</h3>
+            <p class="text-xs text-slate-500 dark:text-text-dim">${escapeHtml(plan)}</p>
           </div>
         </div>
         ${statusBadge(acct.status)}
       </div>
       <div class="space-y-2">
         <div class="flex justify-between text-sm">
-          <span class="text-slate-500">Total Requests</span>
-          <span class="font-medium text-slate-900 dark:text-white">${formatNumber(requests)}</span>
+          <span class="text-slate-500 dark:text-text-dim">Total Requests</span>
+          <span class="font-medium">${formatNumber(requests)}</span>
         </div>
         <div class="flex justify-between text-sm">
-          <span class="text-slate-500">Tokens Used</span>
-          <span class="font-medium text-slate-900 dark:text-white">${formatNumber(tokens)}</span>
+          <span class="text-slate-500 dark:text-text-dim">Tokens Used</span>
+          <span class="font-medium">${formatNumber(tokens)}</span>
         </div>
       </div>
       ${quotaHtml}
@@ -377,7 +415,6 @@ async function startAddAccount() {
     document.getElementById('addSection').classList.remove('hidden');
     btn.disabled = false;
 
-    // Poll for new account
     if (addPollTimer) clearInterval(addPollTimer);
     const prevCount = (await fetch('/auth/accounts').then(r => r.json())).accounts?.length || 0;
     addPollTimer = setInterval(async () => {
@@ -403,15 +440,10 @@ async function startAddAccount() {
 
 async function submitAddRelay() {
   const callbackUrl = document.getElementById('addCallbackInput').value.trim();
-  const infoEl = document.getElementById('addInfo');
-  const errEl = document.getElementById('addError');
-  infoEl.classList.add('hidden');
-  errEl.classList.add('hidden');
+  document.getElementById('addInfo').classList.add('hidden');
+  document.getElementById('addError').classList.add('hidden');
 
-  if (!callbackUrl) {
-    showAddError('Please paste the callback URL');
-    return;
-  }
+  if (!callbackUrl) { showAddError('Please paste the callback URL'); return; }
 
   const btn = document.getElementById('addRelayBtn');
   btn.disabled = true;
@@ -449,10 +481,7 @@ async function loadStatus() {
     const resp = await fetch('/auth/status');
     authData = await resp.json();
 
-    if (!authData.authenticated) {
-      window.location.href = '/';
-      return;
-    }
+    if (!authData.authenticated) { window.location.href = '/'; return; }
 
     serverBaseUrl = `${window.location.origin}/v1`;
     serverApiKey = authData.proxy_api_key || 'any-string';
@@ -615,21 +644,22 @@ function showCurrentCode() {
 }
 
 // ── Tab Switching ──────────────────────────────────────────────
+const PROTO_ACTIVE  = 'proto-tab px-6 py-3 text-sm font-semibold text-primary border-b-2 border-primary bg-white dark:bg-card-dark transition-colors';
+const PROTO_INACTIVE = 'proto-tab px-6 py-3 text-sm font-medium text-slate-500 dark:text-text-dim hover:text-slate-700 dark:hover:text-text-main hover:bg-slate-50 dark:hover:bg-[#21262d] border-b-2 border-transparent transition-colors';
+const LANG_ACTIVE   = 'lang-tab px-3 py-1.5 text-xs font-semibold rounded bg-white dark:bg-[#21262d] text-slate-800 dark:text-text-main shadow-sm border border-transparent dark:border-border-dark transition-all';
+const LANG_INACTIVE = 'lang-tab px-3 py-1.5 text-xs font-medium rounded text-slate-500 dark:text-text-dim hover:text-slate-700 dark:hover:text-text-main hover:bg-white/50 dark:hover:bg-[#21262d] border border-transparent transition-all';
+
 function switchProtocol(proto, el) {
   currentProtocol = proto;
-  document.querySelectorAll('.proto-tab').forEach(t => {
-    t.className = 'proto-tab px-6 py-3 text-sm font-medium text-slate-500 hover:text-slate-700 hover:bg-slate-50 border-b-2 border-transparent transition-colors';
-  });
-  el.className = 'proto-tab px-6 py-3 text-sm font-semibold text-primary border-b-2 border-primary bg-white transition-colors';
+  document.querySelectorAll('.proto-tab').forEach(t => t.className = PROTO_INACTIVE);
+  el.className = PROTO_ACTIVE;
   showCurrentCode();
 }
 
 function switchLang(lang, el) {
   currentLang = lang;
-  document.querySelectorAll('.lang-tab').forEach(t => {
-    t.className = 'lang-tab px-3 py-1.5 text-xs font-medium rounded text-slate-500 hover:text-slate-700 hover:bg-white/50 transition-all';
-  });
-  el.className = 'lang-tab px-3 py-1.5 text-xs font-semibold rounded bg-white text-slate-800 shadow-sm transition-all';
+  document.querySelectorAll('.lang-tab').forEach(t => t.className = LANG_INACTIVE);
+  el.className = LANG_ACTIVE;
   showCurrentCode();
 }
 
