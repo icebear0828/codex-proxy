@@ -46,7 +46,7 @@
       color: #6b7280;
     }
     .topnav-title {
-      font-size: 1rem;
+      font-size: 0.9rem;
       font-weight: 600;
       color: #111827;
     }
@@ -76,12 +76,12 @@
       display: inline-flex;
       align-items: center;
       gap: 0.4rem;
-      padding: 7px 16px;
+      padding: 6px 14px;
       background: #10a37f;
       color: #fff;
       border: none;
       border-radius: 8px;
-      font-size: 0.85rem;
+      font-size: 0.78rem;
       font-weight: 500;
       font-family: inherit;
       cursor: pointer;
@@ -99,10 +99,10 @@
 
     /* Section headings */
     .section-title {
-      font-size: 1.1rem;
+      font-size: 0.95rem;
       font-weight: 600;
       color: #111827;
-      margin-bottom: 1rem;
+      margin-bottom: 0.75rem;
     }
 
     /* Accounts */
@@ -116,8 +116,8 @@
       background: #fff;
       border: 1px solid #e5e7eb;
       border-radius: 12px;
-      padding: 1.25rem;
-      min-width: 280px;
+      padding: 1rem;
+      min-width: 260px;
       flex: 1;
       position: relative;
     }
@@ -128,13 +128,13 @@
       margin-bottom: 1rem;
     }
     .avatar {
-      width: 40px;
-      height: 40px;
+      width: 34px;
+      height: 34px;
       border-radius: 50%;
       display: flex;
       align-items: center;
       justify-content: center;
-      font-size: 1rem;
+      font-size: 0.85rem;
       font-weight: 600;
       color: #fff;
       flex-shrink: 0;
@@ -146,7 +146,7 @@
     .avatar-red { background: #ef4444; }
     .account-info { flex: 1; min-width: 0; }
     .account-email {
-      font-size: 0.9rem;
+      font-size: 0.82rem;
       font-weight: 600;
       color: #111827;
       white-space: nowrap;
@@ -154,7 +154,7 @@
       text-overflow: ellipsis;
     }
     .account-plan {
-      font-size: 0.8rem;
+      font-size: 0.75rem;
       color: #6b7280;
     }
     .status-badge {
@@ -185,7 +185,7 @@
       margin-bottom: 2px;
     }
     .stat-value {
-      font-size: 1rem;
+      font-size: 0.85rem;
       font-weight: 600;
       color: #111827;
     }
@@ -279,11 +279,11 @@
       background: #fff;
       border: 1px solid #e5e7eb;
       border-radius: 12px;
-      padding: 1.5rem;
-      margin-bottom: 2rem;
+      padding: 1.25rem;
+      margin-bottom: 1.5rem;
     }
     .config-card .card-subtitle {
-      font-size: 0.82rem;
+      font-size: 0.78rem;
       color: #6b7280;
       margin-bottom: 1.25rem;
     }
@@ -307,12 +307,12 @@
     }
     .config-value .val {
       flex: 1;
-      padding: 9px 12px;
+      padding: 7px 10px;
       background: #f9fafb;
       border: 1px solid #e5e7eb;
       border-radius: 8px;
-      font-family: 'Inter', monospace;
-      font-size: 0.85rem;
+      font-family: 'SF Mono', 'Consolas', monospace;
+      font-size: 0.78rem;
       color: #111827;
       white-space: nowrap;
       overflow: hidden;
@@ -419,8 +419,8 @@
       background: #fff;
       border: 1px solid #e5e7eb;
       border-radius: 12px;
-      padding: 1.5rem;
-      margin-bottom: 2rem;
+      padding: 1.25rem;
+      margin-bottom: 1.5rem;
     }
     .tabs {
       display: flex;
@@ -429,12 +429,12 @@
       margin-bottom: 1rem;
     }
     .tab {
-      padding: 8px 16px;
+      padding: 6px 14px;
       background: none;
       border: none;
       border-bottom: 2px solid transparent;
       color: #6b7280;
-      font-size: 0.85rem;
+      font-size: 0.8rem;
       font-family: inherit;
       cursor: pointer;
       transition: all 0.2s;
@@ -448,10 +448,10 @@
     .code-block {
       background: #1e1e1e;
       border-radius: 10px;
-      padding: 1.25rem;
-      font-family: 'Courier New', Courier, monospace;
-      font-size: 0.82rem;
-      line-height: 1.7;
+      padding: 1rem 1.25rem;
+      font-family: 'SF Mono', 'Cascadia Code', 'Fira Code', 'Consolas', monospace;
+      font-size: 0.75rem;
+      line-height: 1.5;
       color: #d4d4d4;
       overflow-x: auto;
       white-space: pre;
@@ -585,18 +585,28 @@
         <button class="tab active" onclick="switchTab('python', this)">Python</button>
         <button class="tab" onclick="switchTab('curl', this)">cURL</button>
         <button class="tab" onclick="switchTab('node', this)">Node.js</button>
+        <button class="tab" onclick="switchTab('anthropic', this)">Anthropic</button>
+        <button class="tab" onclick="switchTab('gemini', this)">Gemini</button>
       </div>
       <div class="tab-content active" id="tab-python">
         <div class="code-block" id="code-python">Loading...
-<button class="copy-code-btn" onclick="copyCode('code-python')">&#9112; Copy Code</button></div>
+<button class="copy-code-btn" onclick="copyCode('code-python')">&#9112; Copy</button></div>
       </div>
       <div class="tab-content" id="tab-curl">
         <div class="code-block" id="code-curl">Loading...
-<button class="copy-code-btn" onclick="copyCode('code-curl')">&#9112; Copy Code</button></div>
+<button class="copy-code-btn" onclick="copyCode('code-curl')">&#9112; Copy</button></div>
       </div>
       <div class="tab-content" id="tab-node">
         <div class="code-block" id="code-node">Loading...
-<button class="copy-code-btn" onclick="copyCode('code-node')">&#9112; Copy Code</button></div>
+<button class="copy-code-btn" onclick="copyCode('code-node')">&#9112; Copy</button></div>
+      </div>
+      <div class="tab-content" id="tab-anthropic">
+        <div class="code-block" id="code-anthropic">Loading...
+<button class="copy-code-btn" onclick="copyCode('code-anthropic')">&#9112; Copy</button></div>
+      </div>
+      <div class="tab-content" id="tab-gemini">
+        <div class="code-block" id="code-gemini">Loading...
+<button class="copy-code-btn" onclick="copyCode('code-gemini')">&#9112; Copy</button></div>
       </div>
     </div>
   </div>
@@ -856,7 +866,47 @@ const stream = await client.chat.completions.create({
 for await (const chunk of stream) {
     process.stdout.write(chunk.choices[0]?.delta?.content || "");
 }
-<button class="copy-code-btn" onclick="copyCode('code-node')">&#9112; Copy Code</button>`;
+<button class="copy-code-btn" onclick="copyCode('code-node')">&#9112; Copy</button>`;
+
+      const messagesUrl = escapeHtml(window.location.origin + '/v1/messages');
+      document.getElementById('code-anthropic').innerHTML =
+`import Anthropic from "@anthropic-ai/sdk";
+
+const client = new Anthropic({
+    baseURL: "${messagesUrl.replace('/v1/messages', '/v1')}",
+    apiKey: "${apiKey}",
+});
+
+const message = await client.messages.create({
+    model: "claude-sonnet-4-20250514",
+    max_tokens: 1024,
+    messages: [
+        { role: "user", content: "Explain quantum computing in simple terms" },
+    ],
+});
+
+console.log(message.content[0].text);
+<button class="copy-code-btn" onclick="copyCode('code-anthropic')">&#9112; Copy</button>`;
+
+      const geminiBase = escapeHtml(window.location.origin);
+      document.getElementById('code-gemini').innerHTML =
+`curl ${geminiBase}/v1beta/models/gemini-2.5-pro:generateContent?key=${apiKey} \\
+  -H "Content-Type: application/json" \\
+  -d '{
+    "contents": [
+      {"role": "user", "parts": [{"text": "Explain quantum computing"}]}
+    ]
+  }'
+
+# Streaming
+curl ${geminiBase}/v1beta/models/gemini-2.5-pro:streamGenerateContent?alt=sse&key=${apiKey} \\
+  -H "Content-Type: application/json" \\
+  -d '{
+    "contents": [
+      {"role": "user", "parts": [{"text": "Explain quantum computing"}]}
+    ]
+  }'
+<button class="copy-code-btn" onclick="copyCode('code-gemini')">&#9112; Copy</button>`;
     }
 
     function saveOverrides() {
