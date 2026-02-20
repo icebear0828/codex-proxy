@@ -41,6 +41,9 @@ tls:
   curl_binary: "auto"
   # Chrome profile for --impersonate flag (auto-detected when curl-impersonate supports it)
   impersonate_profile: "chrome136"
+  # HTTP/SOCKS5 proxy for curl requests to chatgpt.com
+  # Example: "http://127.0.0.1:7890"  Also respects HTTPS_PROXY env var
+  proxy_url: null
 
 streaming:
   status_as_content: false

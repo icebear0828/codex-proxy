@@ -142,6 +142,18 @@ export function getChromeTlsArgs(): string[] {
 }
 
 /**
+ * Get proxy args to prepend to curl commands.
+ * Reads from config tls.proxy_url (which also picks up HTTPS_PROXY env var).
+ * Returns empty array when no proxy is configured.
+ */
+export function getProxyArgs(): string[] {
+  const config = getConfig();
+  const url = config.tls.proxy_url;
+  if (url) return ["-x", url];
+  return [];
+}
+
+/**
  * Reset the cached binary path (useful for testing).
  */
 export function resetCurlBinaryCache(): void {

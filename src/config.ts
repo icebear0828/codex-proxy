@@ -45,6 +45,7 @@ const ConfigSchema = z.object({
   tls: z.object({
     curl_binary: z.string().default("auto"),
     impersonate_profile: z.string().default("chrome136"),
+    proxy_url: z.string().nullable().default(null),
   }).default({}),
   streaming: z.object({
     status_as_content: z.boolean().default(false),
@@ -85,6 +86,11 @@ function applyEnvOverrides(raw: Record<string, unknown>): Record<string, unknown
   }
   if (process.env.PORT) {
     (raw.server as Record<string, unknown>).port = parseInt(process.env.PORT, 10);
+  }
+  const proxyEnv = process.env.HTTPS_PROXY || process.env.https_proxy;
+  if (proxyEnv) {
+    if (!raw.tls) raw.tls = {};
+    (raw.tls as Record<string, unknown>).proxy_url = proxyEnv;
   }
   return raw;
 }

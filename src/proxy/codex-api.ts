@@ -11,7 +11,7 @@
 
 import { spawn, execFile } from "child_process";
 import { getConfig } from "../config.js";
-import { resolveCurlBinary, getChromeTlsArgs } from "../tls/curl-binary.js";
+import { resolveCurlBinary, getChromeTlsArgs, getProxyArgs } from "../tls/curl-binary.js";
 import {
   buildHeaders,
   buildHeadersWithContentType,
@@ -109,6 +109,7 @@ export class CodexApi {
     return new Promise((resolve, reject) => {
       const args = [
         ...getChromeTlsArgs(), // Chrome TLS profile (ciphers, HTTP/2, etc.)
+        ...getProxyArgs(),     // HTTP/SOCKS5 proxy if configured
         "-s", "-S",            // silent but show errors
         "--compressed",         // curl negotiates compression
         "-N",                   // no output buffering (SSE)
@@ -241,13 +242,13 @@ export class CodexApi {
       buildHeaders(this.token, this.accountId),
     );
     headers["Accept"] = "application/json";
-    // Remove Accept-Encoding — let curl negotiate its own supported encodings
-    // via --compressed. Passing unsupported encodings (br, zstd) causes curl
-    // to fail when it can't decompress the response.
-    delete headers["Accept-Encoding"];
+    // Explicitly set Accept-Encoding to encodings that system curl can always
+    // decompress. Without this, HTTP/2 servers may send brotli/zstd which
+    // system curl (without br/zstd support) cannot decode, producing garbage.
+    headers["Accept-Encoding"] = "gzip, deflate";
 
-    // Build curl args (Chrome TLS profile + request params)
-    const args = [...getChromeTlsArgs(), "-s", "--compressed", "--max-time", "15"];
+    // Build curl args (Chrome TLS profile + proxy + request params)
+    const args = [...getChromeTlsArgs(), ...getProxyArgs(), "-s", "--compressed", "--max-time", "15"];
     for (const [key, value] of Object.entries(headers)) {
       args.push("-H", `${key}: ${value}`);
     }

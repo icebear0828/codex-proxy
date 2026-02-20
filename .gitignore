@@ -9,11 +9,10 @@ bin/
 tmp/
 .claude/settings.local.json
 
-# Maintenance scripts (private — not for public repo)
+# Maintenance scripts (private)
 scripts/extract-fingerprint.ts
 scripts/full-update.ts
 scripts/apply-update.ts
-scripts/setup-curl.ts
 scripts/check-update.ts
 scripts/test-*.ts
 scripts/cron-update.sh
