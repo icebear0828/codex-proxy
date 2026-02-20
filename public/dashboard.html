@@ -66,15 +66,19 @@
 <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-primary opacity-75"></span>
 <span class="relative inline-flex rounded-full h-2.5 w-2.5 bg-primary"></span>
 </span>
-<span class="text-xs font-semibold text-primary">Server Online</span>
+<span class="text-xs font-semibold text-primary" data-i18n="serverOnline">Server Online</span>
 </div>
+<!-- Language Toggle -->
+<button id="langToggle" onclick="toggleLang()" class="p-2 rounded-lg text-slate-500 dark:text-text-dim hover:bg-slate-100 dark:hover:bg-border-dark transition-colors" title="中/EN">
+<span class="text-xs font-bold">EN</span>
+</button>
 <!-- Theme Toggle -->
-<button id="themeToggle" onclick="toggleTheme()" class="p-2 rounded-lg text-slate-500 dark:text-text-dim hover:bg-slate-100 dark:hover:bg-border-dark transition-colors" title="Toggle theme">
+<button id="themeToggle" onclick="toggleTheme()" class="p-2 rounded-lg text-slate-500 dark:text-text-dim hover:bg-slate-100 dark:hover:bg-border-dark transition-colors" data-i18n-title="toggleTheme" title="Toggle theme">
 <span id="themeIcon"><svg class="size-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path stroke-linecap="round" stroke-linejoin="round" d="M21.752 15.002A9.72 9.72 0 0118 15.75c-5.385 0-9.75-4.365-9.75-9.75 0-1.33.266-2.597.748-3.752A9.753 9.753 0 003 11.25C3 16.635 7.365 21 12.75 21a9.753 9.753 0 009.002-5.998z"/></svg></span>
 </button>
 <button id="addAccountBtn" onclick="startAddAccount()" class="flex items-center gap-2 px-4 py-2 bg-primary hover:bg-primary-hover text-white text-xs font-semibold rounded-lg transition-colors shadow-sm active:scale-95">
 <svg class="size-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4.5v15m7.5-7.5h-15"/></svg>
-<span>Add Account</span>
+<span data-i18n="addAccount">Add Account</span>
 </button>
 </div>
 </div>
@@ -86,10 +90,10 @@
 
 <!-- Add Account Section (hidden by default) -->
 <section id="addSection" class="hidden bg-white dark:bg-card-dark border border-gray-200 dark:border-border-dark rounded-xl p-5 shadow-sm transition-colors">
-  <p class="text-sm text-slate-500 dark:text-text-dim mb-3">If the popup shows an error or you're on a different machine, copy the full callback URL and paste it below.</p>
+  <p class="text-sm text-slate-500 dark:text-text-dim mb-3" data-i18n="addAccountHint">If the popup shows an error or you're on a different machine, copy the full callback URL and paste it below.</p>
   <div class="flex gap-3">
-    <input id="addCallbackInput" type="text" placeholder="Paste callback URL" class="flex-1 px-3 py-2.5 bg-slate-50 dark:bg-bg-dark border border-gray-200 dark:border-border-dark rounded-lg text-sm font-mono text-slate-600 dark:text-text-main focus:ring-2 focus:ring-primary/50 focus:border-primary outline-none transition-colors"/>
-    <button id="addRelayBtn" onclick="submitAddRelay()" class="px-4 py-2.5 bg-white dark:bg-card-dark border border-gray-200 dark:border-border-dark rounded-lg text-sm font-medium text-slate-700 dark:text-text-main hover:bg-slate-50 dark:hover:bg-border-dark transition-colors">Submit</button>
+    <input id="addCallbackInput" type="text" data-i18n-placeholder="pasteCallback" placeholder="Paste callback URL" class="flex-1 px-3 py-2.5 bg-slate-50 dark:bg-bg-dark border border-gray-200 dark:border-border-dark rounded-lg text-sm font-mono text-slate-600 dark:text-text-main focus:ring-2 focus:ring-primary/50 focus:border-primary outline-none transition-colors"/>
+    <button id="addRelayBtn" onclick="submitAddRelay()" class="px-4 py-2.5 bg-white dark:bg-card-dark border border-gray-200 dark:border-border-dark rounded-lg text-sm font-medium text-slate-700 dark:text-text-main hover:bg-slate-50 dark:hover:bg-border-dark transition-colors" data-i18n="submit">Submit</button>
   </div>
   <p id="addInfo" class="text-sm text-primary mt-2 hidden"></p>
   <p id="addError" class="text-sm text-red-500 mt-2 hidden"></p>
@@ -99,12 +103,12 @@
 <section class="flex flex-col gap-4">
 <div class="flex items-end justify-between">
 <div class="flex flex-col gap-1">
-<h2 class="text-[0.95rem] font-bold tracking-tight">Connected Accounts</h2>
-<p class="text-slate-500 dark:text-text-dim text-[0.8rem]">Manage your AI model proxy services and usage limits.</p>
+<h2 class="text-[0.95rem] font-bold tracking-tight" data-i18n="connectedAccounts">Connected Accounts</h2>
+<p class="text-slate-500 dark:text-text-dim text-[0.8rem]" data-i18n="connectedAccountsDesc">Manage your AI model proxy services and usage limits.</p>
 </div>
 </div>
 <div id="accountList" class="grid grid-cols-1 md:grid-cols-2 gap-4">
-  <div class="md:col-span-2 text-center py-8 text-slate-400 dark:text-text-dim text-sm bg-white dark:bg-card-dark border border-gray-200 dark:border-border-dark rounded-xl transition-colors">Loading accounts...</div>
+  <div class="md:col-span-2 text-center py-8 text-slate-400 dark:text-text-dim text-sm bg-white dark:bg-card-dark border border-gray-200 dark:border-border-dark rounded-xl transition-colors" data-i18n="loadingAccounts">Loading accounts...</div>
 </div>
 </section>
 
@@ -113,24 +117,24 @@
 <div class="flex items-center justify-between mb-6 border-b border-slate-100 dark:border-border-dark pb-4">
 <div class="flex items-center gap-2">
 <svg class="size-5 text-primary" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path stroke-linecap="round" stroke-linejoin="round" d="M9.594 3.94c.09-.542.56-.94 1.11-.94h2.593c.55 0 1.02.398 1.11.94l.213 1.281c.063.374.313.686.645.87.074.04.147.083.22.127.324.196.72.257 1.075.124l1.217-.456a1.125 1.125 0 011.37.49l1.296 2.247a1.125 1.125 0 01-.26 1.431l-1.003.827c-.293.241-.438.613-.43.992a7.723 7.723 0 010 .255c-.008.378.137.75.43.991l1.004.827c.424.35.534.955.26 1.43l-1.298 2.247a1.125 1.125 0 01-1.369.491l-1.217-.456c-.355-.133-.75-.072-1.076.124a6.47 6.47 0 01-.22.128c-.331.183-.581.495-.644.869l-.213 1.281c-.09.543-.56.94-1.11.94h-2.594c-.55 0-1.019-.398-1.11-.94l-.213-1.281c-.062-.374-.312-.686-.644-.87a6.52 6.52 0 01-.22-.127c-.325-.196-.72-.257-1.076-.124l-1.217.456a1.125 1.125 0 01-1.369-.49l-1.297-2.247a1.125 1.125 0 01.26-1.431l1.004-.827c.292-.24.437-.613.43-.991a6.932 6.932 0 010-.255c.007-.38-.138-.751-.43-.992l-1.004-.827a1.125 1.125 0 01-.26-1.43l1.297-2.247a1.125 1.125 0 011.37-.491l1.216.456c.356.133.751.072 1.076-.124.072-.044.146-.086.22-.128.332-.183.582-.495.644-.869l.214-1.28z"/><path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
-<h2 class="text-[0.95rem] font-bold">API Configuration</h2>
+<h2 class="text-[0.95rem] font-bold" data-i18n="apiConfig">API Configuration</h2>
 </div>
-<button onclick="resetConfigDefaults()" class="text-xs text-slate-400 dark:text-text-dim hover:text-slate-600 dark:hover:text-text-main transition-colors">Reset to defaults</button>
+<button onclick="resetConfigDefaults()" class="text-xs text-slate-400 dark:text-text-dim hover:text-slate-600 dark:hover:text-text-main transition-colors" data-i18n="resetDefaults">Reset to defaults</button>
 </div>
 <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
 <!-- Base URL -->
 <div class="space-y-1.5">
-<label class="text-xs font-semibold text-slate-700 dark:text-text-main">Base Proxy URL</label>
+<label class="text-xs font-semibold text-slate-700 dark:text-text-main" data-i18n="baseProxyUrl">Base Proxy URL</label>
 <div class="relative flex items-center">
 <input id="baseUrl" class="w-full pl-3 pr-10 py-2.5 bg-slate-50 dark:bg-bg-dark border border-gray-200 dark:border-border-dark rounded-lg text-[0.78rem] font-mono text-slate-600 dark:text-text-main focus:ring-1 focus:ring-primary focus:border-primary outline-none transition-all" type="text" value="Loading..."/>
-<button onclick="copyField('baseUrl', this)" class="absolute right-2 p-1.5 text-slate-400 dark:text-text-dim hover:text-primary transition-colors rounded-md hover:bg-slate-100 dark:hover:bg-border-dark" title="Copy URL">
+<button onclick="copyField('baseUrl', this)" class="absolute right-2 p-1.5 text-slate-400 dark:text-text-dim hover:text-primary transition-colors rounded-md hover:bg-slate-100 dark:hover:bg-border-dark" data-i18n-title="copyUrl" title="Copy URL">
 <svg class="size-[18px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>
 </button>
 </div>
 </div>
 <!-- Default Model -->
 <div class="space-y-1.5">
-<label class="text-xs font-semibold text-slate-700 dark:text-text-main">Default Model</label>
+<label class="text-xs font-semibold text-slate-700 dark:text-text-main" data-i18n="defaultModel">Default Model</label>
 <div class="relative">
 <select id="defaultModel" class="w-full appearance-none pl-3 pr-10 py-2.5 bg-white dark:bg-bg-dark border border-gray-200 dark:border-border-dark rounded-lg text-[0.78rem] text-slate-700 dark:text-text-main font-medium focus:ring-1 focus:ring-primary focus:border-primary outline-none cursor-pointer transition-colors">
 <option value="codex">codex</option>
@@ -142,24 +146,24 @@
 </div>
 <!-- API Key -->
 <div class="space-y-1.5 md:col-span-2">
-<label class="text-xs font-semibold text-slate-700 dark:text-text-main">Your API Key</label>
+<label class="text-xs font-semibold text-slate-700 dark:text-text-main" data-i18n="yourApiKey">Your API Key</label>
 <div class="relative flex items-center">
 <div class="absolute left-3 text-slate-400 dark:text-text-dim">
 <svg class="size-[18px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path stroke-linecap="round" stroke-linejoin="round" d="M15.75 5.25a3 3 0 013 3m3 0a6 6 0 01-7.029 5.912c-.563-.097-1.159.026-1.563.43L10.5 17.25H8.25v2.25H6v2.25H2.25v-2.818c0-.597.237-1.17.659-1.591l6.499-6.499c.404-.404.527-1 .43-1.563A6 6 0 1121.75 8.25z"/></svg>
 </div>
 <input id="apiKey" class="w-full pl-10 pr-10 py-2.5 bg-slate-50 dark:bg-bg-dark border border-gray-200 dark:border-border-dark rounded-lg text-[0.78rem] font-mono text-slate-600 dark:text-text-main focus:ring-1 focus:ring-primary focus:border-primary outline-none transition-all tracking-wider" type="text" value="Loading..."/>
-<button onclick="copyField('apiKey', this)" class="absolute right-2 p-1.5 text-slate-400 dark:text-text-dim hover:text-primary transition-colors rounded-md hover:bg-slate-100 dark:hover:bg-border-dark" title="Copy API Key">
+<button onclick="copyField('apiKey', this)" class="absolute right-2 p-1.5 text-slate-400 dark:text-text-dim hover:text-primary transition-colors rounded-md hover:bg-slate-100 dark:hover:bg-border-dark" data-i18n-title="copyApiKey" title="Copy API Key">
 <svg class="size-[18px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>
 </button>
 </div>
-<p class="text-xs text-slate-400 dark:text-text-dim mt-1">Use this key to authenticate requests to the proxy. Do not share it.</p>
+<p class="text-xs text-slate-400 dark:text-text-dim mt-1" data-i18n="apiKeyHint">Use this key to authenticate requests to the proxy. Do not share it.</p>
 </div>
 </div>
 </section>
 
 <!-- Section 3: Integration Examples -->
 <section class="flex flex-col gap-4">
-<h2 class="text-[0.95rem] font-bold">Integration Examples</h2>
+<h2 class="text-[0.95rem] font-bold" data-i18n="integrationExamples">Integration Examples</h2>
 <div class="bg-white dark:bg-card-dark border border-gray-200 dark:border-border-dark rounded-xl overflow-hidden shadow-sm transition-colors">
 <!-- Top Tabs: Providers -->
 <div id="protocolTabs" class="flex border-b border-gray-200 dark:border-border-dark bg-slate-50/50 dark:bg-bg-dark/30">
@@ -180,7 +184,7 @@
 <div id="codeContainer" class="relative group rounded-lg overflow-hidden bg-[#0d1117] text-slate-300 font-mono text-xs border border-slate-800 dark:border-border-dark">
 <div class="absolute right-2 top-2 z-10 opacity-0 group-hover:opacity-100 transition-opacity">
 <button onclick="copyCurrentCode()" class="flex items-center gap-1.5 px-3 py-1.5 bg-slate-700 hover:bg-slate-600 text-white rounded text-xs font-medium transition-colors">
-<svg class="size-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg> Copy
+<svg class="size-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg> <span data-i18n="copy">Copy</span>
 </button>
 </div>
 <div class="p-4 overflow-x-auto">
@@ -195,11 +199,137 @@
 <!-- Footer -->
 <footer class="mt-auto border-t border-gray-200 dark:border-border-dark bg-white dark:bg-card-dark py-6 transition-colors">
 <div class="container mx-auto px-4 text-center">
-<p class="text-[0.8rem] text-slate-500 dark:text-text-dim">&copy; 2025 Codex Proxy. All rights reserved.</p>
+<p class="text-[0.8rem] text-slate-500 dark:text-text-dim" data-i18n="footer">&copy; 2025 Codex Proxy. All rights reserved.</p>
 </div>
 </footer>
 
 <script>
+// ── i18n ──────────────────────────────────────────────────────
+const LANG = {
+  en: {
+    serverOnline: "Server Online",
+    addAccount: "Add Account",
+    toggleTheme: "Toggle theme",
+    connectedAccounts: "Connected Accounts",
+    connectedAccountsDesc: "Manage your AI model proxy services and usage limits.",
+    loadingAccounts: "Loading accounts...",
+    noAccounts: 'No accounts connected. Click "Add Account" to get started.',
+    deleteAccount: "Delete account",
+    removeConfirm: "Remove this account?",
+    accountAdded: "Account added successfully!",
+    active: "Active",
+    expired: "Expired",
+    rateLimited: "Rate Limited",
+    refreshing: "Refreshing",
+    disabled: "Disabled",
+    freeTier: "Free Tier",
+    totalRequests: "Total Requests",
+    tokensUsed: "Tokens Used",
+    rateLimit: "Rate Limit",
+    limitReached: "Limit Reached",
+    used: "Used",
+    ok: "OK",
+    resetsAt: "Resets at",
+    apiConfig: "API Configuration",
+    resetDefaults: "Reset to defaults",
+    baseProxyUrl: "Base Proxy URL",
+    defaultModel: "Default Model",
+    yourApiKey: "Your API Key",
+    apiKeyHint: "Use this key to authenticate requests to the proxy. Do not share it.",
+    copyUrl: "Copy URL",
+    copyApiKey: "Copy API Key",
+    integrationExamples: "Integration Examples",
+    copy: "Copy",
+    addAccountHint: "If the popup shows an error or you're on a different machine, copy the full callback URL and paste it below.",
+    pasteCallback: "Paste callback URL",
+    submit: "Submit",
+    submitting: "Submitting...",
+    pleasePassCallback: "Please paste the callback URL",
+    failedStartLogin: "Failed to start login",
+    failedExchangeCode: "Failed to exchange code",
+    failedDeleteAccount: "Failed to delete account.",
+    networkError: "Network error: ",
+    footer: "\u00a9 2025 Codex Proxy. All rights reserved.",
+  },
+  zh: {
+    serverOnline: "\u670d\u52a1\u8fd0\u884c\u4e2d",
+    addAccount: "\u6dfb\u52a0\u8d26\u6237",
+    toggleTheme: "\u5207\u6362\u4e3b\u9898",
+    connectedAccounts: "\u5df2\u8fde\u63a5\u8d26\u6237",
+    connectedAccountsDesc: "\u7ba1\u7406\u4f60\u7684 AI \u6a21\u578b\u4ee3\u7406\u670d\u52a1\u548c\u7528\u91cf\u9650\u5236\u3002",
+    loadingAccounts: "\u6b63\u5728\u52a0\u8f7d\u8d26\u6237...",
+    noAccounts: "\u6682\u65e0\u5df2\u8fde\u63a5\u7684\u8d26\u6237\u3002\u70b9\u51fb\u300c\u6dfb\u52a0\u8d26\u6237\u300d\u5f00\u59cb\u4f7f\u7528\u3002",
+    deleteAccount: "\u5220\u9664\u8d26\u6237",
+    removeConfirm: "\u786e\u5b9a\u8981\u79fb\u9664\u6b64\u8d26\u6237\u5417\uff1f",
+    accountAdded: "\u8d26\u6237\u6dfb\u52a0\u6210\u529f\uff01",
+    active: "\u6d3b\u8dc3",
+    expired: "\u5df2\u8fc7\u671f",
+    rateLimited: "\u5df2\u9650\u901f",
+    refreshing: "\u5237\u65b0\u4e2d",
+    disabled: "\u5df2\u7981\u7528",
+    freeTier: "\u514d\u8d39\u7248",
+    totalRequests: "\u603b\u8bf7\u6c42\u6570",
+    tokensUsed: "Token \u7528\u91cf",
+    rateLimit: "\u901f\u7387\u9650\u5236",
+    limitReached: "\u5df2\u8fbe\u4e0a\u9650",
+    used: "\u5df2\u4f7f\u7528",
+    ok: "\u6b63\u5e38",
+    resetsAt: "\u91cd\u7f6e\u65f6\u95f4",
+    apiConfig: "API \u914d\u7f6e",
+    resetDefaults: "\u6062\u590d\u9ed8\u8ba4",
+    baseProxyUrl: "\u4ee3\u7406 URL",
+    defaultModel: "\u9ed8\u8ba4\u6a21\u578b",
+    yourApiKey: "API \u5bc6\u94a5",
+    apiKeyHint: "\u4f7f\u7528\u6b64\u5bc6\u94a5\u5411\u4ee3\u7406\u53d1\u9001\u8ba4\u8bc1\u8bf7\u6c42\uff0c\u8bf7\u52ff\u6cc4\u9732\u3002",
+    copyUrl: "\u590d\u5236 URL",
+    copyApiKey: "\u590d\u5236 API \u5bc6\u94a5",
+    integrationExamples: "\u96c6\u6210\u793a\u4f8b",
+    copy: "\u590d\u5236",
+    addAccountHint: "\u5982\u679c\u5f39\u7a97\u663e\u793a\u9519\u8bef\u6216\u4f60\u5728\u5176\u4ed6\u8bbe\u5907\u4e0a\uff0c\u8bf7\u590d\u5236\u5b8c\u6574\u7684\u56de\u8c03 URL \u7c98\u8d34\u5230\u4e0b\u65b9\u3002",
+    pasteCallback: "\u7c98\u8d34\u56de\u8c03 URL",
+    submit: "\u63d0\u4ea4",
+    submitting: "\u63d0\u4ea4\u4e2d...",
+    pleasePassCallback: "\u8bf7\u7c98\u8d34\u56de\u8c03 URL",
+    failedStartLogin: "\u767b\u5f55\u542f\u52a8\u5931\u8d25",
+    failedExchangeCode: "\u6388\u6743\u7801\u4ea4\u6362\u5931\u8d25",
+    failedDeleteAccount: "\u5220\u9664\u8d26\u6237\u5931\u8d25\u3002",
+    networkError: "\u7f51\u7edc\u9519\u8bef\uff1a",
+    footer: "\u00a9 2025 Codex Proxy\u3002\u4fdd\u7559\u6240\u6709\u6743\u5229\u3002",
+  },
+};
+
+let currentLangCode = localStorage.getItem('codex-proxy-lang')
+  || (navigator.language.startsWith('zh') ? 'zh' : 'en');
+
+function t(key) {
+  return LANG[currentLangCode]?.[key] ?? LANG.en[key] ?? key;
+}
+
+function applyI18n() {
+  document.querySelectorAll('[data-i18n]').forEach(el => {
+    el.textContent = t(el.dataset.i18n);
+  });
+  document.querySelectorAll('[data-i18n-placeholder]').forEach(el => {
+    el.placeholder = t(el.dataset.i18nPlaceholder);
+  });
+  document.querySelectorAll('[data-i18n-title]').forEach(el => {
+    el.title = t(el.dataset.i18nTitle);
+  });
+}
+
+function toggleLang() {
+  currentLangCode = currentLangCode === 'en' ? 'zh' : 'en';
+  localStorage.setItem('codex-proxy-lang', currentLangCode);
+  applyI18n();
+  updateLangToggle();
+  loadAccounts();
+}
+
+function updateLangToggle() {
+  const el = document.getElementById('langToggle');
+  if (el) el.querySelector('span').textContent = currentLangCode === 'en' ? 'EN' : '\u4e2d';
+}
+
 // ── State ──────────────────────────────────────────────────────
 let authData = null;
 let serverBaseUrl = '';
@@ -251,14 +381,14 @@ function formatNumber(n) {
 
 function statusBadge(status) {
   const map = {
-    active:       ['bg-green-100 text-green-700 border-green-200 dark:bg-[#11281d] dark:text-primary dark:border-[#1a442e]', 'Active'],
-    expired:      ['bg-red-100 text-red-600 border-red-200 dark:bg-red-900/20 dark:text-red-400 dark:border-red-800/30', 'Expired'],
-    rate_limited: ['bg-amber-100 text-amber-700 border-amber-200 dark:bg-amber-900/20 dark:text-amber-400 dark:border-amber-800/30', 'Rate Limited'],
-    refreshing:   ['bg-blue-100 text-blue-600 border-blue-200 dark:bg-blue-900/20 dark:text-blue-400 dark:border-blue-800/30', 'Refreshing'],
-    disabled:     ['bg-slate-100 text-slate-500 border-slate-200 dark:bg-slate-800/30 dark:text-slate-400 dark:border-slate-700/30', 'Disabled'],
+    active:       ['bg-green-100 text-green-700 border-green-200 dark:bg-[#11281d] dark:text-primary dark:border-[#1a442e]', 'active'],
+    expired:      ['bg-red-100 text-red-600 border-red-200 dark:bg-red-900/20 dark:text-red-400 dark:border-red-800/30', 'expired'],
+    rate_limited: ['bg-amber-100 text-amber-700 border-amber-200 dark:bg-amber-900/20 dark:text-amber-400 dark:border-amber-800/30', 'rateLimited'],
+    refreshing:   ['bg-blue-100 text-blue-600 border-blue-200 dark:bg-blue-900/20 dark:text-blue-400 dark:border-blue-800/30', 'refreshing'],
+    disabled:     ['bg-slate-100 text-slate-500 border-slate-200 dark:bg-slate-800/30 dark:text-slate-400 dark:border-slate-700/30', 'disabled'],
   };
-  const [cls, label] = map[status] || map.disabled;
-  return `<span class="px-2.5 py-1 rounded-full ${cls} text-xs font-medium border">${escapeHtml(label)}</span>`;
+  const [cls, key] = map[status] || map.disabled;
+  return `<span class="px-2.5 py-1 rounded-full ${cls} text-xs font-medium border">${escapeHtml(t(key))}</span>`;
 }
 
 // ── OAuth message listener ─────────────────────────────────────
@@ -266,7 +396,7 @@ window.addEventListener('message', async (event) => {
   if (event.data?.type === 'oauth-callback-success') {
     if (addPollTimer) clearInterval(addPollTimer);
     document.getElementById('addSection').classList.add('hidden');
-    showAddInfo('Account added successfully!');
+    showAddInfo(t('accountAdded'));
     await loadAccounts();
     await loadStatus();
   }
@@ -289,7 +419,7 @@ function renderAccounts(accounts) {
 
   if (accounts.length === 0) {
     container.innerHTML = `<div class="md:col-span-2 text-center py-8 text-slate-400 dark:text-text-dim text-sm bg-white dark:bg-card-dark border border-gray-200 dark:border-border-dark rounded-xl">
-      No accounts connected. Click "Add Account" to get started.
+      ${escapeHtml(t('noAccounts'))}
     </div>`;
     return;
   }
@@ -301,7 +431,7 @@ function renderAccounts(accounts) {
     const [bgColor, textColor] = avatarColors[i % avatarColors.length];
     const requests = usage.request_count ?? 0;
     const tokens = (usage.input_tokens ?? 0) + (usage.output_tokens ?? 0);
-    const plan = acct.planType || 'Free Tier';
+    const plan = acct.planType || t('freeTier');
 
     // Quota bar
     let quotaHtml = '';
@@ -322,24 +452,24 @@ function renderAccounts(accounts) {
       quotaHtml = `
         <div class="pt-3 mt-3 border-t border-slate-100 dark:border-border-dark">
           <div class="flex justify-between text-[0.78rem] mb-1.5">
-            <span class="text-slate-500 dark:text-text-dim">Rate Limit</span>
+            <span class="text-slate-500 dark:text-text-dim">${escapeHtml(t('rateLimit'))}</span>
             ${rl.limit_reached
-              ? '<span class="px-2 py-0.5 rounded-full bg-red-100 dark:bg-red-900/20 text-red-600 dark:text-red-400 text-xs font-medium">Limit Reached</span>'
+              ? `<span class="px-2 py-0.5 rounded-full bg-red-100 dark:bg-red-900/20 text-red-600 dark:text-red-400 text-xs font-medium">${escapeHtml(t('limitReached'))}</span>`
               : pct != null
-                ? `<span class="font-medium ${pctColor}">${pct}% Used</span>`
-                : '<span class="font-medium text-primary">OK</span>'}
+                ? `<span class="font-medium ${pctColor}">${pct}% ${escapeHtml(t('used'))}</span>`
+                : `<span class="font-medium text-primary">${escapeHtml(t('ok'))}</span>`}
           </div>
           ${pct != null ? `
             <div class="w-full bg-slate-100 dark:bg-border-dark rounded-full h-2 overflow-hidden">
               <div class="${barColor} h-2 rounded-full transition-all" style="width: ${pct}%"></div>
             </div>` : ''}
-          ${resetAt ? `<p class="text-xs text-slate-400 dark:text-text-dim mt-1">Resets at ${escapeHtml(resetAt)}</p>` : ''}
+          ${resetAt ? `<p class="text-xs text-slate-400 dark:text-text-dim mt-1">${escapeHtml(t('resetsAt'))} ${escapeHtml(resetAt)}</p>` : ''}
         </div>`;
     }
 
     return `
     <div class="group bg-white dark:bg-card-dark border border-gray-200 dark:border-border-dark rounded-xl p-4 shadow-sm hover:shadow-md transition-all hover:border-primary/30 dark:hover:border-primary/50 relative">
-      <button onclick="deleteAccount('${escapeHtml(acct.id)}')" class="absolute top-3 right-3 opacity-0 group-hover:opacity-100 p-1.5 text-slate-300 dark:text-text-dim hover:text-red-500 transition-all rounded-md hover:bg-red-50 dark:hover:bg-red-900/20" title="Delete account">
+      <button onclick="deleteAccount('${escapeHtml(acct.id)}')" class="absolute top-3 right-3 opacity-0 group-hover:opacity-100 p-1.5 text-slate-300 dark:text-text-dim hover:text-red-500 transition-all rounded-md hover:bg-red-50 dark:hover:bg-red-900/20" title="${escapeHtml(t('deleteAccount'))}">
         <svg class="size-[18px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path stroke-linecap="round" stroke-linejoin="round" d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 00-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 00-7.5 0"/></svg>
       </button>
       <div class="flex justify-between items-start mb-4">
@@ -354,11 +484,11 @@ function renderAccounts(accounts) {
       </div>
       <div class="space-y-2">
         <div class="flex justify-between text-[0.78rem]">
-          <span class="text-slate-500 dark:text-text-dim">Total Requests</span>
+          <span class="text-slate-500 dark:text-text-dim">${escapeHtml(t('totalRequests'))}</span>
           <span class="font-medium">${formatNumber(requests)}</span>
         </div>
         <div class="flex justify-between text-[0.78rem]">
-          <span class="text-slate-500 dark:text-text-dim">Tokens Used</span>
+          <span class="text-slate-500 dark:text-text-dim">${escapeHtml(t('tokensUsed'))}</span>
           <span class="font-medium">${formatNumber(tokens)}</span>
         </div>
       </div>
@@ -368,18 +498,18 @@ function renderAccounts(accounts) {
 }
 
 async function deleteAccount(id) {
-  if (!confirm('Remove this account?')) return;
+  if (!confirm(t('removeConfirm'))) return;
   try {
     const resp = await fetch('/auth/accounts/' + encodeURIComponent(id), { method: 'DELETE' });
     if (!resp.ok) {
       const data = await resp.json();
-      alert(data.error || 'Failed to delete account.');
+      alert(data.error || t('failedDeleteAccount'));
       return;
     }
     await loadAccounts();
     await loadStatus();
   } catch (err) {
-    alert('Network error: ' + err.message);
+    alert(t('networkError') + err.message);
   }
 }
 
@@ -411,7 +541,7 @@ async function startAddAccount() {
     const data = await resp.json();
 
     if (!resp.ok || !data.authUrl) {
-      throw new Error(data.error || 'Failed to start login');
+      throw new Error(data.error || t('failedStartLogin'));
     }
 
     window.open(data.authUrl, 'oauth_add', 'width=600,height=700,scrollbars=yes');
@@ -427,7 +557,7 @@ async function startAddAccount() {
         if ((d.accounts?.length || 0) > prevCount) {
           clearInterval(addPollTimer);
           document.getElementById('addSection').classList.add('hidden');
-          showAddInfo('Account added successfully!');
+          showAddInfo(t('accountAdded'));
           await loadAccounts();
           await loadStatus();
         }
@@ -446,11 +576,11 @@ async function submitAddRelay() {
   document.getElementById('addInfo').classList.add('hidden');
   document.getElementById('addError').classList.add('hidden');
 
-  if (!callbackUrl) { showAddError('Please paste the callback URL'); return; }
+  if (!callbackUrl) { showAddError(t('pleasePassCallback')); return; }
 
   const btn = document.getElementById('addRelayBtn');
   btn.disabled = true;
-  btn.textContent = 'Submitting...';
+  btn.textContent = t('submitting');
 
   try {
     const resp = await fetch('/auth/code-relay', {
@@ -464,16 +594,16 @@ async function submitAddRelay() {
       if (addPollTimer) clearInterval(addPollTimer);
       document.getElementById('addSection').classList.add('hidden');
       document.getElementById('addCallbackInput').value = '';
-      showAddInfo('Account added successfully!');
+      showAddInfo(t('accountAdded'));
       await loadAccounts();
       await loadStatus();
     } else {
-      showAddError(data.error || 'Failed to exchange code');
+      showAddError(data.error || t('failedExchangeCode'));
     }
   } catch (err) {
-    showAddError('Network error: ' + err.message);
+    showAddError(t('networkError') + err.message);
   } finally {
-    btn.textContent = 'Submit';
+    btn.textContent = t('submit');
     btn.disabled = false;
   }
 }
@@ -730,6 +860,8 @@ function setupReactiveBindings() {
 }
 
 // ── Init ───────────────────────────────────────────────────────
+applyI18n();
+updateLangToggle();
 loadStatus();
 setupReactiveBindings();
 loadAccounts();
