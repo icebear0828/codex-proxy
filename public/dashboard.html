@@ -34,6 +34,10 @@
     :root   { --primary: 16 162 53;  --primary-hover: 14 140 46; }
     .dark   { --primary: 16 163 127; --primary-hover: 14 140 108; }
 
+    /* Hide icon ligature text until font loads */
+    .material-symbols-outlined { opacity: 0; }
+    .fonts-ready .material-symbols-outlined { opacity: 1; transition: opacity 0.15s; }
+
     /* Dark scrollbar for code blocks */
     pre::-webkit-scrollbar { height: 8px; }
     pre::-webkit-scrollbar-track { background: #0d1117; }
@@ -47,6 +51,7 @@
         if (t === 'dark' || (!t && window.matchMedia('(prefers-color-scheme: dark)').matches))
             document.documentElement.classList.add('dark');
     } catch {}
+    document.fonts.ready.then(() => document.documentElement.classList.add('fonts-ready'));
 </script>
 </head>
 <body class="bg-bg-light dark:bg-bg-dark font-display text-slate-900 dark:text-text-main antialiased min-h-screen flex flex-col transition-colors">
