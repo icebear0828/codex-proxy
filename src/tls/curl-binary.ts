@@ -12,6 +12,7 @@
 
 import { existsSync } from "fs";
 import { execFileSync } from "child_process";
+import { createConnection } from "net";
 import { resolve } from "path";
 import { getConfig } from "../config.js";
 
@@ -142,14 +143,70 @@ export function getChromeTlsArgs(): string[] {
 }
 
 /**
+ * Common local proxy ports to auto-detect.
+ * Checked in order: mihomo/clash, v2ray, SOCKS5 common.
+ */
+const PROXY_PORTS = [
+  { port: 7890, proto: "http" },   // mihomo / clash
+  { port: 7897, proto: "http" },   // clash-verge
+  { port: 10809, proto: "http" },  // v2ray HTTP
+  { port: 1080, proto: "socks5" }, // SOCKS5 common
+  { port: 10808, proto: "socks5" },// v2ray SOCKS5
+];
+
+let _proxyUrl: string | null | undefined; // undefined = not yet detected
+
+/** Probe a TCP port on localhost. Resolves true if a server is listening. */
+function probePort(port: number, timeoutMs = 500): Promise<boolean> {
+  return new Promise((resolve) => {
+    const sock = createConnection({ host: "127.0.0.1", port }, () => {
+      sock.destroy();
+      resolve(true);
+    });
+    sock.setTimeout(timeoutMs);
+    sock.on("timeout", () => { sock.destroy(); resolve(false); });
+    sock.on("error", () => { resolve(false); });
+  });
+}
+
+/**
+ * Detect a local proxy by probing common ports.
+ * Called once at startup, result is cached.
+ */
+async function detectLocalProxy(): Promise<string | null> {
+  for (const { port, proto } of PROXY_PORTS) {
+    if (await probePort(port)) {
+      const url = `${proto}://127.0.0.1:${port}`;
+      console.log(`[Proxy] Auto-detected local proxy: ${url}`);
+      return url;
+    }
+  }
+  return null;
+}
+
+/**
+ * Initialize proxy detection. Called once at startup from index.ts.
+ * Priority: config proxy_url > HTTPS_PROXY env > auto-detect local ports.
+ */
+export async function initProxy(): Promise<void> {
+  const config = getConfig();
+  if (config.tls.proxy_url) {
+    _proxyUrl = config.tls.proxy_url;
+    console.log(`[Proxy] Using configured proxy: ${_proxyUrl}`);
+    return;
+  }
+  _proxyUrl = await detectLocalProxy();
+  if (!_proxyUrl) {
+    console.log("[Proxy] No local proxy detected — direct connection");
+  }
+}
+
+/**
  * Get proxy args to prepend to curl commands.
- * Reads from config tls.proxy_url (which also picks up HTTPS_PROXY env var).
- * Returns empty array when no proxy is configured.
+ * Uses cached result from initProxy().
  */
 export function getProxyArgs(): string[] {
-  const config = getConfig();
-  const url = config.tls.proxy_url;
-  if (url) return ["-x", url];
+  if (_proxyUrl) return ["-x", _proxyUrl];
   return [];
 }
 

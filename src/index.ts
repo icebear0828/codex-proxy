@@ -15,6 +15,7 @@ import modelsApp from "./routes/models.js";
 import { createWebRoutes } from "./routes/web.js";
 import { CookieJar } from "./proxy/cookie-jar.js";
 import { startUpdateChecker, stopUpdateChecker } from "./update-checker.js";
+import { initProxy } from "./tls/curl-binary.js";
 
 async function main() {
   // Load configuration
@@ -29,6 +30,9 @@ async function main() {
     console.error("[Init] Make sure config/default.yaml and config/fingerprint.yaml exist and are valid YAML.");
     process.exit(1);
   }
+
+  // Detect proxy (config > env > auto-detect local ports)
+  await initProxy();
 
   // Initialize managers
   const accountPool = new AccountPool();
