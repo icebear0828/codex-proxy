@@ -5,10 +5,12 @@
 
 import { readFileSync, writeFileSync, mkdirSync } from "fs";
 import { resolve } from "path";
+import { fork } from "child_process";
 import yaml from "js-yaml";
-import { mutateClientConfig } from "./config.js";
+import { mutateClientConfig, reloadAllConfigs } from "./config.js";
 import { jitterInt } from "./utils/jitter.js";
 import { curlFetchGet } from "./tls/curl-fetch.js";
+import { mutateYaml } from "./utils/yaml-mutate.js";
 
 const CONFIG_PATH = resolve(process.cwd(), "config/default.yaml");
 const STATE_PATH = resolve(process.cwd(), "data/update-state.json");
@@ -27,6 +29,7 @@ export interface UpdateState {
 
 let _currentState: UpdateState | null = null;
 let _pollTimer: ReturnType<typeof setTimeout> | null = null;
+let _updateInProgress = false;
 
 function loadCurrentConfig(): { app_version: string; build_number: string } {
   const raw = yaml.load(readFileSync(CONFIG_PATH, "utf-8")) as Record<string, unknown>;
@@ -61,11 +64,69 @@ function parseAppcast(xml: string): {
 }
 
 function applyVersionUpdate(version: string, build: string): void {
-  let content = readFileSync(CONFIG_PATH, "utf-8");
-  content = content.replace(/app_version:\s*"[^"]+"/, `app_version: "${version}"`);
-  content = content.replace(/build_number:\s*"[^"]+"/, `build_number: "${build}"`);
-  writeFileSync(CONFIG_PATH, content, "utf-8");
+  mutateYaml(CONFIG_PATH, (data: any) => {
+    data.client.app_version = version;
+    data.client.build_number = build;
+  });
   mutateClientConfig({ app_version: version, build_number: build });
+}
+
+/**
+ * Trigger the full-update pipeline in a background child process.
+ * Downloads new Codex.app, extracts fingerprint, and applies config updates.
+ * Protected by a lock to prevent concurrent runs.
+ */
+function triggerFullUpdate(): void {
+  if (_updateInProgress) {
+    console.log("[UpdateChecker] Full update already in progress, skipping");
+    return;
+  }
+  _updateInProgress = true;
+  console.log("[UpdateChecker] Triggering full-update pipeline...");
+
+  const child = fork(
+    resolve(process.cwd(), "scripts/full-update.ts"),
+    ["--force"],
+    {
+      execArgv: ["--import", "tsx"],
+      stdio: "pipe",
+      cwd: process.cwd(),
+    },
+  );
+
+  let output = "";
+  child.stdout?.on("data", (chunk: Buffer) => {
+    output += chunk.toString();
+  });
+  child.stderr?.on("data", (chunk: Buffer) => {
+    output += chunk.toString();
+  });
+
+  child.on("exit", (code) => {
+    _updateInProgress = false;
+    if (code === 0) {
+      console.log("[UpdateChecker] Full update completed. Reloading config...");
+      try {
+        reloadAllConfigs();
+      } catch (err) {
+        console.error("[UpdateChecker] Failed to reload config after update:", err instanceof Error ? err.message : err);
+      }
+    } else {
+      console.warn(`[UpdateChecker] Full update exited with code ${code}`);
+      if (output) {
+        // Log last few lines for debugging
+        const lines = output.trim().split("\n").slice(-5);
+        for (const line of lines) {
+          console.warn(`[UpdateChecker]   ${line}`);
+        }
+      }
+    }
+  });
+
+  child.on("error", (err) => {
+    _updateInProgress = false;
+    console.error("[UpdateChecker] Failed to spawn full-update:", err.message);
+  });
 }
 
 export async function checkForUpdate(): Promise<UpdateState> {
@@ -109,6 +170,9 @@ export async function checkForUpdate(): Promise<UpdateState> {
     state.current_build = build!;
     state.update_available = false;
     console.log(`[UpdateChecker] Auto-applied: v${version} (build ${build})`);
+
+    // Trigger full-update pipeline in background (download + fingerprint extraction)
+    triggerFullUpdate();
   }
 
   return state;

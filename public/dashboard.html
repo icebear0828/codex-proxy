@@ -391,6 +391,24 @@ function formatNumber(n) {
   return String(n);
 }
 
+function formatResetTime(unixSec) {
+  const d = new Date(unixSec * 1000);
+  const now = new Date();
+  const time = d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+  // Same calendar day → just show time
+  if (d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth() && d.getDate() === now.getDate()) {
+    return time;
+  }
+  // Tomorrow
+  const tomorrow = new Date(now); tomorrow.setDate(tomorrow.getDate() + 1);
+  if (d.getFullYear() === tomorrow.getFullYear() && d.getMonth() === tomorrow.getMonth() && d.getDate() === tomorrow.getDate()) {
+    return (currentLangCode === 'zh' ? '明天 ' : 'Tomorrow ') + time;
+  }
+  // Other dates → full date + time
+  const date = d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+  return date + ' ' + time;
+}
+
 function statusBadge(status) {
   const map = {
     active:       ['bg-green-100 text-green-700 border-green-200 dark:bg-[#11281d] dark:text-primary dark:border-[#1a442e]', 'active'],
@@ -459,7 +477,7 @@ function renderAccounts(accounts) {
         : pct >= 90 ? 'text-red-500'
         : pct >= 60 ? 'text-amber-600 dark:text-amber-500'
         : 'text-primary';
-      const resetAt = rl.reset_at ? new Date(rl.reset_at * 1000).toLocaleTimeString() : null;
+      const resetAt = rl.reset_at ? formatResetTime(rl.reset_at) : null;
 
       quotaHtml = `
         <div class="pt-3 mt-3 border-t border-slate-100 dark:border-border-dark">

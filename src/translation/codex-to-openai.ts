@@ -11,16 +11,14 @@
  */
 
 import { randomUUID } from "crypto";
-import type { CodexSSEEvent, CodexApi } from "../proxy/codex-api.js";
+import type { CodexApi } from "../proxy/codex-api.js";
 import type {
   ChatCompletionResponse,
   ChatCompletionChunk,
 } from "../types/openai.js";
+import { iterateCodexEvents, type UsageInfo } from "./codex-event-extractor.js";
 
-export interface UsageInfo {
-  input_tokens: number;
-  output_tokens: number;
-}
+export type { UsageInfo };
 
 /** Format an SSE chunk for streaming output */
 function formatSSE(chunk: ChatCompletionChunk): string {
@@ -41,7 +39,6 @@ export async function* streamCodexToOpenAI(
 ): AsyncGenerator<string> {
   const chunkId = `chatcmpl-${randomUUID().replace(/-/g, "").slice(0, 24)}`;
   const created = Math.floor(Date.now() / 1000);
-  let responseId: string | null = null;
 
   // Send initial role chunk
   yield formatSSE({
@@ -58,25 +55,12 @@ export async function* streamCodexToOpenAI(
     ],
   });
 
-  for await (const evt of codexApi.parseStream(rawResponse)) {
-    const data = evt.data as Record<string, unknown>;
+  for await (const evt of iterateCodexEvents(codexApi, rawResponse)) {
+    if (evt.responseId) onResponseId?.(evt.responseId);
 
-    switch (evt.event) {
-      case "response.created":
-      case "response.in_progress": {
-        // Extract response ID for headers and multi-turn
-        const resp = data.response as Record<string, unknown> | undefined;
-        if (resp?.id) {
-          responseId = resp.id as string;
-          onResponseId?.(responseId);
-        }
-        break;
-      }
-
+    switch (evt.typed.type) {
       case "response.output_text.delta": {
-        // Streaming text delta
-        const delta = (data.delta as string) ?? "";
-        if (delta) {
+        if (evt.textDelta) {
           yield formatSSE({
             id: chunkId,
             object: "chat.completion.chunk",
@@ -85,7 +69,7 @@ export async function* streamCodexToOpenAI(
             choices: [
               {
                 index: 0,
-                delta: { content: delta },
+                delta: { content: evt.textDelta },
                 finish_reason: null,
               },
             ],
@@ -95,18 +79,7 @@ export async function* streamCodexToOpenAI(
       }
 
       case "response.completed": {
-        // Extract and report usage
-        if (onUsage) {
-          const resp = data.response as Record<string, unknown> | undefined;
-          if (resp?.usage) {
-            const u = resp.usage as Record<string, number>;
-            onUsage({
-              input_tokens: u.input_tokens ?? 0,
-              output_tokens: u.output_tokens ?? 0,
-            });
-          }
-        }
-        // Send final chunk with finish_reason
+        if (evt.usage) onUsage?.(evt.usage);
         yield formatSSE({
           id: chunkId,
           object: "chat.completion.chunk",
@@ -122,8 +95,6 @@ export async function* streamCodexToOpenAI(
         });
         break;
       }
-
-      // Ignore other events (reasoning, content_part, output_item, etc.)
     }
   }
 
@@ -147,33 +118,12 @@ export async function collectCodexResponse(
   let completionTokens = 0;
   let responseId: string | null = null;
 
-  for await (const evt of codexApi.parseStream(rawResponse)) {
-    const data = evt.data as Record<string, unknown>;
-
-    switch (evt.event) {
-      case "response.created":
-      case "response.in_progress": {
-        const resp = data.response as Record<string, unknown> | undefined;
-        if (resp?.id) responseId = resp.id as string;
-        break;
-      }
-
-      case "response.output_text.delta": {
-        const delta = (data.delta as string) ?? "";
-        fullText += delta;
-        break;
-      }
-
-      case "response.completed": {
-        const resp = data.response as Record<string, unknown> | undefined;
-        if (resp?.id) responseId = resp.id as string;
-        if (resp?.usage) {
-          const usage = resp.usage as Record<string, number>;
-          promptTokens = usage.input_tokens ?? 0;
-          completionTokens = usage.output_tokens ?? 0;
-        }
-        break;
-      }
+  for await (const evt of iterateCodexEvents(codexApi, rawResponse)) {
+    if (evt.responseId) responseId = evt.responseId;
+    if (evt.textDelta) fullText += evt.textDelta;
+    if (evt.usage) {
+      promptTokens = evt.usage.input_tokens;
+      completionTokens = evt.usage.output_tokens;
     }
   }
 

@@ -1,6 +1,8 @@
 import { createHash } from "crypto";
 import { getConfig } from "../config.js";
 
+const MAX_SESSIONS = 10000;
+
 interface Session {
   taskId: string;
   turnId: string;
@@ -69,6 +71,18 @@ export class SessionManager {
     messages: Array<{ role: string; content: string }>,
   ): void {
     const hash = this.hashMessages(messages);
+    // Evict oldest session if at capacity
+    if (this.sessions.size >= MAX_SESSIONS) {
+      let oldestKey: string | null = null;
+      let oldestTime = Infinity;
+      for (const [key, s] of this.sessions) {
+        if (s.createdAt < oldestTime) {
+          oldestTime = s.createdAt;
+          oldestKey = key;
+        }
+      }
+      if (oldestKey) this.sessions.delete(oldestKey);
+    }
     this.sessions.set(taskId, {
       taskId,
       turnId,

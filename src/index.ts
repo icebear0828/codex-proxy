@@ -100,14 +100,28 @@ async function main() {
     port,
   });
 
-  // Graceful shutdown
+  // Graceful shutdown with timeout protection
+  let shutdownCalled = false;
   const shutdown = () => {
+    if (shutdownCalled) return;
+    shutdownCalled = true;
     console.log("\n[Shutdown] Cleaning up...");
-    stopUpdateChecker();
-    sessionManager.destroy();
-    cookieJar.destroy();
-    refreshScheduler.destroy();
-    accountPool.destroy();
+    const forceExit = setTimeout(() => {
+      console.error("[Shutdown] Timeout after 10s — forcing exit");
+      process.exit(1);
+    }, 10_000);
+    if (forceExit.unref) forceExit.unref();
+
+    try {
+      stopUpdateChecker();
+      refreshScheduler.destroy();  // Cancel timers first
+      sessionManager.destroy();
+      cookieJar.destroy();         // Flush cookies
+      accountPool.destroy();       // Flush accounts
+    } catch (err) {
+      console.error("[Shutdown] Error during cleanup:", err instanceof Error ? err.message : err);
+    }
+    clearTimeout(forceExit);
     process.exit(0);
   };
 

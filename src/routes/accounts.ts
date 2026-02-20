@@ -95,7 +95,12 @@ export function createAccountRoutes(
         try {
           const api = makeApi(acct.id, entry.token, entry.accountId);
           const usage = await api.getUsage();
-          return { ...acct, quota: toQuota(usage) };
+          // Sync rate limit window — auto-reset local counters on window rollover
+          const resetAt = usage.rate_limit.primary_window?.reset_at ?? null;
+          pool.syncRateLimitWindow(acct.id, resetAt);
+          // Re-read usage after potential reset
+          const freshAcct = pool.getAccounts().find((a) => a.id === acct.id) ?? acct;
+          return { ...freshAcct, quota: toQuota(usage) };
         } catch {
           return acct; // skip on error — no quota field
         }

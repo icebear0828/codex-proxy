@@ -14,6 +14,7 @@ import type {
   GeminiGenerateContentResponse,
   GeminiUsageMetadata,
 } from "../types/gemini.js";
+import { iterateCodexEvents } from "./codex-event-extractor.js";
 
 export interface GeminiUsageInfo {
   input_tokens: number;
@@ -34,27 +35,17 @@ export async function* streamCodexToGemini(
   let inputTokens = 0;
   let outputTokens = 0;
 
-  for await (const evt of codexApi.parseStream(rawResponse)) {
-    const data = evt.data as Record<string, unknown>;
+  for await (const evt of iterateCodexEvents(codexApi, rawResponse)) {
+    if (evt.responseId) onResponseId?.(evt.responseId);
 
-    switch (evt.event) {
-      case "response.created":
-      case "response.in_progress": {
-        const resp = data.response as Record<string, unknown> | undefined;
-        if (resp?.id) {
-          onResponseId?.(resp.id as string);
-        }
-        break;
-      }
-
+    switch (evt.typed.type) {
       case "response.output_text.delta": {
-        const delta = (data.delta as string) ?? "";
-        if (delta) {
+        if (evt.textDelta) {
           const chunk: GeminiGenerateContentResponse = {
             candidates: [
               {
                 content: {
-                  parts: [{ text: delta }],
+                  parts: [{ text: evt.textDelta }],
                   role: "model",
                 },
                 index: 0,
@@ -68,11 +59,9 @@ export async function* streamCodexToGemini(
       }
 
       case "response.completed": {
-        const resp = data.response as Record<string, unknown> | undefined;
-        if (resp?.usage) {
-          const u = resp.usage as Record<string, number>;
-          inputTokens = u.input_tokens ?? 0;
-          outputTokens = u.output_tokens ?? 0;
+        if (evt.usage) {
+          inputTokens = evt.usage.input_tokens;
+          outputTokens = evt.usage.output_tokens;
           onUsage?.({ input_tokens: inputTokens, output_tokens: outputTokens });
         }
 
@@ -120,32 +109,12 @@ export async function collectCodexToGeminiResponse(
   let outputTokens = 0;
   let responseId: string | null = null;
 
-  for await (const evt of codexApi.parseStream(rawResponse)) {
-    const data = evt.data as Record<string, unknown>;
-
-    switch (evt.event) {
-      case "response.created":
-      case "response.in_progress": {
-        const resp = data.response as Record<string, unknown> | undefined;
-        if (resp?.id) responseId = resp.id as string;
-        break;
-      }
-
-      case "response.output_text.delta": {
-        fullText += (data.delta as string) ?? "";
-        break;
-      }
-
-      case "response.completed": {
-        const resp = data.response as Record<string, unknown> | undefined;
-        if (resp?.id) responseId = resp.id as string;
-        if (resp?.usage) {
-          const u = resp.usage as Record<string, number>;
-          inputTokens = u.input_tokens ?? 0;
-          outputTokens = u.output_tokens ?? 0;
-        }
-        break;
-      }
+  for await (const evt of iterateCodexEvents(codexApi, rawResponse)) {
+    if (evt.responseId) responseId = evt.responseId;
+    if (evt.textDelta) fullText += evt.textDelta;
+    if (evt.usage) {
+      inputTokens = evt.usage.input_tokens;
+      outputTokens = evt.usage.output_tokens;
     }
   }
 

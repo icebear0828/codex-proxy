@@ -39,14 +39,20 @@ export function extractUserProfile(
   const payload = decodeJwtPayload(token);
   if (!payload) return null;
   try {
-    const profile = payload["https://api.openai.com/profile"];
-    if (profile && typeof profile === "object" && profile !== null) {
-      const p = profile as Record<string, unknown>;
-      return {
-        email: typeof p.email === "string" ? p.email : undefined,
-        chatgpt_user_id: typeof p.chatgpt_user_id === "string" ? p.chatgpt_user_id : undefined,
-        chatgpt_plan_type: typeof p.chatgpt_plan_type === "string" ? p.chatgpt_plan_type : undefined,
-      };
+    const profile = payload["https://api.openai.com/profile"] as Record<string, unknown> | undefined;
+    const auth = payload["https://api.openai.com/auth"] as Record<string, unknown> | undefined;
+
+    const email = typeof profile?.email === "string" ? profile.email : undefined;
+    // chatgpt_plan_type lives in the /auth claim, not /profile
+    const chatgpt_plan_type =
+      (typeof auth?.chatgpt_plan_type === "string" ? auth.chatgpt_plan_type : undefined) ??
+      (typeof profile?.chatgpt_plan_type === "string" ? profile.chatgpt_plan_type : undefined);
+    const chatgpt_user_id =
+      (typeof auth?.chatgpt_user_id === "string" ? auth.chatgpt_user_id : undefined) ??
+      (typeof profile?.chatgpt_user_id === "string" ? profile.chatgpt_user_id : undefined);
+
+    if (email || chatgpt_plan_type || chatgpt_user_id) {
+      return { email, chatgpt_user_id, chatgpt_plan_type };
     }
   } catch {
     // ignore

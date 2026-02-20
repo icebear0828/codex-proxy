@@ -157,6 +157,14 @@ export async function handleProxyRequest(
       );
       if (err.status === 429) {
         accountPool.markRateLimited(entryId);
+        // Note: markRateLimited releases the lock but does not increment
+        // request_count. We intentionally count 429s as requests for
+        // accurate load tracking across accounts.
+        const entry = accountPool.getEntry(entryId);
+        if (entry) {
+          entry.usage.request_count++;
+          entry.usage.last_used = new Date().toISOString();
+        }
         c.status(429);
         return c.json(fmt.format429(err.message));
       }

@@ -8,7 +8,8 @@
  */
 
 import { execFile } from "child_process";
-import { resolveCurlBinary, getChromeTlsArgs } from "./curl-binary.js";
+import { resolveCurlBinary, getChromeTlsArgs, getProxyArgs } from "./curl-binary.js";
+import { buildAnonymousHeaders } from "../fingerprint/manager.js";
 
 export interface CurlFetchResponse {
   status: number;
@@ -24,12 +25,23 @@ const STATUS_SEPARATOR = "\n__CURL_HTTP_STATUS__";
 export function curlFetchGet(url: string): Promise<CurlFetchResponse> {
   const args = [
     ...getChromeTlsArgs(),
+    ...getProxyArgs(),
     "-s", "-S",
     "--compressed",
     "--max-time", "30",
+  ];
+
+  // Inject fingerprint headers (User-Agent, sec-ch-ua, Accept-Encoding, etc.)
+  const fpHeaders = buildAnonymousHeaders();
+  for (const [key, value] of Object.entries(fpHeaders)) {
+    args.push("-H", `${key}: ${value}`);
+  }
+  args.push("-H", "Expect:");
+
+  args.push(
     "-w", STATUS_SEPARATOR + "%{http_code}",
     url,
-  ];
+  );
 
   return execCurl(args);
 }
@@ -44,15 +56,26 @@ export function curlFetchPost(
 ): Promise<CurlFetchResponse> {
   const args = [
     ...getChromeTlsArgs(),
+    ...getProxyArgs(),
     "-s", "-S",
     "--compressed",
     "--max-time", "30",
     "-X", "POST",
-    "-H", `Content-Type: ${contentType}`,
+  ];
+
+  // Inject fingerprint headers (User-Agent, sec-ch-ua, Accept-Encoding, etc.)
+  const fpHeaders = buildAnonymousHeaders();
+  for (const [key, value] of Object.entries(fpHeaders)) {
+    args.push("-H", `${key}: ${value}`);
+  }
+  args.push("-H", `Content-Type: ${contentType}`);
+  args.push("-H", "Expect:");
+
+  args.push(
     "-d", body,
     "-w", STATUS_SEPARATOR + "%{http_code}",
     url,
-  ];
+  );
 
   return execCurl(args);
 }

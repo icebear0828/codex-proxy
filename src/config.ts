@@ -6,7 +6,7 @@ import { z } from "zod";
 const ConfigSchema = z.object({
   api: z.object({
     base_url: z.string().default("https://chatgpt.com/backend-api"),
-    timeout_seconds: z.number().default(60),
+    timeout_seconds: z.number().min(1).default(60),
   }),
   client: z.object({
     originator: z.string().default("Codex Desktop"),
@@ -14,6 +14,7 @@ const ConfigSchema = z.object({
     build_number: z.string().default("517"),
     platform: z.string().default("darwin"),
     arch: z.string().default("arm64"),
+    chromium_version: z.string().default("136"),
   }),
   model: z.object({
     default: z.string().default("gpt-5.3-codex"),
@@ -22,16 +23,16 @@ const ConfigSchema = z.object({
   auth: z.object({
     jwt_token: z.string().nullable().default(null),
     chatgpt_oauth: z.boolean().default(true),
-    refresh_margin_seconds: z.number().default(300),
+    refresh_margin_seconds: z.number().min(0).default(300),
     rotation_strategy: z.enum(["least_used", "round_robin"]).default("least_used"),
-    rate_limit_backoff_seconds: z.number().default(60),
+    rate_limit_backoff_seconds: z.number().min(1).default(60),
     oauth_client_id: z.string().default("app_EMoamEEZ73f0CkXaXp7hrann"),
     oauth_auth_endpoint: z.string().default("https://auth.openai.com/oauth/authorize"),
     oauth_token_endpoint: z.string().default("https://auth.openai.com/oauth/token"),
   }),
   server: z.object({
     host: z.string().default("0.0.0.0"),
-    port: z.number().default(8080),
+    port: z.number().min(1).max(65535).default(8080),
     proxy_api_key: z.string().nullable().default(null),
   }),
   environment: z.object({
@@ -39,8 +40,8 @@ const ConfigSchema = z.object({
     default_branch: z.string().default("main"),
   }),
   session: z.object({
-    ttl_minutes: z.number().default(60),
-    cleanup_interval_minutes: z.number().default(5),
+    ttl_minutes: z.number().min(1).default(60),
+    cleanup_interval_minutes: z.number().min(1).default(5),
   }),
   tls: z.object({
     curl_binary: z.string().default("auto"),
@@ -85,7 +86,10 @@ function applyEnvOverrides(raw: Record<string, unknown>): Record<string, unknown
     (raw.client as Record<string, unknown>).arch = process.env.CODEX_ARCH;
   }
   if (process.env.PORT) {
-    (raw.server as Record<string, unknown>).port = parseInt(process.env.PORT, 10);
+    const parsed = parseInt(process.env.PORT, 10);
+    if (!isNaN(parsed)) {
+      (raw.server as Record<string, unknown>).port = parsed;
+    }
   }
   const proxyEnv = process.env.HTTPS_PROXY || process.env.https_proxy;
   if (proxyEnv) {
@@ -128,4 +132,23 @@ export function getFingerprint(): FingerprintConfig {
 export function mutateClientConfig(patch: Partial<AppConfig["client"]>): void {
   if (!_config) throw new Error("Config not loaded");
   Object.assign(_config.client, patch);
+}
+
+/** Reload config from disk (hot-reload after full-update). */
+export function reloadConfig(configDir?: string): AppConfig {
+  _config = null;
+  return loadConfig(configDir);
+}
+
+/** Reload fingerprint from disk (hot-reload after full-update). */
+export function reloadFingerprint(configDir?: string): FingerprintConfig {
+  _fingerprint = null;
+  return loadFingerprint(configDir);
+}
+
+/** Reload both config and fingerprint from disk. */
+export function reloadAllConfigs(configDir?: string): void {
+  reloadConfig(configDir);
+  reloadFingerprint(configDir);
+  console.log("[Config] Hot-reloaded config and fingerprint from disk");
 }

@@ -211,6 +211,15 @@ export function getProxyArgs(): string[] {
 }
 
 /**
+ * Check if the resolved curl binary is curl-impersonate.
+ * When true, it supports br/zstd decompression natively.
+ */
+export function isImpersonate(): boolean {
+  resolveCurlBinary(); // ensure resolved
+  return _isImpersonate;
+}
+
+/**
  * Reset the cached binary path (useful for testing).
  */
 export function resetCurlBinaryCache(): void {

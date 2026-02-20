@@ -1,0 +1,9 @@
+node_modules/
+dist/
+data/
+bin/
+tmp/
+.asar-out/
+.git/
+docs/
+stitch-*/

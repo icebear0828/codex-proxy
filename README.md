@@ -198,6 +198,30 @@ for await (const chunk of stream) {
 }
 ```
 
+## 🐳 部署方式 (Deployment)
+
+### Docker 部署（推荐，所有平台通用）
+
+```bash
+git clone https://github.com/icebear0828/codex-proxy.git
+cd codex-proxy
+docker compose up -d
+# 打开 http://localhost:8080 登录
+```
+
+### 原生部署（macOS / Linux）
+
+```bash
+git clone https://github.com/icebear0828/codex-proxy.git
+cd codex-proxy
+npm install
+npm run build
+npm start
+# 打开 http://localhost:8080 登录
+```
+
+> Docker 部署会自动安装 curl-impersonate（Linux 版）。原生部署依赖 `npm install` 的 postinstall 脚本自动下载。
+
 ## ⚙️ 配置说明 (Configuration)
 
 所有配置位于 `config/default.yaml`：

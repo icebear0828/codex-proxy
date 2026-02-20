@@ -11,7 +11,7 @@
 
 import { spawn, execFile } from "child_process";
 import { getConfig } from "../config.js";
-import { resolveCurlBinary, getChromeTlsArgs, getProxyArgs } from "../tls/curl-binary.js";
+import { resolveCurlBinary, getChromeTlsArgs, getProxyArgs, isImpersonate } from "../tls/curl-binary.js";
 import {
   buildHeaders,
   buildHeadersWithContentType,
@@ -235,10 +235,11 @@ export class CodexApi {
       buildHeaders(this.token, this.accountId),
     );
     headers["Accept"] = "application/json";
-    // Explicitly set Accept-Encoding to encodings that system curl can always
-    // decompress. Without this, HTTP/2 servers may send brotli/zstd which
-    // system curl (without br/zstd support) cannot decode, producing garbage.
-    headers["Accept-Encoding"] = "gzip, deflate";
+    // When using system curl (not curl-impersonate), downgrade Accept-Encoding
+    // to encodings it can always decompress. curl-impersonate supports br/zstd.
+    if (!isImpersonate()) {
+      headers["Accept-Encoding"] = "gzip, deflate";
+    }
 
     // Build curl args (Chrome TLS profile + proxy + request params)
     const args = [...getChromeTlsArgs(), ...getProxyArgs(), "-s", "--compressed", "--max-time", "15"];

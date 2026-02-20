@@ -158,7 +158,7 @@ export class AccountPool {
           existing.email = profile?.email ?? existing.email;
           existing.planType = profile?.chatgpt_plan_type ?? existing.planType;
           existing.status = isTokenExpired(token) ? "expired" : "active";
-          this.schedulePersist();
+          this.persistNow(); // Critical data — persist immediately
           return existing.id;
         }
       }
@@ -185,7 +185,7 @@ export class AccountPool {
     };
 
     this.accounts.set(id, entry);
-    this.schedulePersist();
+    this.persistNow(); // Critical data — persist immediately
     return id;
   }
 
@@ -212,7 +212,7 @@ export class AccountPool {
     entry.planType = profile?.chatgpt_plan_type ?? entry.planType;
     entry.accountId = extractChatGptAccountId(newToken) ?? entry.accountId;
     entry.status = "active";
-    this.schedulePersist();
+    this.persistNow(); // Critical data — persist immediately
   }
 
   markStatus(entryId: string, status: AccountEntry["status"]): void {
@@ -231,9 +231,34 @@ export class AccountPool {
       output_tokens: 0,
       last_used: null,
       rate_limit_until: null,
+      window_reset_at: entry.usage.window_reset_at ?? null,
     };
     this.schedulePersist();
     return true;
+  }
+
+  /**
+   * Check if the rate limit window has rolled over.
+   * If so, auto-reset local usage counters to stay in sync.
+   * Called after fetching quota from OpenAI API.
+   */
+  syncRateLimitWindow(entryId: string, newResetAt: number | null): void {
+    if (newResetAt == null) return;
+    const entry = this.accounts.get(entryId);
+    if (!entry) return;
+
+    const oldResetAt = entry.usage.window_reset_at;
+    if (oldResetAt != null && oldResetAt !== newResetAt) {
+      // Window rolled over — reset local counters
+      console.log(`[AccountPool] Rate limit window rolled for ${entryId} (${entry.email ?? "?"}), resetting usage counters`);
+      entry.usage.request_count = 0;
+      entry.usage.input_tokens = 0;
+      entry.usage.output_tokens = 0;
+      entry.usage.last_used = null;
+      entry.usage.rate_limit_until = null;
+    }
+    entry.usage.window_reset_at = newResetAt;
+    this.schedulePersist();
   }
 
   // ── Query ───────────────────────────────────────────────────────
@@ -254,8 +279,6 @@ export class AccountPool {
     return [...this.accounts.values()];
   }
 
-  // ── Backward-compatible shim (for routes that still expect AuthManager) ──
-
   isAuthenticated(): boolean {
     const now = new Date();
     for (const entry of this.accounts.values()) {
@@ -263,21 +286,6 @@ export class AccountPool {
       if (entry.status === "active") return true;
     }
     return false;
-  }
-
-  /** @deprecated Use acquire() instead. */
-  async getToken(): Promise<string | null> {
-    const acq = this.acquire();
-    if (!acq) return null;
-    // Release immediately — shim usage doesn't track per-request
-    this.acquireLocks.delete(acq.entryId);
-    return acq.token;
-  }
-
-  /** @deprecated Use acquire() instead. */
-  getAccountId(): string | null {
-    const first = [...this.accounts.values()].find((a) => a.status === "active");
-    return first?.accountId ?? null;
   }
 
   /** @deprecated Use getAccounts() instead. */
@@ -302,11 +310,6 @@ export class AccountPool {
       if (entry.proxyApiKey === key) return true;
     }
     return false;
-  }
-
-  /** @deprecated Use addAccount() instead. */
-  setToken(token: string): void {
-    this.addAccount(token);
   }
 
   /** @deprecated Use removeAccount() instead. */
@@ -416,11 +419,30 @@ export class AccountPool {
       const raw = readFileSync(ACCOUNTS_FILE, "utf-8");
       const data = JSON.parse(raw) as AccountsFile;
       if (Array.isArray(data.accounts)) {
+        let needsPersist = false;
         for (const entry of data.accounts) {
           if (entry.id && entry.token) {
+            // Backfill missing fields from JWT (e.g. planType was null before fix)
+            if (!entry.planType || !entry.email || !entry.accountId) {
+              const profile = extractUserProfile(entry.token);
+              const accountId = extractChatGptAccountId(entry.token);
+              if (!entry.planType && profile?.chatgpt_plan_type) {
+                entry.planType = profile.chatgpt_plan_type;
+                needsPersist = true;
+              }
+              if (!entry.email && profile?.email) {
+                entry.email = profile.email;
+                needsPersist = true;
+              }
+              if (!entry.accountId && accountId) {
+                entry.accountId = accountId;
+                needsPersist = true;
+              }
+            }
             this.accounts.set(entry.id, entry);
           }
         }
+        if (needsPersist) this.persistNow();
       }
     } catch (err) {
       console.warn("[AccountPool] Failed to load accounts:", err instanceof Error ? err.message : err);

@@ -15,6 +15,8 @@ export interface AccountUsage {
   output_tokens: number;
   last_used: string | null;
   rate_limit_until: string | null;
+  /** Tracks the current rate limit window end (Unix seconds). When window rolls over, counters reset. */
+  window_reset_at?: number | null;
 }
 
 export interface AccountEntry {

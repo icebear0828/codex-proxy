@@ -8,6 +8,7 @@ client:
   build_number: "669"
   platform: "darwin"
   arch: "arm64"
+  chromium_version: "136"
 
 model:
   default: "gpt-5.3-codex"
