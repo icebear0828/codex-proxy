@@ -475,8 +475,32 @@
       transition: background 0.2s;
     }
     .code-block .copy-code-btn:hover { background: rgba(255,255,255,0.2); }
-    .tab-content { display: none; }
-    .tab-content.active { display: block; }
+    .tabs-protocol {
+      margin-bottom: 0;
+      border-bottom: none;
+    }
+    .tabs-protocol .tab {
+      font-weight: 600;
+      font-size: 0.82rem;
+    }
+    .tabs-protocol .tab.active {
+      border-bottom-color: #10a37f;
+    }
+    .tabs-lang {
+      border-bottom: 1px solid #e5e7eb;
+      margin-bottom: 0.75rem;
+    }
+    .tabs-lang .tab {
+      font-size: 0.75rem;
+      padding: 5px 12px;
+      color: #9ca3af;
+    }
+    .tabs-lang .tab.active {
+      color: #111827;
+      border-bottom-color: #6b7280;
+    }
+    .code-panel { display: none; }
+    .code-panel.active { display: block; }
 
     /* Footer */
     .footer {
@@ -581,33 +605,28 @@
     <!-- Integration Examples -->
     <div class="examples-card">
       <h2 class="section-title">Integration Examples</h2>
-      <div class="tabs">
-        <button class="tab active" onclick="switchTab('python', this)">Python</button>
-        <button class="tab" onclick="switchTab('curl', this)">cURL</button>
-        <button class="tab" onclick="switchTab('node', this)">Node.js</button>
-        <button class="tab" onclick="switchTab('anthropic', this)">Anthropic</button>
-        <button class="tab" onclick="switchTab('gemini', this)">Gemini</button>
+      <!-- Protocol tabs (top level) -->
+      <div class="tabs tabs-protocol">
+        <button class="tab active" onclick="switchProtocol('openai', this)">OpenAI</button>
+        <button class="tab" onclick="switchProtocol('anthropic', this)">Anthropic</button>
+        <button class="tab" onclick="switchProtocol('gemini', this)">Gemini</button>
       </div>
-      <div class="tab-content active" id="tab-python">
-        <div class="code-block" id="code-python">Loading...
-<button class="copy-code-btn" onclick="copyCode('code-python')">&#9112; Copy</button></div>
+      <!-- Language tabs (sub level) -->
+      <div class="tabs tabs-lang">
+        <button class="tab active" data-lang="python" onclick="switchLang('python', this)">Python</button>
+        <button class="tab" data-lang="curl" onclick="switchLang('curl', this)">cURL</button>
+        <button class="tab" data-lang="node" onclick="switchLang('node', this)">Node.js</button>
       </div>
-      <div class="tab-content" id="tab-curl">
-        <div class="code-block" id="code-curl">Loading...
-<button class="copy-code-btn" onclick="copyCode('code-curl')">&#9112; Copy</button></div>
-      </div>
-      <div class="tab-content" id="tab-node">
-        <div class="code-block" id="code-node">Loading...
-<button class="copy-code-btn" onclick="copyCode('code-node')">&#9112; Copy</button></div>
-      </div>
-      <div class="tab-content" id="tab-anthropic">
-        <div class="code-block" id="code-anthropic">Loading...
-<button class="copy-code-btn" onclick="copyCode('code-anthropic')">&#9112; Copy</button></div>
-      </div>
-      <div class="tab-content" id="tab-gemini">
-        <div class="code-block" id="code-gemini">Loading...
-<button class="copy-code-btn" onclick="copyCode('code-gemini')">&#9112; Copy</button></div>
-      </div>
+      <!-- Code panels: {protocol}-{lang} -->
+      <div class="code-panel active" id="panel-openai-python"><div class="code-block" id="code-openai-python">Loading...<button class="copy-code-btn" onclick="copyCode('code-openai-python')">&#9112; Copy</button></div></div>
+      <div class="code-panel" id="panel-openai-curl"><div class="code-block" id="code-openai-curl">Loading...<button class="copy-code-btn" onclick="copyCode('code-openai-curl')">&#9112; Copy</button></div></div>
+      <div class="code-panel" id="panel-openai-node"><div class="code-block" id="code-openai-node">Loading...<button class="copy-code-btn" onclick="copyCode('code-openai-node')">&#9112; Copy</button></div></div>
+      <div class="code-panel" id="panel-anthropic-python"><div class="code-block" id="code-anthropic-python">Loading...<button class="copy-code-btn" onclick="copyCode('code-anthropic-python')">&#9112; Copy</button></div></div>
+      <div class="code-panel" id="panel-anthropic-curl"><div class="code-block" id="code-anthropic-curl">Loading...<button class="copy-code-btn" onclick="copyCode('code-anthropic-curl')">&#9112; Copy</button></div></div>
+      <div class="code-panel" id="panel-anthropic-node"><div class="code-block" id="code-anthropic-node">Loading...<button class="copy-code-btn" onclick="copyCode('code-anthropic-node')">&#9112; Copy</button></div></div>
+      <div class="code-panel" id="panel-gemini-python"><div class="code-block" id="code-gemini-python">Loading...<button class="copy-code-btn" onclick="copyCode('code-gemini-python')">&#9112; Copy</button></div></div>
+      <div class="code-panel" id="panel-gemini-curl"><div class="code-block" id="code-gemini-curl">Loading...<button class="copy-code-btn" onclick="copyCode('code-gemini-curl')">&#9112; Copy</button></div></div>
+      <div class="code-panel" id="panel-gemini-node"><div class="code-block" id="code-gemini-node">Loading...<button class="copy-code-btn" onclick="copyCode('code-gemini-node')">&#9112; Copy</button></div></div>
     </div>
   </div>
 
@@ -812,12 +831,19 @@
       }
     }
 
+    function setCode(id, code) {
+      const el = document.getElementById(id);
+      if (el) el.innerHTML = code + `\n<button class="copy-code-btn" onclick="copyCode('${id}')">&#9112; Copy</button>`;
+    }
+
     function updateCodeExamples() {
       const baseUrl = escapeHtml(document.getElementById('baseUrl').value);
       const apiKey = escapeHtml(document.getElementById('apiKey').value || 'any-string');
       const model = escapeHtml(document.getElementById('defaultModel').value);
+      const origin = escapeHtml(window.location.origin);
 
-      document.getElementById('code-python').innerHTML =
+      // ── OpenAI ──
+      setCode('code-openai-python',
 `from openai import OpenAI
 
 client = OpenAI(
@@ -827,27 +853,20 @@ client = OpenAI(
 
 response = client.chat.completions.create(
     model="${model}",
-    messages=[
-        {"role": "user", "content": "Explain quantum computing in simple terms"}
-    ],
+    messages=[{"role": "user", "content": "Hello"}],
 )
+print(response.choices[0].message.content)`);
 
-print(response.choices[0].message.content)
-<button class="copy-code-btn" onclick="copyCode('code-python')">&#9112; Copy Code</button>`;
-
-      document.getElementById('code-curl').innerHTML =
+      setCode('code-openai-curl',
 `curl ${baseUrl}/chat/completions \\
   -H "Content-Type: application/json" \\
   -H "Authorization: Bearer ${apiKey}" \\
   -d '{
     "model": "${model}",
-    "messages": [
-      {"role": "user", "content": "Explain quantum computing in simple terms"}
-    ]
-  }'
-<button class="copy-code-btn" onclick="copyCode('code-curl')">&#9112; Copy Code</button>`;
+    "messages": [{"role": "user", "content": "Hello"}]
+  }'`);
 
-      document.getElementById('code-node').innerHTML =
+      setCode('code-openai-node',
 `import OpenAI from "openai";
 
 const client = new OpenAI({
@@ -857,56 +876,90 @@ const client = new OpenAI({
 
 const stream = await client.chat.completions.create({
     model: "${model}",
-    messages: [
-        { role: "user", content: "Explain quantum computing in simple terms" },
-    ],
+    messages: [{ role: "user", content: "Hello" }],
     stream: true,
 });
-
 for await (const chunk of stream) {
     process.stdout.write(chunk.choices[0]?.delta?.content || "");
-}
-<button class="copy-code-btn" onclick="copyCode('code-node')">&#9112; Copy</button>`;
+}`);
 
-      const messagesUrl = escapeHtml(window.location.origin + '/v1/messages');
-      document.getElementById('code-anthropic').innerHTML =
+      // ── Anthropic ──
+      setCode('code-anthropic-python',
+`import anthropic
+
+client = anthropic.Anthropic(
+    base_url="${origin}/v1",
+    api_key="${apiKey}",
+)
+
+message = client.messages.create(
+    model="claude-sonnet-4-20250514",
+    max_tokens=1024,
+    messages=[{"role": "user", "content": "Hello"}],
+)
+print(message.content[0].text)`);
+
+      setCode('code-anthropic-curl',
+`curl ${origin}/v1/messages \\
+  -H "Content-Type: application/json" \\
+  -H "x-api-key: ${apiKey}" \\
+  -H "anthropic-version: 2023-06-01" \\
+  -d '{
+    "model": "claude-sonnet-4-20250514",
+    "max_tokens": 1024,
+    "messages": [{"role": "user", "content": "Hello"}]
+  }'`);
+
+      setCode('code-anthropic-node',
 `import Anthropic from "@anthropic-ai/sdk";
 
 const client = new Anthropic({
-    baseURL: "${messagesUrl.replace('/v1/messages', '/v1')}",
+    baseURL: "${origin}/v1",
     apiKey: "${apiKey}",
 });
 
 const message = await client.messages.create({
     model: "claude-sonnet-4-20250514",
     max_tokens: 1024,
-    messages: [
-        { role: "user", content: "Explain quantum computing in simple terms" },
-    ],
+    messages: [{ role: "user", content: "Hello" }],
+});
+console.log(message.content[0].text);`);
+
+      // ── Gemini ──
+      setCode('code-gemini-python',
+`from google import genai
+
+client = genai.Client(
+    api_key="${apiKey}",
+    http_options={"base_url": "${origin}/v1beta"},
+)
+
+response = client.models.generate_content(
+    model="gemini-2.5-pro",
+    contents="Hello",
+)
+print(response.text)`);
+
+      setCode('code-gemini-curl',
+`curl "${origin}/v1beta/models/gemini-2.5-pro:generateContent?key=${apiKey}" \\
+  -H "Content-Type: application/json" \\
+  -d '{
+    "contents": [{"role": "user", "parts": [{"text": "Hello"}]}]
+  }'`);
+
+      setCode('code-gemini-node',
+`import { GoogleGenAI } from "@google/genai";
+
+const ai = new GoogleGenAI({
+    apiKey: "${apiKey}",
+    httpOptions: { baseUrl: "${origin}/v1beta" },
 });
 
-console.log(message.content[0].text);
-<button class="copy-code-btn" onclick="copyCode('code-anthropic')">&#9112; Copy</button>`;
-
-      const geminiBase = escapeHtml(window.location.origin);
-      document.getElementById('code-gemini').innerHTML =
-`curl ${geminiBase}/v1beta/models/gemini-2.5-pro:generateContent?key=${apiKey} \\
-  -H "Content-Type: application/json" \\
-  -d '{
-    "contents": [
-      {"role": "user", "parts": [{"text": "Explain quantum computing"}]}
-    ]
-  }'
-
-# Streaming
-curl ${geminiBase}/v1beta/models/gemini-2.5-pro:streamGenerateContent?alt=sse&key=${apiKey} \\
-  -H "Content-Type: application/json" \\
-  -d '{
-    "contents": [
-      {"role": "user", "parts": [{"text": "Explain quantum computing"}]}
-    ]
-  }'
-<button class="copy-code-btn" onclick="copyCode('code-gemini')">&#9112; Copy</button>`;
+const response = await ai.models.generateContent({
+    model: "gemini-2.5-pro",
+    contents: "Hello",
+});
+console.log(response.text);`);
     }
 
     function saveOverrides() {
@@ -954,11 +1007,27 @@ curl ${geminiBase}/v1beta/models/gemini-2.5-pro:streamGenerateContent?alt=sse&ke
       document.getElementById('defaultModel').addEventListener('change', () => { updateCodeExamples(); saveOverrides(); });
     }
 
-    function switchTab(tab, el) {
-      document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
-      document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
+    let currentProtocol = 'openai';
+    let currentLang = 'python';
+
+    function switchProtocol(proto, el) {
+      currentProtocol = proto;
+      document.querySelectorAll('.tabs-protocol .tab').forEach(t => t.classList.remove('active'));
       el.classList.add('active');
-      document.getElementById('tab-' + tab).classList.add('active');
+      showActivePanel();
+    }
+
+    function switchLang(lang, el) {
+      currentLang = lang;
+      document.querySelectorAll('.tabs-lang .tab').forEach(t => t.classList.remove('active'));
+      el.classList.add('active');
+      showActivePanel();
+    }
+
+    function showActivePanel() {
+      document.querySelectorAll('.code-panel').forEach(p => p.classList.remove('active'));
+      const panel = document.getElementById('panel-' + currentProtocol + '-' + currentLang);
+      if (panel) panel.classList.add('active');
     }
 
     function copyField(id, btn) {
