@@ -74,3 +74,23 @@ aliases:
   codex: "gpt-5.3-codex"
   codex-max: "gpt-5.1-codex-max"
   codex-mini: "gpt-5.1-codex-mini"
+
+  # Anthropic Claude model aliases
+  claude-sonnet-4-20250514: "gpt-5.3-codex"
+  claude-opus-4-20250514: "gpt-5.3-codex"
+  claude-sonnet-4-6: "gpt-5.3-codex"
+  claude-opus-4-6: "gpt-5.3-codex"
+  claude-haiku-4-5: "gpt-5.1-codex-mini"
+  claude-haiku-4-5-20251001: "gpt-5.1-codex-mini"
+  claude-3-5-sonnet-20241022: "gpt-5.3-codex"
+  claude-3-5-haiku-20241022: "gpt-5.1-codex-mini"
+  claude-3-opus-20240229: "gpt-5.3-codex"
+  claude-sonnet: "gpt-5.3-codex"
+  claude-opus: "gpt-5.3-codex"
+  claude-haiku: "gpt-5.1-codex-mini"
+
+  # Google Gemini model aliases
+  gemini-2.5-pro: "gpt-5.3-codex"
+  gemini-2.5-pro-preview: "gpt-5.3-codex"
+  gemini-2.5-flash: "gpt-5.1-codex-mini"
+  gemini-2.0-flash: "gpt-5.1-codex-mini"

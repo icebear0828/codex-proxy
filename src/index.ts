@@ -9,6 +9,8 @@ import { errorHandler } from "./middleware/error-handler.js";
 import { createAuthRoutes } from "./routes/auth.js";
 import { createAccountRoutes } from "./routes/accounts.js";
 import { createChatRoutes } from "./routes/chat.js";
+import { createMessagesRoutes } from "./routes/messages.js";
+import { createGeminiRoutes } from "./routes/gemini.js";
 import modelsApp from "./routes/models.js";
 import { createWebRoutes } from "./routes/web.js";
 import { CookieJar } from "./proxy/cookie-jar.js";
@@ -45,11 +47,15 @@ async function main() {
   const authRoutes = createAuthRoutes(accountPool, refreshScheduler);
   const accountRoutes = createAccountRoutes(accountPool, refreshScheduler, cookieJar);
   const chatRoutes = createChatRoutes(accountPool, sessionManager, cookieJar);
+  const messagesRoutes = createMessagesRoutes(accountPool, sessionManager, cookieJar);
+  const geminiRoutes = createGeminiRoutes(accountPool, sessionManager, cookieJar);
   const webRoutes = createWebRoutes(accountPool);
 
   app.route("/", authRoutes);
   app.route("/", accountRoutes);
   app.route("/", chatRoutes);
+  app.route("/", messagesRoutes);
+  app.route("/", geminiRoutes);
   app.route("/", modelsApp);
   app.route("/", webRoutes);
 
