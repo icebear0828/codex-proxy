@@ -1,11 +1,26 @@
 services:
   codex-proxy:
-    build: .
+    build:
+      context: .
+      # Pass host proxy to build stage (npm install, curl downloads)
+      # Set HTTP_PROXY in .env or shell environment
+      args:
+        - HTTP_PROXY=${HTTP_PROXY:-}
+        - HTTPS_PROXY=${HTTPS_PROXY:-}
+        - NO_PROXY=${NO_PROXY:-localhost,127.0.0.1}
     ports:
-      - "8080:8080"
+      - "${PORT:-8080}:8080"
     volumes:
       - ./data:/app/data
       - ./config:/app/config
     restart: unless-stopped
     environment:
       - NODE_ENV=production
+      # Runtime proxy for upstream requests (chatgpt.com)
+      # Use host.docker.internal to reach host's proxy from container
+      - HTTP_PROXY=${CONTAINER_PROXY:-}
+      - HTTPS_PROXY=${CONTAINER_PROXY:-}
+      - NO_PROXY=localhost,127.0.0.1
+    extra_hosts:
+      # Allow container to reach host network services (proxy, etc.)
+      - "host.docker.internal:host-gateway"

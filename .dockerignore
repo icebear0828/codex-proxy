@@ -7,3 +7,4 @@ tmp/
 .git/
 docs/
 stitch-*/
+.env

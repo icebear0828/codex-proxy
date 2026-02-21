@@ -1,8 +1,8 @@
 FROM node:20-slim
 
-# Install unzip (full-update pipeline) and ca-certificates
+# Install unzip (full-update pipeline), curl, and ca-certificates
 RUN apt-get update && \
-    apt-get install -y --no-install-recommends unzip ca-certificates && \
+    apt-get install -y --no-install-recommends unzip curl ca-certificates && \
     rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
