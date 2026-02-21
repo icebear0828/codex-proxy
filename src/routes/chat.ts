@@ -113,7 +113,12 @@ export function createChatRoutes(
       cookieJar,
       {
         codexRequest,
-        sessionMessages: req.messages,
+        sessionMessages: req.messages.map((m) => ({
+          role: m.role,
+          content: typeof m.content === "string"
+            ? m.content
+            : m.content.filter((p) => p.type === "text" && p.text).map((p) => p.text!).join("\n"),
+        })),
         model: codexRequest.model,
         isStreaming: req.stream,
       },

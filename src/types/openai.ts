@@ -5,9 +5,14 @@ import { z } from "zod";
 
 // --- Request ---
 
+const ContentPartSchema = z.object({
+  type: z.string(),
+  text: z.string().optional(),
+}).passthrough();
+
 export const ChatMessageSchema = z.object({
-  role: z.enum(["system", "user", "assistant"]),
-  content: z.string(),
+  role: z.enum(["system", "developer", "user", "assistant"]),
+  content: z.union([z.string(), z.array(ContentPartSchema)]),
   name: z.string().optional(),
 });
 

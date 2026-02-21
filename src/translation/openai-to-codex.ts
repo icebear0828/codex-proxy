@@ -2,7 +2,7 @@
  * Translate OpenAI Chat Completions request → Codex Responses API request.
  */
 
-import type { ChatCompletionRequest } from "../types/openai.js";
+import type { ChatCompletionRequest, ChatMessage } from "../types/openai.js";
 import type {
   CodexResponsesRequest,
   CodexInputItem,
@@ -11,11 +11,20 @@ import { resolveModelId, getModelInfo } from "../routes/models.js";
 import { getConfig } from "../config.js";
 import { buildInstructions } from "./shared-utils.js";
 
+/** Extract plain text from content (string or array of content parts). */
+function extractText(content: ChatMessage["content"]): string {
+  if (typeof content === "string") return content;
+  return content
+    .filter((p) => p.type === "text" && p.text)
+    .map((p) => p.text!)
+    .join("\n");
+}
+
 /**
  * Convert a ChatCompletionRequest to a CodexResponsesRequest.
  *
  * Mapping:
- *   - system messages → instructions field
+ *   - system/developer messages → instructions field
  *   - user/assistant messages → input array
  *   - model → resolved model ID
  *   - reasoning_effort → reasoning.effort
@@ -24,20 +33,22 @@ export function translateToCodexRequest(
   req: ChatCompletionRequest,
   previousResponseId?: string | null,
 ): CodexResponsesRequest {
-  // Collect system messages as instructions
-  const systemMessages = req.messages.filter((m) => m.role === "system");
+  // Collect system/developer messages as instructions
+  const systemMessages = req.messages.filter(
+    (m) => m.role === "system" || m.role === "developer",
+  );
   const userInstructions =
-    systemMessages.map((m) => m.content).join("\n\n") ||
+    systemMessages.map((m) => extractText(m.content)).join("\n\n") ||
     "You are a helpful assistant.";
   const instructions = buildInstructions(userInstructions);
 
   // Build input items from non-system messages
   const input: CodexInputItem[] = [];
   for (const msg of req.messages) {
-    if (msg.role === "system") continue;
+    if (msg.role === "system" || msg.role === "developer") continue;
     input.push({
       role: msg.role as "user" | "assistant",
-      content: msg.content,
+      content: extractText(msg.content),
     });
   }
 
