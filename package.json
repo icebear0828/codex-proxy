@@ -19,18 +19,21 @@
     "postinstall": "tsx scripts/setup-curl.ts"
   },
   "dependencies": {
-    "hono": "^4.0.0",
     "@hono/node-server": "^1.0.0",
-    "undici": "^7.0.0",
+    "hono": "^4.0.0",
     "js-yaml": "^4.1.0",
+    "undici": "^7.0.0",
     "zod": "^3.23.0"
   },
+  "optionalDependencies": {
+    "koffi": "^2.15.1"
+  },
   "devDependencies": {
-    "typescript": "^5.5.0",
-    "tsx": "^4.0.0",
+    "@electron/asar": "^3.2.0",
     "@types/js-yaml": "^4.0.0",
     "@types/node": "^22.0.0",
     "js-beautify": "^1.15.0",
-    "@electron/asar": "^3.2.0"
+    "tsx": "^4.0.0",
+    "typescript": "^5.5.0"
   }
 }

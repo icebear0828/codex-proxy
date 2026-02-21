@@ -16,6 +16,7 @@ import { createWebRoutes } from "./routes/web.js";
 import { CookieJar } from "./proxy/cookie-jar.js";
 import { startUpdateChecker, stopUpdateChecker } from "./update-checker.js";
 import { initProxy } from "./tls/curl-binary.js";
+import { initTransport } from "./tls/transport.js";
 
 async function main() {
   // Load configuration
@@ -33,6 +34,9 @@ async function main() {
 
   // Detect proxy (config > env > auto-detect local ports)
   await initProxy();
+
+  // Initialize TLS transport (auto-selects curl CLI or libcurl FFI)
+  await initTransport();
 
   // Initialize managers
   const accountPool = new AccountPool();

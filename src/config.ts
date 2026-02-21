@@ -47,6 +47,7 @@ const ConfigSchema = z.object({
     curl_binary: z.string().default("auto"),
     impersonate_profile: z.string().default("chrome136"),
     proxy_url: z.string().nullable().default(null),
+    transport: z.enum(["auto", "curl-cli", "libcurl-ffi"]).default("auto"),
   }).default({}),
   streaming: z.object({
     status_as_content: z.boolean().default(false),

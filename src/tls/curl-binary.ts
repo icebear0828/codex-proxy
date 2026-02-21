@@ -220,6 +220,14 @@ export function isImpersonate(): boolean {
 }
 
 /**
+ * Get the detected proxy URL (or null if no proxy).
+ * Used by LibcurlFfiTransport which needs the URL directly (not CLI args).
+ */
+export function getProxyUrl(): string | null {
+  return _proxyUrl ?? null;
+}
+
+/**
  * Reset the cached binary path (useful for testing).
  */
 export function resetCurlBinaryCache(): void {

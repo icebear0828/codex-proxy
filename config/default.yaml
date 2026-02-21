@@ -38,6 +38,9 @@ session:
   cleanup_interval_minutes: 5
 
 tls:
+  # Transport layer: "auto" | "curl-cli" | "libcurl-ffi"
+  # auto = Windows+DLL → libcurl-ffi, macOS/Linux → curl-cli
+  transport: "auto"
   # curl binary path. "auto" = detect bin/curl-impersonate-chrome, fallback to system curl
   curl_binary: "auto"
   # Chrome profile for --impersonate flag (auto-detected when curl-impersonate supports it)

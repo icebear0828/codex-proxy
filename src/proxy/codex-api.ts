@@ -5,13 +5,12 @@
  * This is the API the Codex CLI actually uses.
  * It requires: instructions, store: false, stream: true.
  *
- * Both GET and POST requests use curl subprocess to avoid
- * Cloudflare TLS fingerprinting of Node.js/undici.
+ * All upstream requests go through the TLS transport layer
+ * (curl CLI or libcurl FFI) to avoid Cloudflare TLS fingerprinting.
  */
 
-import { spawn, execFile } from "child_process";
 import { getConfig } from "../config.js";
-import { resolveCurlBinary, getChromeTlsArgs, getProxyArgs, isImpersonate } from "../tls/curl-binary.js";
+import { getTransport } from "../tls/transport.js";
 import {
   buildHeaders,
   buildHeadersWithContentType,
@@ -41,13 +40,6 @@ export type CodexInputItem =
 export interface CodexSSEEvent {
   event: string;
   data: unknown;
-}
-
-interface CurlResponse {
-  status: number;
-  headers: Headers;
-  body: ReadableStream<Uint8Array>;
-  setCookieHeaders: string[];
 }
 
 export class CodexApi {
@@ -81,195 +73,40 @@ export class CodexApi {
     return headers;
   }
 
-  /** Capture Set-Cookie headers from curl response into the jar. */
-  private captureCookiesFromCurl(setCookieHeaders: string[]): void {
+  /** Capture Set-Cookie headers from transport response into the jar. */
+  private captureCookies(setCookieHeaders: string[]): void {
     if (this.cookieJar && this.entryId && setCookieHeaders.length > 0) {
       this.cookieJar.captureRaw(this.entryId, setCookieHeaders);
     }
   }
 
   /**
-   * Execute a POST request via curl subprocess.
-   * Returns headers + streaming body as a CurlResponse.
-   */
-  private curlPost(
-    url: string,
-    headers: Record<string, string>,
-    body: string,
-    signal?: AbortSignal,
-    timeoutSec?: number,
-  ): Promise<CurlResponse> {
-    return new Promise((resolve, reject) => {
-      const args = [
-        ...getChromeTlsArgs(), // Chrome TLS profile (ciphers, HTTP/2, etc.)
-        ...getProxyArgs(),     // HTTP/SOCKS5 proxy if configured
-        "-s", "-S",            // silent but show errors
-        "--compressed",         // curl negotiates compression
-        "-N",                   // no output buffering (SSE)
-        "-i",                   // include response headers in stdout
-        "-X", "POST",
-        "--data-binary", "@-",  // read body from stdin
-      ];
-
-      if (timeoutSec) {
-        args.push("--max-time", String(timeoutSec));
-      }
-
-      // Pass all headers explicitly in our fingerprint order.
-      // Accept-Encoding is kept so curl doesn't inject its own at position 2.
-      // --compressed still handles auto-decompression of the response.
-      for (const [key, value] of Object.entries(headers)) {
-        args.push("-H", `${key}: ${value}`);
-      }
-      // Suppress curl's auto Expect: 100-continue (Chromium never sends it)
-      args.push("-H", "Expect:");
-      args.push(url);
-
-      const child = spawn(resolveCurlBinary(), args, {
-        stdio: ["pipe", "pipe", "pipe"],
-      });
-
-      // Abort handling
-      const onAbort = () => {
-        child.kill("SIGTERM");
-      };
-      if (signal) {
-        if (signal.aborted) {
-          child.kill("SIGTERM");
-          reject(new Error("Aborted"));
-          return;
-        }
-        signal.addEventListener("abort", onAbort, { once: true });
-      }
-
-      // Write body to stdin then close
-      child.stdin.write(body);
-      child.stdin.end();
-
-      let headerBuf = Buffer.alloc(0);
-      let headersParsed = false;
-      let bodyController: ReadableStreamDefaultController<Uint8Array> | null = null;
-
-      // P0-1: Header parse timeout — kill curl if headers aren't received within 30s
-      const HEADER_TIMEOUT_MS = 30_000;
-      const headerTimer = setTimeout(() => {
-        if (!headersParsed) {
-          child.kill("SIGTERM");
-          reject(new CodexApiError(0, `curl header parse timeout after ${HEADER_TIMEOUT_MS}ms`));
-        }
-      }, HEADER_TIMEOUT_MS);
-      if (headerTimer.unref) headerTimer.unref();
-
-      const bodyStream = new ReadableStream<Uint8Array>({
-        start(c) {
-          bodyController = c;
-        },
-        cancel() {
-          child.kill("SIGTERM");
-        },
-      });
-
-      child.stdout.on("data", (chunk: Buffer) => {
-        if (headersParsed) {
-          bodyController?.enqueue(new Uint8Array(chunk));
-          return;
-        }
-
-        // Accumulate until we find \r\n\r\n header separator
-        headerBuf = Buffer.concat([headerBuf, chunk]);
-        const separatorIdx = headerBuf.indexOf("\r\n\r\n");
-        if (separatorIdx === -1) return;
-
-        headersParsed = true;
-        clearTimeout(headerTimer);
-        const headerBlock = headerBuf.subarray(0, separatorIdx).toString("utf-8");
-        const remaining = headerBuf.subarray(separatorIdx + 4);
-
-        // Parse status and headers
-        const { status, headers: parsedHeaders, setCookieHeaders } = parseHeaderDump(headerBlock);
-
-        // Push remaining data (body after separator) into stream
-        if (remaining.length > 0) {
-          bodyController?.enqueue(new Uint8Array(remaining));
-        }
-
-        if (signal) {
-          signal.removeEventListener("abort", onAbort);
-        }
-
-        resolve({
-          status,
-          headers: parsedHeaders,
-          body: bodyStream,
-          setCookieHeaders,
-        });
-      });
-
-      let stderrBuf = "";
-      child.stderr.on("data", (chunk: Buffer) => {
-        stderrBuf += chunk.toString();
-      });
-
-      child.on("close", (code) => {
-        clearTimeout(headerTimer);
-        if (signal) {
-          signal.removeEventListener("abort", onAbort);
-        }
-        if (!headersParsed) {
-          reject(new CodexApiError(0, `curl exited with code ${code}: ${stderrBuf}`));
-        }
-        bodyController?.close();
-      });
-
-      child.on("error", (err) => {
-        clearTimeout(headerTimer);
-        if (signal) {
-          signal.removeEventListener("abort", onAbort);
-        }
-        reject(new CodexApiError(0, `curl spawn error: ${err.message}`));
-      });
-    });
-  }
-
-  /**
    * Query official Codex usage/quota.
    * GET /backend-api/codex/usage
-   *
-   * Uses curl subprocess instead of Node.js fetch because Cloudflare
-   * fingerprints the TLS handshake and blocks Node.js/undici requests
-   * with a JS challenge (403). System curl uses native TLS (WinSSL/SecureTransport)
-   * which Cloudflare accepts.
    */
   async getUsage(): Promise<CodexUsageResponse> {
     const config = getConfig();
+    const transport = getTransport();
     const url = `${config.api.base_url}/codex/usage`;
 
     const headers = this.applyHeaders(
       buildHeaders(this.token, this.accountId),
     );
     headers["Accept"] = "application/json";
-    // When using system curl (not curl-impersonate), downgrade Accept-Encoding
-    // to encodings it can always decompress. curl-impersonate supports br/zstd.
-    if (!isImpersonate()) {
+    // When transport lacks Chrome TLS fingerprint, downgrade Accept-Encoding
+    // to encodings system curl can always decompress.
+    if (!transport.isImpersonate()) {
       headers["Accept-Encoding"] = "gzip, deflate";
     }
 
-    // Build curl args (Chrome TLS profile + proxy + request params)
-    const args = [...getChromeTlsArgs(), ...getProxyArgs(), "-s", "--compressed", "--max-time", "15"];
-    for (const [key, value] of Object.entries(headers)) {
-      args.push("-H", `${key}: ${value}`);
+    let body: string;
+    try {
+      const result = await transport.get(url, headers, 15);
+      body = result.body;
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      throw new CodexApiError(0, `transport GET failed: ${msg}`);
     }
-    args.push(url);
-
-    const body = await new Promise<string>((resolve, reject) => {
-      execFile(resolveCurlBinary(), args, { maxBuffer: 1024 * 1024 }, (err, stdout, stderr) => {
-        if (err) {
-          reject(new CodexApiError(0, `curl failed: ${err.message} ${stderr}`));
-        } else {
-          resolve(stdout);
-        }
-      });
-    });
 
     try {
       const parsed = JSON.parse(body) as CodexUsageResponse;
@@ -287,13 +124,13 @@ export class CodexApi {
   /**
    * Create a response (streaming).
    * Returns the raw Response so the caller can process the SSE stream.
-   * Uses curl subprocess for native TLS fingerprint.
    */
   async createResponse(
     request: CodexResponsesRequest,
     signal?: AbortSignal,
   ): Promise<Response> {
     const config = getConfig();
+    const transport = getTransport();
     const baseUrl = config.api.base_url;
     const url = `${baseUrl}/codex/responses`;
 
@@ -304,15 +141,21 @@ export class CodexApi {
 
     const timeout = config.api.timeout_seconds;
 
-    const curlRes = await this.curlPost(url, headers, JSON.stringify(request), signal, timeout);
+    let transportRes;
+    try {
+      transportRes = await transport.post(url, headers, JSON.stringify(request), signal, timeout);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      throw new CodexApiError(0, msg);
+    }
 
     // Capture cookies
-    this.captureCookiesFromCurl(curlRes.setCookieHeaders);
+    this.captureCookies(transportRes.setCookieHeaders);
 
-    if (curlRes.status < 200 || curlRes.status >= 300) {
-      // Read the body for error details (P0-3: cap at 1MB to prevent memory spikes)
+    if (transportRes.status < 200 || transportRes.status >= 300) {
+      // Read the body for error details (cap at 1MB to prevent memory spikes)
       const MAX_ERROR_BODY = 1024 * 1024; // 1MB
-      const reader = curlRes.body.getReader();
+      const reader = transportRes.body.getReader();
       const chunks: Uint8Array[] = [];
       let totalSize = 0;
       while (true) {
@@ -322,7 +165,6 @@ export class CodexApi {
         if (totalSize <= MAX_ERROR_BODY) {
           chunks.push(value);
         } else {
-          // Truncate: push only the part that fits
           const overshoot = totalSize - MAX_ERROR_BODY;
           if (value.byteLength > overshoot) {
             chunks.push(value.subarray(0, value.byteLength - overshoot));
@@ -332,12 +174,12 @@ export class CodexApi {
         }
       }
       const errorBody = Buffer.concat(chunks).toString("utf-8");
-      throw new CodexApiError(curlRes.status, errorBody);
+      throw new CodexApiError(transportRes.status, errorBody);
     }
 
-    return new Response(curlRes.body, {
-      status: curlRes.status,
-      headers: curlRes.headers,
+    return new Response(transportRes.body, {
+      status: transportRes.status,
+      headers: transportRes.headers,
     });
   }
 
@@ -413,38 +255,6 @@ export class CodexApi {
 
     return { event, data };
   }
-}
-
-/** Parse the HTTP response header block from curl -i output. */
-function parseHeaderDump(headerBlock: string): {
-  status: number;
-  headers: Headers;
-  setCookieHeaders: string[];
-} {
-  const lines = headerBlock.split("\r\n");
-  let status = 0;
-  const headers = new Headers();
-  const setCookieHeaders: string[] = [];
-
-  for (let i = 0; i < lines.length; i++) {
-    const line = lines[i];
-    if (i === 0) {
-      // Status line: HTTP/1.1 200 OK
-      const match = line.match(/^HTTP\/[\d.]+ (\d+)/);
-      if (match) status = parseInt(match[1], 10);
-      continue;
-    }
-    const colonIdx = line.indexOf(":");
-    if (colonIdx === -1) continue;
-    const key = line.slice(0, colonIdx).trim();
-    const value = line.slice(colonIdx + 1).trim();
-    if (key.toLowerCase() === "set-cookie") {
-      setCookieHeaders.push(value);
-    }
-    headers.append(key, value);
-  }
-
-  return { status, headers, setCookieHeaders };
 }
 
 /** Response from GET /backend-api/codex/usage */
