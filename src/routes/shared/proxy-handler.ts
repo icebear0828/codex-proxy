@@ -91,6 +91,7 @@ export async function handleProxyRequest(
 
   // P0-2: AbortController to kill curl when client disconnects
   const abortController = new AbortController();
+  c.req.raw.signal.addEventListener("abort", () => abortController.abort(), { once: true });
 
   try {
     // 3. Retry + send to Codex
@@ -106,6 +107,7 @@ export async function handleProxyRequest(
       c.header("Connection", "keep-alive");
 
       return stream(c, async (s) => {
+        s.onAbort(() => abortController.abort());
         let sessionTaskId: string | null = null;
         try {
           for await (const chunk of fmt.streamTranslator(

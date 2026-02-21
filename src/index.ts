@@ -150,5 +150,7 @@ async function main() {
 
 main().catch((err) => {
   console.error("Fatal error:", err);
-  process.exit(1);
+  // Trigger graceful shutdown instead of hard exit
+  process.kill(process.pid, "SIGTERM");
+  setTimeout(() => process.exit(1), 2000).unref();
 });

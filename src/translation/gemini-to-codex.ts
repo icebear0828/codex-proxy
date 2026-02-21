@@ -2,8 +2,6 @@
  * Translate Google Gemini generateContent request → Codex Responses API request.
  */
 
-import { readFileSync } from "fs";
-import { resolve } from "path";
 import type {
   GeminiGenerateContentRequest,
   GeminiContent,
@@ -14,30 +12,7 @@ import type {
 } from "../proxy/codex-api.js";
 import { resolveModelId, getModelInfo } from "../routes/models.js";
 import { getConfig } from "../config.js";
-
-const DESKTOP_CONTEXT = loadDesktopContext();
-
-function loadDesktopContext(): string {
-  try {
-    return readFileSync(
-      resolve(process.cwd(), "config/prompts/desktop-context.md"),
-      "utf-8",
-    );
-  } catch {
-    return "";
-  }
-}
-
-/**
- * Map Gemini thinkingBudget to Codex reasoning effort.
- */
-function budgetToEffort(budget?: number): string | undefined {
-  if (!budget || budget <= 0) return undefined;
-  if (budget < 2000) return "low";
-  if (budget < 8000) return "medium";
-  if (budget < 20000) return "high";
-  return "xhigh";
-}
+import { buildInstructions, budgetToEffort } from "./shared-utils.js";
 
 /**
  * Extract text from Gemini content parts.
@@ -96,9 +71,7 @@ export function translateGeminiToCodexRequest(
   } else {
     userInstructions = "You are a helpful assistant.";
   }
-  const instructions = DESKTOP_CONTEXT
-    ? `${DESKTOP_CONTEXT}\n\n${userInstructions}`
-    : userInstructions;
+  const instructions = buildInstructions(userInstructions);
 
   // Build input items from contents
   const input: CodexInputItem[] = [];

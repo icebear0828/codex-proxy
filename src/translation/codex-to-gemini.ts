@@ -53,7 +53,7 @@ export async function* streamCodexToGemini(
             ],
             modelVersion: model,
           };
-          yield `data: ${JSON.stringify(chunk)}\r\n\r\n`;
+          yield `data: ${JSON.stringify(chunk)}\n\n`;
         }
         break;
       }
@@ -84,7 +84,7 @@ export async function* streamCodexToGemini(
           },
           modelVersion: model,
         };
-        yield `data: ${JSON.stringify(finalChunk)}\r\n\r\n`;
+        yield `data: ${JSON.stringify(finalChunk)}\n\n`;
         break;
       }
     }

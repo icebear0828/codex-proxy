@@ -2,8 +2,6 @@
  * Translate Anthropic Messages API request → Codex Responses API request.
  */
 
-import { readFileSync } from "fs";
-import { resolve } from "path";
 import type { AnthropicMessagesRequest } from "../types/anthropic.js";
 import type {
   CodexResponsesRequest,
@@ -11,19 +9,7 @@ import type {
 } from "../proxy/codex-api.js";
 import { resolveModelId, getModelInfo } from "../routes/models.js";
 import { getConfig } from "../config.js";
-
-const DESKTOP_CONTEXT = loadDesktopContext();
-
-function loadDesktopContext(): string {
-  try {
-    return readFileSync(
-      resolve(process.cwd(), "config/prompts/desktop-context.md"),
-      "utf-8",
-    );
-  } catch {
-    return "";
-  }
-}
+import { buildInstructions, budgetToEffort } from "./shared-utils.js";
 
 /**
  * Map Anthropic thinking budget_tokens to Codex reasoning effort.
@@ -32,11 +18,7 @@ function mapThinkingToEffort(
   thinking: AnthropicMessagesRequest["thinking"],
 ): string | undefined {
   if (!thinking || thinking.type === "disabled") return undefined;
-  const budget = thinking.budget_tokens;
-  if (budget < 2000) return "low";
-  if (budget < 8000) return "medium";
-  if (budget < 20000) return "high";
-  return "xhigh";
+  return budgetToEffort(thinking.budget_tokens);
 }
 
 /**
@@ -76,9 +58,7 @@ export function translateAnthropicToCodexRequest(
   } else {
     userInstructions = "You are a helpful assistant.";
   }
-  const instructions = DESKTOP_CONTEXT
-    ? `${DESKTOP_CONTEXT}\n\n${userInstructions}`
-    : userInstructions;
+  const instructions = buildInstructions(userInstructions);
 
   // Build input items from messages
   const input: CodexInputItem[] = [];

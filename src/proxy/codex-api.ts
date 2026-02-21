@@ -356,6 +356,7 @@ export class CodexApi {
       .pipeThrough(new TextDecoderStream())
       .getReader();
 
+    const MAX_SSE_BUFFER = 10 * 1024 * 1024; // 10MB
     let buffer = "";
     try {
       while (true) {
@@ -363,6 +364,9 @@ export class CodexApi {
         if (done) break;
 
         buffer += value;
+        if (buffer.length > MAX_SSE_BUFFER) {
+          throw new Error(`SSE buffer exceeded ${MAX_SSE_BUFFER} bytes — aborting stream`);
+        }
         const parts = buffer.split("\n\n");
         buffer = parts.pop()!;
 

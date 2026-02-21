@@ -2,8 +2,6 @@
  * Translate OpenAI Chat Completions request → Codex Responses API request.
  */
 
-import { readFileSync } from "fs";
-import { resolve } from "path";
 import type { ChatCompletionRequest } from "../types/openai.js";
 import type {
   CodexResponsesRequest,
@@ -11,19 +9,7 @@ import type {
 } from "../proxy/codex-api.js";
 import { resolveModelId, getModelInfo } from "../routes/models.js";
 import { getConfig } from "../config.js";
-
-const DESKTOP_CONTEXT = loadDesktopContext();
-
-function loadDesktopContext(): string {
-  try {
-    return readFileSync(
-      resolve(process.cwd(), "config/prompts/desktop-context.md"),
-      "utf-8",
-    );
-  } catch {
-    return "";
-  }
-}
+import { buildInstructions } from "./shared-utils.js";
 
 /**
  * Convert a ChatCompletionRequest to a CodexResponsesRequest.
@@ -43,9 +29,7 @@ export function translateToCodexRequest(
   const userInstructions =
     systemMessages.map((m) => m.content).join("\n\n") ||
     "You are a helpful assistant.";
-  const instructions = DESKTOP_CONTEXT
-    ? `${DESKTOP_CONTEXT}\n\n${userInstructions}`
-    : userInstructions;
+  const instructions = buildInstructions(userInstructions);
 
   // Build input items from non-system messages
   const input: CodexInputItem[] = [];

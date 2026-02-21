@@ -36,8 +36,8 @@ export class SessionManager {
   hashMessages(
     messages: Array<{ role: string; content: string }>,
   ): string {
-    const data = messages.map((m) => `${m.role}:${m.content}`).join("|");
-    return createHash("sha256").update(data).digest("hex").slice(0, 16);
+    const data = JSON.stringify(messages.map((m) => [m.role, m.content]));
+    return createHash("sha256").update(data).digest("hex").slice(0, 32);
   }
 
   /**
