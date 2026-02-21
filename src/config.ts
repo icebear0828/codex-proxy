@@ -77,8 +77,11 @@ function loadYaml(filePath: string): unknown {
 }
 
 function applyEnvOverrides(raw: Record<string, unknown>): Record<string, unknown> {
-  if (process.env.CODEX_JWT_TOKEN) {
-    (raw.auth as Record<string, unknown>).jwt_token = process.env.CODEX_JWT_TOKEN;
+  const jwtEnv = process.env.CODEX_JWT_TOKEN?.trim();
+  if (jwtEnv && jwtEnv.startsWith("eyJ")) {
+    (raw.auth as Record<string, unknown>).jwt_token = jwtEnv;
+  } else if (jwtEnv) {
+    console.warn("[Config] CODEX_JWT_TOKEN ignored: not a valid JWT (must start with 'eyJ')");
   }
   if (process.env.CODEX_PLATFORM) {
     (raw.client as Record<string, unknown>).platform = process.env.CODEX_PLATFORM;
