@@ -74,20 +74,14 @@ curl http://localhost:8080/v1/chat/completions \
 - **配额实时监控** — 控制面板展示各账号剩余用量，限流窗口滚动时自动重置计数器
 - **关键数据即时持久化** — 新增/刷新 Token 立即写盘，不丢失
 
-### 3. 🛡️ 反检测与协议伪装 (Anti-Detection)
-- **Chrome TLS 指纹** — 通过 curl-impersonate 模拟 Chrome 完整 TLS 握手特征
-- **TLS 版本对齐** — `sec-ch-ua` 的 Chromium 版本与 TLS profile 动态同步（如 Chrome 136）
-- **完整 HTTP 指纹** — 所有请求（包括 OAuth、appcast）统一注入 User-Agent、sec-ch-ua、sec-fetch-* 等桌面端请求头
-- **桌面上下文注入** — 每个请求自动注入 Codex Desktop 的系统提示词，实现完整的功能对等
-- **Cookie 持久化** — v2 格式保留过期时间，关键 Cookie（cf_clearance）变更时即时写盘
-- **时间抖动 (Jitter)** — 定时操作加入随机偏移，消除机械化行为特征
+### 3. 🛡️ 稳定连接 (Stable Connection)
+- **桌面级请求模拟** — 自动对齐 Codex Desktop 的请求特征，确保连接稳定
+- **Cookie 持久化** — 会话状态自动保存，减少重复验证
 
-### 4. 🔄 自动维护与版本追踪 (Auto-Maintenance)
-- **Appcast 版本追踪** — 定时轮询 Codex Desktop 更新源，自动同步 `app_version` 与 `build_number`
-- **全自动指纹更新** — 检测到新版本后自动触发完整流水线：下载 → 解压 → 提取指纹 → 热更新配置
-- **Chromium 版本提取** — 从 Codex Desktop 安装包自动提取 Electron/Chromium 版本，同步 TLS profile
-- **配置热重载** — full-update 完成后自动重载 config + fingerprint，无需重启
-- **多轮对话关联** — 自动维护 `previous_response_id`，保持上下文连贯
+### 4. 🔄 自动维护 (Auto-Maintenance)
+- **版本自动同步** — 检测到 Codex Desktop 新版本后自动更新配置，无需手动操作
+- **配置热重载** — 更新完成后自动生效，无需重启
+- **多轮对话关联** — 自动维护上下文，保持对话连贯
 - **Web 控制面板** — 账号管理、用量监控、状态总览，中英双语
 
 ## 🏗️ 技术架构 (Architecture)
