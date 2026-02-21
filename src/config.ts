@@ -19,6 +19,7 @@ const ConfigSchema = z.object({
   model: z.object({
     default: z.string().default("gpt-5.3-codex"),
     default_reasoning_effort: z.string().default("medium"),
+    suppress_desktop_directives: z.boolean().default(true),
   }),
   auth: z.object({
     jwt_token: z.string().nullable().default(null),

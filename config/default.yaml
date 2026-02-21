@@ -13,6 +13,7 @@ client:
 model:
   default: "gpt-5.3-codex"
   default_reasoning_effort: "medium"
+  suppress_desktop_directives: true
 
 auth:
   jwt_token: null
