@@ -16,7 +16,6 @@
     <a href="#-快速开始-quick-start">快速开始</a> •
     <a href="#-核心功能-features">核心功能</a> •
     <a href="#-技术架构-architecture">技术架构</a> •
-    <a href="#-部署方式-deployment">部署方式</a> •
     <a href="#-客户端接入-client-setup">客户端接入</a> •
     <a href="#-配置说明-configuration">配置说明</a>
   </p>
@@ -37,21 +36,44 @@
 ## 🚀 快速开始 (Quick Start)
 
 ```bash
-# 1. 克隆仓库
 git clone https://github.com/icebear0828/codex-proxy.git
 cd codex-proxy
+```
 
-# 2. 安装依赖（也支持 pnpm / bun）
-npm install
-cd web && npm install && cd ..
+### Docker（推荐，所有平台通用）
 
-# 3. 启动代理（开发模式，支持热重载）
-npm run dev
+```bash
+docker compose up -d
+# 打开 http://localhost:8080 登录
+```
 
-# 4. 打开浏览器访问控制面板，使用 ChatGPT 账号登录
-#    http://localhost:8080
+数据持久化通过 volume 映射：`data/`（账号、Cookie）和 `config/`（配置文件）。
 
-# 5. 测试请求
+### macOS / Linux
+
+```bash
+npm install                # 安装后端依赖 + 自动下载 curl-impersonate
+cd web && npm install && cd ..   # 安装前端依赖
+npm run dev                # 开发模式（热重载）
+# 或：npm run build && npm start  # 生产模式
+```
+
+> 也支持 `pnpm` 或 `bun`，将上方 `npm` 替换即可。
+
+### Windows
+
+```bash
+npm install                # 安装后端依赖
+cd web && npm install && cd ..   # 安装前端依赖
+npm run dev                # 开发模式（热重载）
+```
+
+> Windows 下 curl-impersonate 暂不可用，自动降级为系统 curl（无 Chrome TLS 伪装）。建议搭配本地代理使用，或通过 Docker / WSL 部署以获得完整 TLS 伪装能力。
+
+### 验证
+
+```bash
+# 打开 http://localhost:8080 使用 ChatGPT 账号登录，然后：
 curl http://localhost:8080/v1/chat/completions \
   -H "Content-Type: application/json" \
   -d '{
@@ -208,30 +230,6 @@ for await (const chunk of stream) {
 }
 ```
 
-## 🐳 部署方式 (Deployment)
-
-### Docker 部署（推荐，所有平台通用）
-
-```bash
-git clone https://github.com/icebear0828/codex-proxy.git
-cd codex-proxy
-docker compose up -d
-# 打开 http://localhost:8080 登录
-```
-
-数据持久化通过 volume 映射：`data/`（账号、Cookie）和 `config/`（配置文件）。
-
-### 原生部署（macOS / Linux）
-
-```bash
-git clone https://github.com/icebear0828/codex-proxy.git
-cd codex-proxy
-npm install && cd web && npm install && cd .. && npm run build && npm start  # 也支持 pnpm / bun
-# 打开 http://localhost:8080 登录
-```
-
-> Docker 部署自动安装 curl-impersonate（Linux 版）和 unzip（自动更新用）。原生部署依赖 `npm install` 的 postinstall 脚本自动下载 curl-impersonate。
-
 ## ⚙️ 配置说明 (Configuration)
 
 所有配置位于 `config/default.yaml`：
@@ -300,7 +298,6 @@ server:
 
 - Codex API 为**流式输出专用**，设置 `stream: false` 时代理会内部流式收集后返回完整 JSON
 - 本项目依赖 Codex Desktop 的公开接口，上游版本更新时会自动检测并更新指纹
-- 建议在 **Linux / macOS** 上部署以获得完整 TLS 伪装能力（Windows 下 curl-impersonate 暂不可用，降级为系统 curl）
 - `config/default.yaml` 中的注释在自动更新后会丢失（使用结构化 YAML 写入）
 
 ## 📄 许可协议 (License)
