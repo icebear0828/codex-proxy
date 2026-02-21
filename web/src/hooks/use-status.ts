@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from "preact/hooks";
 
-export function useStatus() {
+export function useStatus(accountCount: number) {
   const [baseUrl, setBaseUrl] = useState("Loading...");
   const [apiKey, setApiKey] = useState("Loading...");
   const [models, setModels] = useState<string[]>(["codex"]);
@@ -35,7 +35,7 @@ export function useStatus() {
       }
     }
     loadStatus();
-  }, [loadModels]);
+  }, [loadModels, accountCount]);
 
   return { baseUrl, apiKey, models, selectedModel, setSelectedModel };
 }

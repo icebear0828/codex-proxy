@@ -11,7 +11,7 @@ import { useStatus } from "./hooks/use-status";
 
 function Dashboard() {
   const accounts = useAccounts();
-  const status = useStatus();
+  const status = useStatus(accounts.list.length);
 
   return (
     <>
