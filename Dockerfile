@@ -7,12 +7,6 @@ RUN apt-get update && \
 
 WORKDIR /app
 
-# Optional build-time proxy for npm/GitHub downloads inside RUN commands.
-# Uses custom arg name to avoid BuildKit intercepting HTTP_PROXY for image pulls.
-# Docker daemon's own proxy handles image pulls separately.
-ARG BUILD_PROXY
-ENV http_proxy=${BUILD_PROXY} https_proxy=${BUILD_PROXY}
-
 # Install backend dependencies (postinstall downloads curl-impersonate for Linux)
 COPY package*.json ./
 RUN npm ci
@@ -28,9 +22,6 @@ RUN npx tsc
 
 # Prune dev dependencies
 RUN npm prune --omit=dev
-
-# Clear build-time proxy from image
-ENV http_proxy= https_proxy=
 
 # Persistent data mount point
 VOLUME /app/data

@@ -2,10 +2,8 @@ services:
   codex-proxy:
     build:
       context: .
-      args:
-        # Proxy for RUN commands (npm install, curl downloads).
-        # host.docker.internal resolves to the Docker host's IP.
-        - BUILD_PROXY=${BUILD_PROXY:-}
+      # Use host network during build so npm/curl can reach proxy at 127.0.0.1
+      network: host
     ports:
       - "${PORT:-8080}:8080"
     volumes:
