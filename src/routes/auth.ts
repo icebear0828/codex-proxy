@@ -23,7 +23,8 @@ export function createAuthRoutes(
   app.get("/auth/status", (c) => {
     const authenticated = pool.isAuthenticated();
     const userInfo = pool.getUserInfo();
-    const proxyApiKey = pool.getProxyApiKey();
+    const config = getConfig();
+    const proxyApiKey = config.server.proxy_api_key ?? pool.getProxyApiKey();
     const summary = pool.getPoolSummary();
     return c.json({
       authenticated,

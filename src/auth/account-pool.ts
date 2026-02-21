@@ -331,6 +331,8 @@ export class AccountPool {
   }
 
   validateProxyApiKey(key: string): boolean {
+    const configKey = getConfig().server.proxy_api_key;
+    if (configKey && key === configKey) return true;
     for (const entry of this.accounts.values()) {
       if (entry.proxyApiKey === key) return true;
     }
