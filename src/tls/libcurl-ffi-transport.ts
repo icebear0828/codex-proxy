@@ -116,13 +116,13 @@ async function initBindings(): Promise<CurlBindings> {
     const mod = await import("koffi");
     koffi = mod.default ?? mod;
   } catch {
-    throw new Error("koffi package not installed. Run: npm install koffi");
+    throw new Error("koffi package not installed. Run: npm/pnpm/bun install koffi");
   }
 
   const dllPath = resolveLibPath();
   if (!dllPath) {
     throw new Error(
-      "libcurl-impersonate shared library not found. Run: npm run setup",
+      "libcurl-impersonate shared library not found. Run: npm/pnpm/bun run setup",
     );
   }
 

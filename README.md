@@ -41,7 +41,7 @@
 git clone https://github.com/icebear0828/codex-proxy.git
 cd codex-proxy
 
-# 2. 安装依赖
+# 2. 安装依赖（也支持 pnpm install 或 bun install）
 npm install
 
 # 3. 启动代理（开发模式，支持热重载）
@@ -225,7 +225,7 @@ docker compose up -d
 ```bash
 git clone https://github.com/icebear0828/codex-proxy.git
 cd codex-proxy
-npm install && npm run build && npm start
+npm install && npm run build && npm start    # 也支持 pnpm / bun
 # 打开 http://localhost:8080 登录
 ```
 

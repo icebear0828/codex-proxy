@@ -100,7 +100,7 @@ export function resolveCurlBinary(): string {
   _isImpersonate = false;
   console.warn(
     `[TLS] curl-impersonate not found at ${binPath}. ` +
-    `Falling back to system curl. Run "npm run setup" to install curl-impersonate.`,
+    `Falling back to system curl. Run "npm/pnpm/bun run setup" to install curl-impersonate.`,
   );
   return _resolved;
 }
