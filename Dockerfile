@@ -8,8 +8,9 @@ RUN apt-get update && \
 
 WORKDIR /app
 
-# 1) Backend deps (postinstall downloads curl-impersonate for Linux)
-COPY package*.json ./
+# 1) Backend deps (postinstall runs tsx scripts/setup-curl.ts)
+COPY package*.json tsconfig.json ./
+COPY scripts/ scripts/
 RUN npm ci
 
 # Fail fast if curl-impersonate wasn't downloaded
