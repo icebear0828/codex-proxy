@@ -69,7 +69,7 @@ client = anthropic.Anthropic(
 )
 
 message = client.messages.create(
-    model="claude-sonnet-4-20250514",
+    model="${model}",
     max_tokens=1024,
     messages=[{"role": "user", "content": "Hello"}],
 )
@@ -80,7 +80,7 @@ print(message.content[0].text)`,
   -H "x-api-key: ${apiKey}" \\
   -H "anthropic-version: 2023-06-01" \\
   -d '{
-    "model": "claude-sonnet-4-20250514",
+    "model": "${model}",
     "max_tokens": 1024,
     "messages": [{"role": "user", "content": "Hello"}]
   }'`,
@@ -93,7 +93,7 @@ const client = new Anthropic({
 });
 
 const message = await client.messages.create({
-    model: "claude-sonnet-4-20250514",
+    model: "${model}",
     max_tokens: 1024,
     messages: [{ role: "user", content: "Hello" }],
 });
@@ -107,12 +107,12 @@ client = genai.Client(
 )
 
 response = client.models.generate_content(
-    model="gemini-2.5-pro",
+    model="${model}",
     contents="Hello",
 )
 print(response.text)`,
 
-    "gemini-curl": `curl "${origin}/v1beta/models/gemini-2.5-pro:generateContent?key=${apiKey}" \\
+    "gemini-curl": `curl "${origin}/v1beta/models/${model}:generateContent?key=${apiKey}" \\
   -H "Content-Type: application/json" \\
   -d '{
     "contents": [{"role": "user", "parts": [{"text": "Hello"}]}]
@@ -126,7 +126,7 @@ const ai = new GoogleGenAI({
 });
 
 const response = await ai.models.generateContent({
-    model: "gemini-2.5-pro",
+    model: "${model}",
     contents: "Hello",
 });
 console.log(response.text);`,
