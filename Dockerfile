@@ -7,12 +7,11 @@ RUN apt-get update && \
 
 WORKDIR /app
 
-# Install backend dependencies (postinstall downloads curl-impersonate for Linux)
-COPY package*.json ./
-RUN npm ci
-
-# Copy source
+# Copy everything first (postinstall needs scripts/setup-curl.ts)
 COPY . .
+
+# Install backend dependencies (postinstall downloads curl-impersonate)
+RUN npm ci
 
 # Build frontend (Vite → public/)
 RUN cd web && npm ci && npm run build
