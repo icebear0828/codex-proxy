@@ -8,6 +8,15 @@ import { z } from "zod";
 const GeminiPartSchema = z.object({
   text: z.string().optional(),
   thought: z.boolean().optional(),
+  // Function calling fields (accepted for compatibility, not forwarded to Codex)
+  functionCall: z.object({
+    name: z.string(),
+    args: z.record(z.unknown()).optional(),
+  }).optional(),
+  functionResponse: z.object({
+    name: z.string(),
+    response: z.record(z.unknown()).optional(),
+  }).optional(),
 });
 
 const GeminiContentSchema = z.object({
@@ -32,6 +41,20 @@ export const GeminiGenerateContentRequestSchema = z.object({
   contents: z.array(GeminiContentSchema).min(1),
   systemInstruction: GeminiContentSchema.optional(),
   generationConfig: GeminiGenerationConfigSchema.optional(),
+  // Tool-related fields (accepted for compatibility, not forwarded to Codex)
+  tools: z.array(z.object({
+    functionDeclarations: z.array(z.object({
+      name: z.string(),
+      description: z.string().optional(),
+      parameters: z.record(z.unknown()).optional(),
+    })).optional(),
+  }).passthrough()).optional(),
+  toolConfig: z.object({
+    functionCallingConfig: z.object({
+      mode: z.enum(["AUTO", "NONE", "ANY"]).optional(),
+      allowedFunctionNames: z.array(z.string()).optional(),
+    }).optional(),
+  }).optional(),
 });
 
 export type GeminiGenerateContentRequest = z.infer<

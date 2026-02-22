@@ -11,9 +11,24 @@ const ContentPartSchema = z.object({
 }).passthrough();
 
 export const ChatMessageSchema = z.object({
-  role: z.enum(["system", "developer", "user", "assistant"]),
-  content: z.union([z.string(), z.array(ContentPartSchema)]),
+  role: z.enum(["system", "developer", "user", "assistant", "tool", "function"]),
+  content: z.union([z.string(), z.array(ContentPartSchema)]).nullable().optional(),
   name: z.string().optional(),
+  // New format: tool_calls (array, on assistant messages)
+  tool_calls: z.array(z.object({
+    id: z.string(),
+    type: z.literal("function"),
+    function: z.object({
+      name: z.string(),
+      arguments: z.string(),
+    }),
+  })).optional(),
+  tool_call_id: z.string().optional(),
+  // Legacy format: function_call (single object, on assistant messages)
+  function_call: z.object({
+    name: z.string(),
+    arguments: z.string(),
+  }).optional(),
 });
 
 export const ChatCompletionRequestSchema = z.object({
@@ -30,6 +45,30 @@ export const ChatCompletionRequestSchema = z.object({
   user: z.string().optional(),
   // Codex-specific extensions
   reasoning_effort: z.enum(["low", "medium", "high", "xhigh"]).optional(),
+  // New tool format (accepted for compatibility, not forwarded to Codex)
+  tools: z.array(z.object({
+    type: z.literal("function"),
+    function: z.object({
+      name: z.string(),
+      description: z.string().optional(),
+      parameters: z.record(z.unknown()).optional(),
+    }),
+  })).optional(),
+  tool_choice: z.union([
+    z.enum(["none", "auto", "required"]),
+    z.object({ type: z.literal("function"), function: z.object({ name: z.string() }) }),
+  ]).optional(),
+  parallel_tool_calls: z.boolean().optional(),
+  // Legacy function format (accepted for compatibility, not forwarded to Codex)
+  functions: z.array(z.object({
+    name: z.string(),
+    description: z.string().optional(),
+    parameters: z.record(z.unknown()).optional(),
+  })).optional(),
+  function_call: z.union([
+    z.enum(["none", "auto"]),
+    z.object({ name: z.string() }),
+  ]).optional(),
 });
 
 export type ChatMessage = z.infer<typeof ChatMessageSchema>;
@@ -41,9 +80,9 @@ export interface ChatCompletionChoice {
   index: number;
   message: {
     role: "assistant";
-    content: string;
+    content: string | null;
   };
-  finish_reason: "stop" | "length" | null;
+  finish_reason: "stop" | "length" | "tool_calls" | "function_call" | null;
 }
 
 export interface ChatCompletionUsage {
@@ -65,13 +104,13 @@ export interface ChatCompletionResponse {
 
 export interface ChatCompletionChunkDelta {
   role?: "assistant";
-  content?: string;
+  content?: string | null;
 }
 
 export interface ChatCompletionChunkChoice {
   index: number;
   delta: ChatCompletionChunkDelta;
-  finish_reason: "stop" | "length" | null;
+  finish_reason: "stop" | "length" | "tool_calls" | "function_call" | null;
 }
 
 export interface ChatCompletionChunk {

@@ -23,15 +23,42 @@ function mapThinkingToEffort(
 
 /**
  * Extract text from Anthropic content (string or content block array).
+ * Flattens tool_use/tool_result blocks into readable text for Codex.
  */
 function flattenContent(
-  content: string | Array<{ type: string; text?: string }>,
+  content: string | Array<Record<string, unknown>>,
 ): string {
   if (typeof content === "string") return content;
-  return content
-    .filter((b) => b.type === "text" && b.text)
-    .map((b) => b.text!)
-    .join("\n");
+  const parts: string[] = [];
+  for (const block of content) {
+    if (block.type === "text" && typeof block.text === "string") {
+      parts.push(block.text);
+    } else if (block.type === "tool_use") {
+      const name = typeof block.name === "string" ? block.name : "unknown";
+      let inputStr: string;
+      try {
+        inputStr = JSON.stringify(block.input, null, 2);
+      } catch {
+        inputStr = String(block.input);
+      }
+      parts.push(`[Tool Call: ${name}(${inputStr})]`);
+    } else if (block.type === "tool_result") {
+      const id =
+        typeof block.tool_use_id === "string" ? block.tool_use_id : "unknown";
+      let text = "";
+      if (typeof block.content === "string") {
+        text = block.content;
+      } else if (Array.isArray(block.content)) {
+        text = (block.content as Array<{ text?: string }>)
+          .filter((b) => typeof b.text === "string")
+          .map((b) => b.text!)
+          .join("\n");
+      }
+      const prefix = block.is_error ? "Tool Error" : "Tool Result";
+      parts.push(`[${prefix} (${id})]: ${text}`);
+    }
+  }
+  return parts.join("\n");
 }
 
 /**

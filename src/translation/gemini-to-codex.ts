@@ -16,14 +16,40 @@ import { buildInstructions, budgetToEffort } from "./shared-utils.js";
 
 /**
  * Extract text from Gemini content parts.
+ * Flattens functionCall/functionResponse parts into readable text for Codex.
  */
 function flattenParts(
-  parts: Array<{ text?: string; thought?: boolean }>,
+  parts: Array<{
+    text?: string;
+    thought?: boolean;
+    functionCall?: { name: string; args?: Record<string, unknown> };
+    functionResponse?: { name: string; response?: Record<string, unknown> };
+  }>,
 ): string {
-  return parts
-    .filter((p) => p.text && !p.thought)
-    .map((p) => p.text!)
-    .join("\n");
+  const textParts: string[] = [];
+  for (const p of parts) {
+    if (p.thought) continue;
+    if (p.text) {
+      textParts.push(p.text);
+    } else if (p.functionCall) {
+      let args: string;
+      try {
+        args = JSON.stringify(p.functionCall.args ?? {}, null, 2);
+      } catch {
+        args = String(p.functionCall.args);
+      }
+      textParts.push(`[Tool Call: ${p.functionCall.name}(${args})]`);
+    } else if (p.functionResponse) {
+      let resp: string;
+      try {
+        resp = JSON.stringify(p.functionResponse.response ?? {}, null, 2);
+      } catch {
+        resp = String(p.functionResponse.response);
+      }
+      textParts.push(`[Tool Result (${p.functionResponse.name})]: ${resp}`);
+    }
+  }
+  return textParts.join("\n");
 }
 
 /**

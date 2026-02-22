@@ -11,13 +11,44 @@ import { resolveModelId, getModelInfo } from "../routes/models.js";
 import { getConfig } from "../config.js";
 import { buildInstructions } from "./shared-utils.js";
 
-/** Extract plain text from content (string or array of content parts). */
+/** Extract plain text from content (string, array, null, or undefined). */
 function extractText(content: ChatMessage["content"]): string {
+  if (content == null) return "";
   if (typeof content === "string") return content;
   return content
     .filter((p) => p.type === "text" && p.text)
     .map((p) => p.text!)
     .join("\n");
+}
+
+/** Flatten tool_calls array into human-readable text. */
+function flattenToolCalls(
+  toolCalls: NonNullable<ChatMessage["tool_calls"]>,
+): string {
+  return toolCalls
+    .map((tc) => {
+      let args = tc.function.arguments;
+      try {
+        args = JSON.stringify(JSON.parse(args), null, 2);
+      } catch {
+        /* keep raw string */
+      }
+      return `[Tool Call: ${tc.function.name}(${args})]`;
+    })
+    .join("\n");
+}
+
+/** Flatten a legacy function_call into human-readable text. */
+function flattenFunctionCall(
+  fc: NonNullable<ChatMessage["function_call"]>,
+): string {
+  let args = fc.arguments;
+  try {
+    args = JSON.stringify(JSON.parse(args), null, 2);
+  } catch {
+    /* keep raw string */
+  }
+  return `[Tool Call: ${fc.name}(${args})]`;
 }
 
 /**
@@ -43,13 +74,33 @@ export function translateToCodexRequest(
   const instructions = buildInstructions(userInstructions);
 
   // Build input items from non-system messages
+  // Handles new format (tool/tool_calls) and legacy format (function/function_call)
   const input: CodexInputItem[] = [];
   for (const msg of req.messages) {
     if (msg.role === "system" || msg.role === "developer") continue;
-    input.push({
-      role: msg.role as "user" | "assistant",
-      content: extractText(msg.content),
-    });
+
+    if (msg.role === "assistant") {
+      const parts: string[] = [];
+      const text = extractText(msg.content);
+      if (text) parts.push(text);
+      if (msg.tool_calls?.length) parts.push(flattenToolCalls(msg.tool_calls));
+      if (msg.function_call) parts.push(flattenFunctionCall(msg.function_call));
+      input.push({ role: "assistant", content: parts.join("\n") });
+    } else if (msg.role === "tool") {
+      const name = msg.name ?? msg.tool_call_id ?? "unknown";
+      input.push({
+        role: "user",
+        content: `[Tool Result (${name})]: ${extractText(msg.content)}`,
+      });
+    } else if (msg.role === "function") {
+      const name = msg.name ?? "unknown";
+      input.push({
+        role: "user",
+        content: `[Tool Result (${name})]: ${extractText(msg.content)}`,
+      });
+    } else {
+      input.push({ role: "user", content: extractText(msg.content) });
+    }
   }
 
   // Ensure at least one input message
