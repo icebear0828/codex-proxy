@@ -117,7 +117,9 @@ export function createChatRoutes(
           role: m.role,
           content: typeof m.content === "string"
             ? m.content
-            : m.content.filter((p) => p.type === "text" && p.text).map((p) => p.text!).join("\n"),
+            : m.content == null
+              ? ""
+              : m.content.filter((p) => p.type === "text" && p.text).map((p) => p.text!).join("\n"),
         })),
         model: codexRequest.model,
         isStreaming: req.stream,

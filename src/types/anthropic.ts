@@ -19,9 +19,25 @@ const AnthropicImageContentSchema = z.object({
   }),
 });
 
+const AnthropicToolUseContentSchema = z.object({
+  type: z.literal("tool_use"),
+  id: z.string(),
+  name: z.string(),
+  input: z.record(z.unknown()),
+});
+
+const AnthropicToolResultContentSchema = z.object({
+  type: z.literal("tool_result"),
+  tool_use_id: z.string(),
+  content: z.union([z.string(), z.array(AnthropicTextContentSchema)]).optional(),
+  is_error: z.boolean().optional(),
+});
+
 const AnthropicContentBlockSchema = z.discriminatedUnion("type", [
   AnthropicTextContentSchema,
   AnthropicImageContentSchema,
+  AnthropicToolUseContentSchema,
+  AnthropicToolResultContentSchema,
 ]);
 
 const AnthropicContentSchema = z.union([
@@ -63,6 +79,17 @@ export const AnthropicMessagesRequestSchema = z.object({
   thinking: z
     .union([AnthropicThinkingEnabledSchema, AnthropicThinkingDisabledSchema])
     .optional(),
+  // Tool-related fields (accepted for compatibility, not forwarded to Codex)
+  tools: z.array(z.object({
+    name: z.string(),
+    description: z.string().optional(),
+    input_schema: z.record(z.unknown()).optional(),
+  }).passthrough()).optional(),
+  tool_choice: z.union([
+    z.object({ type: z.literal("auto") }),
+    z.object({ type: z.literal("any") }),
+    z.object({ type: z.literal("tool"), name: z.string() }),
+  ]).optional(),
 });
 
 export type AnthropicMessagesRequest = z.infer<
@@ -72,9 +99,12 @@ export type AnthropicMessagesRequest = z.infer<
 // --- Response ---
 
 export interface AnthropicContentBlock {
-  type: "text" | "thinking";
+  type: "text" | "thinking" | "tool_use";
   text?: string;
   thinking?: string;
+  id?: string;
+  name?: string;
+  input?: Record<string, unknown>;
 }
 
 export interface AnthropicUsage {
@@ -88,7 +118,7 @@ export interface AnthropicMessagesResponse {
   role: "assistant";
   content: AnthropicContentBlock[];
   model: string;
-  stop_reason: "end_turn" | "max_tokens" | "stop_sequence" | null;
+  stop_reason: "end_turn" | "max_tokens" | "stop_sequence" | "tool_use" | null;
   stop_sequence: string | null;
   usage: AnthropicUsage;
 }
