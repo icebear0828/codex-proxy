@@ -15,6 +15,8 @@ import type { CodexApi } from "../proxy/codex-api.js";
 import type {
   ChatCompletionResponse,
   ChatCompletionChunk,
+  ChatCompletionToolCall,
+  ChatCompletionChunkToolCall,
 } from "../types/openai.js";
 import { iterateCodexEvents, type UsageInfo } from "./codex-event-extractor.js";
 
@@ -39,6 +41,12 @@ export async function* streamCodexToOpenAI(
 ): AsyncGenerator<string> {
   const chunkId = `chatcmpl-${randomUUID().replace(/-/g, "").slice(0, 24)}`;
   const created = Math.floor(Date.now() / 1000);
+  let hasToolCalls = false;
+  // Track tool call indices by call_id
+  const toolCallIndexMap = new Map<string, number>();
+  let nextToolCallIndex = 0;
+  // Track which call_ids have received argument deltas
+  const callIdsWithDeltas = new Set<string>();
 
   // Send initial role chunk
   yield formatSSE({
@@ -57,6 +65,88 @@ export async function* streamCodexToOpenAI(
 
   for await (const evt of iterateCodexEvents(codexApi, rawResponse)) {
     if (evt.responseId) onResponseId?.(evt.responseId);
+
+    // Handle function call events
+    if (evt.functionCallStart) {
+      hasToolCalls = true;
+      const idx = nextToolCallIndex++;
+      toolCallIndexMap.set(evt.functionCallStart.callId, idx);
+      const toolCall: ChatCompletionChunkToolCall = {
+        index: idx,
+        id: evt.functionCallStart.callId,
+        type: "function",
+        function: {
+          name: evt.functionCallStart.name,
+          arguments: "",
+        },
+      };
+      yield formatSSE({
+        id: chunkId,
+        object: "chat.completion.chunk",
+        created,
+        model,
+        choices: [
+          {
+            index: 0,
+            delta: { tool_calls: [toolCall] },
+            finish_reason: null,
+          },
+        ],
+      });
+      continue;
+    }
+
+    if (evt.functionCallDelta) {
+      callIdsWithDeltas.add(evt.functionCallDelta.callId);
+      const idx = toolCallIndexMap.get(evt.functionCallDelta.callId) ?? 0;
+      const toolCall: ChatCompletionChunkToolCall = {
+        index: idx,
+        function: {
+          arguments: evt.functionCallDelta.delta,
+        },
+      };
+      yield formatSSE({
+        id: chunkId,
+        object: "chat.completion.chunk",
+        created,
+        model,
+        choices: [
+          {
+            index: 0,
+            delta: { tool_calls: [toolCall] },
+            finish_reason: null,
+          },
+        ],
+      });
+      continue;
+    }
+
+    // functionCallDone — emit full arguments if no deltas were streamed
+    if (evt.functionCallDone) {
+      if (!callIdsWithDeltas.has(evt.functionCallDone.callId)) {
+        const idx = toolCallIndexMap.get(evt.functionCallDone.callId) ?? 0;
+        const toolCall: ChatCompletionChunkToolCall = {
+          index: idx,
+          function: {
+            arguments: evt.functionCallDone.arguments,
+          },
+        };
+        yield formatSSE({
+          id: chunkId,
+          object: "chat.completion.chunk",
+          created,
+          model,
+          choices: [
+            {
+              index: 0,
+              delta: { tool_calls: [toolCall] },
+              finish_reason: null,
+            },
+          ],
+        });
+      }
+      continue;
+    }
 
     switch (evt.typed.type) {
       case "response.output_text.delta": {
@@ -89,7 +179,7 @@ export async function* streamCodexToOpenAI(
             {
               index: 0,
               delta: {},
-              finish_reason: "stop",
+              finish_reason: hasToolCalls ? "tool_calls" : "stop",
             },
           ],
         });
@@ -118,6 +208,10 @@ export async function collectCodexResponse(
   let completionTokens = 0;
   let responseId: string | null = null;
 
+  // Collect tool calls
+  const toolCalls: ChatCompletionToolCall[] = [];
+  const toolCallArgsMap = new Map<string, { name: string; args: string }>();
+
   for await (const evt of iterateCodexEvents(codexApi, rawResponse)) {
     if (evt.responseId) responseId = evt.responseId;
     if (evt.textDelta) fullText += evt.textDelta;
@@ -125,6 +219,35 @@ export async function collectCodexResponse(
       promptTokens = evt.usage.input_tokens;
       completionTokens = evt.usage.output_tokens;
     }
+    if (evt.functionCallStart) {
+      toolCallArgsMap.set(evt.functionCallStart.callId, {
+        name: evt.functionCallStart.name,
+        args: "",
+      });
+    }
+    if (evt.functionCallDelta) {
+      const entry = toolCallArgsMap.get(evt.functionCallDelta.callId);
+      if (entry) entry.args += evt.functionCallDelta.delta;
+    }
+    if (evt.functionCallDone) {
+      toolCalls.push({
+        id: evt.functionCallDone.callId,
+        type: "function",
+        function: {
+          name: evt.functionCallDone.name,
+          arguments: evt.functionCallDone.arguments,
+        },
+      });
+    }
+  }
+
+  const hasToolCalls = toolCalls.length > 0;
+  const message: ChatCompletionResponse["choices"][0]["message"] = {
+    role: "assistant",
+    content: fullText || null,
+  };
+  if (hasToolCalls) {
+    message.tool_calls = toolCalls;
   }
 
   return {
@@ -136,11 +259,8 @@ export async function collectCodexResponse(
       choices: [
         {
           index: 0,
-          message: {
-            role: "assistant",
-            content: fullText,
-          },
-          finish_reason: "stop",
+          message,
+          finish_reason: hasToolCalls ? "tool_calls" : "stop",
         },
       ],
       usage: {

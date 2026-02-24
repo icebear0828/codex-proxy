@@ -27,6 +27,8 @@ export interface CodexResponsesRequest {
   reasoning?: { effort: string };
   /** Optional: tools available to the model */
   tools?: unknown[];
+  /** Optional: tool choice strategy */
+  tool_choice?: string | { type: string; name: string };
   /** Optional: previous response ID for multi-turn */
   previous_response_id?: string | null;
 }
@@ -34,7 +36,9 @@ export interface CodexResponsesRequest {
 export type CodexInputItem =
   | { role: "user"; content: string }
   | { role: "assistant"; content: string }
-  | { role: "system"; content: string };
+  | { role: "system"; content: string }
+  | { type: "function_call"; id?: string; call_id: string; name: string; arguments: string }
+  | { type: "function_call_output"; call_id: string; output: string };
 
 /** Parsed SSE event from the Codex Responses stream */
 export interface CodexSSEEvent {

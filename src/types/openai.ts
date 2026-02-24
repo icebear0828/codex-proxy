@@ -76,11 +76,21 @@ export type ChatCompletionRequest = z.infer<typeof ChatCompletionRequestSchema>;
 
 // --- Response (non-streaming) ---
 
+export interface ChatCompletionToolCall {
+  id: string;
+  type: "function";
+  function: {
+    name: string;
+    arguments: string;
+  };
+}
+
 export interface ChatCompletionChoice {
   index: number;
   message: {
     role: "assistant";
     content: string | null;
+    tool_calls?: ChatCompletionToolCall[];
   };
   finish_reason: "stop" | "length" | "tool_calls" | "function_call" | null;
 }
@@ -102,9 +112,20 @@ export interface ChatCompletionResponse {
 
 // --- Response (streaming) ---
 
+export interface ChatCompletionChunkToolCall {
+  index: number;
+  id?: string;
+  type?: "function";
+  function?: {
+    name?: string;
+    arguments?: string;
+  };
+}
+
 export interface ChatCompletionChunkDelta {
   role?: "assistant";
   content?: string | null;
+  tool_calls?: ChatCompletionChunkToolCall[];
 }
 
 export interface ChatCompletionChunkChoice {

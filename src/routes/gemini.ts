@@ -127,7 +127,13 @@ export function createGeminiRoutes(
     }
 
     // Parse request
-    const body = await c.req.json();
+    let body: unknown;
+    try {
+      body = await c.req.json();
+    } catch {
+      c.status(400);
+      return c.json(makeError(400, "Invalid JSON in request body"));
+    }
     const validationResult = GeminiGenerateContentRequestSchema.safeParse(body);
     if (!validationResult.success) {
       c.status(400);

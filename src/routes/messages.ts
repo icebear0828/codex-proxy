@@ -86,7 +86,15 @@ export function createMessagesRoutes(
     }
 
     // Parse request
-    const body = await c.req.json();
+    let body: unknown;
+    try {
+      body = await c.req.json();
+    } catch {
+      c.status(400);
+      return c.json(
+        makeError("invalid_request_error", "Invalid JSON in request body"),
+      );
+    }
     const parsed = AnthropicMessagesRequestSchema.safeParse(body);
     if (!parsed.success) {
       c.status(400);

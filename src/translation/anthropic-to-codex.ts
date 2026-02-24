@@ -10,6 +10,7 @@ import type {
 import { resolveModelId, getModelInfo } from "../routes/models.js";
 import { getConfig } from "../config.js";
 import { buildInstructions, budgetToEffort } from "./shared-utils.js";
+import { anthropicToolsToCodex, anthropicToolChoiceToCodex } from "./tool-format.js";
 
 /**
  * Map Anthropic thinking budget_tokens to Codex reasoning effort.
@@ -22,43 +23,77 @@ function mapThinkingToEffort(
 }
 
 /**
- * Extract text from Anthropic content (string or content block array).
- * Flattens tool_use/tool_result blocks into readable text for Codex.
+ * Extract text-only content from Anthropic blocks.
  */
-function flattenContent(
+function extractTextContent(
   content: string | Array<Record<string, unknown>>,
 ): string {
   if (typeof content === "string") return content;
-  const parts: string[] = [];
+  return content
+    .filter((b) => b.type === "text" && typeof b.text === "string")
+    .map((b) => b.text as string)
+    .join("\n");
+}
+
+/**
+ * Convert Anthropic message content blocks into native Codex input items.
+ * Handles text, tool_use, and tool_result blocks.
+ */
+function contentToInputItems(
+  role: "user" | "assistant",
+  content: string | Array<Record<string, unknown>>,
+): CodexInputItem[] {
+  if (typeof content === "string") {
+    return [{ role, content }];
+  }
+
+  const items: CodexInputItem[] = [];
+
+  // Collect text blocks first
+  const text = extractTextContent(content);
+  if (text || !content.some((b) => b.type === "tool_use" || b.type === "tool_result")) {
+    items.push({ role, content: text });
+  }
+
   for (const block of content) {
-    if (block.type === "text" && typeof block.text === "string") {
-      parts.push(block.text);
-    } else if (block.type === "tool_use") {
+    if (block.type === "tool_use") {
       const name = typeof block.name === "string" ? block.name : "unknown";
-      let inputStr: string;
+      const id = typeof block.id === "string" ? block.id : `tc_${name}`;
+      let args: string;
       try {
-        inputStr = JSON.stringify(block.input, null, 2);
+        args = JSON.stringify(block.input ?? {});
       } catch {
-        inputStr = String(block.input);
+        args = "{}";
       }
-      parts.push(`[Tool Call: ${name}(${inputStr})]`);
+      items.push({
+        type: "function_call",
+        call_id: id,
+        name,
+        arguments: args,
+      });
     } else if (block.type === "tool_result") {
-      const id =
-        typeof block.tool_use_id === "string" ? block.tool_use_id : "unknown";
-      let text = "";
+      const toolUseId = typeof block.tool_use_id === "string" ? block.tool_use_id : "unknown";
+      let resultText = "";
       if (typeof block.content === "string") {
-        text = block.content;
+        resultText = block.content;
       } else if (Array.isArray(block.content)) {
-        text = (block.content as Array<{ text?: string }>)
+        resultText = (block.content as Array<{ text?: string }>)
           .filter((b) => typeof b.text === "string")
           .map((b) => b.text!)
           .join("\n");
       }
-      const prefix = block.is_error ? "Tool Error" : "Tool Result";
-      parts.push(`[${prefix} (${id})]: ${text}`);
+      if (block.is_error) {
+        resultText = `Error: ${resultText}`;
+      }
+      items.push({
+        type: "function_call_output",
+        call_id: toolUseId,
+        output: resultText,
+      });
     }
   }
-  return parts.join("\n");
+
+  return items;
 }
 
 /**
@@ -90,10 +125,11 @@ export function translateAnthropicToCodexRequest(
   // Build input items from messages
   const input: CodexInputItem[] = [];
   for (const msg of req.messages) {
-    input.push({
-      role: msg.role as "user" | "assistant",
-      content: flattenContent(msg.content),
-    });
+    const items = contentToInputItems(
+      msg.role as "user" | "assistant",
+      msg.content as string | Array<Record<string, unknown>>,
+    );
+    input.push(...items);
   }
 
   // Ensure at least one input message
@@ -106,6 +142,10 @@ export function translateAnthropicToCodexRequest(
   const modelInfo = getModelInfo(modelId);
   const config = getConfig();
 
+  // Convert tools to Codex format
+  const codexTools = req.tools?.length ? anthropicToolsToCodex(req.tools) : [];
+  const codexToolChoice = anthropicToolChoiceToCodex(req.tool_choice);
+
   // Build request
   const request: CodexResponsesRequest = {
     model: modelId,
@@ -113,8 +153,13 @@ export function translateAnthropicToCodexRequest(
     input,
     stream: true,
     store: false,
-    tools: [],
+    tools: codexTools,
   };
+
+  // Add tool_choice if specified
+  if (codexToolChoice) {
+    request.tool_choice = codexToolChoice;
+  }
 
   // Add previous response ID for multi-turn conversations
   if (previousResponseId) {

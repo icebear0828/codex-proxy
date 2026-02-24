@@ -10,6 +10,11 @@ import type {
 import { resolveModelId, getModelInfo } from "../routes/models.js";
 import { getConfig } from "../config.js";
 import { buildInstructions } from "./shared-utils.js";
+import {
+  openAIToolsToCodex,
+  openAIToolChoiceToCodex,
+  openAIFunctionsToCodex,
+} from "./tool-format.js";
 
 /** Extract plain text from content (string, array, null, or undefined). */
 function extractText(content: ChatMessage["content"]): string {
@@ -21,35 +26,6 @@ function extractText(content: ChatMessage["content"]): string {
     .join("\n");
 }
 
-/** Flatten tool_calls array into human-readable text. */
-function flattenToolCalls(
-  toolCalls: NonNullable<ChatMessage["tool_calls"]>,
-): string {
-  return toolCalls
-    .map((tc) => {
-      let args = tc.function.arguments;
-      try {
-        args = JSON.stringify(JSON.parse(args), null, 2);
-      } catch {
-        /* keep raw string */
-      }
-      return `[Tool Call: ${tc.function.name}(${args})]`;
-    })
-    .join("\n");
-}
-
-/** Flatten a legacy function_call into human-readable text. */
-function flattenFunctionCall(
-  fc: NonNullable<ChatMessage["function_call"]>,
-): string {
-  let args = fc.arguments;
-  try {
-    args = JSON.stringify(JSON.parse(args), null, 2);
-  } catch {
-    /* keep raw string */
-  }
-  return `[Tool Call: ${fc.name}(${args})]`;
-}
 
 /**
  * Convert a ChatCompletionRequest to a CodexResponsesRequest.
@@ -80,23 +56,43 @@ export function translateToCodexRequest(
     if (msg.role === "system" || msg.role === "developer") continue;
 
     if (msg.role === "assistant") {
-      const parts: string[] = [];
+      // First push the text content
       const text = extractText(msg.content);
-      if (text) parts.push(text);
-      if (msg.tool_calls?.length) parts.push(flattenToolCalls(msg.tool_calls));
-      if (msg.function_call) parts.push(flattenFunctionCall(msg.function_call));
-      input.push({ role: "assistant", content: parts.join("\n") });
+      if (text || (!msg.tool_calls?.length && !msg.function_call)) {
+        input.push({ role: "assistant", content: text });
+      }
+      // Then push tool calls as native function_call items
+      if (msg.tool_calls?.length) {
+        for (const tc of msg.tool_calls) {
+          input.push({
+            type: "function_call",
+            call_id: tc.id,
+            name: tc.function.name,
+            arguments: tc.function.arguments,
+          });
+        }
+      }
+      if (msg.function_call) {
+        input.push({
+          type: "function_call",
+          call_id: `fc_${msg.function_call.name}`,
+          name: msg.function_call.name,
+          arguments: msg.function_call.arguments,
+        });
+      }
     } else if (msg.role === "tool") {
-      const name = msg.name ?? msg.tool_call_id ?? "unknown";
+      // Native tool result
       input.push({
-        role: "user",
-        content: `[Tool Result (${name})]: ${extractText(msg.content)}`,
+        type: "function_call_output",
+        call_id: msg.tool_call_id ?? "unknown",
+        output: extractText(msg.content),
       });
     } else if (msg.role === "function") {
-      const name = msg.name ?? "unknown";
+      // Legacy function result → native format
       input.push({
-        role: "user",
-        content: `[Tool Result (${name})]: ${extractText(msg.content)}`,
+        type: "function_call_output",
+        call_id: `fc_${msg.name ?? "unknown"}`,
+        output: extractText(msg.content),
       });
     } else {
       input.push({ role: "user", content: extractText(msg.content) });
@@ -113,6 +109,14 @@ export function translateToCodexRequest(
   const modelInfo = getModelInfo(modelId);
   const config = getConfig();
 
+  // Convert tools to Codex format
+  const codexTools = req.tools?.length
+    ? openAIToolsToCodex(req.tools)
+    : req.functions?.length
+      ? openAIFunctionsToCodex(req.functions)
+      : [];
+  const codexToolChoice = openAIToolChoiceToCodex(req.tool_choice);
+
   // Build request
   const request: CodexResponsesRequest = {
     model: modelId,
@@ -120,8 +124,13 @@ export function translateToCodexRequest(
     input,
     stream: true,
     store: false,
-    tools: [],
+    tools: codexTools,
   };
+
+  // Add tool_choice if specified
+  if (codexToolChoice) {
+    request.tool_choice = codexToolChoice;
+  }
 
   // Add previous response ID for multi-turn conversations
   if (previousResponseId) {

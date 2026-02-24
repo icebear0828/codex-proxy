@@ -43,6 +43,33 @@ export interface CodexCompletedEvent {
   response: CodexResponseData;
 }
 
+// ── Function call event data shapes ─────────────────────────────
+
+export interface CodexOutputItemAddedEvent {
+  type: "response.output_item.added";
+  outputIndex: number;
+  item: {
+    type: "function_call";
+    id: string;
+    call_id: string;
+    name: string;
+  };
+}
+
+export interface CodexFunctionCallArgsDeltaEvent {
+  type: "response.function_call_arguments.delta";
+  delta: string;
+  outputIndex: number;
+  call_id: string;
+}
+
+export interface CodexFunctionCallArgsDoneEvent {
+  type: "response.function_call_arguments.done";
+  arguments: string;
+  call_id: string;
+  name: string;
+}
+
 export interface CodexUnknownEvent {
   type: "unknown";
   raw: unknown;
@@ -54,6 +81,9 @@ export type TypedCodexEvent =
   | CodexTextDeltaEvent
   | CodexTextDoneEvent
   | CodexCompletedEvent
+  | CodexOutputItemAddedEvent
+  | CodexFunctionCallArgsDeltaEvent
+  | CodexFunctionCallArgsDoneEvent
   | CodexUnknownEvent;
 
 // ── Type guard / parser ──────────────────────────────────────────
@@ -114,6 +144,65 @@ export function parseCodexEvent(evt: CodexSSEEvent): TypedCodexEvent {
       return resp
         ? { type: "response.completed", response: resp }
         : { type: "unknown", raw: data };
+    }
+    case "response.output_item.added": {
+      if (
+        isRecord(data) &&
+        isRecord(data.item) &&
+        data.item.type === "function_call" &&
+        typeof data.item.call_id === "string" &&
+        typeof data.item.name === "string"
+      ) {
+        return {
+          type: "response.output_item.added",
+          outputIndex: typeof data.output_index === "number" ? data.output_index : 0,
+          item: {
+            type: "function_call",
+            id: typeof data.item.id === "string" ? data.item.id : "",
+            call_id: data.item.call_id,
+            name: data.item.name,
+          },
+        };
+      }
+      return { type: "unknown", raw: data };
+    }
+    case "response.function_call_arguments.delta": {
+      // Codex uses item_id (not call_id) on delta events
+      const deltaCallId = isRecord(data)
+        ? (typeof data.call_id === "string" ? data.call_id : typeof data.item_id === "string" ? data.item_id : "")
+        : "";
+      if (
+        isRecord(data) &&
+        typeof data.delta === "string" &&
+        deltaCallId
+      ) {
+        return {
+          type: "response.function_call_arguments.delta",
+          delta: data.delta,
+          outputIndex: typeof data.output_index === "number" ? data.output_index : 0,
+          call_id: deltaCallId,
+        };
+      }
+      return { type: "unknown", raw: data };
+    }
+    case "response.function_call_arguments.done": {
+      // Codex uses item_id (not call_id); name may be absent
+      const doneCallId = isRecord(data)
+        ? (typeof data.call_id === "string" ? data.call_id : typeof data.item_id === "string" ? data.item_id : "")
+        : "";
+      if (
+        isRecord(data) &&
+        typeof data.arguments === "string" &&
+        doneCallId
+      ) {
+        return {
+          type: "response.function_call_arguments.done",
+          arguments: data.arguments,
+          call_id: doneCallId,
+          name: typeof data.name === "string" ? data.name : "",
+        };
+      }
+      return { type: "unknown", raw: data };
     }
     default:
       return { type: "unknown", raw: data };

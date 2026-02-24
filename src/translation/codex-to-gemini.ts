@@ -13,6 +13,7 @@ import type { CodexApi } from "../proxy/codex-api.js";
 import type {
   GeminiGenerateContentResponse,
   GeminiUsageMetadata,
+  GeminiPart,
 } from "../types/gemini.js";
 import { iterateCodexEvents } from "./codex-event-extractor.js";
 
@@ -35,8 +36,41 @@ export async function* streamCodexToGemini(
   let inputTokens = 0;
   let outputTokens = 0;
 
+  // Collect completed function calls to emit as parts
+  const pendingFunctionCalls: GeminiPart[] = [];
+
   for await (const evt of iterateCodexEvents(codexApi, rawResponse)) {
     if (evt.responseId) onResponseId?.(evt.responseId);
+
+    // Function call done → emit as a candidate with functionCall part
+    if (evt.functionCallDone) {
+      let args: Record<string, unknown> = {};
+      try {
+        args = JSON.parse(evt.functionCallDone.arguments) as Record<string, unknown>;
+      } catch { /* use empty args */ }
+      const fcChunk: GeminiGenerateContentResponse = {
+        candidates: [
+          {
+            content: {
+              parts: [{
+                functionCall: {
+                  name: evt.functionCallDone.name,
+                  args,
+                },
+              }],
+              role: "model",
+            },
+            index: 0,
+          },
+        ],
+        modelVersion: model,
+      };
+      yield `data: ${JSON.stringify(fcChunk)}\n\n`;
+      pendingFunctionCalls.push({
+        functionCall: { name: evt.functionCallDone.name, args },
+      });
+      continue;
+    }
 
     switch (evt.typed.type) {
       case "response.output_text.delta": {
@@ -108,6 +142,7 @@ export async function collectCodexToGeminiResponse(
   let inputTokens = 0;
   let outputTokens = 0;
   let responseId: string | null = null;
+  const functionCallParts: GeminiPart[] = [];
 
   for await (const evt of iterateCodexEvents(codexApi, rawResponse)) {
     if (evt.responseId) responseId = evt.responseId;
@@ -115,6 +150,15 @@ export async function collectCodexToGeminiResponse(
     if (evt.usage) {
       inputTokens = evt.usage.input_tokens;
       outputTokens = evt.usage.output_tokens;
+    }
+    if (evt.functionCallDone) {
+      let args: Record<string, unknown> = {};
+      try {
+        args = JSON.parse(evt.functionCallDone.arguments) as Record<string, unknown>;
+      } catch { /* use empty args */ }
+      functionCallParts.push({
+        functionCall: { name: evt.functionCallDone.name, args },
+      });
     }
   }
 
@@ -129,12 +173,22 @@ export async function collectCodexToGeminiResponse(
     totalTokenCount: inputTokens + outputTokens,
   };
 
+  // Build response parts: text + function calls
+  const parts: GeminiPart[] = [];
+  if (fullText) {
+    parts.push({ text: fullText });
+  }
+  parts.push(...functionCallParts);
+  if (parts.length === 0) {
+    parts.push({ text: "" });
+  }
+
   return {
     response: {
       candidates: [
         {
           content: {
-            parts: [{ text: fullText }],
+            parts,
             role: "model",
           },
           finishReason: "STOP",

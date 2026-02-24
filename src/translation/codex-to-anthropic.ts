@@ -12,6 +12,7 @@
 import { randomUUID } from "crypto";
 import type { CodexApi } from "../proxy/codex-api.js";
 import type {
+  AnthropicContentBlock,
   AnthropicMessagesResponse,
   AnthropicUsage,
 } from "../types/anthropic.js";
@@ -41,6 +42,10 @@ export async function* streamCodexToAnthropic(
   const msgId = `msg_${randomUUID().replace(/-/g, "").slice(0, 24)}`;
   let outputTokens = 0;
   let inputTokens = 0;
+  let hasToolCalls = false;
+  let contentIndex = 0;
+  let textBlockStarted = false;
+  const callIdsWithDeltas = new Set<string>();
 
   // 1. message_start
   yield formatSSE("message_start", {
@@ -60,13 +65,70 @@ export async function* streamCodexToAnthropic(
   // 2. content_block_start for text block at index 0
   yield formatSSE("content_block_start", {
     type: "content_block_start",
-    index: 0,
+    index: contentIndex,
     content_block: { type: "text", text: "" },
   });
+  textBlockStarted = true;
 
   // 3. Process Codex stream events
   for await (const evt of iterateCodexEvents(codexApi, rawResponse)) {
     if (evt.responseId) onResponseId?.(evt.responseId);
+
+    // Handle function call start → close text block, open tool_use block
+    if (evt.functionCallStart) {
+      hasToolCalls = true;
+
+      // Close text block if still open
+      if (textBlockStarted) {
+        yield formatSSE("content_block_stop", {
+          type: "content_block_stop",
+          index: contentIndex,
+        });
+        contentIndex++;
+        textBlockStarted = false;
+      }
+
+      // Start tool_use block
+      yield formatSSE("content_block_start", {
+        type: "content_block_start",
+        index: contentIndex,
+        content_block: {
+          type: "tool_use",
+          id: evt.functionCallStart.callId,
+          name: evt.functionCallStart.name,
+          input: {},
+        },
+      });
+      continue;
+    }
+
+    if (evt.functionCallDelta) {
+      callIdsWithDeltas.add(evt.functionCallDelta.callId);
+      yield formatSSE("content_block_delta", {
+        type: "content_block_delta",
+        index: contentIndex,
+        delta: { type: "input_json_delta", partial_json: evt.functionCallDelta.delta },
+      });
+      continue;
+    }
+
+    if (evt.functionCallDone) {
+      // Emit full arguments if no deltas were streamed
+      if (!callIdsWithDeltas.has(evt.functionCallDone.callId)) {
+        yield formatSSE("content_block_delta", {
+          type: "content_block_delta",
+          index: contentIndex,
+          delta: { type: "input_json_delta", partial_json: evt.functionCallDone.arguments },
+        });
+      }
+      // Close this tool_use block
+      yield formatSSE("content_block_stop", {
+        type: "content_block_stop",
+        index: contentIndex,
+      });
+      contentIndex++;
+      continue;
+    }
 
     switch (evt.typed.type) {
       case "response.output_text.delta": {
@@ -91,16 +153,18 @@ export async function* streamCodexToAnthropic(
     }
   }
 
-  // 4. content_block_stop
-  yield formatSSE("content_block_stop", {
-    type: "content_block_stop",
-    index: 0,
-  });
+  // 4. Close text block if still open (no tool calls, or text came before tools)
+  if (textBlockStarted) {
+    yield formatSSE("content_block_stop", {
+      type: "content_block_stop",
+      index: 0,
+    });
+  }
 
   // 5. message_delta with stop_reason and usage
   yield formatSSE("message_delta", {
     type: "message_delta",
-    delta: { stop_reason: "end_turn" },
+    delta: { stop_reason: hasToolCalls ? "tool_use" : "end_turn" },
     usage: { output_tokens: outputTokens },
   });
 
@@ -129,6 +193,10 @@ export async function collectCodexToAnthropicResponse(
   let outputTokens = 0;
   let responseId: string | null = null;
 
+  // Collect tool calls
+  const toolUseBlocks: AnthropicContentBlock[] = [];
+  const toolCallArgsMap = new Map<string, { name: string; args: string }>();
+
   for await (const evt of iterateCodexEvents(codexApi, rawResponse)) {
     if (evt.responseId) responseId = evt.responseId;
     if (evt.textDelta) fullText += evt.textDelta;
@@ -136,6 +204,39 @@ export async function collectCodexToAnthropicResponse(
       inputTokens = evt.usage.input_tokens;
       outputTokens = evt.usage.output_tokens;
     }
+    if (evt.functionCallStart) {
+      toolCallArgsMap.set(evt.functionCallStart.callId, {
+        name: evt.functionCallStart.name,
+        args: "",
+      });
+    }
+    if (evt.functionCallDelta) {
+      const entry = toolCallArgsMap.get(evt.functionCallDelta.callId);
+      if (entry) entry.args += evt.functionCallDelta.delta;
+    }
+    if (evt.functionCallDone) {
+      let parsedInput: Record<string, unknown> = {};
+      try {
+        parsedInput = JSON.parse(evt.functionCallDone.arguments) as Record<string, unknown>;
+      } catch { /* use empty object */ }
+      toolUseBlocks.push({
+        type: "tool_use",
+        id: evt.functionCallDone.callId,
+        name: evt.functionCallDone.name,
+        input: parsedInput,
+      });
+    }
+  }
+
+  const hasToolCalls = toolUseBlocks.length > 0;
+  const content: AnthropicContentBlock[] = [];
+  if (fullText) {
+    content.push({ type: "text", text: fullText });
+  }
+  content.push(...toolUseBlocks);
+  // Ensure at least one content block
+  if (content.length === 0) {
+    content.push({ type: "text", text: "" });
   }
 
   const usage: AnthropicUsage = {
@@ -148,9 +249,9 @@ export async function collectCodexToAnthropicResponse(
       id,
       type: "message",
       role: "assistant",
-      content: [{ type: "text", text: fullText }],
+      content,
       model,
-      stop_reason: "end_turn",
+      stop_reason: hasToolCalls ? "tool_use" : "end_turn",
       stop_sequence: null,
       usage,
     },

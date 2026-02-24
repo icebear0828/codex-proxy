@@ -103,7 +103,6 @@ export function createChatRoutes(
         },
       });
     }
-
     const parsed = ChatCompletionRequestSchema.safeParse(body);
     if (!parsed.success) {
       c.status(400);
