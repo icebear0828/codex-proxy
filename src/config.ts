@@ -148,9 +148,15 @@ export function reloadFingerprint(configDir?: string): FingerprintConfig {
   return _fingerprint;
 }
 
-/** Reload both config and fingerprint from disk. */
+/** Reload both config and fingerprint from disk, plus static models. */
 export function reloadAllConfigs(configDir?: string): void {
   reloadConfig(configDir);
   reloadFingerprint(configDir);
-  console.log("[Config] Hot-reloaded config and fingerprint from disk");
+  // Lazy import to avoid circular dependency at module load time
+  import("./models/model-store.js").then(({ loadStaticModels }) => {
+    loadStaticModels(configDir);
+  }).catch((err) => {
+    console.warn("[Config] Failed to reload models:", err instanceof Error ? err.message : err);
+  });
+  console.log("[Config] Hot-reloaded config, fingerprint, and models from disk");
 }

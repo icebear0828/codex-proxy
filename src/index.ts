@@ -18,6 +18,8 @@ import { CookieJar } from "./proxy/cookie-jar.js";
 import { startUpdateChecker, stopUpdateChecker } from "./update-checker.js";
 import { initProxy } from "./tls/curl-binary.js";
 import { initTransport } from "./tls/transport.js";
+import { loadStaticModels } from "./models/model-store.js";
+import { startModelRefresh, stopModelRefresh } from "./models/model-fetcher.js";
 
 async function main() {
   // Load configuration
@@ -32,6 +34,9 @@ async function main() {
     console.error("[Init] Make sure config/default.yaml and config/fingerprint.yaml exist and are valid YAML.");
     process.exit(1);
   }
+
+  // Load static model catalog (before transport/auth init)
+  loadStaticModels();
 
   // Detect proxy (config > env > auto-detect local ports)
   await initProxy();
@@ -100,6 +105,9 @@ async function main() {
   // Start background update checker
   startUpdateChecker();
 
+  // Start background model refresh (requires auth to be ready)
+  startModelRefresh(accountPool, cookieJar);
+
   const server = serve({
     fetch: app.fetch,
     hostname: host,
@@ -138,6 +146,7 @@ async function main() {
       cleanupDone = true;
       try {
         stopUpdateChecker();
+        stopModelRefresh();
         refreshScheduler.destroy();
         sessionManager.destroy();
         cookieJar.destroy();

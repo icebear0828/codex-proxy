@@ -21,7 +21,7 @@ import {
   collectCodexToGeminiResponse,
 } from "../translation/codex-to-gemini.js";
 import { getConfig } from "../config.js";
-import { getModelCatalog } from "./models.js";
+import { getModelCatalog } from "../models/model-store.js";
 import {
   handleProxyRequest,
   type FormatAdapter,

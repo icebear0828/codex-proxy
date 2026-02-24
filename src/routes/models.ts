@@ -1,66 +1,20 @@
+/**
+ * Model routes — pure route handlers reading from model-store singleton.
+ */
+
 import { Hono } from "hono";
-import { readFileSync } from "fs";
-import { resolve } from "path";
-import yaml from "js-yaml";
-import { getConfig } from "../config.js";
 import type { OpenAIModel, OpenAIModelList } from "../types/openai.js";
+import {
+  getModelCatalog,
+  getModelAliases,
+  getModelInfo,
+  resolveModelId,
+  getModelStoreDebug,
+  type CodexModelInfo,
+} from "../models/model-store.js";
 
-/**
- * Full model catalog from Codex CLI `model/list`.
- * Each model has reasoning effort levels, description, and capabilities.
- */
-export interface CodexModelInfo {
-  id: string;
-  displayName: string;
-  description: string;
-  isDefault: boolean;
-  supportedReasoningEfforts: { reasoningEffort: string; description: string }[];
-  defaultReasoningEffort: string;
-  inputModalities: string[];
-  supportsPersonality: boolean;
-  upgrade: string | null;
-}
-
-interface ModelsConfig {
-  models: CodexModelInfo[];
-  aliases: Record<string, string>;
-}
-
-function loadModelConfig(): ModelsConfig {
-  const configPath = resolve(process.cwd(), "config/models.yaml");
-  const raw = yaml.load(readFileSync(configPath, "utf-8")) as ModelsConfig;
-  return raw;
-}
-
-const modelConfig = loadModelConfig();
-const MODEL_CATALOG: CodexModelInfo[] = modelConfig.models;
-const MODEL_ALIASES: Record<string, string> = modelConfig.aliases;
-
-/**
- * Resolve a model name (may be an alias) to a canonical model ID.
- */
-export function resolveModelId(input: string): string {
-  const trimmed = input.trim();
-  if (MODEL_ALIASES[trimmed]) return MODEL_ALIASES[trimmed];
-  // Check if it's already a known model ID
-  if (MODEL_CATALOG.some((m) => m.id === trimmed)) return trimmed;
-  // Fall back to config default
-  return getConfig().model.default;
-}
-
-/**
- * Get model info by ID.
- */
-export function getModelInfo(modelId: string): CodexModelInfo | undefined {
-  return MODEL_CATALOG.find((m) => m.id === modelId);
-}
-
-/**
- * Get the full model catalog.
- */
-export function getModelCatalog(): CodexModelInfo[] {
-  return MODEL_CATALOG;
-}
+// Re-export for backwards compatibility (index.ts imports createModelRoutes from here)
+export { resolveModelId, getModelInfo, getModelCatalog, type CodexModelInfo };
 
 // --- Routes ---
 
@@ -80,9 +34,12 @@ export function createModelRoutes(): Hono {
   const app = new Hono();
 
   app.get("/v1/models", (c) => {
+    const catalog = getModelCatalog();
+    const aliases = getModelAliases();
+
     // Include catalog models + aliases as separate entries
-    const models: OpenAIModel[] = MODEL_CATALOG.map(toOpenAIModel);
-    for (const [alias] of Object.entries(MODEL_ALIASES)) {
+    const models: OpenAIModel[] = catalog.map(toOpenAIModel);
+    for (const alias of Object.keys(aliases)) {
       models.push({
         id: alias,
         object: "model",
@@ -96,13 +53,15 @@ export function createModelRoutes(): Hono {
 
   app.get("/v1/models/:modelId", (c) => {
     const modelId = c.req.param("modelId");
+    const catalog = getModelCatalog();
+    const aliases = getModelAliases();
 
     // Try direct match
-    const info = MODEL_CATALOG.find((m) => m.id === modelId);
+    const info = catalog.find((m) => m.id === modelId);
     if (info) return c.json(toOpenAIModel(info));
 
     // Try alias
-    const resolved = MODEL_ALIASES[modelId];
+    const resolved = aliases[modelId];
     if (resolved) {
       return c.json({
         id: modelId,
@@ -126,13 +85,19 @@ export function createModelRoutes(): Hono {
   // Extended endpoint: model details with reasoning efforts
   app.get("/v1/models/:modelId/info", (c) => {
     const modelId = c.req.param("modelId");
-    const resolved = MODEL_ALIASES[modelId] ?? modelId;
-    const info = MODEL_CATALOG.find((m) => m.id === resolved);
+    const aliases = getModelAliases();
+    const resolved = aliases[modelId] ?? modelId;
+    const info = getModelInfo(resolved);
     if (!info) {
       c.status(404);
       return c.json({ error: `Model '${modelId}' not found` });
     }
     return c.json(info);
+  });
+
+  // Debug endpoint: model store internals
+  app.get("/debug/models", (c) => {
+    return c.json(getModelStoreDebug());
   });
 
   return app;

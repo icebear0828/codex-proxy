@@ -16,6 +16,7 @@ import {
   buildHeadersWithContentType,
 } from "../fingerprint/manager.js";
 import type { CookieJar } from "./cookie-jar.js";
+import type { BackendModelEntry } from "../models/model-store.js";
 
 export interface CodexResponsesRequest {
   model: string;
@@ -123,6 +124,51 @@ export class CodexApi {
       if (e instanceof CodexApiError) throw e;
       throw new CodexApiError(502, `Invalid JSON from /codex/usage: ${body.slice(0, 200)}`);
     }
+  }
+
+  /**
+   * Fetch available models from the Codex backend.
+   * Probes known endpoints; returns null if none respond.
+   */
+  async getModels(): Promise<BackendModelEntry[] | null> {
+    const config = getConfig();
+    const transport = getTransport();
+    const baseUrl = config.api.base_url;
+
+    // Endpoints to probe (most specific first)
+    const endpoints = [
+      `${baseUrl}/codex/models`,
+      `${baseUrl}/models`,
+    ];
+
+    const headers = this.applyHeaders(
+      buildHeaders(this.token, this.accountId),
+    );
+    headers["Accept"] = "application/json";
+    if (!transport.isImpersonate()) {
+      headers["Accept-Encoding"] = "gzip, deflate";
+    }
+
+    for (const url of endpoints) {
+      try {
+        const result = await transport.get(url, headers, 15);
+        const parsed = JSON.parse(result.body) as Record<string, unknown>;
+
+        // Accept response if it contains a models array
+        const models = parsed.models ?? parsed.data;
+        if (Array.isArray(models) && models.length > 0) {
+          // Log raw response on first success for future normalizer calibration
+          console.log(`[CodexApi] getModels() succeeded from ${url} — ${models.length} models`);
+          console.log(`[CodexApi] Raw model sample: ${JSON.stringify(models[0]).slice(0, 300)}`);
+          return models as BackendModelEntry[];
+        }
+      } catch {
+        // 404 or network error — try next endpoint
+        continue;
+      }
+    }
+
+    return null;
   }
 
   /**

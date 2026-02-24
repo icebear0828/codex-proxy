@@ -11,7 +11,7 @@ import type {
   CodexResponsesRequest,
   CodexInputItem,
 } from "../proxy/codex-api.js";
-import { resolveModelId, getModelInfo } from "../routes/models.js";
+import { resolveModelId, getModelInfo } from "../models/model-store.js";
 import { getConfig } from "../config.js";
 import { buildInstructions, budgetToEffort } from "./shared-utils.js";
 import { geminiToolsToCodex, geminiToolConfigToCodex } from "./tool-format.js";
