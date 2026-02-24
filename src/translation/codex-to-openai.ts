@@ -210,7 +210,6 @@ export async function collectCodexResponse(
 
   // Collect tool calls
   const toolCalls: ChatCompletionToolCall[] = [];
-  const toolCallArgsMap = new Map<string, { name: string; args: string }>();
 
   for await (const evt of iterateCodexEvents(codexApi, rawResponse)) {
     if (evt.responseId) responseId = evt.responseId;
@@ -218,16 +217,6 @@ export async function collectCodexResponse(
     if (evt.usage) {
       promptTokens = evt.usage.input_tokens;
       completionTokens = evt.usage.output_tokens;
-    }
-    if (evt.functionCallStart) {
-      toolCallArgsMap.set(evt.functionCallStart.callId, {
-        name: evt.functionCallStart.name,
-        args: "",
-      });
-    }
-    if (evt.functionCallDelta) {
-      const entry = toolCallArgsMap.get(evt.functionCallDelta.callId);
-      if (entry) entry.args += evt.functionCallDelta.delta;
     }
     if (evt.functionCallDone) {
       toolCalls.push({

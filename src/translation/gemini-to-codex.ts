@@ -5,6 +5,7 @@
 import type {
   GeminiGenerateContentRequest,
   GeminiContent,
+  GeminiPart,
 } from "../types/gemini.js";
 import type {
   CodexResponsesRequest,
@@ -14,13 +15,6 @@ import { resolveModelId, getModelInfo } from "../routes/models.js";
 import { getConfig } from "../config.js";
 import { buildInstructions, budgetToEffort } from "./shared-utils.js";
 import { geminiToolsToCodex, geminiToolConfigToCodex } from "./tool-format.js";
-
-type GeminiPart = {
-  text?: string;
-  thought?: boolean;
-  functionCall?: { name: string; args?: Record<string, unknown> };
-  functionResponse?: { name: string; response?: Record<string, unknown> };
-};
 
 /**
  * Extract text-only content from Gemini parts.
@@ -48,8 +42,13 @@ function partsToInputItems(
     items.push({ role, content: text });
   }
 
+  // Track call_ids by function name to correlate functionCall → functionResponse
+  let callCounter = 0;
+  const nameToCallIds = new Map<string, string[]>();
+
   for (const p of parts) {
     if (p.functionCall) {
+      const callId = `fc_${callCounter++}`;
       let args: string;
       try {
         args = JSON.stringify(p.functionCall.args ?? {});
@@ -58,10 +57,14 @@ function partsToInputItems(
       }
       items.push({
         type: "function_call",
-        call_id: `fc_${p.functionCall.name}`,
+        call_id: callId,
         name: p.functionCall.name,
         arguments: args,
       });
+      // Record call_id for this function name (for matching responses)
+      const ids = nameToCallIds.get(p.functionCall.name) ?? [];
+      ids.push(callId);
+      nameToCallIds.set(p.functionCall.name, ids);
     } else if (p.functionResponse) {
       let output: string;
       try {
@@ -69,9 +72,12 @@ function partsToInputItems(
       } catch {
         output = String(p.functionResponse.response);
       }
+      // Match response to the earliest unmatched call with the same name
+      const ids = nameToCallIds.get(p.functionResponse.name);
+      const callId = ids?.shift() ?? `fc_${callCounter++}`;
       items.push({
         type: "function_call_output",
-        call_id: `fc_${p.functionResponse.name}`,
+        call_id: callId,
         output,
       });
     }

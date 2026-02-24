@@ -133,9 +133,18 @@ export async function* streamCodexToAnthropic(
     switch (evt.typed.type) {
       case "response.output_text.delta": {
         if (evt.textDelta) {
+          // Reopen a text block if the previous one was closed (e.g. after tool calls)
+          if (!textBlockStarted) {
+            yield formatSSE("content_block_start", {
+              type: "content_block_start",
+              index: contentIndex,
+              content_block: { type: "text", text: "" },
+            });
+            textBlockStarted = true;
+          }
           yield formatSSE("content_block_delta", {
             type: "content_block_delta",
-            index: 0,
+            index: contentIndex,
             delta: { type: "text_delta", text: evt.textDelta },
           });
         }
@@ -157,7 +166,7 @@ export async function* streamCodexToAnthropic(
   if (textBlockStarted) {
     yield formatSSE("content_block_stop", {
       type: "content_block_stop",
-      index: 0,
+      index: contentIndex,
     });
   }
 
@@ -195,7 +204,6 @@ export async function collectCodexToAnthropicResponse(
 
   // Collect tool calls
   const toolUseBlocks: AnthropicContentBlock[] = [];
-  const toolCallArgsMap = new Map<string, { name: string; args: string }>();
 
   for await (const evt of iterateCodexEvents(codexApi, rawResponse)) {
     if (evt.responseId) responseId = evt.responseId;
@@ -203,16 +211,6 @@ export async function collectCodexToAnthropicResponse(
     if (evt.usage) {
       inputTokens = evt.usage.input_tokens;
       outputTokens = evt.usage.output_tokens;
-    }
-    if (evt.functionCallStart) {
-      toolCallArgsMap.set(evt.functionCallStart.callId, {
-        name: evt.functionCallStart.name,
-        args: "",
-      });
-    }
-    if (evt.functionCallDelta) {
-      const entry = toolCallArgsMap.get(evt.functionCallDelta.callId);
-      if (entry) entry.args += evt.functionCallDelta.delta;
     }
     if (evt.functionCallDone) {
       let parsedInput: Record<string, unknown> = {};

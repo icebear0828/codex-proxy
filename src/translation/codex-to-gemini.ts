@@ -36,9 +36,6 @@ export async function* streamCodexToGemini(
   let inputTokens = 0;
   let outputTokens = 0;
 
-  // Collect completed function calls to emit as parts
-  const pendingFunctionCalls: GeminiPart[] = [];
-
   for await (const evt of iterateCodexEvents(codexApi, rawResponse)) {
     if (evt.responseId) onResponseId?.(evt.responseId);
 
@@ -66,9 +63,6 @@ export async function* streamCodexToGemini(
         modelVersion: model,
       };
       yield `data: ${JSON.stringify(fcChunk)}\n\n`;
-      pendingFunctionCalls.push({
-        functionCall: { name: evt.functionCallDone.name, args },
-      });
       continue;
     }
 
