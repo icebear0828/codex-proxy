@@ -78,11 +78,18 @@ export interface BackendModelEntry {
   upgrade?: string | null;
 }
 
+/** Intermediate type with explicit efforts flag for merge logic. */
+interface NormalizedModelWithMeta extends CodexModelInfo {
+  _hasExplicitEfforts: boolean;
+}
+
 /**
  * Normalize a backend model entry to our CodexModelInfo format.
  */
-function normalizeBackendModel(raw: BackendModelEntry): CodexModelInfo {
+function normalizeBackendModel(raw: BackendModelEntry): NormalizedModelWithMeta {
   const id = raw.slug ?? raw.id ?? raw.name ?? "unknown";
+
+  const hasExplicitEfforts = Array.isArray(raw.supported_reasoning_efforts) && raw.supported_reasoning_efforts.length > 0;
 
   // Normalize reasoning efforts — accept both snake_case and camelCase
   const efforts = (raw.supported_reasoning_efforts ?? []).map((e) => ({
@@ -103,6 +110,7 @@ function normalizeBackendModel(raw: BackendModelEntry): CodexModelInfo {
     supportsPersonality: raw.supports_personality ?? false,
     upgrade: raw.upgrade ?? null,
     source: "backend",
+    _hasExplicitEfforts: hasExplicitEfforts,
   };
 }
 
@@ -125,21 +133,23 @@ export function applyBackendModels(backendModels: BackendModelEntry[]): void {
     seenIds.add(normalized.id);
 
     const existing = staticMap.get(normalized.id);
+    // Strip internal meta field before storing
+    const { _hasExplicitEfforts, ...model } = normalized;
     if (existing) {
       // Backend wins, but YAML fills gaps
       merged.push({
         ...existing,
-        ...normalized,
+        ...model,
         // Preserve YAML fields if backend is empty
-        description: normalized.description || existing.description,
-        displayName: normalized.displayName || existing.displayName,
-        supportedReasoningEfforts: normalized.supportedReasoningEfforts.length > 1
-          ? normalized.supportedReasoningEfforts
+        description: model.description || existing.description,
+        displayName: model.displayName || existing.displayName,
+        supportedReasoningEfforts: _hasExplicitEfforts
+          ? model.supportedReasoningEfforts
           : existing.supportedReasoningEfforts,
         source: "backend",
       });
     } else {
-      merged.push(normalized);
+      merged.push(model);
     }
   }
 
@@ -180,14 +190,14 @@ export function getModelInfo(modelId: string): CodexModelInfo | undefined {
  * Get the full model catalog.
  */
 export function getModelCatalog(): CodexModelInfo[] {
-  return _catalog;
+  return [..._catalog];
 }
 
 /**
  * Get the alias map.
  */
 export function getModelAliases(): Record<string, string> {
-  return _aliases;
+  return { ..._aliases };
 }
 
 /**

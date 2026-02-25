@@ -2,6 +2,8 @@ import { readFileSync } from "fs";
 import { resolve } from "path";
 import yaml from "js-yaml";
 import { z } from "zod";
+import { loadStaticModels } from "./models/model-store.js";
+import { triggerImmediateRefresh } from "./models/model-fetcher.js";
 
 const ConfigSchema = z.object({
   api: z.object({
@@ -152,15 +154,8 @@ export function reloadFingerprint(configDir?: string): FingerprintConfig {
 export function reloadAllConfigs(configDir?: string): void {
   reloadConfig(configDir);
   reloadFingerprint(configDir);
-  // Lazy import to avoid circular dependency at module load time
-  import("./models/model-store.js").then(({ loadStaticModels }) => {
-    loadStaticModels(configDir);
-    console.log("[Config] Hot-reloaded config, fingerprint, and models from disk");
-    // Re-merge backend models so hot-reload doesn't wipe them for ~1h
-    return import("./models/model-fetcher.js");
-  }).then(({ triggerImmediateRefresh }) => {
-    triggerImmediateRefresh();
-  }).catch((err) => {
-    console.warn("[Config] Failed to reload models:", err instanceof Error ? err.message : err);
-  });
+  loadStaticModels(configDir);
+  console.log("[Config] Hot-reloaded config, fingerprint, and models from disk");
+  // Re-merge backend models so hot-reload doesn't wipe them for ~1h
+  triggerImmediateRefresh();
 }

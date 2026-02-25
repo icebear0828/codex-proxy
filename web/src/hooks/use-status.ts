@@ -13,7 +13,7 @@ export function useStatus(accountCount: number) {
       const ids: string[] = data.data.map((m: { id: string }) => m.id);
       if (ids.length > 0) {
         setModels(ids);
-        const preferred = ids.find((n) => n === "gpt-5.2-codex");
+        const preferred = ids.find((n) => n === "codex");
         if (preferred) setSelectedModel(preferred);
       }
     } catch {

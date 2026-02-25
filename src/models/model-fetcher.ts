@@ -26,6 +26,8 @@ async function fetchModelsFromBackend(
   accountPool: AccountPool,
   cookieJar: CookieJar,
 ): Promise<void> {
+  if (!accountPool.isAuthenticated()) return; // silently skip when no accounts
+
   const acquired = accountPool.acquire();
   if (!acquired) {
     console.warn("[ModelFetcher] No available account — skipping model fetch");
@@ -82,8 +84,11 @@ function scheduleNext(
 ): void {
   const intervalMs = jitter(REFRESH_INTERVAL_HOURS * 3600 * 1000, 0.15);
   _refreshTimer = setTimeout(async () => {
-    await fetchModelsFromBackend(accountPool, cookieJar);
-    scheduleNext(accountPool, cookieJar);
+    try {
+      await fetchModelsFromBackend(accountPool, cookieJar);
+    } finally {
+      scheduleNext(accountPool, cookieJar);
+    }
   }, intervalMs);
 }
 

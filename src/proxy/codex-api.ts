@@ -152,8 +152,6 @@ export class CodexApi {
       headers["Accept-Encoding"] = "gzip, deflate";
     }
 
-    let allModels: BackendModelEntry[] = [];
-
     for (const url of endpoints) {
       try {
         const result = await transport.get(url, headers, 15);
@@ -172,23 +170,23 @@ export class CodexApi {
             }
             _firstModelFetchLogged = true;
           }
-          // Check if models contain nested categories with sub-models
+          // Flatten nested categories into a single list
+          const flattened: BackendModelEntry[] = [];
           for (const item of models) {
             if (item && typeof item === "object") {
               const entry = item as Record<string, unknown>;
-              // If it looks like a category with nested models, flatten
               if (Array.isArray(entry.models)) {
                 for (const sub of entry.models as BackendModelEntry[]) {
-                  allModels.push(sub);
+                  flattened.push(sub);
                 }
               } else {
-                allModels.push(item as BackendModelEntry);
+                flattened.push(item as BackendModelEntry);
               }
             }
           }
-          if (allModels.length > 0) {
-            console.log(`[CodexApi] getModels() total after flatten: ${allModels.length} models`);
-            return allModels;
+          if (flattened.length > 0) {
+            console.log(`[CodexApi] getModels() total after flatten: ${flattened.length} models`);
+            return flattened;
           }
         }
       } catch (err) {
@@ -198,7 +196,7 @@ export class CodexApi {
       }
     }
 
-    return allModels.length > 0 ? allModels : null;
+    return null;
   }
 
   /**

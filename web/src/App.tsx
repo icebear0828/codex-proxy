@@ -4,7 +4,7 @@ import { Header } from "./components/Header";
 import { AccountList } from "./components/AccountList";
 import { AddAccount } from "./components/AddAccount";
 import { ApiConfig } from "./components/ApiConfig";
-import { AnthropicSetup } from "./components/ClaudeCodeSetup";
+import { AnthropicSetup } from "./components/AnthropicSetup";
 import { CodeExamples } from "./components/CodeExamples";
 import { Footer } from "./components/Footer";
 import { useAccounts } from "./hooks/use-accounts";
