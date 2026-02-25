@@ -38,7 +38,6 @@ interface ModelsConfig {
 let _catalog: CodexModelInfo[] = [];
 let _aliases: Record<string, string> = {};
 let _lastFetchTime: string | null = null;
-let _backendModelCount = 0;
 
 // ── Static loading ─────────────────────────────────────────────────
 
@@ -51,7 +50,7 @@ export function loadStaticModels(configDir?: string): void {
   const configPath = resolve(dir, "models.yaml");
   const raw = yaml.load(readFileSync(configPath, "utf-8")) as ModelsConfig;
 
-  _catalog = raw.models.map((m) => ({ ...m, source: "static" as const }));
+  _catalog = (raw.models ?? []).map((m) => ({ ...m, source: "static" as const }));
   _aliases = raw.aliases ?? {};
   console.log(`[ModelStore] Loaded ${_catalog.length} static models, ${Object.keys(_aliases).length} aliases`);
 }
@@ -152,7 +151,6 @@ export function applyBackendModels(backendModels: BackendModelEntry[]): void {
   }
 
   _catalog = merged;
-  _backendModelCount = backendModels.length;
   _lastFetchTime = new Date().toISOString();
   console.log(
     `[ModelStore] Merged ${backendModels.length} backend + ${merged.length - backendModels.length} static-only = ${merged.length} total models`,

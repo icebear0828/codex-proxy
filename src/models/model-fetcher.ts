@@ -16,6 +16,8 @@ const REFRESH_INTERVAL_HOURS = 1;
 const INITIAL_DELAY_MS = 5_000; // 5s after startup
 
 let _refreshTimer: ReturnType<typeof setTimeout> | null = null;
+let _accountPool: AccountPool | null = null;
+let _cookieJar: CookieJar | null = null;
 
 /**
  * Fetch models from the Codex backend using an available account.
@@ -62,6 +64,9 @@ export function startModelRefresh(
   accountPool: AccountPool,
   cookieJar: CookieJar,
 ): void {
+  _accountPool = accountPool;
+  _cookieJar = cookieJar;
+
   // Initial fetch after short delay
   _refreshTimer = setTimeout(async () => {
     await fetchModelsFromBackend(accountPool, cookieJar);
@@ -80,6 +85,19 @@ function scheduleNext(
     await fetchModelsFromBackend(accountPool, cookieJar);
     scheduleNext(accountPool, cookieJar);
   }, intervalMs);
+}
+
+/**
+ * Trigger an immediate model refresh (e.g. after hot-reload).
+ * No-op if startModelRefresh() hasn't been called yet.
+ */
+export function triggerImmediateRefresh(): void {
+  if (_accountPool && _cookieJar) {
+    fetchModelsFromBackend(_accountPool, _cookieJar).catch((err) => {
+      const msg = err instanceof Error ? err.message : String(err);
+      console.warn(`[ModelFetcher] Immediate refresh failed: ${msg}`);
+    });
+  }
 }
 
 /**

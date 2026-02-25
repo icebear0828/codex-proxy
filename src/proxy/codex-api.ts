@@ -18,6 +18,8 @@ import {
 import type { CookieJar } from "./cookie-jar.js";
 import type { BackendModelEntry } from "../models/model-store.js";
 
+let _firstModelFetchLogged = false;
+
 export interface CodexResponsesRequest {
   model: string;
   instructions: string;
@@ -139,6 +141,7 @@ export class CodexApi {
     const endpoints = [
       `${baseUrl}/codex/models`,
       `${baseUrl}/models`,
+      `${baseUrl}/sentinel/chat-requirements`,
     ];
 
     const headers = this.applyHeaders(
@@ -149,26 +152,77 @@ export class CodexApi {
       headers["Accept-Encoding"] = "gzip, deflate";
     }
 
+    let allModels: BackendModelEntry[] = [];
+
     for (const url of endpoints) {
       try {
         const result = await transport.get(url, headers, 15);
         const parsed = JSON.parse(result.body) as Record<string, unknown>;
 
-        // Accept response if it contains a models array
-        const models = parsed.models ?? parsed.data;
+        // sentinel/chat-requirements returns { chat_models: { models: [...], ... } }
+        const sentinel = parsed.chat_models as Record<string, unknown> | undefined;
+        const models = sentinel?.models ?? parsed.models ?? parsed.data ?? parsed.categories;
         if (Array.isArray(models) && models.length > 0) {
-          // Log raw response on first success for future normalizer calibration
-          console.log(`[CodexApi] getModels() succeeded from ${url} — ${models.length} models`);
-          console.log(`[CodexApi] Raw model sample: ${JSON.stringify(models[0]).slice(0, 300)}`);
-          return models as BackendModelEntry[];
+          console.log(`[CodexApi] getModels() found ${models.length} entries from ${url}`);
+          if (!_firstModelFetchLogged) {
+            console.log(`[CodexApi] Raw response keys: ${Object.keys(parsed).join(", ")}`);
+            console.log(`[CodexApi] Raw model sample: ${JSON.stringify(models[0]).slice(0, 500)}`);
+            if (models.length > 1) {
+              console.log(`[CodexApi] Raw model sample[1]: ${JSON.stringify(models[1]).slice(0, 500)}`);
+            }
+            _firstModelFetchLogged = true;
+          }
+          // Check if models contain nested categories with sub-models
+          for (const item of models) {
+            if (item && typeof item === "object") {
+              const entry = item as Record<string, unknown>;
+              // If it looks like a category with nested models, flatten
+              if (Array.isArray(entry.models)) {
+                for (const sub of entry.models as BackendModelEntry[]) {
+                  allModels.push(sub);
+                }
+              } else {
+                allModels.push(item as BackendModelEntry);
+              }
+            }
+          }
+          if (allModels.length > 0) {
+            console.log(`[CodexApi] getModels() total after flatten: ${allModels.length} models`);
+            return allModels;
+          }
         }
-      } catch {
-        // 404 or network error — try next endpoint
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        console.log(`[CodexApi] Probe ${url} failed: ${msg}`);
         continue;
       }
     }
 
-    return null;
+    return allModels.length > 0 ? allModels : null;
+  }
+
+  /**
+   * Probe a backend endpoint and return raw JSON (for debug).
+   */
+  async probeEndpoint(path: string): Promise<Record<string, unknown> | null> {
+    const config = getConfig();
+    const transport = getTransport();
+    const url = `${config.api.base_url}${path}`;
+
+    const headers = this.applyHeaders(
+      buildHeaders(this.token, this.accountId),
+    );
+    headers["Accept"] = "application/json";
+    if (!transport.isImpersonate()) {
+      headers["Accept-Encoding"] = "gzip, deflate";
+    }
+
+    try {
+      const result = await transport.get(url, headers, 15);
+      return JSON.parse(result.body) as Record<string, unknown>;
+    } catch {
+      return null;
+    }
   }
 
   /**

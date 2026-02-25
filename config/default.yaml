@@ -9,7 +9,7 @@ client:
   arch: arm64
   chromium_version: "137"
 model:
-  default: gpt-5.3-codex
+  default: gpt-5.2-codex
   default_reasoning_effort: medium
   suppress_desktop_directives: true
 auth:

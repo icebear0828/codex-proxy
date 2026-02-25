@@ -32,8 +32,8 @@ export const translations = {
       "Use this key to authenticate requests to the proxy. Do not share it.",
     copyUrl: "Copy URL",
     copyApiKey: "Copy API Key",
-    claudeCodeSetup: "Claude Code Quick Setup",
-    claudeCodeCopyAllHint: "Copy all env vars — paste into terminal or .env file",
+    anthropicSetup: "Anthropic SDK Setup",
+    anthropicCopyAllHint: "Copy all env vars — paste into terminal or .env file",
     integrationExamples: "Integration Examples",
     copy: "Copy",
     addStep1:
@@ -89,8 +89,8 @@ export const translations = {
       "\u4f7f\u7528\u6b64\u5bc6\u94a5\u5411\u4ee3\u7406\u53d1\u9001\u8ba4\u8bc1\u8bf7\u6c42\uff0c\u8bf7\u52ff\u6cc4\u9732\u3002",
     copyUrl: "\u590d\u5236 URL",
     copyApiKey: "\u590d\u5236 API \u5bc6\u94a5",
-    claudeCodeSetup: "Claude Code \u5feb\u901f\u914d\u7f6e",
-    claudeCodeCopyAllHint: "\u590d\u5236\u6240\u6709\u73af\u5883\u53d8\u91cf \u2014 \u7c98\u8d34\u5230\u7ec8\u7aef\u6216 .env \u6587\u4ef6",
+    anthropicSetup: "Anthropic SDK \u914d\u7f6e",
+    anthropicCopyAllHint: "\u590d\u5236\u6240\u6709\u73af\u5883\u53d8\u91cf \u2014 \u7c98\u8d34\u5230\u7ec8\u7aef\u6216 .env \u6587\u4ef6",
     integrationExamples: "\u96c6\u6210\u793a\u4f8b",
     copy: "\u590d\u5236",
     addStep1:

@@ -17,7 +17,7 @@ const ConfigSchema = z.object({
     chromium_version: z.string().default("136"),
   }),
   model: z.object({
-    default: z.string().default("gpt-5.3-codex"),
+    default: z.string().default("gpt-5.2-codex"),
     default_reasoning_effort: z.string().default("medium"),
     suppress_desktop_directives: z.boolean().default(true),
   }),
@@ -155,8 +155,12 @@ export function reloadAllConfigs(configDir?: string): void {
   // Lazy import to avoid circular dependency at module load time
   import("./models/model-store.js").then(({ loadStaticModels }) => {
     loadStaticModels(configDir);
+    console.log("[Config] Hot-reloaded config, fingerprint, and models from disk");
+    // Re-merge backend models so hot-reload doesn't wipe them for ~1h
+    return import("./models/model-fetcher.js");
+  }).then(({ triggerImmediateRefresh }) => {
+    triggerImmediateRefresh();
   }).catch((err) => {
     console.warn("[Config] Failed to reload models:", err instanceof Error ? err.message : err);
   });
-  console.log("[Config] Hot-reloaded config, fingerprint, and models from disk");
 }

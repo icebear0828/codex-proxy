@@ -8,13 +8,9 @@ import {
   getModelCatalog,
   getModelAliases,
   getModelInfo,
-  resolveModelId,
   getModelStoreDebug,
   type CodexModelInfo,
 } from "../models/model-store.js";
-
-// Re-export for backwards compatibility (index.ts imports createModelRoutes from here)
-export { resolveModelId, getModelInfo, getModelCatalog, type CodexModelInfo };
 
 // --- Routes ---
 

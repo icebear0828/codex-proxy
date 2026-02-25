@@ -1,83 +1,301 @@
-# Codex model catalog — sourced from Codex Desktop `model/list`.
-# Updated by scripts/apply-update.ts when new versions are detected.
+# Codex model catalog
+#
+# Sources:
+#   1. Static (below) — Codex-specific models (not returned by /backend-api/models)
+#   2. Dynamic          — general ChatGPT models fetched from /backend-api/models
+#
+# Dynamic fetch merges with static; backend entries win for shared IDs.
 
 models:
-  - id: "gpt-5.3-codex"
-    displayName: "gpt-5.3-codex"
-    description: "Latest frontier agentic coding model."
+  # ── GPT-5.3 Codex family ──────────────────────────────────────────
+  - id: gpt-5.3-codex
+    displayName: GPT-5.3 Codex
+    description: Latest Codex flagship model
+    isDefault: false
+    supportedReasoningEfforts:
+      - { reasoningEffort: low,    description: "Fastest responses" }
+      - { reasoningEffort: medium, description: "Balanced speed and quality" }
+      - { reasoningEffort: high,   description: "Deepest reasoning" }
+    defaultReasoningEffort: medium
+    inputModalities: [text]
+    supportsPersonality: false
+    upgrade: null
+
+  - id: gpt-5.3-codex-high
+    displayName: GPT-5.3 Codex High
+    description: GPT-5.3 Codex — high reasoning tier
+    isDefault: false
+    supportedReasoningEfforts:
+      - { reasoningEffort: high,   description: "Deepest reasoning" }
+    defaultReasoningEffort: high
+    inputModalities: [text]
+    supportsPersonality: false
+    upgrade: null
+
+  - id: gpt-5.3-codex-mid
+    displayName: GPT-5.3 Codex Mid
+    description: GPT-5.3 Codex — mid reasoning tier
+    isDefault: false
+    supportedReasoningEfforts:
+      - { reasoningEffort: medium, description: "Balanced speed and quality" }
+    defaultReasoningEffort: medium
+    inputModalities: [text]
+    supportsPersonality: false
+    upgrade: null
+
+  - id: gpt-5.3-codex-low
+    displayName: GPT-5.3 Codex Low
+    description: GPT-5.3 Codex — low reasoning tier (fastest)
+    isDefault: false
+    supportedReasoningEfforts:
+      - { reasoningEffort: low,    description: "Fastest responses" }
+    defaultReasoningEffort: low
+    inputModalities: [text]
+    supportsPersonality: false
+    upgrade: null
+
+  - id: gpt-5.3-codex-max
+    displayName: GPT-5.3 Codex Max
+    description: GPT-5.3 Codex — extended context / deepest reasoning
+    isDefault: false
+    supportedReasoningEfforts:
+      - { reasoningEffort: low,    description: "Fastest responses" }
+      - { reasoningEffort: medium, description: "Balanced speed and quality" }
+      - { reasoningEffort: high,   description: "Deepest reasoning" }
+    defaultReasoningEffort: medium
+    inputModalities: [text]
+    supportsPersonality: false
+    upgrade: null
+
+  - id: gpt-5.3-codex-mini
+    displayName: GPT-5.3 Codex Mini
+    description: GPT-5.3 Codex — lightweight, low-latency
+    isDefault: false
+    supportedReasoningEfforts:
+      - { reasoningEffort: low,    description: "Fastest responses" }
+      - { reasoningEffort: medium, description: "Balanced speed and quality" }
+    defaultReasoningEffort: low
+    inputModalities: [text]
+    supportsPersonality: false
+    upgrade: null
+
+  # ── GPT-5.2 Codex family ──────────────────────────────────────────
+  - id: gpt-5.2-codex
+    displayName: GPT-5.2 Codex
+    description: GPT-5.2 Codex flagship
     isDefault: true
     supportedReasoningEfforts:
-      - { reasoningEffort: "low", description: "Fast responses with lighter reasoning" }
-      - { reasoningEffort: "medium", description: "Balances speed and reasoning depth for everyday tasks" }
-      - { reasoningEffort: "high", description: "Greater reasoning depth for complex problems" }
-      - { reasoningEffort: "xhigh", description: "Extra high reasoning depth for complex problems" }
-    defaultReasoningEffort: "medium"
-    inputModalities: ["text", "image"]
+      - { reasoningEffort: low,    description: "Fastest responses" }
+      - { reasoningEffort: medium, description: "Balanced speed and quality" }
+      - { reasoningEffort: high,   description: "Deepest reasoning" }
+    defaultReasoningEffort: medium
+    inputModalities: [text]
+    supportsPersonality: false
+    upgrade: null
+
+  - id: gpt-5.2-codex-high
+    displayName: GPT-5.2 Codex High
+    description: GPT-5.2 Codex — high reasoning tier
+    isDefault: false
+    supportedReasoningEfforts:
+      - { reasoningEffort: high,   description: "Deepest reasoning" }
+    defaultReasoningEffort: high
+    inputModalities: [text]
+    supportsPersonality: false
+    upgrade: null
+
+  - id: gpt-5.2-codex-mid
+    displayName: GPT-5.2 Codex Mid
+    description: GPT-5.2 Codex — mid reasoning tier
+    isDefault: false
+    supportedReasoningEfforts:
+      - { reasoningEffort: medium, description: "Balanced speed and quality" }
+    defaultReasoningEffort: medium
+    inputModalities: [text]
+    supportsPersonality: false
+    upgrade: null
+
+  - id: gpt-5.2-codex-low
+    displayName: GPT-5.2 Codex Low
+    description: GPT-5.2 Codex — low reasoning tier (fastest)
+    isDefault: false
+    supportedReasoningEfforts:
+      - { reasoningEffort: low,    description: "Fastest responses" }
+    defaultReasoningEffort: low
+    inputModalities: [text]
+    supportsPersonality: false
+    upgrade: null
+
+  - id: gpt-5.2-codex-max
+    displayName: GPT-5.2 Codex Max
+    description: GPT-5.2 Codex — extended context / deepest reasoning
+    isDefault: false
+    supportedReasoningEfforts:
+      - { reasoningEffort: low,    description: "Fastest responses" }
+      - { reasoningEffort: medium, description: "Balanced speed and quality" }
+      - { reasoningEffort: high,   description: "Deepest reasoning" }
+    defaultReasoningEffort: medium
+    inputModalities: [text]
+    supportsPersonality: false
+    upgrade: null
+
+  - id: gpt-5.2-codex-mini
+    displayName: GPT-5.2 Codex Mini
+    description: GPT-5.2 Codex — lightweight, low-latency
+    isDefault: false
+    supportedReasoningEfforts:
+      - { reasoningEffort: low,    description: "Fastest responses" }
+      - { reasoningEffort: medium, description: "Balanced speed and quality" }
+    defaultReasoningEffort: low
+    inputModalities: [text]
+    supportsPersonality: false
+    upgrade: null
+
+  # ── GPT-5.1 Codex family ──────────────────────────────────────────
+  - id: gpt-5.1-codex
+    displayName: GPT-5.1 Codex
+    description: GPT-5.1 Codex
+    isDefault: false
+    supportedReasoningEfforts:
+      - { reasoningEffort: low,    description: "Fastest responses" }
+      - { reasoningEffort: medium, description: "Balanced speed and quality" }
+      - { reasoningEffort: high,   description: "Deepest reasoning" }
+    defaultReasoningEffort: medium
+    inputModalities: [text]
+    supportsPersonality: false
+    upgrade: null
+
+  - id: gpt-5.1-codex-high
+    displayName: GPT-5.1 Codex High
+    description: GPT-5.1 Codex — high reasoning tier
+    isDefault: false
+    supportedReasoningEfforts:
+      - { reasoningEffort: high,   description: "Deepest reasoning" }
+    defaultReasoningEffort: high
+    inputModalities: [text]
+    supportsPersonality: false
+    upgrade: null
+
+  - id: gpt-5.1-codex-mid
+    displayName: GPT-5.1 Codex Mid
+    description: GPT-5.1 Codex — mid reasoning tier
+    isDefault: false
+    supportedReasoningEfforts:
+      - { reasoningEffort: medium, description: "Balanced speed and quality" }
+    defaultReasoningEffort: medium
+    inputModalities: [text]
+    supportsPersonality: false
+    upgrade: null
+
+  - id: gpt-5.1-codex-low
+    displayName: GPT-5.1 Codex Low
+    description: GPT-5.1 Codex — low reasoning tier (fastest)
+    isDefault: false
+    supportedReasoningEfforts:
+      - { reasoningEffort: low,    description: "Fastest responses" }
+    defaultReasoningEffort: low
+    inputModalities: [text]
+    supportsPersonality: false
+    upgrade: null
+
+  - id: gpt-5.1-codex-max
+    displayName: GPT-5.1 Codex Max
+    description: GPT-5.1 Codex — extended context / deepest reasoning
+    isDefault: false
+    supportedReasoningEfforts:
+      - { reasoningEffort: low,    description: "Fastest responses" }
+      - { reasoningEffort: medium, description: "Balanced speed and quality" }
+      - { reasoningEffort: high,   description: "Deepest reasoning" }
+    defaultReasoningEffort: medium
+    inputModalities: [text]
+    supportsPersonality: false
+    upgrade: null
+
+  - id: gpt-5.1-codex-mini
+    displayName: GPT-5.1 Codex Mini
+    description: GPT-5.1 Codex Mini — lightweight, low-latency
+    isDefault: false
+    supportedReasoningEfforts:
+      - { reasoningEffort: low,    description: "Fastest responses" }
+      - { reasoningEffort: medium, description: "Balanced speed and quality" }
+    defaultReasoningEffort: low
+    inputModalities: [text]
+    supportsPersonality: false
+    upgrade: null
+
+  # ── GPT-5 Codex (legacy) ──────────────────────────────────────────
+  - id: gpt-5-codex
+    displayName: GPT-5 Codex
+    description: Original GPT-5 Codex
+    isDefault: false
+    supportedReasoningEfforts:
+      - { reasoningEffort: medium, description: "Default" }
+    defaultReasoningEffort: medium
+    inputModalities: [text]
+    supportsPersonality: false
+    upgrade: null
+
+  - id: gpt-5-codex-mini
+    displayName: GPT-5 Codex Mini
+    description: Original lightweight Codex
+    isDefault: false
+    supportedReasoningEfforts:
+      - { reasoningEffort: medium, description: "Default" }
+    defaultReasoningEffort: medium
+    inputModalities: [text]
+    supportsPersonality: false
+    upgrade: null
+
+  # ── Base GPT models (also usable via Codex endpoint) ───────────────
+  - id: gpt-5.3
+    displayName: GPT-5.3
+    description: General-purpose GPT-5.3
+    isDefault: false
+    supportedReasoningEfforts:
+      - { reasoningEffort: low,    description: "Fastest responses" }
+      - { reasoningEffort: medium, description: "Balanced speed and quality" }
+      - { reasoningEffort: high,   description: "Deepest reasoning" }
+    defaultReasoningEffort: medium
+    inputModalities: [text, image]
     supportsPersonality: true
     upgrade: null
 
-  - id: "gpt-5.2-codex"
-    displayName: "gpt-5.2-codex"
-    description: "Frontier agentic coding model."
+  - id: gpt-5.2
+    displayName: GPT-5.2
+    description: General-purpose GPT-5.2
     isDefault: false
     supportedReasoningEfforts:
-      - { reasoningEffort: "low", description: "Fast responses with lighter reasoning" }
-      - { reasoningEffort: "medium", description: "Balances speed and reasoning depth for everyday tasks" }
-      - { reasoningEffort: "high", description: "Greater reasoning depth for complex problems" }
-      - { reasoningEffort: "xhigh", description: "Extra high reasoning depth for complex problems" }
-    defaultReasoningEffort: "medium"
-    inputModalities: ["text", "image"]
+      - { reasoningEffort: low,    description: "Fastest responses" }
+      - { reasoningEffort: medium, description: "Balanced speed and quality" }
+      - { reasoningEffort: high,   description: "Deepest reasoning" }
+    defaultReasoningEffort: medium
+    inputModalities: [text, image]
     supportsPersonality: true
-    upgrade: "gpt-5.3-codex"
+    upgrade: null
 
-  - id: "gpt-5.1-codex-max"
-    displayName: "gpt-5.1-codex-max"
-    description: "Codex-optimized flagship for deep and fast reasoning."
+  - id: gpt-5.1
+    displayName: GPT-5.1
+    description: General-purpose GPT-5.1
     isDefault: false
     supportedReasoningEfforts:
-      - { reasoningEffort: "low", description: "Fast responses with lighter reasoning" }
-      - { reasoningEffort: "medium", description: "Balances speed and reasoning depth for everyday tasks" }
-      - { reasoningEffort: "high", description: "Greater reasoning depth for complex problems" }
-      - { reasoningEffort: "xhigh", description: "Extra high reasoning depth for complex problems" }
-    defaultReasoningEffort: "medium"
-    inputModalities: ["text", "image"]
-    supportsPersonality: false
-    upgrade: "gpt-5.3-codex"
+      - { reasoningEffort: low,    description: "Fastest responses" }
+      - { reasoningEffort: medium, description: "Balanced speed and quality" }
+      - { reasoningEffort: high,   description: "Deepest reasoning" }
+    defaultReasoningEffort: medium
+    inputModalities: [text, image]
+    supportsPersonality: true
+    upgrade: null
 
-  - id: "gpt-5.2"
-    displayName: "gpt-5.2"
-    description: "Latest frontier model with improvements across knowledge, reasoning and coding."
+  - id: gpt-5
+    displayName: GPT-5
+    description: General-purpose GPT-5
     isDefault: false
     supportedReasoningEfforts:
-      - { reasoningEffort: "low", description: "Balances speed with some reasoning" }
-      - { reasoningEffort: "medium", description: "Solid balance of reasoning depth and latency" }
-      - { reasoningEffort: "high", description: "Maximizes reasoning depth for complex problems" }
-      - { reasoningEffort: "xhigh", description: "Extra high reasoning for complex problems" }
-    defaultReasoningEffort: "medium"
-    inputModalities: ["text", "image"]
-    supportsPersonality: false
-    upgrade: "gpt-5.3-codex"
-
-  - id: "gpt-5.1-codex-mini"
-    displayName: "gpt-5.1-codex-mini"
-    description: "Optimized for codex. Cheaper, faster, but less capable."
-    isDefault: false
-    supportedReasoningEfforts:
-      - { reasoningEffort: "medium", description: "Dynamically adjusts reasoning based on the task" }
-      - { reasoningEffort: "high", description: "Maximizes reasoning depth for complex problems" }
-    defaultReasoningEffort: "medium"
-    inputModalities: ["text", "image"]
-    supportsPersonality: false
-    upgrade: "gpt-5.3-codex"
+      - { reasoningEffort: medium, description: "Default" }
+    defaultReasoningEffort: medium
+    inputModalities: [text, image]
+    supportsPersonality: true
+    upgrade: null
 
 aliases:
-  codex: "gpt-5.3-codex"
-  codex-max: "gpt-5.1-codex-max"
-  codex-mini: "gpt-5.1-codex-mini"
-  # Claude Code model aliases
-  claude-opus-4-6: "gpt-5.3-codex"
-  claude-sonnet-4-6: "gpt-5.2-codex"
-  claude-haiku-4-5-20251001: "gpt-5.1-codex-mini"
-  opus: "gpt-5.3-codex"
-  sonnet: "gpt-5.2-codex"
-  haiku: "gpt-5.1-codex-mini"
+  codex: "gpt-5.2-codex"

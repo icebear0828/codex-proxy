@@ -4,7 +4,7 @@ import { Header } from "./components/Header";
 import { AccountList } from "./components/AccountList";
 import { AddAccount } from "./components/AddAccount";
 import { ApiConfig } from "./components/ApiConfig";
-import { ClaudeCodeSetup } from "./components/ClaudeCodeSetup";
+import { AnthropicSetup } from "./components/ClaudeCodeSetup";
 import { CodeExamples } from "./components/CodeExamples";
 import { Footer } from "./components/Footer";
 import { useAccounts } from "./hooks/use-accounts";
@@ -37,8 +37,10 @@ function Dashboard() {
             selectedModel={status.selectedModel}
             onModelChange={status.setSelectedModel}
           />
-          <ClaudeCodeSetup
+          <AnthropicSetup
             apiKey={status.apiKey}
+            models={status.models}
+            selectedModel={status.selectedModel}
           />
           <CodeExamples
             baseUrl={status.baseUrl}
