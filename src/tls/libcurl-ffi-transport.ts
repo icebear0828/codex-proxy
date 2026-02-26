@@ -12,7 +12,7 @@ import { resolve } from "path";
 import { existsSync } from "fs";
 import type { IKoffiLib, IKoffiCType, IKoffiRegisteredCallback, KoffiFunction } from "koffi";
 import type { TlsTransport, TlsTransportResponse } from "./transport.js";
-import { getProxyUrl } from "./curl-binary.js";
+import { getProxyUrl, getResolvedProfile } from "./curl-binary.js";
 
 // ── libcurl constants ──────────────────────────────────────────────
 
@@ -450,7 +450,7 @@ export class LibcurlFfiTransport implements TlsTransport {
     if (!easy) throw new Error("curl_easy_init() returned null");
 
     // Impersonate Chrome — 0 = don't inject default headers (we control them)
-    b.curl_easy_impersonate(easy, "chrome136", 0);
+    b.curl_easy_impersonate(easy, getResolvedProfile(), 0);
 
     b.curl_easy_setopt_str(easy, CURLOPT_URL, url);
     b.curl_easy_setopt_long(easy, CURLOPT_NOSIGNAL, 1);

@@ -69,6 +69,7 @@ const CHROME_TLS_ARGS: string[] = [
 let _resolved: string | null = null;
 let _isImpersonate = false;
 let _tlsArgs: string[] | null = null;
+let _resolvedProfile = "chrome136";
 
 /**
  * Resolve the curl binary path. Result is cached after first call.
@@ -105,10 +106,45 @@ export function resolveCurlBinary(): string {
   return _resolved;
 }
 
+/** Test if a specific --impersonate profile is accepted by the binary. */
+function testProfile(binary: string, profile: string): boolean {
+  try {
+    execFileSync(binary, ["--impersonate", profile, "-V"], {
+      encoding: "utf-8",
+      timeout: 5000,
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Find a working impersonate profile.
+ * Tries the configured profile first, then descends Chrome versions.
+ */
+function resolveProfile(binary: string, configured: string): string | null {
+  if (testProfile(binary, configured)) return configured;
+
+  const match = configured.match(/^chrome(\d+)/);
+  if (!match) return null;
+
+  const ver = parseInt(match[1], 10);
+  for (let v = ver - 1; v >= ver - 10 && v > 0; v--) {
+    const candidate = `chrome${v}`;
+    if (testProfile(binary, candidate)) {
+      console.warn(`[TLS] Profile "${configured}" not supported, using "${candidate}"`);
+      return candidate;
+    }
+  }
+  return null;
+}
+
 /**
  * Detect if curl-impersonate supports the --impersonate flag.
- * If supported, returns ["--impersonate", profile] which replaces CHROME_TLS_ARGS.
- * Otherwise returns the manual CHROME_TLS_ARGS.
+ * Validates the configured profile and auto-falls back to the nearest
+ * supported Chrome version if needed.
  */
 function detectImpersonateSupport(binary: string): string[] {
   try {
@@ -117,9 +153,14 @@ function detectImpersonateSupport(binary: string): string[] {
       timeout: 5000,
     });
     if (helpOutput.includes("--impersonate")) {
-      const profile = getConfig().tls.impersonate_profile ?? "chrome136";
-      console.log(`[TLS] Using --impersonate ${profile}`);
-      return ["--impersonate", profile];
+      const configured = getConfig().tls.impersonate_profile ?? "chrome136";
+      const profile = resolveProfile(binary, configured);
+      if (profile) {
+        _resolvedProfile = profile;
+        console.log(`[TLS] Using --impersonate ${profile}`);
+        return ["--impersonate", profile];
+      }
+      console.warn("[TLS] No supported impersonate profile found, using manual TLS args");
     }
   } catch {
     // --help failed, fall back to manual args
@@ -220,6 +261,15 @@ export function isImpersonate(): boolean {
 }
 
 /**
+ * Get the resolved impersonate profile (e.g. "chrome136").
+ * Used by FFI transport which needs the profile name directly.
+ */
+export function getResolvedProfile(): string {
+  getChromeTlsArgs(); // ensure detection has run
+  return _resolvedProfile;
+}
+
+/**
  * Get the detected proxy URL (or null if no proxy).
  * Used by LibcurlFfiTransport which needs the URL directly (not CLI args).
  */
@@ -234,4 +284,5 @@ export function resetCurlBinaryCache(): void {
   _resolved = null;
   _isImpersonate = false;
   _tlsArgs = null;
+  _resolvedProfile = "chrome136";
 }
