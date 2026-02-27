@@ -36,6 +36,7 @@
 - `ClaudeCodeSetup.tsx` 文件名与导出名不一致，重命名为 `AnthropicSetup.tsx`
 - Dashboard 模型偏好从硬编码 `gpt-5.2-codex` 改为使用 `codex` 别名
 - 构建脚本 `vite build --root web` 兼容性问题，改用 `npm run build:web`
+- Docker 容器内代理自动检测失败：`detectLocalProxy()` 现在同时探测 `127.0.0.1`（裸机）和 `host.docker.internal`（Docker 容器→宿主机），零配置即生效
 
 ## [v0.8.0](https://github.com/icebear0828/codex-proxy/releases/tag/v0.8.0) - 2026-02-24
 

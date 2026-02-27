@@ -187,12 +187,20 @@ const PROXY_PORTS = [
   { port: 10808, proto: "socks5" },// v2ray SOCKS5
 ];
 
+/**
+ * Hosts to probe for proxy detection.
+ * 127.0.0.1 — bare-metal / host machine.
+ * host.docker.internal — Docker container → host machine
+ * (DNS lookup fails on bare-metal → ENOTFOUND → handled by error callback, <5ms).
+ */
+const PROXY_HOSTS = ["127.0.0.1", "host.docker.internal"];
+
 let _proxyUrl: string | null | undefined; // undefined = not yet detected
 
-/** Probe a TCP port on localhost. Resolves true if a server is listening. */
-function probePort(port: number, timeoutMs = 500): Promise<boolean> {
+/** Probe a TCP port on the given host. Resolves true if a server is listening. */
+function probePort(host: string, port: number, timeoutMs = 500): Promise<boolean> {
   return new Promise((resolve) => {
-    const sock = createConnection({ host: "127.0.0.1", port }, () => {
+    const sock = createConnection({ host, port }, () => {
       sock.destroy();
       resolve(true);
     });
@@ -203,15 +211,17 @@ function probePort(port: number, timeoutMs = 500): Promise<boolean> {
 }
 
 /**
- * Detect a local proxy by probing common ports.
+ * Detect a local proxy by probing common ports on localhost and Docker host.
  * Called once at startup, result is cached.
  */
 async function detectLocalProxy(): Promise<string | null> {
-  for (const { port, proto } of PROXY_PORTS) {
-    if (await probePort(port)) {
-      const url = `${proto}://127.0.0.1:${port}`;
-      console.log(`[Proxy] Auto-detected local proxy: ${url}`);
-      return url;
+  for (const host of PROXY_HOSTS) {
+    for (const { port, proto } of PROXY_PORTS) {
+      if (await probePort(host, port)) {
+        const url = `${proto}://${host}:${port}`;
+        console.log(`[Proxy] Auto-detected local proxy: ${url}`);
+        return url;
+      }
     }
   }
   return null;
