@@ -12,6 +12,7 @@ import { stream } from "hono/streaming";
 import { randomUUID } from "crypto";
 import { CodexApi, CodexApiError } from "../../proxy/codex-api.js";
 import type { CodexResponsesRequest } from "../../proxy/codex-api.js";
+import { EmptyResponseError } from "../../translation/codex-event-extractor.js";
 import type { AccountPool } from "../../auth/account-pool.js";
 import type { SessionManager } from "../../session/manager.js";
 import type { CookieJar } from "../../proxy/cookie-jar.js";
@@ -145,28 +146,77 @@ export async function handleProxyRequest(
         }
       });
     } else {
-      try {
-        const result = await fmt.collectTranslator(
-          codexApi,
-          rawResponse,
-          req.model,
-        );
-        if (result.responseId) {
-          const taskId = `task-${randomUUID()}`;
-          sessionManager.storeSession(
-            taskId,
-            "turn-1",
-            req.sessionMessages,
+      // Non-streaming: retry loop for empty responses (switch accounts)
+      const MAX_EMPTY_RETRIES = 2;
+      let currentEntryId = entryId;
+      let currentCodexApi = codexApi;
+      let currentRawResponse = rawResponse;
+
+      for (let attempt = 1; ; attempt++) {
+        try {
+          const result = await fmt.collectTranslator(
+            currentCodexApi,
+            currentRawResponse,
+            req.model,
           );
-          sessionManager.updateResponseId(taskId, result.responseId);
+          if (result.responseId) {
+            const taskId = `task-${randomUUID()}`;
+            sessionManager.storeSession(
+              taskId,
+              "turn-1",
+              req.sessionMessages,
+            );
+            sessionManager.updateResponseId(taskId, result.responseId);
+          }
+          accountPool.release(currentEntryId, result.usage);
+          return c.json(result.response);
+        } catch (collectErr) {
+          if (collectErr instanceof EmptyResponseError && attempt <= MAX_EMPTY_RETRIES) {
+            console.warn(
+              `[${fmt.tag}] Account ${currentEntryId} | Empty response (attempt ${attempt}/${MAX_EMPTY_RETRIES + 1}), switching account...`,
+            );
+            accountPool.release(currentEntryId, collectErr.usage);
+
+            // Acquire a new account
+            const newAcquired = accountPool.acquire();
+            if (!newAcquired) {
+              console.warn(`[${fmt.tag}] No available account for retry`);
+              c.status(502);
+              return c.json(fmt.formatError(502, "Codex returned an empty response and no other accounts are available for retry"));
+            }
+
+            currentEntryId = newAcquired.entryId;
+            currentCodexApi = new CodexApi(newAcquired.token, newAcquired.accountId, cookieJar, newAcquired.entryId);
+            try {
+              currentRawResponse = await withRetry(
+                () => currentCodexApi.createResponse(req.codexRequest, abortController.signal),
+                { tag: fmt.tag },
+              );
+            } catch (retryErr) {
+              accountPool.release(currentEntryId);
+              if (retryErr instanceof CodexApiError) {
+                const code = (retryErr.status >= 400 && retryErr.status < 600 ? retryErr.status : 502) as StatusCode;
+                c.status(code);
+                return c.json(fmt.formatError(code, retryErr.message));
+              }
+              throw retryErr;
+            }
+            continue;
+          }
+
+          // Not an empty response error, or retries exhausted
+          accountPool.release(currentEntryId);
+          if (collectErr instanceof EmptyResponseError) {
+            console.warn(
+              `[${fmt.tag}] Account ${currentEntryId} | Empty response (attempt ${attempt}/${MAX_EMPTY_RETRIES + 1}), all retries exhausted`,
+            );
+            c.status(502);
+            return c.json(fmt.formatError(502, "Codex returned empty responses across all available accounts"));
+          }
+          const msg = collectErr instanceof Error ? collectErr.message : "Unknown error";
+          c.status(502);
+          return c.json(fmt.formatError(502, msg));
         }
-        accountPool.release(entryId, result.usage);
-        return c.json(result.response);
-      } catch (collectErr) {
-        accountPool.release(entryId);
-        const msg = collectErr instanceof Error ? collectErr.message : "Unknown error";
-        c.status(502);
-        return c.json(fmt.formatError(502, msg));
       }
     }
   } catch (err) {

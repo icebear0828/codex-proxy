@@ -15,7 +15,7 @@ import type {
   GeminiUsageMetadata,
   GeminiPart,
 } from "../types/gemini.js";
-import { iterateCodexEvents } from "./codex-event-extractor.js";
+import { iterateCodexEvents, EmptyResponseError } from "./codex-event-extractor.js";
 
 export interface GeminiUsageInfo {
   input_tokens: number;
@@ -35,6 +35,7 @@ export async function* streamCodexToGemini(
 ): AsyncGenerator<string> {
   let inputTokens = 0;
   let outputTokens = 0;
+  let hasContent = false;
 
   for await (const evt of iterateCodexEvents(codexApi, rawResponse)) {
     if (evt.responseId) onResponseId?.(evt.responseId);
@@ -60,6 +61,7 @@ export async function* streamCodexToGemini(
 
     // Function call done → emit as a candidate with functionCall part
     if (evt.functionCallDone) {
+      hasContent = true;
       let args: Record<string, unknown> = {};
       try {
         args = JSON.parse(evt.functionCallDone.arguments) as Record<string, unknown>;
@@ -88,6 +90,7 @@ export async function* streamCodexToGemini(
     switch (evt.typed.type) {
       case "response.output_text.delta": {
         if (evt.textDelta) {
+          hasContent = true;
           const chunk: GeminiGenerateContentResponse = {
             candidates: [
               {
@@ -110,6 +113,23 @@ export async function* streamCodexToGemini(
           inputTokens = evt.usage.input_tokens;
           outputTokens = evt.usage.output_tokens;
           onUsage?.({ input_tokens: inputTokens, output_tokens: outputTokens });
+        }
+
+        // Inject error text if stream completed with no content
+        if (!hasContent) {
+          const emptyErrChunk: GeminiGenerateContentResponse = {
+            candidates: [
+              {
+                content: {
+                  parts: [{ text: "[Error] Codex returned an empty response. Please retry." }],
+                  role: "model",
+                },
+                index: 0,
+              },
+            ],
+            modelVersion: model,
+          };
+          yield `data: ${JSON.stringify(emptyErrChunk)}\n\n`;
         }
 
         // Final chunk with finishReason and usage
@@ -188,6 +208,11 @@ export async function collectCodexToGeminiResponse(
     candidatesTokenCount: outputTokens,
     totalTokenCount: inputTokens + outputTokens,
   };
+
+  // Detect empty response (HTTP 200 but no content)
+  if (!fullText && functionCallParts.length === 0 && outputTokens === 0) {
+    throw new EmptyResponseError(responseId, { input_tokens: inputTokens, output_tokens: outputTokens });
+  }
 
   // Build response parts: text + function calls
   const parts: GeminiPart[] = [];

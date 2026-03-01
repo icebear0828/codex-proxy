@@ -16,7 +16,7 @@ import type {
   AnthropicMessagesResponse,
   AnthropicUsage,
 } from "../types/anthropic.js";
-import { iterateCodexEvents } from "./codex-event-extractor.js";
+import { iterateCodexEvents, EmptyResponseError } from "./codex-event-extractor.js";
 
 export interface AnthropicUsageInfo {
   input_tokens: number;
@@ -43,6 +43,7 @@ export async function* streamCodexToAnthropic(
   let outputTokens = 0;
   let inputTokens = 0;
   let hasToolCalls = false;
+  let hasContent = false;
   let contentIndex = 0;
   let textBlockStarted = false;
   const callIdsWithDeltas = new Set<string>();
@@ -100,6 +101,7 @@ export async function* streamCodexToAnthropic(
     // Handle function call start → close text block, open tool_use block
     if (evt.functionCallStart) {
       hasToolCalls = true;
+      hasContent = true;
 
       // Close text block if still open
       if (textBlockStarted) {
@@ -156,6 +158,7 @@ export async function* streamCodexToAnthropic(
     switch (evt.typed.type) {
       case "response.output_text.delta": {
         if (evt.textDelta) {
+          hasContent = true;
           // Reopen a text block if the previous one was closed (e.g. after tool calls)
           if (!textBlockStarted) {
             yield formatSSE("content_block_start", {
@@ -179,6 +182,14 @@ export async function* streamCodexToAnthropic(
           inputTokens = evt.usage.input_tokens;
           outputTokens = evt.usage.output_tokens;
           onUsage?.({ input_tokens: inputTokens, output_tokens: outputTokens });
+        }
+        // Inject error text if stream completed with no content
+        if (!hasContent && textBlockStarted) {
+          yield formatSSE("content_block_delta", {
+            type: "content_block_delta",
+            index: contentIndex,
+            delta: { type: "text_delta", text: "[Error] Codex returned an empty response. Please retry." },
+          });
         }
         break;
       }
@@ -250,6 +261,11 @@ export async function collectCodexToAnthropicResponse(
         input: parsedInput,
       });
     }
+  }
+
+  // Detect empty response (HTTP 200 but no content)
+  if (!fullText && toolUseBlocks.length === 0 && outputTokens === 0) {
+    throw new EmptyResponseError(responseId, { input_tokens: inputTokens, output_tokens: outputTokens });
   }
 
   const hasToolCalls = toolUseBlocks.length > 0;

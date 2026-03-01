@@ -18,7 +18,7 @@ import type {
   ChatCompletionToolCall,
   ChatCompletionChunkToolCall,
 } from "../types/openai.js";
-import { iterateCodexEvents, type UsageInfo } from "./codex-event-extractor.js";
+import { iterateCodexEvents, EmptyResponseError, type UsageInfo } from "./codex-event-extractor.js";
 
 export type { UsageInfo };
 
@@ -42,6 +42,7 @@ export async function* streamCodexToOpenAI(
   const chunkId = `chatcmpl-${randomUUID().replace(/-/g, "").slice(0, 24)}`;
   const created = Math.floor(Date.now() / 1000);
   let hasToolCalls = false;
+  let hasContent = false;
   // Track tool call indices by call_id
   const toolCallIndexMap = new Map<string, number>();
   let nextToolCallIndex = 0;
@@ -101,6 +102,7 @@ export async function* streamCodexToOpenAI(
     // Handle function call events
     if (evt.functionCallStart) {
       hasToolCalls = true;
+      hasContent = true;
       const idx = nextToolCallIndex++;
       toolCallIndexMap.set(evt.functionCallStart.callId, idx);
       const toolCall: ChatCompletionChunkToolCall = {
@@ -183,6 +185,7 @@ export async function* streamCodexToOpenAI(
     switch (evt.typed.type) {
       case "response.output_text.delta": {
         if (evt.textDelta) {
+          hasContent = true;
           yield formatSSE({
             id: chunkId,
             object: "chat.completion.chunk",
@@ -202,6 +205,22 @@ export async function* streamCodexToOpenAI(
 
       case "response.completed": {
         if (evt.usage) onUsage?.(evt.usage);
+        // Inject error text if stream completed with no content
+        if (!hasContent) {
+          yield formatSSE({
+            id: chunkId,
+            object: "chat.completion.chunk",
+            created,
+            model,
+            choices: [
+              {
+                index: 0,
+                delta: { content: "[Error] Codex returned an empty response. Please retry." },
+                finish_reason: null,
+              },
+            ],
+          });
+        }
         yield formatSSE({
           id: chunkId,
           object: "chat.completion.chunk",
@@ -263,6 +282,11 @@ export async function collectCodexResponse(
         },
       });
     }
+  }
+
+  // Detect empty response (HTTP 200 but no content)
+  if (!fullText && toolCalls.length === 0 && completionTokens === 0) {
+    throw new EmptyResponseError(responseId, { input_tokens: promptTokens, output_tokens: completionTokens });
   }
 
   const hasToolCalls = toolCalls.length > 0;
