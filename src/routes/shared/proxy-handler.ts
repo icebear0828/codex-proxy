@@ -73,6 +73,8 @@ export async function handleProxyRequest(
 
   const { entryId, token, accountId } = acquired;
   const codexApi = new CodexApi(token, accountId, cookieJar, entryId);
+  // Tracks which account the outer catch should release (updated by retry loop)
+  let activeEntryId = entryId;
 
   // 2. Session lookup for multi-turn
   const existingSession = sessionManager.findSession(req.sessionMessages);
@@ -186,6 +188,7 @@ export async function handleProxyRequest(
             }
 
             currentEntryId = newAcquired.entryId;
+            activeEntryId = currentEntryId;
             currentCodexApi = new CodexApi(newAcquired.token, newAcquired.accountId, cookieJar, newAcquired.entryId);
             try {
               currentRawResponse = await withRetry(
@@ -223,23 +226,23 @@ export async function handleProxyRequest(
     // 5. Error handling with format-specific responses
     if (err instanceof CodexApiError) {
       console.error(
-        `[${fmt.tag}] Account ${entryId} | Codex API error:`,
+        `[${fmt.tag}] Account ${activeEntryId} | Codex API error:`,
         err.message,
       );
       if (err.status === 429) {
         // P1-6: Count 429s as requests via encapsulated API (no direct entry mutation)
-        accountPool.markRateLimited(entryId, { countRequest: true });
+        accountPool.markRateLimited(activeEntryId, { countRequest: true });
         c.status(429);
         return c.json(fmt.format429(err.message));
       }
-      accountPool.release(entryId);
+      accountPool.release(activeEntryId);
       const code = (
         err.status >= 400 && err.status < 600 ? err.status : 502
       ) as StatusCode;
       c.status(code);
       return c.json(fmt.formatError(code, err.message));
     }
-    accountPool.release(entryId);
+    accountPool.release(activeEntryId);
     throw err;
   }
 }

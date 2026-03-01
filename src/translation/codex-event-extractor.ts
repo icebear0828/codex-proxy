@@ -39,6 +39,7 @@ export class EmptyResponseError extends Error {
     public readonly usage: UsageInfo | undefined,
   ) {
     super("Codex returned an empty response");
+    this.name = "EmptyResponseError";
   }
 }
 
