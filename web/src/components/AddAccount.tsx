@@ -1,6 +1,7 @@
 import { useState, useCallback } from "preact/hooks";
 import { useT } from "../i18n/context";
 import type { TranslationKey } from "../i18n/translations";
+import { Spinner } from "./Spinner";
 
 interface AddAccountProps {
   visible: boolean;
@@ -49,9 +50,10 @@ export function AddAccount({ visible, onSubmitRelay, addInfo, addError }: AddAcc
             <button
               onClick={handleSubmit}
               disabled={submitting}
-              class="px-4 py-2.5 bg-white dark:bg-card-dark border border-gray-200 dark:border-border-dark rounded-lg text-sm font-medium text-slate-700 dark:text-text-main hover:bg-slate-50 dark:hover:bg-border-dark transition-colors"
+              class="flex items-center gap-2 px-4 py-2.5 bg-white dark:bg-card-dark border border-gray-200 dark:border-border-dark rounded-lg text-sm font-medium text-slate-700 dark:text-text-main hover:bg-slate-50 dark:hover:bg-border-dark transition-colors disabled:opacity-70"
             >
-              {submitting ? t("submitting") : t("submit")}
+              {submitting && <Spinner size="sm" />}
+              <span>{submitting ? t("submitting") : t("submit")}</span>
             </button>
           </div>
         </section>

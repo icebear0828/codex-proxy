@@ -25,6 +25,7 @@ export function useAccounts() {
   const [list, setList] = useState<Account[]>([]);
   const [loading, setLoading] = useState(true);
   const [addVisible, setAddVisible] = useState(false);
+  const [isStartingAdd, setIsStartingAdd] = useState(false);
   const [addInfo, setAddInfo] = useState("");
   const [addError, setAddError] = useState("");
 
@@ -60,6 +61,7 @@ export function useAccounts() {
   const startAdd = useCallback(async () => {
     setAddInfo("");
     setAddError("");
+    setIsStartingAdd(true);
     try {
       const resp = await fetch("/auth/login-start", { method: "POST" });
       const data = await resp.json();
@@ -90,6 +92,8 @@ export function useAccounts() {
       setTimeout(() => clearInterval(pollTimer), 5 * 60 * 1000);
     } catch (err) {
       setAddError(err instanceof Error ? err.message : "failedStartLogin");
+    } finally {
+      setIsStartingAdd(false);
     }
   }, [loadAccounts]);
 
@@ -147,6 +151,7 @@ export function useAccounts() {
     list,
     loading,
     addVisible,
+    isStartingAdd,
     addInfo,
     addError,
     startAdd,

@@ -16,7 +16,7 @@ function Dashboard() {
 
   return (
     <>
-      <Header onAddAccount={accounts.startAdd} />
+      <Header onAddAccount={accounts.startAdd} isStartingAdd={accounts.isStartingAdd} />
       <main class="flex-grow px-4 md:px-8 lg:px-40 py-8 flex justify-center">
         <div class="flex flex-col w-full max-w-[960px] gap-6">
           <AddAccount

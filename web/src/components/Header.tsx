@@ -1,5 +1,6 @@
 import { useI18n } from "../i18n/context";
 import { useTheme } from "../theme/context";
+import { Spinner } from "./Spinner";
 
 const SVG_MOON = (
   <svg class="size-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
@@ -15,9 +16,10 @@ const SVG_SUN = (
 
 interface HeaderProps {
   onAddAccount: () => void;
+  isStartingAdd?: boolean;
 }
 
-export function Header({ onAddAccount }: HeaderProps) {
+export function Header({ onAddAccount, isStartingAdd }: HeaderProps) {
   const { lang, toggleLang, t } = useI18n();
   const { isDark, toggle: toggleTheme } = useTheme();
 
@@ -51,6 +53,7 @@ export function Header({ onAddAccount }: HeaderProps) {
               onClick={toggleLang}
               class="p-2 rounded-lg text-slate-500 dark:text-text-dim hover:bg-slate-100 dark:hover:bg-border-dark transition-colors"
               title="\u4e2d/EN"
+              aria-label={t("toggleLang")}
             >
               <span class="text-xs font-bold inline-flex items-center justify-center w-5">{lang === "en" ? "EN" : "\u4e2d"}</span>
             </button>
@@ -59,17 +62,24 @@ export function Header({ onAddAccount }: HeaderProps) {
               onClick={toggleTheme}
               class="p-2 rounded-lg text-slate-500 dark:text-text-dim hover:bg-slate-100 dark:hover:bg-border-dark transition-colors"
               title={t("toggleTheme")}
+              aria-label={t("toggleTheme")}
             >
               {isDark ? SVG_SUN : SVG_MOON}
             </button>
             {/* Add Account */}
             <button
               onClick={onAddAccount}
-              class="flex items-center gap-2 px-4 py-2 bg-primary hover:bg-primary-hover text-white text-xs font-semibold rounded-lg transition-colors shadow-sm active:scale-95"
+              disabled={isStartingAdd}
+              class="flex items-center gap-2 px-4 py-2 bg-primary hover:bg-primary-hover text-white text-xs font-semibold rounded-lg transition-colors shadow-sm active:scale-95 disabled:opacity-70 disabled:cursor-not-allowed"
+              aria-label={t("addAccount")}
             >
-              <svg class="size-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
-                <path stroke-linecap="round" stroke-linejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
-              </svg>
+              {isStartingAdd ? (
+                <Spinner size="sm" />
+              ) : (
+                <svg class="size-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                  <path stroke-linecap="round" stroke-linejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
+                </svg>
+              )}
               <span class="inline-grid">
                 <span class="invisible col-start-1 row-start-1">Add Account</span>
                 <span class="col-start-1 row-start-1">{t("addAccount")}</span>
