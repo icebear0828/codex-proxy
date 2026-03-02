@@ -53,6 +53,7 @@ export const translations = {
     copied: "Copied!",
     copyFailed: "Failed",
     footer: "\u00a9 2025 Codex Proxy. All rights reserved.",
+    switchLanguage: "Switch language",
   },
   zh: {
     serverOnline: "\u670d\u52a1\u8fd0\u884c\u4e2d",
@@ -111,6 +112,7 @@ export const translations = {
     copyFailed: "\u5931\u8d25",
     footer:
       "\u00a9 2025 Codex Proxy\u3002\u4fdd\u7559\u6240\u6709\u6743\u5229\u3002",
+    switchLanguage: "\u5207\u6362\u8bed\u8a00",
   },
 } as const;
 

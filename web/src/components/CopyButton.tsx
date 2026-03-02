@@ -50,7 +50,7 @@ export function CopyButton({ getText, class: className, titleKey, variant = "ico
     return (
       <button
         onClick={handleCopy}
-        class={`flex items-center gap-1.5 px-3 py-1.5 ${bgClass} text-white rounded text-xs font-medium transition-colors ${className || ""}`}
+        class={`flex items-center gap-1.5 px-3 py-1.5 ${bgClass} text-white rounded text-xs font-medium transition-colors focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 outline-none ${className || ""}`}
       >
         <svg class="size-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
           <rect x="9" y="9" width="13" height="13" rx="2" />
@@ -66,7 +66,7 @@ export function CopyButton({ getText, class: className, titleKey, variant = "ico
   return (
     <button
       onClick={handleCopy}
-      class={`p-1.5 transition-colors rounded-md hover:bg-slate-100 dark:hover:bg-border-dark ${
+      class={`p-1.5 transition-colors rounded-md hover:bg-slate-100 dark:hover:bg-border-dark focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 outline-none ${
         state === "ok"
           ? "text-primary"
           : state === "fail"
@@ -74,6 +74,7 @@ export function CopyButton({ getText, class: className, titleKey, variant = "ico
             : "text-slate-400 dark:text-text-dim hover:text-primary"
       } ${className || ""}`}
       title={titleKey ? t(titleKey as TranslationKey) : undefined}
+      aria-label={titleKey ? t(titleKey as TranslationKey) : t("copy")}
     >
       {state === "ok" ? SVG_CHECK : state === "fail" ? SVG_FAIL : SVG_COPY}
     </button>

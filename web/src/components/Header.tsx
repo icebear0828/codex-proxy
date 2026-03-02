@@ -49,23 +49,25 @@ export function Header({ onAddAccount }: HeaderProps) {
             {/* Language Toggle */}
             <button
               onClick={toggleLang}
-              class="p-2 rounded-lg text-slate-500 dark:text-text-dim hover:bg-slate-100 dark:hover:bg-border-dark transition-colors"
+              class="p-2 rounded-lg text-slate-500 dark:text-text-dim hover:bg-slate-100 dark:hover:bg-border-dark transition-colors focus-visible:ring-2 focus-visible:ring-primary outline-none"
               title="\u4e2d/EN"
+              aria-label={t("switchLanguage")}
             >
               <span class="text-xs font-bold inline-flex items-center justify-center w-5">{lang === "en" ? "EN" : "\u4e2d"}</span>
             </button>
             {/* Theme Toggle */}
             <button
               onClick={toggleTheme}
-              class="p-2 rounded-lg text-slate-500 dark:text-text-dim hover:bg-slate-100 dark:hover:bg-border-dark transition-colors"
+              class="p-2 rounded-lg text-slate-500 dark:text-text-dim hover:bg-slate-100 dark:hover:bg-border-dark transition-colors focus-visible:ring-2 focus-visible:ring-primary outline-none"
               title={t("toggleTheme")}
+              aria-label={t("toggleTheme")}
             >
               {isDark ? SVG_SUN : SVG_MOON}
             </button>
             {/* Add Account */}
             <button
               onClick={onAddAccount}
-              class="flex items-center gap-2 px-4 py-2 bg-primary hover:bg-primary-hover text-white text-xs font-semibold rounded-lg transition-colors shadow-sm active:scale-95"
+              class="flex items-center gap-2 px-4 py-2 bg-primary hover:bg-primary-hover text-white text-xs font-semibold rounded-lg transition-colors shadow-sm active:scale-95 focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 outline-none"
             >
               <svg class="size-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
                 <path stroke-linecap="round" stroke-linejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
