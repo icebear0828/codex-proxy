@@ -9,6 +9,18 @@ import type { ChatCompletionRequest } from "../types/openai.js";
 import type { AnthropicMessagesRequest } from "../types/anthropic.js";
 import type { GeminiGenerateContentRequest } from "../types/gemini.js";
 
+// ── Helpers ─────────────────────────────────────────────────────
+
+/** OpenAI requires `properties` when schema `type` is `"object"`. */
+function normalizeSchema(
+  schema: Record<string, unknown>,
+): Record<string, unknown> {
+  if (schema.type === "object" && !("properties" in schema)) {
+    return { ...schema, properties: {} };
+  }
+  return schema;
+}
+
 // ── Codex Responses API tool format ─────────────────────────────
 
 export interface CodexToolDefinition {
@@ -30,7 +42,7 @@ export function openAIToolsToCodex(
       name: t.function.name,
     };
     if (t.function.description) def.description = t.function.description;
-    if (t.function.parameters) def.parameters = t.function.parameters;
+    if (t.function.parameters) def.parameters = normalizeSchema(t.function.parameters);
     return def;
   });
 }
@@ -59,7 +71,7 @@ export function openAIFunctionsToCodex(
       name: f.name,
     };
     if (f.description) def.description = f.description;
-    if (f.parameters) def.parameters = f.parameters;
+    if (f.parameters) def.parameters = normalizeSchema(f.parameters);
     return def;
   });
 }
@@ -75,7 +87,7 @@ export function anthropicToolsToCodex(
       name: t.name,
     };
     if (t.description) def.description = t.description;
-    if (t.input_schema) def.parameters = t.input_schema;
+    if (t.input_schema) def.parameters = normalizeSchema(t.input_schema);
     return def;
   });
 }
@@ -110,7 +122,7 @@ export function geminiToolsToCodex(
           name: fd.name,
         };
         if (fd.description) def.description = fd.description;
-        if (fd.parameters) def.parameters = fd.parameters;
+        if (fd.parameters) def.parameters = normalizeSchema(fd.parameters);
         defs.push(def);
       }
     }
