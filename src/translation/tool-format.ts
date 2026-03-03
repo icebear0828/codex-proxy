@@ -24,7 +24,7 @@ export interface CodexToolDefinition {
 export function openAIToolsToCodex(
   tools: NonNullable<ChatCompletionRequest["tools"]>,
 ): CodexToolDefinition[] {
-  return tools.map((t) => {
+  return tools.map((t: any) => {
     const def: CodexToolDefinition = {
       type: "function",
       name: t.function.name,
@@ -53,7 +53,7 @@ export function openAIToolChoiceToCodex(
 export function openAIFunctionsToCodex(
   functions: NonNullable<ChatCompletionRequest["functions"]>,
 ): CodexToolDefinition[] {
-  return functions.map((f) => {
+  return functions.map((f: any) => {
     const def: CodexToolDefinition = {
       type: "function",
       name: f.name,
@@ -69,13 +69,19 @@ export function openAIFunctionsToCodex(
 export function anthropicToolsToCodex(
   tools: NonNullable<AnthropicMessagesRequest["tools"]>,
 ): CodexToolDefinition[] {
-  return tools.map((t) => {
+  return tools.map((t: any) => {
     const def: CodexToolDefinition = {
       type: "function",
       name: t.name,
     };
     if (t.description) def.description = t.description;
-    if (t.input_schema) def.parameters = t.input_schema;
+    if (t.input_schema) {
+      const params = { ...t.input_schema };
+      if (params.type === "object" && !("properties" in params)) {
+        params.properties = {};
+      }
+      def.parameters = params;
+    }
     return def;
   });
 }
