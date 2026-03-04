@@ -36,7 +36,8 @@ export function AccountList({ accounts, loading, onDelete, onRefresh, refreshing
             onClick={onRefresh}
             disabled={refreshing}
             title={t("refresh")}
-            class="p-1.5 text-slate-400 dark:text-text-dim hover:text-primary transition-colors rounded-md hover:bg-primary/10 disabled:opacity-40 disabled:cursor-not-allowed"
+            aria-label={t("refresh")}
+            class="p-1.5 text-slate-400 dark:text-text-dim hover:text-primary transition-colors rounded-md hover:bg-primary/10 disabled:opacity-40 disabled:cursor-not-allowed focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 outline-none"
           >
             <svg
               class={`size-[18px] ${refreshing ? "animate-spin" : ""}`}
