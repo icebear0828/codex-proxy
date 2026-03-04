@@ -47,6 +47,7 @@ export interface ExtractedEvent {
   typed: TypedCodexEvent;
   responseId?: string;
   textDelta?: string;
+  reasoningDelta?: string;
   usage?: UsageInfo;
   error?: { code: string; message: string };
   functionCallStart?: FunctionCallStart;
@@ -69,6 +70,11 @@ export async function* iterateCodexEvents(
     const typed = parseCodexEvent(raw);
     const extracted: ExtractedEvent = { typed };
 
+    // Phase 0: log unrecognized events to discover new event types
+    if (typed.type === "unknown") {
+      console.log(`[CodexEvents] Unknown event: ${raw.event}`, JSON.stringify(raw.data).slice(0, 300));
+    }
+
     switch (typed.type) {
       case "response.created":
       case "response.in_progress":
@@ -77,6 +83,10 @@ export async function* iterateCodexEvents(
 
       case "response.output_text.delta":
         extracted.textDelta = typed.delta;
+        break;
+
+      case "response.reasoning_summary_text.delta":
+        extracted.reasoningDelta = typed.delta;
         break;
 
       case "response.output_item.added":

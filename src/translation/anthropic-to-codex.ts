@@ -210,15 +210,13 @@ export function translateAnthropicToCodexRequest(
     request.previous_response_id = previousResponseId;
   }
 
-  // Add reasoning effort: thinking param → model default → config default
+  // Always request reasoning summary (translation layer filters output on demand)
   const thinkingEffort = mapThinkingToEffort(req.thinking);
   const effort =
     thinkingEffort ??
     modelInfo?.defaultReasoningEffort ??
     config.model.default_reasoning_effort;
-  if (effort) {
-    request.reasoning = { effort };
-  }
+  request.reasoning = { summary: "auto", ...(effort ? { effort } : {}) };
 
   return request;
 }

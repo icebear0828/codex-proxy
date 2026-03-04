@@ -38,6 +38,7 @@ export async function* streamCodexToOpenAI(
   model: string,
   onUsage?: (usage: UsageInfo) => void,
   onResponseId?: (id: string) => void,
+  wantReasoning?: boolean,
 ): AsyncGenerator<string> {
   const chunkId = `chatcmpl-${randomUUID().replace(/-/g, "").slice(0, 24)}`;
   const created = Math.floor(Date.now() / 1000);
@@ -182,6 +183,24 @@ export async function* streamCodexToOpenAI(
       continue;
     }
 
+    // Emit reasoning delta if client requested it
+    if (evt.reasoningDelta && wantReasoning) {
+      hasContent = true;
+      yield formatSSE({
+        id: chunkId,
+        object: "chat.completion.chunk",
+        created,
+        model,
+        choices: [
+          {
+            index: 0,
+            delta: { reasoning_content: evt.reasoningDelta },
+            finish_reason: null,
+          },
+        ],
+      });
+    }
+
     switch (evt.typed.type) {
       case "response.output_text.delta": {
         if (evt.textDelta) {
@@ -251,10 +270,12 @@ export async function collectCodexResponse(
   codexApi: CodexApi,
   rawResponse: Response,
   model: string,
+  wantReasoning?: boolean,
 ): Promise<{ response: ChatCompletionResponse; usage: UsageInfo; responseId: string | null }> {
   const id = `chatcmpl-${randomUUID().replace(/-/g, "").slice(0, 24)}`;
   const created = Math.floor(Date.now() / 1000);
   let fullText = "";
+  let fullReasoning = "";
   let promptTokens = 0;
   let completionTokens = 0;
   let responseId: string | null = null;
@@ -268,6 +289,7 @@ export async function collectCodexResponse(
       throw new Error(`Codex API error: ${evt.error.code}: ${evt.error.message}`);
     }
     if (evt.textDelta) fullText += evt.textDelta;
+    if (evt.reasoningDelta) fullReasoning += evt.reasoningDelta;
     if (evt.usage) {
       promptTokens = evt.usage.input_tokens;
       completionTokens = evt.usage.output_tokens;
@@ -294,6 +316,9 @@ export async function collectCodexResponse(
     role: "assistant",
     content: fullText || null,
   };
+  if (wantReasoning && fullReasoning) {
+    message.reasoning_content = fullReasoning;
+  }
   if (hasToolCalls) {
     message.tool_calls = toolCalls;
   }

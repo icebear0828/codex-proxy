@@ -41,19 +41,23 @@ function contentToString(
     .join("\n");
 }
 
-const ANTHROPIC_FORMAT: FormatAdapter = {
-  tag: "Messages",
-  noAccountStatus: 529 as StatusCode,
-  formatNoAccount: () =>
-    makeError(
-      "overloaded_error",
-      "No available accounts. All accounts are expired or rate-limited.",
-    ),
-  format429: (msg) => makeError("rate_limit_error", msg),
-  formatError: (_status, msg) => makeError("api_error", msg),
-  streamTranslator: streamCodexToAnthropic,
-  collectTranslator: collectCodexToAnthropicResponse,
-};
+function makeAnthropicFormat(wantThinking: boolean): FormatAdapter {
+  return {
+    tag: "Messages",
+    noAccountStatus: 529 as StatusCode,
+    formatNoAccount: () =>
+      makeError(
+        "overloaded_error",
+        "No available accounts. All accounts are expired or rate-limited.",
+      ),
+    format429: (msg) => makeError("rate_limit_error", msg),
+    formatError: (_status, msg) => makeError("api_error", msg),
+    streamTranslator: (api, response, model, onUsage, onResponseId) =>
+      streamCodexToAnthropic(api, response, model, onUsage, onResponseId, wantThinking),
+    collectTranslator: (api, response, model) =>
+      collectCodexToAnthropicResponse(api, response, model, wantThinking),
+  };
+}
 
 export function createMessagesRoutes(
   accountPool: AccountPool,
@@ -121,6 +125,7 @@ export function createMessagesRoutes(
     }
 
     const codexRequest = translateAnthropicToCodexRequest(req);
+    const wantThinking = req.thinking?.type === "enabled" || req.thinking?.type === "adaptive";
 
     return handleProxyRequest(
       c,
@@ -133,7 +138,7 @@ export function createMessagesRoutes(
         model: req.model,
         isStreaming: req.stream,
       },
-      ANTHROPIC_FORMAT,
+      makeAnthropicFormat(wantThinking),
     );
   });
 

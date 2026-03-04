@@ -179,14 +179,12 @@ export function translateToCodexRequest(
     request.previous_response_id = previousResponseId;
   }
 
-  // Add reasoning effort if applicable
+  // Always request reasoning summary (translation layer filters output on demand)
   const effort =
     req.reasoning_effort ??
     modelInfo?.defaultReasoningEffort ??
     config.model.default_reasoning_effort;
-  if (effort) {
-    request.reasoning = { effort };
-  }
+  request.reasoning = { summary: "auto", ...(effort ? { effort } : {}) };
 
   return request;
 }

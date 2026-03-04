@@ -14,37 +14,41 @@ import {
   type FormatAdapter,
 } from "./shared/proxy-handler.js";
 
-const OPENAI_FORMAT: FormatAdapter = {
-  tag: "Chat",
-  noAccountStatus: 503,
-  formatNoAccount: () => ({
-    error: {
-      message:
-        "No available accounts. All accounts are expired or rate-limited.",
-      type: "server_error",
-      param: null,
-      code: "no_available_accounts",
-    },
-  }),
-  format429: (msg) => ({
-    error: {
-      message: msg,
-      type: "rate_limit_error",
-      param: null,
-      code: "rate_limit_exceeded",
-    },
-  }),
-  formatError: (_status, msg) => ({
-    error: {
-      message: msg,
-      type: "server_error",
-      param: null,
-      code: "codex_api_error",
-    },
-  }),
-  streamTranslator: streamCodexToOpenAI,
-  collectTranslator: collectCodexResponse,
-};
+function makeOpenAIFormat(wantReasoning: boolean): FormatAdapter {
+  return {
+    tag: "Chat",
+    noAccountStatus: 503,
+    formatNoAccount: () => ({
+      error: {
+        message:
+          "No available accounts. All accounts are expired or rate-limited.",
+        type: "server_error",
+        param: null,
+        code: "no_available_accounts",
+      },
+    }),
+    format429: (msg) => ({
+      error: {
+        message: msg,
+        type: "rate_limit_error",
+        param: null,
+        code: "rate_limit_exceeded",
+      },
+    }),
+    formatError: (_status, msg) => ({
+      error: {
+        message: msg,
+        type: "server_error",
+        param: null,
+        code: "codex_api_error",
+      },
+    }),
+    streamTranslator: (api, response, model, onUsage, onResponseId) =>
+      streamCodexToOpenAI(api, response, model, onUsage, onResponseId, wantReasoning),
+    collectTranslator: (api, response, model) =>
+      collectCodexResponse(api, response, model, wantReasoning),
+  };
+}
 
 export function createChatRoutes(
   accountPool: AccountPool,
@@ -118,6 +122,7 @@ export function createChatRoutes(
     const req = parsed.data;
 
     const codexRequest = translateToCodexRequest(req);
+    const wantReasoning = !!req.reasoning_effort;
 
     return handleProxyRequest(
       c,
@@ -137,7 +142,7 @@ export function createChatRoutes(
         model: codexRequest.model,
         isStreaming: req.stream,
       },
-      OPENAI_FORMAT,
+      makeOpenAIFormat(wantReasoning),
     );
   });
 

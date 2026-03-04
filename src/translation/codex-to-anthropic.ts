@@ -38,6 +38,7 @@ export async function* streamCodexToAnthropic(
   model: string,
   onUsage?: (usage: AnthropicUsageInfo) => void,
   onResponseId?: (id: string) => void,
+  wantThinking?: boolean,
 ): AsyncGenerator<string> {
   const msgId = `msg_${randomUUID().replace(/-/g, "").slice(0, 24)}`;
   let outputTokens = 0;
@@ -46,6 +47,7 @@ export async function* streamCodexToAnthropic(
   let hasContent = false;
   let contentIndex = 0;
   let textBlockStarted = false;
+  let thinkingBlockStarted = false;
   const callIdsWithDeltas = new Set<string>();
 
   // 1. message_start
@@ -63,33 +65,41 @@ export async function* streamCodexToAnthropic(
     },
   });
 
-  // 2. content_block_start for text block at index 0
-  yield formatSSE("content_block_start", {
-    type: "content_block_start",
-    index: contentIndex,
-    content_block: { type: "text", text: "" },
-  });
-  textBlockStarted = true;
+  // Don't eagerly open a text block — wait for actual content so thinking can come first
 
-  // 3. Process Codex stream events
+  // 2. Process Codex stream events
   for await (const evt of iterateCodexEvents(codexApi, rawResponse)) {
     if (evt.responseId) onResponseId?.(evt.responseId);
 
     // Handle upstream error events
     if (evt.error) {
-      // Close current text block if open
-      if (textBlockStarted) {
-        yield formatSSE("content_block_delta", {
-          type: "content_block_delta",
-          index: contentIndex,
-          delta: { type: "text_delta", text: `[Error] ${evt.error.code}: ${evt.error.message}` },
-        });
+      // Ensure a text block is open for the error message
+      if (thinkingBlockStarted) {
         yield formatSSE("content_block_stop", {
           type: "content_block_stop",
           index: contentIndex,
         });
-        textBlockStarted = false;
+        contentIndex++;
+        thinkingBlockStarted = false;
       }
+      if (!textBlockStarted) {
+        yield formatSSE("content_block_start", {
+          type: "content_block_start",
+          index: contentIndex,
+          content_block: { type: "text", text: "" },
+        });
+        textBlockStarted = true;
+      }
+      yield formatSSE("content_block_delta", {
+        type: "content_block_delta",
+        index: contentIndex,
+        delta: { type: "text_delta", text: `[Error] ${evt.error.code}: ${evt.error.message}` },
+      });
+      yield formatSSE("content_block_stop", {
+        type: "content_block_stop",
+        index: contentIndex,
+      });
+      textBlockStarted = false;
       yield formatSSE("error", {
         type: "error",
         error: { type: "api_error", message: `${evt.error.code}: ${evt.error.message}` },
@@ -98,11 +108,49 @@ export async function* streamCodexToAnthropic(
       return;
     }
 
-    // Handle function call start → close text block, open tool_use block
+    // Handle reasoning delta → thinking block (only if client wants thinking)
+    if (evt.reasoningDelta && wantThinking) {
+      hasContent = true;
+      // Close text block if it was open before thinking
+      if (textBlockStarted) {
+        yield formatSSE("content_block_stop", {
+          type: "content_block_stop",
+          index: contentIndex,
+        });
+        contentIndex++;
+        textBlockStarted = false;
+      }
+      // Open thinking block if not already open
+      if (!thinkingBlockStarted) {
+        yield formatSSE("content_block_start", {
+          type: "content_block_start",
+          index: contentIndex,
+          content_block: { type: "thinking", thinking: "" },
+        });
+        thinkingBlockStarted = true;
+      }
+      yield formatSSE("content_block_delta", {
+        type: "content_block_delta",
+        index: contentIndex,
+        delta: { type: "thinking_delta", thinking: evt.reasoningDelta },
+      });
+      continue;
+    }
+
+    // Handle function call start → close open blocks, open tool_use block
     if (evt.functionCallStart) {
       hasToolCalls = true;
       hasContent = true;
 
+      // Close thinking block if open
+      if (thinkingBlockStarted) {
+        yield formatSSE("content_block_stop", {
+          type: "content_block_stop",
+          index: contentIndex,
+        });
+        contentIndex++;
+        thinkingBlockStarted = false;
+      }
       // Close text block if still open
       if (textBlockStarted) {
         yield formatSSE("content_block_stop", {
@@ -159,7 +207,16 @@ export async function* streamCodexToAnthropic(
       case "response.output_text.delta": {
         if (evt.textDelta) {
           hasContent = true;
-          // Reopen a text block if the previous one was closed (e.g. after tool calls)
+          // Close thinking block if open (transition from thinking → text)
+          if (thinkingBlockStarted) {
+            yield formatSSE("content_block_stop", {
+              type: "content_block_stop",
+              index: contentIndex,
+            });
+            contentIndex++;
+            thinkingBlockStarted = false;
+          }
+          // Open a text block if not already open
           if (!textBlockStarted) {
             yield formatSSE("content_block_start", {
               type: "content_block_start",
@@ -184,7 +241,15 @@ export async function* streamCodexToAnthropic(
           onUsage?.({ input_tokens: inputTokens, output_tokens: outputTokens });
         }
         // Inject error text if stream completed with no content
-        if (!hasContent && textBlockStarted) {
+        if (!hasContent) {
+          if (!textBlockStarted) {
+            yield formatSSE("content_block_start", {
+              type: "content_block_start",
+              index: contentIndex,
+              content_block: { type: "text", text: "" },
+            });
+            textBlockStarted = true;
+          }
           yield formatSSE("content_block_delta", {
             type: "content_block_delta",
             index: contentIndex,
@@ -196,7 +261,15 @@ export async function* streamCodexToAnthropic(
     }
   }
 
-  // 4. Close text block if still open (no tool calls, or text came before tools)
+  // 3. Close any open blocks
+  if (thinkingBlockStarted) {
+    yield formatSSE("content_block_stop", {
+      type: "content_block_stop",
+      index: contentIndex,
+    });
+    contentIndex++;
+    thinkingBlockStarted = false;
+  }
   if (textBlockStarted) {
     yield formatSSE("content_block_stop", {
       type: "content_block_stop",
@@ -204,14 +277,14 @@ export async function* streamCodexToAnthropic(
     });
   }
 
-  // 5. message_delta with stop_reason and usage
+  // 4. message_delta with stop_reason and usage
   yield formatSSE("message_delta", {
     type: "message_delta",
     delta: { stop_reason: hasToolCalls ? "tool_use" : "end_turn" },
     usage: { input_tokens: inputTokens, output_tokens: outputTokens },
   });
 
-  // 6. message_stop
+  // 5. message_stop
   yield formatSSE("message_stop", {
     type: "message_stop",
   });
@@ -225,6 +298,7 @@ export async function collectCodexToAnthropicResponse(
   codexApi: CodexApi,
   rawResponse: Response,
   model: string,
+  wantThinking?: boolean,
 ): Promise<{
   response: AnthropicMessagesResponse;
   usage: AnthropicUsageInfo;
@@ -232,6 +306,7 @@ export async function collectCodexToAnthropicResponse(
 }> {
   const id = `msg_${randomUUID().replace(/-/g, "").slice(0, 24)}`;
   let fullText = "";
+  let fullReasoning = "";
   let inputTokens = 0;
   let outputTokens = 0;
   let responseId: string | null = null;
@@ -245,6 +320,7 @@ export async function collectCodexToAnthropicResponse(
       throw new Error(`Codex API error: ${evt.error.code}: ${evt.error.message}`);
     }
     if (evt.textDelta) fullText += evt.textDelta;
+    if (evt.reasoningDelta) fullReasoning += evt.reasoningDelta;
     if (evt.usage) {
       inputTokens = evt.usage.input_tokens;
       outputTokens = evt.usage.output_tokens;
@@ -270,6 +346,10 @@ export async function collectCodexToAnthropicResponse(
 
   const hasToolCalls = toolUseBlocks.length > 0;
   const content: AnthropicContentBlock[] = [];
+  // Thinking block comes first if requested and available
+  if (wantThinking && fullReasoning) {
+    content.push({ type: "thinking", thinking: fullReasoning });
+  }
   if (fullText) {
     content.push({ type: "text", text: fullText });
   }

@@ -43,6 +43,18 @@ export interface CodexCompletedEvent {
   response: CodexResponseData;
 }
 
+// ── Reasoning summary event data shapes ─────────────────────────
+
+export interface CodexReasoningSummaryDeltaEvent {
+  type: "response.reasoning_summary_text.delta";
+  delta: string;
+}
+
+export interface CodexReasoningSummaryDoneEvent {
+  type: "response.reasoning_summary_text.done";
+  text: string;
+}
+
 // ── Function call event data shapes ─────────────────────────────
 
 export interface CodexOutputItemAddedEvent {
@@ -91,6 +103,8 @@ export type TypedCodexEvent =
   | CodexInProgressEvent
   | CodexTextDeltaEvent
   | CodexTextDoneEvent
+  | CodexReasoningSummaryDeltaEvent
+  | CodexReasoningSummaryDoneEvent
   | CodexCompletedEvent
   | CodexOutputItemAddedEvent
   | CodexFunctionCallArgsDeltaEvent
@@ -149,6 +163,18 @@ export function parseCodexEvent(evt: CodexSSEEvent): TypedCodexEvent {
     case "response.output_text.done": {
       if (isRecord(data) && typeof data.text === "string") {
         return { type: "response.output_text.done", text: data.text };
+      }
+      return { type: "unknown", raw: data };
+    }
+    case "response.reasoning_summary_text.delta": {
+      if (isRecord(data) && typeof data.delta === "string") {
+        return { type: "response.reasoning_summary_text.delta", delta: data.delta };
+      }
+      return { type: "unknown", raw: data };
+    }
+    case "response.reasoning_summary_text.done": {
+      if (isRecord(data) && typeof data.text === "string") {
+        return { type: "response.reasoning_summary_text.done", text: data.text };
       }
       return { type: "unknown", raw: data };
     }

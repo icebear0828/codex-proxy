@@ -90,6 +90,7 @@ export interface ChatCompletionChoice {
   message: {
     role: "assistant";
     content: string | null;
+    reasoning_content?: string | null;
     tool_calls?: ChatCompletionToolCall[];
   };
   finish_reason: "stop" | "length" | "tool_calls" | "function_call" | null;
@@ -125,6 +126,7 @@ export interface ChatCompletionChunkToolCall {
 export interface ChatCompletionChunkDelta {
   role?: "assistant";
   content?: string | null;
+  reasoning_content?: string | null;
   tool_calls?: ChatCompletionChunkToolCall[];
 }
 

@@ -26,8 +26,8 @@ export interface CodexResponsesRequest {
   input: CodexInputItem[];
   stream: true;
   store: false;
-  /** Optional: reasoning effort level */
-  reasoning?: { effort: string };
+  /** Optional: reasoning effort + summary mode */
+  reasoning?: { effort?: string; summary?: string };
   /** Optional: tools available to the model */
   tools?: unknown[];
   /** Optional: tool choice strategy */
