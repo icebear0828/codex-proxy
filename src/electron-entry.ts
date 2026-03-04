@@ -5,4 +5,4 @@
 
 export { setPaths } from "./paths.js";
 export { startServer } from "./index.js";
-export type { ServerHandle } from "./index.js";
+export type { ServerHandle, StartOptions } from "./index.js";

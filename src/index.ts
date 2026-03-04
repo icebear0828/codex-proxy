@@ -26,11 +26,16 @@ export interface ServerHandle {
   port: number;
 }
 
+export interface StartOptions {
+  host?: string;
+  port?: number;
+}
+
 /**
  * Core startup logic shared by CLI and Electron entry points.
  * Throws on config errors instead of calling process.exit().
  */
-export async function startServer(): Promise<ServerHandle> {
+export async function startServer(options?: StartOptions): Promise<ServerHandle> {
   // Load configuration
   console.log("[Init] Loading configuration...");
   const config = loadConfig();
@@ -76,8 +81,8 @@ export async function startServer(): Promise<ServerHandle> {
   app.route("/", webRoutes);
 
   // Start server
-  const port = config.server.port;
-  const host = config.server.host;
+  const port = options?.port ?? config.server.port;
+  const host = options?.host ?? config.server.host;
 
   const poolSummary = accountPool.getPoolSummary();
   const displayHost = (host === "0.0.0.0" || host === "::") ? "localhost" : host;

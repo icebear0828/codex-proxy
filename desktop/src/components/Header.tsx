@@ -38,7 +38,7 @@ export function Header({ onAddAccount }: HeaderProps) {
           {/* Actions */}
           <div class="flex items-center gap-2">
             {/* Status pill */}
-            <div class="flex items-center gap-2 px-3 py-1.5 rounded-full bg-primary/8 border border-primary/15">
+            <div class="flex items-center gap-2 px-3 py-1.5 rounded-full bg-primary/8 border border-primary/15 min-w-[7.5rem] justify-center">
               <span class="relative flex h-2 w-2">
                 <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-primary opacity-60" />
                 <span class="relative inline-flex rounded-full h-2 w-2 bg-primary" />
@@ -69,7 +69,7 @@ export function Header({ onAddAccount }: HeaderProps) {
             {/* Add Account */}
             <button
               onClick={onAddAccount}
-              class="btn-primary flex items-center gap-2 px-4 py-2 text-xs font-semibold shadow-sm"
+              class="btn-primary flex items-center gap-2 px-4 py-2 text-xs font-semibold shadow-sm min-w-[7rem] justify-center"
             >
               <svg class="size-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
                 <path stroke-linecap="round" stroke-linejoin="round" d="M12 4.5v15m7.5-7.5h-15" />

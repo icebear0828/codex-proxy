@@ -123,7 +123,7 @@ app.on("ready", async () => {
     });
 
     // 4. Start the proxy server
-    serverHandle = await startServer();
+    serverHandle = await startServer({ host: "127.0.0.1" });
     console.log(`[Electron] Server started on port ${serverHandle.port}`);
 
     // 4. System tray
