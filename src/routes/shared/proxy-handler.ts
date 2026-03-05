@@ -9,19 +9,16 @@
 import type { Context } from "hono";
 import type { StatusCode } from "hono/utils/http-status";
 import { stream } from "hono/streaming";
-import { randomUUID } from "crypto";
 import { CodexApi, CodexApiError } from "../../proxy/codex-api.js";
 import type { CodexResponsesRequest } from "../../proxy/codex-api.js";
 import { EmptyResponseError } from "../../translation/codex-event-extractor.js";
 import type { AccountPool } from "../../auth/account-pool.js";
-import type { SessionManager } from "../../session/manager.js";
 import type { CookieJar } from "../../proxy/cookie-jar.js";
 import { withRetry } from "../../utils/retry.js";
 
 /** Data prepared by each route after parsing and translating the request. */
 export interface ProxyRequest {
   codexRequest: CodexResponsesRequest;
-  sessionMessages: Array<{ role: string; content: string }>;
   model: string;
   isStreaming: boolean;
 }
@@ -59,7 +56,6 @@ export interface FormatAdapter {
 export async function handleProxyRequest(
   c: Context,
   accountPool: AccountPool,
-  sessionManager: SessionManager,
   cookieJar: CookieJar | undefined,
   req: ProxyRequest,
   fmt: FormatAdapter,
@@ -102,7 +98,6 @@ export async function handleProxyRequest(
 
       return stream(c, async (s) => {
         s.onAbort(() => abortController.abort());
-        let sessionTaskId: string | null = null;
         try {
           for await (const chunk of fmt.streamTranslator(
             codexApi,
@@ -111,17 +106,7 @@ export async function handleProxyRequest(
             (u) => {
               usageInfo = u;
             },
-            (respId) => {
-              if (!sessionTaskId) {
-                sessionTaskId = `task-${randomUUID()}`;
-                sessionManager.storeSession(
-                  sessionTaskId,
-                  "turn-1",
-                  req.sessionMessages,
-                );
-              }
-              // responseId captured but not used (backend no longer supports previous_response_id)
-            },
+            () => {},
           )) {
             await s.write(chunk);
           }
@@ -152,15 +137,6 @@ export async function handleProxyRequest(
             currentRawResponse,
             req.model,
           );
-          if (result.responseId) {
-            const taskId = `task-${randomUUID()}`;
-            sessionManager.storeSession(
-              taskId,
-              "turn-1",
-              req.sessionMessages,
-            );
-            // responseId captured but not used (backend no longer supports previous_response_id)
-          }
           accountPool.release(currentEntryId, result.usage);
           return c.json(result.response);
         } catch (collectErr) {

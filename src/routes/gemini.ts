@@ -10,11 +10,9 @@ import type { GeminiErrorResponse } from "../types/gemini.js";
 import { GEMINI_STATUS_MAP } from "../types/gemini.js";
 import { GeminiGenerateContentRequestSchema } from "../types/gemini.js";
 import type { AccountPool } from "../auth/account-pool.js";
-import type { SessionManager } from "../session/manager.js";
 import type { CookieJar } from "../proxy/cookie-jar.js";
 import {
   translateGeminiToCodexRequest,
-  geminiContentsToMessages,
 } from "../translation/gemini-to-codex.js";
 import {
   streamCodexToGemini,
@@ -74,7 +72,6 @@ const GEMINI_FORMAT: FormatAdapter = {
 
 export function createGeminiRoutes(
   accountPool: AccountPool,
-  sessionManager: SessionManager,
   cookieJar?: CookieJar,
 ): Hono {
   const app = new Hono();
@@ -143,12 +140,6 @@ export function createGeminiRoutes(
     }
     const req = validationResult.data;
 
-    // Session lookup for multi-turn
-    const sessionMessages = geminiContentsToMessages(
-      req.contents,
-      req.systemInstruction,
-    );
-
     const codexRequest = translateGeminiToCodexRequest(
       req,
       geminiModel,
@@ -161,11 +152,9 @@ export function createGeminiRoutes(
     return handleProxyRequest(
       c,
       accountPool,
-      sessionManager,
       cookieJar,
       {
         codexRequest,
-        sessionMessages,
         model: geminiModel,
         isStreaming,
       },

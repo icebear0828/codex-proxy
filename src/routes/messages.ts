@@ -8,7 +8,6 @@ import type { StatusCode } from "hono/utils/http-status";
 import { AnthropicMessagesRequestSchema } from "../types/anthropic.js";
 import type { AnthropicErrorBody, AnthropicErrorType } from "../types/anthropic.js";
 import type { AccountPool } from "../auth/account-pool.js";
-import type { SessionManager } from "../session/manager.js";
 import type { CookieJar } from "../proxy/cookie-jar.js";
 import { translateAnthropicToCodexRequest } from "../translation/anthropic-to-codex.js";
 import {
@@ -26,19 +25,6 @@ function makeError(
   message: string,
 ): AnthropicErrorBody {
   return { type: "error", error: { type, message } };
-}
-
-/**
- * Extract text from Anthropic message content for session hashing.
- */
-function contentToString(
-  content: string | Array<{ type: string; text?: string }>,
-): string {
-  if (typeof content === "string") return content;
-  return content
-    .filter((b) => b.type === "text" && b.text)
-    .map((b) => b.text!)
-    .join("\n");
 }
 
 function makeAnthropicFormat(wantThinking: boolean): FormatAdapter {
@@ -61,7 +47,6 @@ function makeAnthropicFormat(wantThinking: boolean): FormatAdapter {
 
 export function createMessagesRoutes(
   accountPool: AccountPool,
-  sessionManager: SessionManager,
   cookieJar?: CookieJar,
 ): Hono {
   const app = new Hono();
@@ -108,33 +93,15 @@ export function createMessagesRoutes(
     }
     const req = parsed.data;
 
-    // Build session-compatible messages for multi-turn lookup
-    const sessionMessages: Array<{ role: string; content: string }> = [];
-    if (req.system) {
-      const sysText =
-        typeof req.system === "string"
-          ? req.system
-          : req.system.map((b) => b.text).join("\n");
-      sessionMessages.push({ role: "system", content: sysText });
-    }
-    for (const msg of req.messages) {
-      sessionMessages.push({
-        role: msg.role,
-        content: contentToString(msg.content),
-      });
-    }
-
     const codexRequest = translateAnthropicToCodexRequest(req);
     const wantThinking = req.thinking?.type === "enabled" || req.thinking?.type === "adaptive";
 
     return handleProxyRequest(
       c,
       accountPool,
-      sessionManager,
       cookieJar,
       {
         codexRequest,
-        sessionMessages,
         model: req.model,
         isStreaming: req.stream,
       },

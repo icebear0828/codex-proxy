@@ -1,7 +1,6 @@
 import { Hono } from "hono";
 import { ChatCompletionRequestSchema } from "../types/openai.js";
 import type { AccountPool } from "../auth/account-pool.js";
-import type { SessionManager } from "../session/manager.js";
 import type { CookieJar } from "../proxy/cookie-jar.js";
 import { translateToCodexRequest } from "../translation/openai-to-codex.js";
 import {
@@ -52,7 +51,6 @@ function makeOpenAIFormat(wantReasoning: boolean): FormatAdapter {
 
 export function createChatRoutes(
   accountPool: AccountPool,
-  sessionManager: SessionManager,
   cookieJar?: CookieJar,
 ): Hono {
   const app = new Hono();
@@ -127,18 +125,9 @@ export function createChatRoutes(
     return handleProxyRequest(
       c,
       accountPool,
-      sessionManager,
       cookieJar,
       {
         codexRequest,
-        sessionMessages: req.messages.map((m) => ({
-          role: m.role,
-          content: typeof m.content === "string"
-            ? m.content
-            : m.content == null
-              ? ""
-              : m.content.filter((p) => p.type === "text" && p.text).map((p) => p.text!).join("\n"),
-        })),
         model: codexRequest.model,
         isStreaming: req.stream,
       },
