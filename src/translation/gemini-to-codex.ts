@@ -161,7 +161,6 @@ export function geminiContentsToMessages(
 export function translateGeminiToCodexRequest(
   req: GeminiGenerateContentRequest,
   geminiModel: string,
-  previousResponseId?: string | null,
 ): CodexResponsesRequest {
   // Extract system instructions
   let userInstructions: string;
@@ -210,11 +209,6 @@ export function translateGeminiToCodexRequest(
   // Add tool_choice if specified
   if (codexToolChoice) {
     request.tool_choice = codexToolChoice;
-  }
-
-  // Add previous response ID for multi-turn conversations
-  if (previousResponseId) {
-    request.previous_response_id = previousResponseId;
   }
 
   // Always request reasoning summary (translation layer filters output on demand)

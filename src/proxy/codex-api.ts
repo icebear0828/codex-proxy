@@ -32,8 +32,6 @@ export interface CodexResponsesRequest {
   tools?: unknown[];
   /** Optional: tool choice strategy */
   tool_choice?: string | { type: string; name: string };
-  /** Optional: previous response ID for multi-turn */
-  previous_response_id?: string | null;
 }
 
 /** Structured content part for multimodal Codex input. */

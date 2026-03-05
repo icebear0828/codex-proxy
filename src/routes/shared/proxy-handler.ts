@@ -76,15 +76,6 @@ export async function handleProxyRequest(
   // Tracks which account the outer catch should release (updated by retry loop)
   let activeEntryId = entryId;
 
-  // 2. Session lookup for multi-turn
-  const existingSession = sessionManager.findSession(req.sessionMessages);
-  const previousResponseId = existingSession?.responseId ?? null;
-  if (previousResponseId) {
-    req.codexRequest.previous_response_id = previousResponseId;
-    console.log(
-      `[${fmt.tag}] Account ${entryId} | Multi-turn: previous_response_id=${previousResponseId}`,
-    );
-  }
   console.log(
     `[${fmt.tag}] Account ${entryId} | Codex request:`,
     JSON.stringify(req.codexRequest).slice(0, 300),
@@ -129,7 +120,7 @@ export async function handleProxyRequest(
                   req.sessionMessages,
                 );
               }
-              sessionManager.updateResponseId(sessionTaskId, respId);
+              // responseId captured but not used (backend no longer supports previous_response_id)
             },
           )) {
             await s.write(chunk);
@@ -168,7 +159,7 @@ export async function handleProxyRequest(
               "turn-1",
               req.sessionMessages,
             );
-            sessionManager.updateResponseId(taskId, result.responseId);
+            // responseId captured but not used (backend no longer supports previous_response_id)
           }
           accountPool.release(currentEntryId, result.usage);
           return c.json(result.response);

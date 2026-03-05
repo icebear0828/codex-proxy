@@ -80,7 +80,6 @@ function extractContent(
  */
 export function translateToCodexRequest(
   req: ChatCompletionRequest,
-  previousResponseId?: string | null,
 ): CodexResponsesRequest {
   // Collect system/developer messages as instructions
   const systemMessages = req.messages.filter(
@@ -172,11 +171,6 @@ export function translateToCodexRequest(
   // Add tool_choice if specified
   if (codexToolChoice) {
     request.tool_choice = codexToolChoice;
-  }
-
-  // Add previous response ID for multi-turn conversations
-  if (previousResponseId) {
-    request.previous_response_id = previousResponseId;
   }
 
   // Always request reasoning summary (translation layer filters output on demand)
