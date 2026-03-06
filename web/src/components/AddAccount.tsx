@@ -44,12 +44,12 @@ export function AddAccount({ visible, onSubmitRelay, addInfo, addError }: AddAcc
               value={input}
               onInput={(e) => setInput((e.target as HTMLInputElement).value)}
               placeholder={t("pasteCallback")}
-              class="flex-1 px-3 py-2.5 bg-slate-50 dark:bg-bg-dark border border-gray-200 dark:border-border-dark rounded-lg text-sm font-mono text-slate-600 dark:text-text-main focus:ring-2 focus:ring-primary/50 focus:border-primary outline-none transition-colors"
+              class="flex-1 px-3 py-2.5 bg-slate-50 dark:bg-bg-dark border border-gray-200 dark:border-border-dark rounded-lg text-sm font-mono text-slate-600 dark:text-text-main focus:ring-2 focus:ring-primary focus:border-primary outline-none transition-colors focus-visible:ring-offset-2 dark:focus-visible:ring-offset-bg-dark"
             />
             <button
               onClick={handleSubmit}
               disabled={submitting}
-              class="px-4 py-2.5 bg-white dark:bg-card-dark border border-gray-200 dark:border-border-dark rounded-lg text-sm font-medium text-slate-700 dark:text-text-main hover:bg-slate-50 dark:hover:bg-border-dark transition-colors"
+              class="px-4 py-2.5 bg-white dark:bg-card-dark border border-gray-200 dark:border-border-dark rounded-lg text-sm font-medium text-slate-700 dark:text-text-main hover:bg-slate-50 dark:hover:bg-border-dark transition-colors focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 dark:focus-visible:ring-offset-bg-dark outline-none"
             >
               {submitting ? t("submitting") : t("submit")}
             </button>

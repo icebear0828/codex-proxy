@@ -1,0 +1,3 @@
+## 2025-05-15 - Enhancing Focus Visibility and Accessibility
+**Learning:** Standardizing focus states using `focus-visible` with appropriate offsets for dark mode ensures a polished look for keyboard users without affecting mouse interactions. Icon-only buttons frequently lack ARIA labels, making them inaccessible to screen reader users.
+**Action:** Always apply `focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 dark:focus-visible:ring-offset-bg-dark outline-none` to interactive elements. Ensure every `button` with only an icon child has an `aria-label` attribute linked to the i18n system.

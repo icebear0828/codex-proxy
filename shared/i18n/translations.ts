@@ -59,6 +59,7 @@ export const translations = {
     refresh: "Refresh",
     updatedAt: "Updated at",
     footer: "\u00a9 2025 Codex Proxy. All rights reserved.",
+    switchLang: "Switch to Chinese",
   },
   zh: {
     serverOnline: "\u670d\u52a1\u8fd0\u884c\u4e2d",
@@ -123,6 +124,7 @@ export const translations = {
     updatedAt: "\u66f4\u65b0\u4e8e",
     footer:
       "\u00a9 2025 Codex Proxy\u3002\u4fdd\u7559\u6240\u6709\u6743\u5229\u3002",
+    switchLang: "\u5207\u6362\u5230\u82f1\u6587",
   },
 } as const;
 
