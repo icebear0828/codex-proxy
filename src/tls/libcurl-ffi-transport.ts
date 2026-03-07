@@ -215,6 +215,7 @@ export class LibcurlFfiTransport implements TlsTransport {
     body: string,
     signal?: AbortSignal,
     timeoutSec?: number,
+    proxyUrl?: string | null,
   ): Promise<TlsTransportResponse> {
     return new Promise((resolve, reject) => {
       if (signal?.aborted) {
@@ -226,6 +227,7 @@ export class LibcurlFfiTransport implements TlsTransport {
         method: "POST",
         body,
         timeoutSec,
+        proxyUrl,
       });
 
       const b = this.b;
@@ -372,8 +374,9 @@ export class LibcurlFfiTransport implements TlsTransport {
     url: string,
     headers: Record<string, string>,
     timeoutSec = 30,
+    proxyUrl?: string | null,
   ): Promise<{ status: number; body: string }> {
-    return this.simpleRequest(url, headers, undefined, timeoutSec);
+    return this.simpleRequest(url, headers, undefined, timeoutSec, proxyUrl);
   }
 
   async simplePost(
@@ -381,8 +384,9 @@ export class LibcurlFfiTransport implements TlsTransport {
     headers: Record<string, string>,
     body: string,
     timeoutSec = 30,
+    proxyUrl?: string | null,
   ): Promise<{ status: number; body: string }> {
-    return this.simpleRequest(url, headers, body, timeoutSec);
+    return this.simpleRequest(url, headers, body, timeoutSec, proxyUrl);
   }
 
   isImpersonate(): boolean {
@@ -394,12 +398,14 @@ export class LibcurlFfiTransport implements TlsTransport {
     headers: Record<string, string>,
     body: string | undefined,
     timeoutSec: number,
+    proxyUrl?: string | null,
   ): Promise<{ status: number; body: string }> {
     const b = this.b;
     const { easy, slist } = this.setupEasyHandle(url, headers, {
       method: body !== undefined ? "POST" : "GET",
       body,
       timeoutSec,
+      proxyUrl,
     });
 
     const chunks: Buffer[] = [];
@@ -444,6 +450,7 @@ export class LibcurlFfiTransport implements TlsTransport {
       method?: "GET" | "POST";
       body?: string;
       timeoutSec?: number;
+      proxyUrl?: string | null;
     } = {},
   ): { easy: CurlHandle; slist: SlistHandle } {
     const b = this.b;
@@ -469,10 +476,11 @@ export class LibcurlFfiTransport implements TlsTransport {
       b.curl_easy_setopt_long(easy, CURLOPT_TIMEOUT, opts.timeoutSec);
     }
 
-    // Proxy
-    const proxyUrl = getProxyUrl();
-    if (proxyUrl) {
-      b.curl_easy_setopt_str(easy, CURLOPT_PROXY, proxyUrl);
+    // Proxy: per-request override > global default
+    // null = direct (no proxy), undefined = use global, string = specific proxy
+    const effectiveProxy = opts.proxyUrl === null ? null : (opts.proxyUrl ?? getProxyUrl());
+    if (effectiveProxy) {
+      b.curl_easy_setopt_str(easy, CURLOPT_PROXY, effectiveProxy);
     }
 
     // Headers — build slist

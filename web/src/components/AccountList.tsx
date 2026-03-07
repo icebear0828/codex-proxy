@@ -1,6 +1,6 @@
 import { useI18n, useT } from "../../../shared/i18n/context";
 import { AccountCard } from "./AccountCard";
-import type { Account } from "../../../shared/types";
+import type { Account, ProxyEntry } from "../../../shared/types";
 
 interface AccountListProps {
   accounts: Account[];
@@ -9,9 +9,11 @@ interface AccountListProps {
   onRefresh: () => void;
   refreshing: boolean;
   lastUpdated: Date | null;
+  proxies?: ProxyEntry[];
+  onProxyChange?: (accountId: string, proxyId: string) => void;
 }
 
-export function AccountList({ accounts, loading, onDelete, onRefresh, refreshing, lastUpdated }: AccountListProps) {
+export function AccountList({ accounts, loading, onDelete, onRefresh, refreshing, lastUpdated, proxies, onProxyChange }: AccountListProps) {
   const t = useT();
   const { lang } = useI18n();
 
@@ -61,7 +63,7 @@ export function AccountList({ accounts, loading, onDelete, onRefresh, refreshing
           </div>
         ) : (
           accounts.map((acct, i) => (
-            <AccountCard key={acct.id} account={acct} index={i} onDelete={onDelete} />
+            <AccountCard key={acct.id} account={acct} index={i} onDelete={onDelete} proxies={proxies} onProxyChange={onProxyChange} />
           ))
         )}
       </div>

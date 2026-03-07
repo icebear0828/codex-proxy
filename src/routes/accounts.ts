@@ -23,6 +23,7 @@ import { CodexApi } from "../proxy/codex-api.js";
 import type { CodexUsageResponse } from "../proxy/codex-api.js";
 import type { CodexQuota, AccountInfo } from "../auth/types.js";
 import type { CookieJar } from "../proxy/cookie-jar.js";
+import type { ProxyPool } from "../proxy/proxy-pool.js";
 
 function toQuota(usage: CodexUsageResponse): CodexQuota {
   return {
@@ -51,12 +52,14 @@ export function createAccountRoutes(
   pool: AccountPool,
   scheduler: RefreshScheduler,
   cookieJar?: CookieJar,
+  proxyPool?: ProxyPool,
 ): Hono {
   const app = new Hono();
 
-  /** Helper: build a CodexApi with cookie support. */
+  /** Helper: build a CodexApi with cookie + proxy support. */
   function makeApi(entryId: string, token: string, accountId: string | null): CodexApi {
-    return new CodexApi(token, accountId, cookieJar, entryId);
+    const proxyUrl = proxyPool?.resolveProxyUrl(entryId);
+    return new CodexApi(token, accountId, cookieJar, entryId, proxyUrl);
   }
 
   // Start OAuth flow to add a new account — 302 redirect to Auth0
@@ -73,7 +76,12 @@ export function createAccountRoutes(
     const wantQuota = c.req.query("quota") === "true";
 
     if (!wantQuota) {
-      return c.json({ accounts });
+      const enrichedBasic = accounts.map((acct) => ({
+        ...acct,
+        proxyId: proxyPool?.getAssignment(acct.id) ?? "global",
+        proxyName: proxyPool?.getAssignmentDisplayName(acct.id) ?? "Global Default",
+      }));
+      return c.json({ accounts: enrichedBasic });
     }
 
     // Fetch quota for every active account in parallel
@@ -93,9 +101,18 @@ export function createAccountRoutes(
           pool.syncRateLimitWindow(acct.id, resetAt, windowSec);
           // Re-read usage after potential reset
           const freshAcct = pool.getAccounts().find((a) => a.id === acct.id) ?? acct;
-          return { ...freshAcct, quota: toQuota(usage) };
+          return {
+            ...freshAcct,
+            quota: toQuota(usage),
+            proxyId: proxyPool?.getAssignment(acct.id) ?? "global",
+            proxyName: proxyPool?.getAssignmentDisplayName(acct.id) ?? "Global Default",
+          };
         } catch {
-          return acct; // skip on error — no quota field
+          return {
+            ...acct,
+            proxyId: proxyPool?.getAssignment(acct.id) ?? "global",
+            proxyName: proxyPool?.getAssignmentDisplayName(acct.id) ?? "Global Default",
+          };
         }
       }),
     );

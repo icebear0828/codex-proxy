@@ -8,6 +8,16 @@
 
 ### Added
 
+- 代理池功能：支持为不同账号配置不同的上游代理，实现 IP 多样化和风险隔离
+  - 代理 CRUD：添加、删除、启用、禁用代理（HTTP/HTTPS/SOCKS5）
+  - 四种分配模式：Global Default（全局代理）、Direct（直连）、Auto（Round-Robin 轮转）、指定代理
+  - 健康检查：定时（默认 5 分钟）+ 手动，通过 ipify API 获取出口 IP 和延迟
+  - 不可达代理自动标记为 unreachable，不参与自动轮转
+  - Dashboard 代理池管理面板：添加/删除/检查/启用/禁用代理
+  - AccountCard 代理选择器：每个账号可选择代理或模式
+  - 全套 REST API：`/api/proxies` CRUD + `/api/proxies/assign` 分配管理
+  - 持久化：`data/proxies.json`（原子写入，与 cookies.json 同模式）
+  - Transport 层支持 per-request 代理：`TlsTransport` 接口新增可选 `proxyUrl` 参数
 - Dashboard GitHub Star 徽章：Header 新增醒目的 ⭐ Star 按钮（amber 药丸样式），点击跳转 GitHub 仓库页面，方便用户收藏和获取更新
 - Dashboard 检查更新功能：Footer 显示 Proxy 版本+commit 和 Codex Desktop 指纹版本，提供"检查更新"按钮同时检查两种更新
   - Proxy 自更新（CLI 模式）：通过 `git fetch` 检查新提交，自动执行 `git pull + npm install + npm run build`，完成后提示重启

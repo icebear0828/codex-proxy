@@ -11,6 +11,7 @@ import { GEMINI_STATUS_MAP } from "../types/gemini.js";
 import { GeminiGenerateContentRequestSchema } from "../types/gemini.js";
 import type { AccountPool } from "../auth/account-pool.js";
 import type { CookieJar } from "../proxy/cookie-jar.js";
+import type { ProxyPool } from "../proxy/proxy-pool.js";
 import {
   translateGeminiToCodexRequest,
 } from "../translation/gemini-to-codex.js";
@@ -73,6 +74,7 @@ const GEMINI_FORMAT: FormatAdapter = {
 export function createGeminiRoutes(
   accountPool: AccountPool,
   cookieJar?: CookieJar,
+  proxyPool?: ProxyPool,
 ): Hono {
   const app = new Hono();
 
@@ -159,6 +161,7 @@ export function createGeminiRoutes(
         isStreaming,
       },
       GEMINI_FORMAT,
+      proxyPool,
     );
   });
 

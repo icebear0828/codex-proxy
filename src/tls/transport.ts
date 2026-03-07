@@ -17,28 +17,40 @@ export interface TlsTransportResponse {
 }
 
 export interface TlsTransport {
-  /** Streaming POST (for SSE). Returns headers + streaming body. */
+  /**
+   * Streaming POST (for SSE). Returns headers + streaming body.
+   * @param proxyUrl  undefined = global default, null = direct (no proxy), string = specific proxy
+   */
   post(
     url: string,
     headers: Record<string, string>,
     body: string,
     signal?: AbortSignal,
     timeoutSec?: number,
+    proxyUrl?: string | null,
   ): Promise<TlsTransportResponse>;
 
-  /** Simple GET — returns full body as string. */
+  /**
+   * Simple GET — returns full body as string.
+   * @param proxyUrl  undefined = global default, null = direct (no proxy), string = specific proxy
+   */
   get(
     url: string,
     headers: Record<string, string>,
     timeoutSec?: number,
+    proxyUrl?: string | null,
   ): Promise<{ status: number; body: string }>;
 
-  /** Simple (non-streaming) POST — returns full body as string. */
+  /**
+   * Simple (non-streaming) POST — returns full body as string.
+   * @param proxyUrl  undefined = global default, null = direct (no proxy), string = specific proxy
+   */
   simplePost(
     url: string,
     headers: Record<string, string>,
     body: string,
     timeoutSec?: number,
+    proxyUrl?: string | null,
   ): Promise<{ status: number; body: string }>;
 
   /** Whether this transport provides a Chrome TLS fingerprint. */

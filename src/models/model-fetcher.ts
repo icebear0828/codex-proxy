@@ -10,6 +10,7 @@ import { CodexApi } from "../proxy/codex-api.js";
 import { applyBackendModels, type BackendModelEntry } from "./model-store.js";
 import type { AccountPool } from "../auth/account-pool.js";
 import type { CookieJar } from "../proxy/cookie-jar.js";
+import type { ProxyPool } from "../proxy/proxy-pool.js";
 import { jitter } from "../utils/jitter.js";
 
 const REFRESH_INTERVAL_HOURS = 1;
@@ -18,6 +19,7 @@ const INITIAL_DELAY_MS = 5_000; // 5s after startup
 let _refreshTimer: ReturnType<typeof setTimeout> | null = null;
 let _accountPool: AccountPool | null = null;
 let _cookieJar: CookieJar | null = null;
+let _proxyPool: ProxyPool | null = null;
 
 /**
  * Fetch models from the Codex backend using an available account.
@@ -25,6 +27,7 @@ let _cookieJar: CookieJar | null = null;
 async function fetchModelsFromBackend(
   accountPool: AccountPool,
   cookieJar: CookieJar,
+  proxyPool: ProxyPool | null,
 ): Promise<void> {
   if (!accountPool.isAuthenticated()) return; // silently skip when no accounts
 
@@ -35,11 +38,13 @@ async function fetchModelsFromBackend(
   }
 
   try {
+    const proxyUrl = proxyPool?.resolveProxyUrl(acquired.entryId);
     const api = new CodexApi(
       acquired.token,
       acquired.accountId,
       cookieJar,
       acquired.entryId,
+      proxyUrl,
     );
 
     const models = await api.getModels();
@@ -65,14 +70,16 @@ async function fetchModelsFromBackend(
 export function startModelRefresh(
   accountPool: AccountPool,
   cookieJar: CookieJar,
+  proxyPool?: ProxyPool,
 ): void {
   _accountPool = accountPool;
   _cookieJar = cookieJar;
+  _proxyPool = proxyPool ?? null;
 
   // Initial fetch after short delay
   _refreshTimer = setTimeout(async () => {
     try {
-      await fetchModelsFromBackend(accountPool, cookieJar);
+      await fetchModelsFromBackend(accountPool, cookieJar, _proxyPool);
     } finally {
       scheduleNext(accountPool, cookieJar);
     }
@@ -88,7 +95,7 @@ function scheduleNext(
   const intervalMs = jitter(REFRESH_INTERVAL_HOURS * 3600 * 1000, 0.15);
   _refreshTimer = setTimeout(async () => {
     try {
-      await fetchModelsFromBackend(accountPool, cookieJar);
+      await fetchModelsFromBackend(accountPool, cookieJar, _proxyPool);
     } finally {
       scheduleNext(accountPool, cookieJar);
     }
@@ -101,7 +108,7 @@ function scheduleNext(
  */
 export function triggerImmediateRefresh(): void {
   if (_accountPool && _cookieJar) {
-    fetchModelsFromBackend(_accountPool, _cookieJar).catch((err) => {
+    fetchModelsFromBackend(_accountPool, _cookieJar, _proxyPool).catch((err) => {
       const msg = err instanceof Error ? err.message : String(err);
       console.warn(`[ModelFetcher] Immediate refresh failed: ${msg}`);
     });

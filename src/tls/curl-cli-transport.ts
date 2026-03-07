@@ -25,11 +25,12 @@ export class CurlCliTransport implements TlsTransport {
     body: string,
     signal?: AbortSignal,
     timeoutSec?: number,
+    proxyUrl?: string | null,
   ): Promise<TlsTransportResponse> {
     return new Promise((resolve, reject) => {
       const args = [
         ...getChromeTlsArgs(),
-        ...getProxyArgs(),
+        ...resolveProxyArgs(proxyUrl),
         "-s", "-S",
         "--compressed",
         "-N",            // no output buffering (SSE)
@@ -159,10 +160,11 @@ export class CurlCliTransport implements TlsTransport {
     url: string,
     headers: Record<string, string>,
     timeoutSec = 30,
+    proxyUrl?: string | null,
   ): Promise<{ status: number; body: string }> {
     const args = [
       ...getChromeTlsArgs(),
-      ...getProxyArgs(),
+      ...resolveProxyArgs(proxyUrl),
       "-s", "-S",
       "--compressed",
       "--max-time", String(timeoutSec),
@@ -187,10 +189,11 @@ export class CurlCliTransport implements TlsTransport {
     headers: Record<string, string>,
     body: string,
     timeoutSec = 30,
+    proxyUrl?: string | null,
   ): Promise<{ status: number; body: string }> {
     const args = [
       ...getChromeTlsArgs(),
-      ...getProxyArgs(),
+      ...resolveProxyArgs(proxyUrl),
       "-s", "-S",
       "--compressed",
       "--max-time", String(timeoutSec),
@@ -239,6 +242,16 @@ function execCurl(args: string[]): Promise<{ status: number; body: string }> {
       },
     );
   });
+}
+
+/**
+ * Resolve proxy args for curl CLI.
+ * undefined → global default | null → no proxy | string → specific proxy
+ */
+function resolveProxyArgs(proxyUrl: string | null | undefined): string[] {
+  if (proxyUrl === null) return [];
+  if (proxyUrl !== undefined) return ["-x", proxyUrl];
+  return getProxyArgs();
 }
 
 /** Parse HTTP response header block from curl -i output. */

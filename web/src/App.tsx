@@ -3,11 +3,13 @@ import { ThemeProvider } from "../../shared/theme/context";
 import { Header } from "./components/Header";
 import { AccountList } from "./components/AccountList";
 import { AddAccount } from "./components/AddAccount";
+import { ProxyPool } from "./components/ProxyPool";
 import { ApiConfig } from "./components/ApiConfig";
 import { AnthropicSetup } from "./components/AnthropicSetup";
 import { CodeExamples } from "./components/CodeExamples";
 import { Footer } from "./components/Footer";
 import { useAccounts } from "../../shared/hooks/use-accounts";
+import { useProxies } from "../../shared/hooks/use-proxies";
 import { useStatus } from "../../shared/hooks/use-status";
 import { useUpdateStatus } from "../../shared/hooks/use-update-status";
 import { useI18n } from "../../shared/i18n/context";
@@ -52,8 +54,14 @@ function useUpdateMessage() {
 
 function Dashboard() {
   const accounts = useAccounts();
+  const proxies = useProxies();
   const status = useStatus(accounts.list.length);
   const update = useUpdateMessage();
+
+  const handleProxyChange = async (accountId: string, proxyId: string) => {
+    await proxies.assignProxy(accountId, proxyId);
+    accounts.refresh();
+  };
 
   return (
     <>
@@ -79,7 +87,10 @@ function Dashboard() {
             onRefresh={accounts.refresh}
             refreshing={accounts.refreshing}
             lastUpdated={accounts.lastUpdated}
+            proxies={proxies.proxies}
+            onProxyChange={handleProxyChange}
           />
+          <ProxyPool proxies={proxies} />
           <ApiConfig
             baseUrl={status.baseUrl}
             apiKey={status.apiKey}

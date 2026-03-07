@@ -14,6 +14,7 @@ import type { CodexResponsesRequest } from "../../proxy/codex-api.js";
 import { EmptyResponseError } from "../../translation/codex-event-extractor.js";
 import type { AccountPool } from "../../auth/account-pool.js";
 import type { CookieJar } from "../../proxy/cookie-jar.js";
+import type { ProxyPool } from "../../proxy/proxy-pool.js";
 import { withRetry } from "../../utils/retry.js";
 
 /** Data prepared by each route after parsing and translating the request. */
@@ -59,6 +60,7 @@ export async function handleProxyRequest(
   cookieJar: CookieJar | undefined,
   req: ProxyRequest,
   fmt: FormatAdapter,
+  proxyPool?: ProxyPool,
 ): Promise<Response> {
   // 1. Acquire account
   const acquired = accountPool.acquire();
@@ -68,7 +70,8 @@ export async function handleProxyRequest(
   }
 
   const { entryId, token, accountId } = acquired;
-  const codexApi = new CodexApi(token, accountId, cookieJar, entryId);
+  const proxyUrl = proxyPool?.resolveProxyUrl(entryId);
+  const codexApi = new CodexApi(token, accountId, cookieJar, entryId, proxyUrl);
   // Tracks which account the outer catch should release (updated by retry loop)
   let activeEntryId = entryId;
 
@@ -158,7 +161,8 @@ export async function handleProxyRequest(
 
             currentEntryId = newAcquired.entryId;
             activeEntryId = currentEntryId;
-            currentCodexApi = new CodexApi(newAcquired.token, newAcquired.accountId, cookieJar, newAcquired.entryId);
+            const retryProxyUrl = proxyPool?.resolveProxyUrl(newAcquired.entryId);
+            currentCodexApi = new CodexApi(newAcquired.token, newAcquired.accountId, cookieJar, newAcquired.entryId, retryProxyUrl);
             try {
               currentRawResponse = await withRetry(
                 () => currentCodexApi.createResponse(req.codexRequest, abortController.signal),

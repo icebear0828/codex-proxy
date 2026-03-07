@@ -57,17 +57,20 @@ export class CodexApi {
   private accountId: string | null;
   private cookieJar: CookieJar | null;
   private entryId: string | null;
+  private proxyUrl: string | null | undefined;
 
   constructor(
     token: string,
     accountId: string | null,
     cookieJar?: CookieJar | null,
     entryId?: string | null,
+    proxyUrl?: string | null,
   ) {
     this.token = token;
     this.accountId = accountId;
     this.cookieJar = cookieJar ?? null;
     this.entryId = entryId ?? null;
+    this.proxyUrl = proxyUrl;
   }
 
   setToken(token: string): void {
@@ -111,7 +114,7 @@ export class CodexApi {
 
     let body: string;
     try {
-      const result = await transport.get(url, headers, 15);
+      const result = await transport.get(url, headers, 15, this.proxyUrl);
       body = result.body;
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
@@ -157,7 +160,7 @@ export class CodexApi {
 
     for (const url of endpoints) {
       try {
-        const result = await transport.get(url, headers, 15);
+        const result = await transport.get(url, headers, 15, this.proxyUrl);
         const parsed = JSON.parse(result.body) as Record<string, unknown>;
 
         // sentinel/chat-requirements returns { chat_models: { models: [...], ... } }
@@ -219,7 +222,7 @@ export class CodexApi {
     }
 
     try {
-      const result = await transport.get(url, headers, 15);
+      const result = await transport.get(url, headers, 15, this.proxyUrl);
       return JSON.parse(result.body) as Record<string, unknown>;
     } catch {
       return null;
@@ -248,7 +251,7 @@ export class CodexApi {
 
     let transportRes;
     try {
-      transportRes = await transport.post(url, headers, JSON.stringify(request), signal, timeout);
+      transportRes = await transport.post(url, headers, JSON.stringify(request), signal, timeout, this.proxyUrl);
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       throw new CodexApiError(0, msg);

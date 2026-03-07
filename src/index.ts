@@ -15,6 +15,8 @@ import { createGeminiRoutes } from "./routes/gemini.js";
 import { createModelRoutes } from "./routes/models.js";
 import { createWebRoutes } from "./routes/web.js";
 import { CookieJar } from "./proxy/cookie-jar.js";
+import { ProxyPool } from "./proxy/proxy-pool.js";
+import { createProxyRoutes } from "./routes/proxies.js";
 import { startUpdateChecker, stopUpdateChecker } from "./update-checker.js";
 import { initProxy } from "./tls/curl-binary.js";
 import { initTransport } from "./tls/transport.js";
@@ -54,6 +56,7 @@ export async function startServer(options?: StartOptions): Promise<ServerHandle>
   const accountPool = new AccountPool();
   const refreshScheduler = new RefreshScheduler(accountPool);
   const cookieJar = new CookieJar();
+  const proxyPool = new ProxyPool();
 
   // Create Hono app
   const app = new Hono();
@@ -65,10 +68,11 @@ export async function startServer(options?: StartOptions): Promise<ServerHandle>
 
   // Mount routes
   const authRoutes = createAuthRoutes(accountPool, refreshScheduler);
-  const accountRoutes = createAccountRoutes(accountPool, refreshScheduler, cookieJar);
-  const chatRoutes = createChatRoutes(accountPool, cookieJar);
-  const messagesRoutes = createMessagesRoutes(accountPool, cookieJar);
-  const geminiRoutes = createGeminiRoutes(accountPool, cookieJar);
+  const accountRoutes = createAccountRoutes(accountPool, refreshScheduler, cookieJar, proxyPool);
+  const chatRoutes = createChatRoutes(accountPool, cookieJar, proxyPool);
+  const messagesRoutes = createMessagesRoutes(accountPool, cookieJar, proxyPool);
+  const geminiRoutes = createGeminiRoutes(accountPool, cookieJar, proxyPool);
+  const proxyRoutes = createProxyRoutes(proxyPool);
   const webRoutes = createWebRoutes(accountPool);
 
   app.route("/", authRoutes);
@@ -76,6 +80,7 @@ export async function startServer(options?: StartOptions): Promise<ServerHandle>
   app.route("/", chatRoutes);
   app.route("/", messagesRoutes);
   app.route("/", geminiRoutes);
+  app.route("/", proxyRoutes);
   app.route("/", createModelRoutes());
   app.route("/", webRoutes);
 
@@ -111,7 +116,10 @@ export async function startServer(options?: StartOptions): Promise<ServerHandle>
   startUpdateChecker();
 
   // Start background model refresh (requires auth to be ready)
-  startModelRefresh(accountPool, cookieJar);
+  startModelRefresh(accountPool, cookieJar, proxyPool);
+
+  // Start proxy health check timer (if proxies exist)
+  proxyPool.startHealthCheckTimer();
 
   const server = serve({
     fetch: app.fetch,
@@ -125,6 +133,7 @@ export async function startServer(options?: StartOptions): Promise<ServerHandle>
         stopUpdateChecker();
         stopModelRefresh();
         refreshScheduler.destroy();
+        proxyPool.destroy();
         cookieJar.destroy();
         accountPool.destroy();
         resolve();

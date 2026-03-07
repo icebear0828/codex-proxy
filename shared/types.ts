@@ -21,4 +21,27 @@ export interface Account {
     window_output_tokens?: number;
   };
   quota?: AccountQuota;
+  proxyId?: string;
+  proxyName?: string;
+}
+
+export interface ProxyHealthInfo {
+  exitIp: string | null;
+  latencyMs: number;
+  lastChecked: string;
+  error: string | null;
+}
+
+export interface ProxyEntry {
+  id: string;
+  name: string;
+  url: string;
+  status: "active" | "unreachable" | "disabled";
+  health: ProxyHealthInfo | null;
+  addedAt: string;
+}
+
+export interface ProxyAssignment {
+  accountId: string;
+  proxyId: string;
 }

@@ -2,7 +2,7 @@ import { useCallback } from "preact/hooks";
 import { useT, useI18n } from "../../../shared/i18n/context";
 import type { TranslationKey } from "../../../shared/i18n/translations";
 import { formatNumber, formatResetTime, formatWindowDuration } from "../../../shared/utils/format";
-import type { Account } from "../../../shared/types";
+import type { Account, ProxyEntry } from "../../../shared/types";
 
 const avatarColors = [
   ["bg-purple-100 dark:bg-[#2a1a3f]", "text-purple-600 dark:text-purple-400"],
@@ -39,9 +39,11 @@ interface AccountCardProps {
   account: Account;
   index: number;
   onDelete: (id: string) => Promise<string | null>;
+  proxies?: ProxyEntry[];
+  onProxyChange?: (accountId: string, proxyId: string) => void;
 }
 
-export function AccountCard({ account, index, onDelete }: AccountCardProps) {
+export function AccountCard({ account, index, onDelete, proxies, onProxyChange }: AccountCardProps) {
   const t = useT();
   const { lang } = useI18n();
   const email = account.email || "Unknown";
@@ -131,6 +133,30 @@ export function AccountCard({ account, index, onDelete }: AccountCardProps) {
           <span class="text-slate-400 dark:text-text-dim/70">{formatNumber(requests)} req · {formatNumber(tokens)} tok</span>
         </div>
       </div>
+
+      {/* Proxy selector */}
+      {proxies && onProxyChange && (
+        <div class="flex items-center justify-between text-[0.78rem] mt-2 pt-2 border-t border-slate-100 dark:border-border-dark">
+          <span class="text-slate-500 dark:text-text-dim">{t("proxyAssignment")}</span>
+          <select
+            value={account.proxyId || "global"}
+            onChange={(e) =>
+              onProxyChange(account.id, (e.target as HTMLSelectElement).value)
+            }
+            class="text-xs px-2 py-1 rounded-md border border-gray-200 dark:border-border-dark bg-transparent focus:outline-none focus:ring-1 focus:ring-primary cursor-pointer"
+          >
+            <option value="global">{t("globalDefault")}</option>
+            <option value="direct">{t("directNoProxy")}</option>
+            <option value="auto">{t("autoRoundRobin")}</option>
+            {proxies.map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.name}
+                {p.health?.exitIp ? ` (${p.health.exitIp})` : ""}
+              </option>
+            ))}
+          </select>
+        </div>
+      )}
 
       {/* Quota bar */}
       {rl && (

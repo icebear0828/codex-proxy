@@ -9,6 +9,7 @@ import { AnthropicMessagesRequestSchema } from "../types/anthropic.js";
 import type { AnthropicErrorBody, AnthropicErrorType } from "../types/anthropic.js";
 import type { AccountPool } from "../auth/account-pool.js";
 import type { CookieJar } from "../proxy/cookie-jar.js";
+import type { ProxyPool } from "../proxy/proxy-pool.js";
 import { translateAnthropicToCodexRequest } from "../translation/anthropic-to-codex.js";
 import {
   streamCodexToAnthropic,
@@ -48,6 +49,7 @@ function makeAnthropicFormat(wantThinking: boolean): FormatAdapter {
 export function createMessagesRoutes(
   accountPool: AccountPool,
   cookieJar?: CookieJar,
+  proxyPool?: ProxyPool,
 ): Hono {
   const app = new Hono();
 
@@ -106,6 +108,7 @@ export function createMessagesRoutes(
         isStreaming: req.stream,
       },
       makeAnthropicFormat(wantThinking),
+      proxyPool,
     );
   });
 
