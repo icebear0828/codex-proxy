@@ -138,6 +138,9 @@ export const translations = {
     exportSuccess: "Export complete",
     importFile: "Select JSON file",
     downloadJson: "Download JSON",
+    speed: "Speed",
+    speedStandard: "Standard",
+    speedFast: "Fast",
   },
   zh: {
     serverOnline: "\u670d\u52a1\u8fd0\u884c\u4e2d",
@@ -281,6 +284,9 @@ export const translations = {
     exportSuccess: "\u5bfc\u51fa\u6210\u529f",
     importFile: "\u9009\u62e9 JSON \u6587\u4ef6",
     downloadJson: "\u4e0b\u8f7d JSON",
+    speed: "\u901f\u5ea6",
+    speedStandard: "\u6807\u51c6",
+    speedFast: "\u5feb\u901f",
   },
 } as const;
 

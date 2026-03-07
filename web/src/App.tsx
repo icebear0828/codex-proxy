@@ -106,16 +106,21 @@ function Dashboard() {
             modelFamilies={status.modelFamilies}
             selectedEffort={status.selectedEffort}
             onEffortChange={status.setSelectedEffort}
+            selectedSpeed={status.selectedSpeed}
+            onSpeedChange={status.setSelectedSpeed}
           />
           <AnthropicSetup
             apiKey={status.apiKey}
             selectedModel={status.selectedModel}
+            reasoningEffort={status.selectedEffort}
+            serviceTier={status.selectedSpeed}
           />
           <CodeExamples
             baseUrl={status.baseUrl}
             apiKey={status.apiKey}
             model={status.selectedModel}
             reasoningEffort={status.selectedEffort}
+            serviceTier={status.selectedSpeed}
           />
         </div>
       </main>

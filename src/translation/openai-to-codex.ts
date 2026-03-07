@@ -8,7 +8,7 @@ import type {
   CodexInputItem,
   CodexContentPart,
 } from "../proxy/codex-api.js";
-import { resolveModelId, getModelInfo } from "../models/model-store.js";
+import { parseModelName, getModelInfo } from "../models/model-store.js";
 import { getConfig } from "../config.js";
 import { buildInstructions } from "./shared-utils.js";
 import {
@@ -145,8 +145,9 @@ export function translateToCodexRequest(
     input.push({ role: "user", content: "" });
   }
 
-  // Resolve model
-  const modelId = resolveModelId(req.model);
+  // Resolve model (suffix parsing extracts service_tier and reasoning_effort)
+  const parsed = parseModelName(req.model);
+  const modelId = parsed.modelId;
   const modelInfo = getModelInfo(modelId);
   const config = getConfig();
 
@@ -173,12 +174,23 @@ export function translateToCodexRequest(
     request.tool_choice = codexToolChoice;
   }
 
-  // Always request reasoning summary (translation layer filters output on demand)
+  // Reasoning effort: explicit API field > suffix > model default > config default
   const effort =
     req.reasoning_effort ??
+    parsed.reasoningEffort ??
     modelInfo?.defaultReasoningEffort ??
     config.model.default_reasoning_effort;
   request.reasoning = { summary: "auto", ...(effort ? { effort } : {}) };
+
+  // Service tier: explicit API field > suffix > config default
+  const serviceTier =
+    req.service_tier ??
+    parsed.serviceTier ??
+    config.model.default_service_tier ??
+    null;
+  if (serviceTier) {
+    request.service_tier = serviceTier;
+  }
 
   return request;
 }

@@ -175,6 +175,9 @@ curl http://localhost:8080/v1/chat/completions \
 | `gpt-5.1-codex-max` | `codex-max` | low / medium / high | Deep reasoning coding model |
 | `gpt-5.1-codex-mini` | `codex-mini` | low / medium / high | Lightweight, fast coding model |
 
+> **Model name suffixes**: Append `-fast` to any model name to enable Fast mode, or `-high`/`-low` etc. to change reasoning effort.
+> Examples: `gpt-5.4-fast`, `gpt-5.4-high-fast`, `codex-fast`.
+>
 > Models are automatically synced when new Codex Desktop versions are released. The backend also dynamically fetches the latest model catalog.
 
 ## 🔗 Client Setup
@@ -186,18 +189,22 @@ Set environment variables to route Claude Code through codex-proxy:
 ```bash
 export ANTHROPIC_BASE_URL=http://localhost:8080
 export ANTHROPIC_API_KEY=your-api-key
-export ANTHROPIC_MODEL=claude-opus-4-6     # Opus → gpt-5.4 (default)
-# export ANTHROPIC_MODEL=claude-sonnet-4-6   # Sonnet → gpt-5.3-codex
+# Default Opus 4.6 → gpt-5.4, no need to set ANTHROPIC_MODEL
+# To switch models or use suffixes:
+# export ANTHROPIC_MODEL=codex-fast              # → gpt-5.4 + Fast mode
+# export ANTHROPIC_MODEL=gpt-5.4-high            # → gpt-5.4 + high reasoning
+# export ANTHROPIC_MODEL=gpt-5.4-high-fast       # → gpt-5.4 + high + Fast
+# export ANTHROPIC_MODEL=claude-sonnet-4-6       # Sonnet → gpt-5.3-codex
 # export ANTHROPIC_MODEL=claude-haiku-4-5-20251001  # Haiku → gpt-5.1-codex-mini
 
 claude   # Launch Claude Code
 ```
 
-| Claude Code Model | Maps to Codex Model |
-|-------------------|---------------------|
-| Opus (`claude-opus-4-6`) | `gpt-5.4` |
-| Sonnet (`claude-sonnet-4-6`) | `gpt-5.3-codex` |
-| Haiku (`claude-haiku-4-5-20251001`) | `gpt-5.1-codex-mini` |
+| Claude Code Model | Maps to Codex Model | Notes |
+|-------------------|---------------------|-------|
+| Opus (default) | `gpt-5.4` | No need to set `ANTHROPIC_MODEL` |
+| Sonnet (`claude-sonnet-4-6`) | `gpt-5.3-codex` | |
+| Haiku (`claude-haiku-4-5-20251001`) | `gpt-5.1-codex-mini` | |
 
 > You can also copy environment variables from the **Anthropic SDK Setup** card in the dashboard (`http://localhost:8080`).
 
@@ -278,7 +285,7 @@ All configuration is in `config/default.yaml`:
 | `server` | `host`, `port`, `proxy_api_key` | Listen address and API key |
 | `api` | `base_url`, `timeout_seconds` | Upstream API URL and timeout |
 | `client_identity` | `app_version`, `build_number` | Codex Desktop version to impersonate |
-| `model` | `default`, `default_reasoning_effort` | Default model and reasoning effort |
+| `model` | `default`, `default_reasoning_effort`, `default_service_tier` | Default model, reasoning effort and speed mode |
 | `auth` | `rotation_strategy`, `rate_limit_backoff_seconds` | Rotation strategy and rate limit backoff |
 
 ### Environment Variable Overrides

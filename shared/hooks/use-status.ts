@@ -48,6 +48,7 @@ export function useStatus(accountCount: number) {
   const [selectedModel, setSelectedModel] = useState("gpt-5.4");
   const [modelCatalog, setModelCatalog] = useState<CatalogModel[]>([]);
   const [selectedEffort, setSelectedEffort] = useState("medium");
+  const [selectedSpeed, setSelectedSpeed] = useState<string | null>(null);
 
   const loadModels = useCallback(async () => {
     try {
@@ -114,6 +115,8 @@ export function useStatus(accountCount: number) {
     setSelectedModel,
     selectedEffort,
     setSelectedEffort,
+    selectedSpeed,
+    setSelectedSpeed,
     modelFamilies,
     modelCatalog,
   };

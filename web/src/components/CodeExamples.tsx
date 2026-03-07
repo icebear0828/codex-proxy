@@ -148,17 +148,29 @@ interface CodeExamplesProps {
   apiKey: string;
   model: string;
   reasoningEffort: string;
+  serviceTier: string | null;
 }
 
-export function CodeExamples({ baseUrl, apiKey, model, reasoningEffort }: CodeExamplesProps) {
+export function CodeExamples({ baseUrl, apiKey, model, reasoningEffort, serviceTier }: CodeExamplesProps) {
   const t = useT();
   const [protocol, setProtocol] = useState<Protocol>("openai");
   const [codeLang, setCodeLang] = useState<CodeLang>("python");
 
   const origin = typeof window !== "undefined" ? window.location.origin : "";
+
+  // Build compound model name with suffixes for CLI users
+  const displayModel = useMemo(() => {
+    let name = model;
+    if (reasoningEffort && reasoningEffort !== "medium") name += `-${reasoningEffort}`;
+    if (serviceTier === "fast") name += "-fast";
+    return name;
+  }, [model, reasoningEffort, serviceTier]);
+
+  // When effort/speed are embedded as suffixes, don't also show separate reasoning_effort param
+  const explicitEffort = displayModel === model ? reasoningEffort : "medium";
   const examples = useMemo(
-    () => buildExamples(baseUrl, apiKey, model, origin, reasoningEffort),
-    [baseUrl, apiKey, model, origin, reasoningEffort]
+    () => buildExamples(baseUrl, apiKey, displayModel, origin, explicitEffort),
+    [baseUrl, apiKey, displayModel, origin, explicitEffort]
   );
 
   const currentCode = examples[`${protocol}-${codeLang}`] || "Loading...";

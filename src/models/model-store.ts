@@ -186,6 +186,63 @@ export function applyBackendModels(backendModels: BackendModelEntry[]): void {
   );
 }
 
+// ── Model name suffix parsing ───────────────────────────────────────
+
+export interface ParsedModelName {
+  modelId: string;
+  serviceTier: string | null;
+  reasoningEffort: string | null;
+}
+
+const SERVICE_TIER_SUFFIXES = new Set(["fast", "flex"]);
+const EFFORT_SUFFIXES = new Set(["minimal", "low", "medium", "high", "xhigh"]);
+
+/**
+ * Parse a model name that may contain embedded suffixes for service_tier and reasoning_effort.
+ *
+ * Resolution:
+ *   1. If full name is a known model ID or alias → use as-is
+ *   2. Otherwise, strip known suffixes from right:
+ *      - `-fast`, `-flex` → service_tier
+ *      - `-minimal`, `-low`, `-medium`, `-high`, `-xhigh` → reasoning_effort
+ *   3. Resolve remaining name as model ID/alias
+ */
+export function parseModelName(input: string): ParsedModelName {
+  const trimmed = input.trim();
+
+  // 1. Known model or alias? Use as-is
+  if (_aliases[trimmed] || _catalog.some((m) => m.id === trimmed)) {
+    return { modelId: resolveModelId(trimmed), serviceTier: null, reasoningEffort: null };
+  }
+
+  // 2. Try stripping suffixes from right
+  let remaining = trimmed;
+  let serviceTier: string | null = null;
+  let reasoningEffort: string | null = null;
+
+  // Strip -fast/-flex (rightmost)
+  for (const tier of SERVICE_TIER_SUFFIXES) {
+    if (remaining.endsWith(`-${tier}`)) {
+      serviceTier = tier;
+      remaining = remaining.slice(0, -(tier.length + 1));
+      break;
+    }
+  }
+
+  // Strip -high/-low/etc (next from right)
+  for (const effort of EFFORT_SUFFIXES) {
+    if (remaining.endsWith(`-${effort}`)) {
+      reasoningEffort = effort;
+      remaining = remaining.slice(0, -(effort.length + 1));
+      break;
+    }
+  }
+
+  // 3. Resolve remaining as model
+  const modelId = resolveModelId(remaining);
+  return { modelId, serviceTier, reasoningEffort };
+}
+
 // ── Getters ────────────────────────────────────────────────────────
 
 /**

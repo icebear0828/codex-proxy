@@ -12,7 +12,7 @@ import type {
   CodexInputItem,
   CodexContentPart,
 } from "../proxy/codex-api.js";
-import { resolveModelId, getModelInfo } from "../models/model-store.js";
+import { parseModelName, getModelInfo } from "../models/model-store.js";
 import { getConfig } from "../config.js";
 import { buildInstructions, budgetToEffort } from "./shared-utils.js";
 import { geminiToolsToCodex, geminiToolConfigToCodex } from "./tool-format.js";
@@ -187,8 +187,9 @@ export function translateGeminiToCodexRequest(
     input.push({ role: "user", content: "" });
   }
 
-  // Resolve model
-  const modelId = resolveModelId(geminiModel);
+  // Resolve model (suffix parsing extracts service_tier and reasoning_effort)
+  const parsed = parseModelName(geminiModel);
+  const modelId = parsed.modelId;
   const modelInfo = getModelInfo(modelId);
   const config = getConfig();
 
@@ -211,15 +212,25 @@ export function translateGeminiToCodexRequest(
     request.tool_choice = codexToolChoice;
   }
 
-  // Always request reasoning summary (translation layer filters output on demand)
+  // Reasoning effort: thinking config > suffix > model default > config default
   const thinkingEffort = budgetToEffort(
     req.generationConfig?.thinkingConfig?.thinkingBudget,
   );
   const effort =
     thinkingEffort ??
+    parsed.reasoningEffort ??
     modelInfo?.defaultReasoningEffort ??
     config.model.default_reasoning_effort;
   request.reasoning = { summary: "auto", ...(effort ? { effort } : {}) };
+
+  // Service tier: suffix > config default
+  const serviceTier =
+    parsed.serviceTier ??
+    config.model.default_service_tier ??
+    null;
+  if (serviceTier) {
+    request.service_tier = serviceTier;
+  }
 
   return request;
 }

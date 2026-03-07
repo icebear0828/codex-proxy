@@ -28,6 +28,8 @@ export interface CodexResponsesRequest {
   store: false;
   /** Optional: reasoning effort + summary mode */
   reasoning?: { effort?: string; summary?: string };
+  /** Optional: service tier ("fast" / "flex") */
+  service_tier?: string | null;
   /** Optional: tools available to the model */
   tools?: unknown[];
   /** Optional: tool choice strategy */

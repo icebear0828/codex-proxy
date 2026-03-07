@@ -5,18 +5,28 @@ import { CopyButton } from "./CopyButton";
 interface AnthropicSetupProps {
   apiKey: string;
   selectedModel: string;
+  reasoningEffort: string;
+  serviceTier: string | null;
 }
 
-export function AnthropicSetup({ apiKey, selectedModel }: AnthropicSetupProps) {
+export function AnthropicSetup({ apiKey, selectedModel, reasoningEffort, serviceTier }: AnthropicSetupProps) {
   const t = useT();
 
   const origin = typeof window !== "undefined" ? window.location.origin : "http://localhost:8080";
 
+  // Build compound model name with suffixes
+  const displayModel = useMemo(() => {
+    let name = selectedModel;
+    if (reasoningEffort && reasoningEffort !== "medium") name += `-${reasoningEffort}`;
+    if (serviceTier === "fast") name += "-fast";
+    return name;
+  }, [selectedModel, reasoningEffort, serviceTier]);
+
   const envLines = useMemo(() => ({
     ANTHROPIC_BASE_URL: origin,
     ANTHROPIC_API_KEY: apiKey,
-    ANTHROPIC_MODEL: selectedModel,
-  }), [origin, apiKey, selectedModel]);
+    ANTHROPIC_MODEL: displayModel,
+  }), [origin, apiKey, displayModel]);
 
   const allEnvText = useMemo(
     () => Object.entries(envLines).map(([k, v]) => `${k}=${v}`).join("\n"),

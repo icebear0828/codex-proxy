@@ -11,6 +11,7 @@ client:
 model:
   default: gpt-5.4
   default_reasoning_effort: medium
+  default_service_tier: null
   suppress_desktop_directives: true
 auth:
   jwt_token: null

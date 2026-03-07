@@ -12,6 +12,10 @@
 
 ### Added
 
+- 模型名后缀系统：通过模型名嵌入推理等级和速度模式（如 `gpt-5.4-high-fast`），CLI 工具（Claude Code、opencode 等）无需额外参数即可控制推理强度和 Fast 模式
+- `service_tier` 支持：接受 API 请求体中的 `service_tier` 字段（"fast" / "flex"），或通过 `-fast` 模型名后缀自动设置
+- Dashboard Speed 切换：模型选择器下方新增 Standard / Fast 速度切换按钮
+
 - 代理分配管理页面（`#/proxy-settings`）：双栏矩阵式布局，批量管理数百账号的代理分配
   - 左栏代理组列表：按 Global/Direct/Auto/各代理分组显示计数徽章，点击筛选
   - 右栏账号表格：搜索、状态筛选、分页（50条/页）、Shift+点击连续多选、每行独立代理下拉

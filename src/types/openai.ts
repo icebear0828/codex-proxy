@@ -45,6 +45,7 @@ export const ChatCompletionRequestSchema = z.object({
   user: z.string().optional(),
   // Codex-specific extensions
   reasoning_effort: z.enum(["low", "medium", "high", "xhigh"]).optional(),
+  service_tier: z.enum(["fast", "flex"]).nullable().optional(),
   // New tool format (accepted for compatibility, not forwarded to Codex)
   tools: z.array(z.object({
     type: z.literal("function"),
