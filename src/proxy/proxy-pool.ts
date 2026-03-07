@@ -160,6 +160,13 @@ export class ProxyPool {
     this.persistNow();
   }
 
+  bulkAssign(assignments: Array<{ accountId: string; proxyId: string }>): void {
+    for (const { accountId, proxyId } of assignments) {
+      this.assignments.set(accountId, proxyId);
+    }
+    this.persistNow();
+  }
+
   unassign(accountId: string): void {
     if (this.assignments.delete(accountId)) {
       this.persistNow();

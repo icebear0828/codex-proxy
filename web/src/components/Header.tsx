@@ -20,9 +20,10 @@ interface HeaderProps {
   updateStatusMsg: string | null;
   updateStatusColor: string;
   version: string | null;
+  isProxySettings?: boolean;
 }
 
-export function Header({ onAddAccount, onCheckUpdate, checking, updateStatusMsg, updateStatusColor, version }: HeaderProps) {
+export function Header({ onAddAccount, onCheckUpdate, checking, updateStatusMsg, updateStatusColor, version, isProxySettings }: HeaderProps) {
   const { lang, toggleLang, t } = useI18n();
   const { isDark, toggle: toggleTheme } = useTheme();
 
@@ -32,12 +33,26 @@ export function Header({ onAddAccount, onCheckUpdate, checking, updateStatusMsg,
         <div class="flex w-full max-w-[960px] items-center justify-between">
           {/* Logo & Title */}
           <div class="flex items-center gap-3">
-            <div class="flex items-center justify-center size-8 rounded-full bg-primary/10 text-primary border border-primary/20">
-              <svg class="size-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <path stroke-linecap="round" stroke-linejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-              </svg>
-            </div>
-            <h1 class="text-[0.9rem] font-bold tracking-tight">Codex Proxy</h1>
+            {isProxySettings ? (
+              <a
+                href="#"
+                class="flex items-center gap-1.5 text-sm text-slate-500 dark:text-text-dim hover:text-primary transition-colors"
+              >
+                <svg class="size-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path stroke-linecap="round" stroke-linejoin="round" d="M10.5 19.5L3 12m0 0l7.5-7.5M3 12h18" />
+                </svg>
+                <span class="font-medium">{t("backToDashboard")}</span>
+              </a>
+            ) : (
+              <>
+                <div class="flex items-center justify-center size-8 rounded-full bg-primary/10 text-primary border border-primary/20">
+                  <svg class="size-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                </div>
+                <h1 class="text-[0.9rem] font-bold tracking-tight">Codex Proxy</h1>
+              </>
+            )}
           </div>
           {/* Actions */}
           <div class="flex items-center gap-3">
@@ -104,19 +119,32 @@ export function Header({ onAddAccount, onCheckUpdate, checking, updateStatusMsg,
             >
               {isDark ? SVG_SUN : SVG_MOON}
             </button>
-            {/* Add Account */}
-            <button
-              onClick={onAddAccount}
-              class="flex items-center gap-2 px-4 py-2 bg-primary hover:bg-primary-hover text-white text-xs font-semibold rounded-lg transition-colors shadow-sm active:scale-95"
-            >
-              <svg class="size-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
-                <path stroke-linecap="round" stroke-linejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
-              </svg>
-              <span class="inline-grid">
-                <span class="invisible col-start-1 row-start-1">Add Account</span>
-                <span class="col-start-1 row-start-1">{t("addAccount")}</span>
-              </span>
-            </button>
+            {/* Proxy Settings / Add Account */}
+            {isProxySettings ? null : (
+              <>
+                <a
+                  href="#/proxy-settings"
+                  class="hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-full border border-gray-200 dark:border-border-dark text-slate-600 dark:text-text-dim hover:bg-slate-50 dark:hover:bg-border-dark transition-colors"
+                >
+                  <svg class="size-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M10.5 6h9.75M10.5 6a1.5 1.5 0 11-3 0m3 0a1.5 1.5 0 10-3 0M3.75 6H7.5m3 12h9.75m-9.75 0a1.5 1.5 0 01-3 0m3 0a1.5 1.5 0 00-3 0m-3.75 0H7.5m9-6h3.75m-3.75 0a1.5 1.5 0 01-3 0m3 0a1.5 1.5 0 00-3 0m-9.75 0h9.75" />
+                  </svg>
+                  <span class="text-xs font-semibold">{t("proxySettings")}</span>
+                </a>
+                <button
+                  onClick={onAddAccount}
+                  class="flex items-center gap-2 px-4 py-2 bg-primary hover:bg-primary-hover text-white text-xs font-semibold rounded-lg transition-colors shadow-sm active:scale-95"
+                >
+                  <svg class="size-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
+                  </svg>
+                  <span class="inline-grid">
+                    <span class="invisible col-start-1 row-start-1">Add Account</span>
+                    <span class="col-start-1 row-start-1">{t("addAccount")}</span>
+                  </span>
+                </button>
+              </>
+            )}
           </div>
         </div>
       </div>

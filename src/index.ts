@@ -72,7 +72,7 @@ export async function startServer(options?: StartOptions): Promise<ServerHandle>
   const chatRoutes = createChatRoutes(accountPool, cookieJar, proxyPool);
   const messagesRoutes = createMessagesRoutes(accountPool, cookieJar, proxyPool);
   const geminiRoutes = createGeminiRoutes(accountPool, cookieJar, proxyPool);
-  const proxyRoutes = createProxyRoutes(proxyPool);
+  const proxyRoutes = createProxyRoutes(proxyPool, accountPool);
   const webRoutes = createWebRoutes(accountPool);
 
   app.route("/", authRoutes);

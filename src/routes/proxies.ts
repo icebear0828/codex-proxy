@@ -16,8 +16,9 @@
 
 import { Hono } from "hono";
 import type { ProxyPool } from "../proxy/proxy-pool.js";
+import type { AccountPool } from "../auth/account-pool.js";
 
-export function createProxyRoutes(proxyPool: ProxyPool): Hono {
+export function createProxyRoutes(proxyPool: ProxyPool, accountPool?: AccountPool): Hono {
   const app = new Hono();
 
   // List all proxies + assignments (credentials masked)
@@ -184,6 +185,177 @@ export function createProxyRoutes(proxyPool: ProxyPool): Hono {
       success: true,
       healthCheckIntervalMinutes: proxyPool.getHealthIntervalMinutes(),
     });
+  });
+
+  // ── Bulk Assignment Endpoints ────────────────────────────────────
+
+  // List all accounts with their proxy assignments
+  app.get("/api/proxies/assignments", (c) => {
+    const accounts = accountPool
+      ? accountPool.getAccounts().map((a) => ({
+          id: a.id,
+          email: a.email,
+          status: a.status,
+          proxyId: proxyPool.getAssignment(a.id),
+          proxyName: proxyPool.getAssignmentDisplayName(a.id),
+        }))
+      : [];
+
+    return c.json({
+      accounts,
+      proxies: proxyPool.getAllMasked(),
+    });
+  });
+
+  // Bulk assign proxies to accounts
+  app.post("/api/proxies/assign-bulk", async (c) => {
+    const body = await c.req.json<{
+      assignments?: Array<{ accountId: string; proxyId: string }>;
+    }>();
+
+    if (!Array.isArray(body.assignments) || body.assignments.length === 0) {
+      c.status(400);
+      return c.json({ error: "assignments array is required and must not be empty" });
+    }
+
+    const validSpecial = ["global", "direct", "auto"];
+    for (const { proxyId } of body.assignments) {
+      if (!validSpecial.includes(proxyId) && !proxyPool.getById(proxyId)) {
+        c.status(400);
+        return c.json({ error: `Invalid proxyId: "${proxyId}". Use 'global', 'direct', 'auto', or a valid proxy ID.` });
+      }
+    }
+
+    proxyPool.bulkAssign(body.assignments);
+    return c.json({ success: true, applied: body.assignments.length });
+  });
+
+  // Assign by rule (e.g. round-robin distribution)
+  app.post("/api/proxies/assign-rule", async (c) => {
+    const body = await c.req.json<{
+      accountIds?: string[];
+      rule?: string;
+      targetProxyIds?: string[];
+    }>();
+
+    if (!Array.isArray(body.accountIds) || body.accountIds.length === 0) {
+      c.status(400);
+      return c.json({ error: "accountIds array is required" });
+    }
+    if (!Array.isArray(body.targetProxyIds) || body.targetProxyIds.length === 0) {
+      c.status(400);
+      return c.json({ error: "targetProxyIds array is required" });
+    }
+    if (body.rule !== "round-robin") {
+      c.status(400);
+      return c.json({ error: `Unsupported rule: "${body.rule ?? ""}". Supported: "round-robin".` });
+    }
+
+    // Validate all target proxy IDs
+    const validSpecial = ["global", "direct", "auto"];
+    for (const pid of body.targetProxyIds) {
+      if (!validSpecial.includes(pid) && !proxyPool.getById(pid)) {
+        c.status(400);
+        return c.json({ error: `Invalid targetProxyId: "${pid}"` });
+      }
+    }
+
+    // Distribute accounts evenly across target proxies
+    const assignments: Array<{ accountId: string; proxyId: string }> = [];
+    for (let i = 0; i < body.accountIds.length; i++) {
+      assignments.push({
+        accountId: body.accountIds[i],
+        proxyId: body.targetProxyIds[i % body.targetProxyIds.length],
+      });
+    }
+
+    proxyPool.bulkAssign(assignments);
+    return c.json({ success: true, applied: assignments.length, assignments });
+  });
+
+  // Export assignments (by email for portability)
+  app.get("/api/proxies/assignments/export", (c) => {
+    const allAssignments = proxyPool.getAllAssignments();
+    const accounts = accountPool ? accountPool.getAccounts() : [];
+    const emailMap = new Map(accounts.map((a) => [a.id, a.email]));
+
+    const exported = allAssignments
+      .map((a) => ({
+        email: emailMap.get(a.accountId) ?? null,
+        proxyId: a.proxyId,
+      }))
+      .filter((a): a is { email: string; proxyId: string } => a.email !== null);
+
+    return c.json({ assignments: exported });
+  });
+
+  // Import assignments preview (does NOT apply)
+  app.post("/api/proxies/assignments/import", async (c) => {
+    const body = await c.req.json<{
+      assignments?: Array<{ email: string; proxyId: string }>;
+    }>();
+
+    if (!Array.isArray(body.assignments)) {
+      c.status(400);
+      return c.json({ error: "assignments array is required" });
+    }
+
+    const accounts = accountPool ? accountPool.getAccounts() : [];
+    const emailToAccount = new Map(
+      accounts
+        .filter((a) => a.email !== null)
+        .map((a) => [a.email, a] as const),
+    );
+
+    const changes: Array<{
+      email: string;
+      accountId: string;
+      from: string;
+      to: string;
+    }> = [];
+    let unchanged = 0;
+
+    for (const { email, proxyId } of body.assignments) {
+      const account = emailToAccount.get(email);
+      if (!account) continue; // skip unknown emails
+
+      const currentProxyId = proxyPool.getAssignment(account.id);
+      if (currentProxyId === proxyId) {
+        unchanged++;
+      } else {
+        changes.push({
+          email,
+          accountId: account.id,
+          from: currentProxyId,
+          to: proxyId,
+        });
+      }
+    }
+
+    return c.json({ changes, unchanged });
+  });
+
+  // Apply imported assignments (same as bulk assign)
+  app.post("/api/proxies/assignments/apply", async (c) => {
+    const body = await c.req.json<{
+      assignments?: Array<{ accountId: string; proxyId: string }>;
+    }>();
+
+    if (!Array.isArray(body.assignments) || body.assignments.length === 0) {
+      c.status(400);
+      return c.json({ error: "assignments array is required and must not be empty" });
+    }
+
+    const validSpecial = ["global", "direct", "auto"];
+    for (const { proxyId } of body.assignments) {
+      if (!validSpecial.includes(proxyId) && !proxyPool.getById(proxyId)) {
+        c.status(400);
+        return c.json({ error: `Invalid proxyId: "${proxyId}"` });
+      }
+    }
+
+    proxyPool.bulkAssign(body.assignments);
+    return c.json({ success: true, applied: body.assignments.length });
   });
 
   return app;

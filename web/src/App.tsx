@@ -1,3 +1,4 @@
+import { useState, useEffect } from "preact/hooks";
 import { I18nProvider } from "../../shared/i18n/context";
 import { ThemeProvider } from "../../shared/theme/context";
 import { Header } from "./components/Header";
@@ -8,6 +9,7 @@ import { ApiConfig } from "./components/ApiConfig";
 import { AnthropicSetup } from "./components/AnthropicSetup";
 import { CodeExamples } from "./components/CodeExamples";
 import { Footer } from "./components/Footer";
+import { ProxySettings } from "./pages/ProxySettings";
 import { useAccounts } from "../../shared/hooks/use-accounts";
 import { useProxies } from "../../shared/hooks/use-proxies";
 import { useStatus } from "../../shared/hooks/use-status";
@@ -122,12 +124,44 @@ function Dashboard() {
   );
 }
 
+function useHash(): string {
+  const [hash, setHash] = useState(location.hash);
+  useEffect(() => {
+    const handler = () => setHash(location.hash);
+    window.addEventListener("hashchange", handler);
+    return () => window.removeEventListener("hashchange", handler);
+  }, []);
+  return hash;
+}
+
 export function App() {
+  const hash = useHash();
+  const isProxySettings = hash === "#/proxy-settings";
+
   return (
     <I18nProvider>
       <ThemeProvider>
-        <Dashboard />
+        {isProxySettings ? <ProxySettingsPage /> : <Dashboard />}
       </ThemeProvider>
     </I18nProvider>
+  );
+}
+
+function ProxySettingsPage() {
+  const update = useUpdateMessage();
+
+  return (
+    <>
+      <Header
+        onAddAccount={() => { location.hash = ""; }}
+        onCheckUpdate={update.checkForUpdate}
+        checking={update.checking}
+        updateStatusMsg={update.msg}
+        updateStatusColor={update.color}
+        version={update.status?.proxy.version ?? null}
+        isProxySettings
+      />
+      <ProxySettings />
+    </>
   );
 }
