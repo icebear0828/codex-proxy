@@ -2,8 +2,9 @@ FROM node:20-slim
 
 # curl: needed by setup-curl.ts and full-update.ts
 # unzip: needed by full-update.ts to extract Codex.app
+# gosu: needed by entrypoint to drop from root to node user
 RUN apt-get update && \
-    apt-get install -y --no-install-recommends curl unzip ca-certificates && \
+    apt-get install -y --no-install-recommends curl unzip ca-certificates gosu && \
     rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
@@ -30,14 +31,16 @@ RUN cd web && npm run build && cd .. && npx tsc
 # 5) Prune dev deps, re-add tsx (needed at runtime by update-checker fork())
 RUN npm prune --omit=dev && npm install --no-save tsx
 
-VOLUME /app/data
 EXPOSE 8080
 
-# Ensure writable directories for non-root user
-RUN mkdir -p /app/data && chown -R node:node /app/data /app/config
+# Ensure data dir exists in the image (bind mount may override at runtime)
+RUN mkdir -p /app/data
 
-USER node
+COPY docker-entrypoint.sh /
+RUN chmod +x /docker-entrypoint.sh
+
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
   CMD curl -fs http://localhost:8080/health || exit 1
 
+ENTRYPOINT ["/docker-entrypoint.sh"]
 CMD ["node", "dist/index.js"]
