@@ -40,7 +40,10 @@ function useUpdateMessage() {
       parts.push(`Codex: ${r.codex.error}`);
       color = "text-red-500";
     } else if (r.codex_update_in_progress) {
-      parts.push(t("fingerprintUpdated"));
+      parts.push(t("fingerprintUpdating"));
+    } else if (r.codex?.version_changed) {
+      parts.push(`Codex: v${r.codex.current_version}`);
+      color = "text-blue-500";
     }
 
     msg = parts.length > 0 ? parts.join(" · ") : t("upToDate");
@@ -71,6 +74,7 @@ function Dashboard() {
         checking={update.checking}
         updateStatusMsg={update.msg}
         updateStatusColor={update.color}
+        version={update.status?.proxy.version ?? null}
       />
       <main class="flex-grow px-4 md:px-8 lg:px-40 py-8 flex justify-center">
         <div class="flex flex-col w-full max-w-[960px] gap-6">

@@ -116,6 +116,13 @@ curl http://localhost:8080/v1/chat/completions \
 - **稳定连接** — 自动对齐 Codex Desktop 请求特征，Cookie 持久化减少重复验证
 - **Web 控制面板** — 账号管理、用量监控、状态总览，中英双语
 
+### 3. 🌐 代理池 (Proxy Pool)
+- **Per-Account 代理路由** — 为不同账号配置不同的上游代理，实现 IP 多样化和风险隔离
+- **四种分配模式** — Global Default（全局代理）、Direct（直连）、Auto（Round-Robin 轮转）、指定代理
+- **健康检查** — 定时（默认 5 分钟）+ 手动，通过 ipify API 获取出口 IP 和延迟
+- **不可达自动标记** — 代理不可达时自动标记为 unreachable，不参与自动轮转
+- **Dashboard 管理面板** — 添加/删除/检查/启用/禁用代理，每个账号可选择代理或模式
+
 ## 🏗️ 技术架构 (Architecture)
 
 ```
@@ -309,6 +316,17 @@ server:
 | `/auth/accounts` | GET | 账号列表（`?quota=true` 含配额） |
 | `/auth/accounts/login` | GET | OAuth 登录入口 |
 | `/debug/fingerprint` | GET | 调试：查看当前伪装头信息 |
+| `/api/proxies` | GET | 代理池列表（含分配信息） |
+| `/api/proxies` | POST | 添加代理（HTTP/HTTPS/SOCKS5） |
+| `/api/proxies/:id` | PUT | 更新代理配置 |
+| `/api/proxies/:id` | DELETE | 删除代理 |
+| `/api/proxies/:id/check` | POST | 单个代理健康检查 |
+| `/api/proxies/:id/enable` | POST | 启用代理 |
+| `/api/proxies/:id/disable` | POST | 禁用代理 |
+| `/api/proxies/check-all` | POST | 全部代理健康检查 |
+| `/api/proxies/assign` | POST | 为账号分配代理 |
+| `/api/proxies/assign/:accountId` | DELETE | 取消账号代理分配 |
+| `/api/proxies/settings` | PUT | 更新代理池全局设置 |
 
 ## 🔧 命令 (Commands)
 

@@ -109,6 +109,13 @@ curl http://localhost:8080/v1/chat/completions \
 - **Auto token refresh** — JWT renewed automatically before expiry
 - **Real-time quota monitoring** — dashboard shows remaining usage per account
 
+### 3. 🌐 Proxy Pool
+- **Per-account proxy routing** — assign different upstream proxies to different accounts for IP diversity and risk isolation
+- **Four assignment modes** — Global Default, Direct (no proxy), Auto (round-robin rotation), or a specific proxy
+- **Health checks** — scheduled (default every 5 min) + manual, reports exit IP and latency via ipify API
+- **Auto-mark unreachable** — unreachable proxies are automatically flagged and excluded from auto-rotation
+- **Dashboard management** — add/remove/check/enable/disable proxies, per-account proxy selector
+
 ### 3. 🛡️ Anti-Detection & Protocol Impersonation
 - **Chrome TLS fingerprint** — curl-impersonate replicates the full Chrome 136 TLS handshake
 - **Desktop header replication** — `originator`, `User-Agent`, `sec-ch-*` headers in exact Codex Desktop order
@@ -292,6 +299,17 @@ All configuration is in `config/default.yaml`:
 | `/auth/accounts` | GET | Account list and quota |
 | `/auth/login` | GET | OAuth login entry |
 | `/debug/fingerprint` | GET | Debug: view current impersonation headers |
+| `/api/proxies` | GET | Proxy pool list (with assignments) |
+| `/api/proxies` | POST | Add proxy (HTTP/HTTPS/SOCKS5) |
+| `/api/proxies/:id` | PUT | Update proxy config |
+| `/api/proxies/:id` | DELETE | Remove proxy |
+| `/api/proxies/:id/check` | POST | Health check single proxy |
+| `/api/proxies/:id/enable` | POST | Enable proxy |
+| `/api/proxies/:id/disable` | POST | Disable proxy |
+| `/api/proxies/check-all` | POST | Health check all proxies |
+| `/api/proxies/assign` | POST | Assign proxy to account |
+| `/api/proxies/assign/:accountId` | DELETE | Unassign proxy from account |
+| `/api/proxies/settings` | PUT | Update proxy pool settings |
 
 ## 🔧 Commands
 

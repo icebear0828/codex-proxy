@@ -19,9 +19,10 @@ interface HeaderProps {
   checking: boolean;
   updateStatusMsg: string | null;
   updateStatusColor: string;
+  version: string | null;
 }
 
-export function Header({ onAddAccount, onCheckUpdate, checking, updateStatusMsg, updateStatusColor }: HeaderProps) {
+export function Header({ onAddAccount, onCheckUpdate, checking, updateStatusMsg, updateStatusColor, version }: HeaderProps) {
   const { lang, toggleLang, t } = useI18n();
   const { isDark, toggle: toggleTheme } = useTheme();
 
@@ -49,6 +50,9 @@ export function Header({ onAddAccount, onCheckUpdate, checking, updateStatusMsg,
                 <span class="invisible col-start-1 row-start-1">Server Online</span>
                 <span class="col-start-1 row-start-1">{t("serverOnline")}</span>
               </span>
+              {version && (
+                <span class="text-[0.65rem] font-mono text-primary/70">v{version}</span>
+              )}
             </div>
             {/* Star on GitHub */}
             <a
@@ -77,9 +81,12 @@ export function Header({ onAddAccount, onCheckUpdate, checking, updateStatusMsg,
             </button>
             {/* Update status message */}
             {updateStatusMsg && !checking && (
-              <span class={`hidden sm:inline text-xs font-medium ${updateStatusColor}`}>
+              <button
+                onClick={onCheckUpdate}
+                class={`hidden sm:inline text-xs font-medium ${updateStatusColor} hover:underline`}
+              >
                 {updateStatusMsg}
-              </span>
+              </button>
             )}
             {/* Language Toggle */}
             <button

@@ -31,6 +31,7 @@ export interface CheckResult {
     update_available: boolean;
     current_version: string;
     latest_version: string | null;
+    version_changed?: boolean;
     error?: string;
   };
   proxy_update_in_progress: boolean;

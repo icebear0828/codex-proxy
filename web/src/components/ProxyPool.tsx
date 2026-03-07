@@ -20,7 +20,7 @@ const statusStyles: Record<string, [string, TranslationKey]> = {
   ],
 };
 
-const inputCls = "px-3 py-2 text-sm border border-gray-200 dark:border-border-dark rounded-lg bg-transparent focus:outline-none focus:ring-1 focus:ring-primary";
+const inputCls = "px-3 py-2 text-sm border border-gray-200 dark:border-border-dark rounded-lg bg-white dark:bg-bg-dark text-slate-700 dark:text-text-main focus:outline-none focus:ring-1 focus:ring-primary";
 
 interface ProxyPoolProps {
   proxies: ProxiesState;

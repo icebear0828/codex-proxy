@@ -143,7 +143,7 @@ export function AccountCard({ account, index, onDelete, proxies, onProxyChange }
             onChange={(e) =>
               onProxyChange(account.id, (e.target as HTMLSelectElement).value)
             }
-            class="text-xs px-2 py-1 rounded-md border border-gray-200 dark:border-border-dark bg-transparent focus:outline-none focus:ring-1 focus:ring-primary cursor-pointer"
+            class="text-xs px-2 py-1 rounded-md border border-gray-200 dark:border-border-dark bg-white dark:bg-bg-dark text-slate-700 dark:text-text-main focus:outline-none focus:ring-1 focus:ring-primary cursor-pointer"
           >
             <option value="global">{t("globalDefault")}</option>
             <option value="direct">{t("directNoProxy")}</option>

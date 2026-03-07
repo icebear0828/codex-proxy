@@ -151,7 +151,7 @@ export function createWebRoutes(accountPool: AccountPool): Hono {
   app.post("/admin/check-update", async (c) => {
     const results: {
       proxy?: { commits_behind: number; current_commit: string | null; latest_commit: string | null; update_applied?: boolean; error?: string };
-      codex?: { update_available: boolean; current_version: string; latest_version: string | null; error?: string };
+      codex?: { update_available: boolean; current_version: string; latest_version: string | null; version_changed?: boolean; error?: string };
     } = {};
 
     // 1. Proxy self-update check
@@ -183,11 +183,13 @@ export function createWebRoutes(accountPool: AccountPool): Hono {
     // 2. Codex fingerprint check
     if (!isEmbedded()) {
       try {
+        const prevVersion = getUpdateState()?.current_version ?? null;
         const codexState = await checkForUpdate();
         results.codex = {
           update_available: codexState.update_available,
           current_version: codexState.current_version,
           latest_version: codexState.latest_version,
+          version_changed: prevVersion !== null && codexState.current_version !== prevVersion,
         };
       } catch (err) {
         results.codex = {
