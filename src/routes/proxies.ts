@@ -18,7 +18,7 @@ import { Hono } from "hono";
 import type { ProxyPool } from "../proxy/proxy-pool.js";
 import type { AccountPool } from "../auth/account-pool.js";
 
-export function createProxyRoutes(proxyPool: ProxyPool, accountPool?: AccountPool): Hono {
+export function createProxyRoutes(proxyPool: ProxyPool, accountPool: AccountPool): Hono {
   const app = new Hono();
 
   // List all proxies + assignments (credentials masked)
@@ -189,17 +189,19 @@ export function createProxyRoutes(proxyPool: ProxyPool, accountPool?: AccountPoo
 
   // ── Bulk Assignment Endpoints ────────────────────────────────────
 
+  /** Check if a proxyId is valid (special keyword or existing proxy). */
+  const isValidProxyId = (proxyId: string): boolean =>
+    ["global", "direct", "auto"].includes(proxyId) || !!proxyPool.getById(proxyId);
+
   // List all accounts with their proxy assignments
   app.get("/api/proxies/assignments", (c) => {
-    const accounts = accountPool
-      ? accountPool.getAccounts().map((a) => ({
-          id: a.id,
-          email: a.email,
-          status: a.status,
-          proxyId: proxyPool.getAssignment(a.id),
-          proxyName: proxyPool.getAssignmentDisplayName(a.id),
-        }))
-      : [];
+    const accounts = accountPool.getAccounts().map((a) => ({
+      id: a.id,
+      email: a.email,
+      status: a.status,
+      proxyId: proxyPool.getAssignment(a.id),
+      proxyName: proxyPool.getAssignmentDisplayName(a.id),
+    }));
 
     return c.json({
       accounts,
@@ -218,9 +220,8 @@ export function createProxyRoutes(proxyPool: ProxyPool, accountPool?: AccountPoo
       return c.json({ error: "assignments array is required and must not be empty" });
     }
 
-    const validSpecial = ["global", "direct", "auto"];
     for (const { proxyId } of body.assignments) {
-      if (!validSpecial.includes(proxyId) && !proxyPool.getById(proxyId)) {
+      if (!isValidProxyId(proxyId)) {
         c.status(400);
         return c.json({ error: `Invalid proxyId: "${proxyId}". Use 'global', 'direct', 'auto', or a valid proxy ID.` });
       }
@@ -251,10 +252,8 @@ export function createProxyRoutes(proxyPool: ProxyPool, accountPool?: AccountPoo
       return c.json({ error: `Unsupported rule: "${body.rule ?? ""}". Supported: "round-robin".` });
     }
 
-    // Validate all target proxy IDs
-    const validSpecial = ["global", "direct", "auto"];
     for (const pid of body.targetProxyIds) {
-      if (!validSpecial.includes(pid) && !proxyPool.getById(pid)) {
+      if (!isValidProxyId(pid)) {
         c.status(400);
         return c.json({ error: `Invalid targetProxyId: "${pid}"` });
       }
@@ -276,8 +275,7 @@ export function createProxyRoutes(proxyPool: ProxyPool, accountPool?: AccountPoo
   // Export assignments (by email for portability)
   app.get("/api/proxies/assignments/export", (c) => {
     const allAssignments = proxyPool.getAllAssignments();
-    const accounts = accountPool ? accountPool.getAccounts() : [];
-    const emailMap = new Map(accounts.map((a) => [a.id, a.email]));
+    const emailMap = new Map(accountPool.getAccounts().map((a) => [a.id, a.email]));
 
     const exported = allAssignments
       .map((a) => ({
@@ -300,9 +298,8 @@ export function createProxyRoutes(proxyPool: ProxyPool, accountPool?: AccountPoo
       return c.json({ error: "assignments array is required" });
     }
 
-    const accounts = accountPool ? accountPool.getAccounts() : [];
     const emailToAccount = new Map(
-      accounts
+      accountPool.getAccounts()
         .filter((a) => a.email !== null)
         .map((a) => [a.email, a] as const),
     );
@@ -346,9 +343,8 @@ export function createProxyRoutes(proxyPool: ProxyPool, accountPool?: AccountPoo
       return c.json({ error: "assignments array is required and must not be empty" });
     }
 
-    const validSpecial = ["global", "direct", "auto"];
     for (const { proxyId } of body.assignments) {
-      if (!validSpecial.includes(proxyId) && !proxyPool.getById(proxyId)) {
+      if (!isValidProxyId(proxyId)) {
         c.status(400);
         return c.json({ error: `Invalid proxyId: "${proxyId}"` });
       }

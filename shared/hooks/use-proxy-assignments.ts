@@ -50,14 +50,14 @@ export function useProxyAssignments(): ProxyAssignmentsState {
 
   const assignBulk = useCallback(
     async (assignments: Array<{ accountId: string; proxyId: string }>) => {
-      try {
-        await fetch("/api/proxies/assign-bulk", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ assignments }),
-        });
-      } catch {
-        // network error
+      const resp = await fetch("/api/proxies/assign-bulk", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ assignments }),
+      });
+      if (!resp.ok) {
+        const err = await resp.json().catch(() => ({ error: "Request failed" }));
+        throw new Error((err as { error?: string }).error ?? "Request failed");
       }
       await refresh();
     },
@@ -66,14 +66,14 @@ export function useProxyAssignments(): ProxyAssignmentsState {
 
   const assignRule = useCallback(
     async (accountIds: string[], rule: string, targetProxyIds: string[]) => {
-      try {
-        await fetch("/api/proxies/assign-rule", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ accountIds, rule, targetProxyIds }),
-        });
-      } catch {
-        // network error
+      const resp = await fetch("/api/proxies/assign-rule", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ accountIds, rule, targetProxyIds }),
+      });
+      if (!resp.ok) {
+        const err = await resp.json().catch(() => ({ error: "Request failed" }));
+        throw new Error((err as { error?: string }).error ?? "Request failed");
       }
       await refresh();
     },
@@ -81,42 +81,36 @@ export function useProxyAssignments(): ProxyAssignmentsState {
   );
 
   const exportAssignments = useCallback(async (): Promise<Array<{ email: string; proxyId: string }>> => {
-    try {
-      const resp = await fetch("/api/proxies/assignments/export");
-      const data: { assignments?: Array<{ email: string; proxyId: string }> } = await resp.json();
-      return data.assignments || [];
-    } catch {
-      return [];
-    }
+    const resp = await fetch("/api/proxies/assignments/export");
+    if (!resp.ok) return [];
+    const data: { assignments?: Array<{ email: string; proxyId: string }> } = await resp.json();
+    return data.assignments || [];
   }, []);
 
   const importPreview = useCallback(
     async (data: Array<{ email: string; proxyId: string }>): Promise<ImportDiff | null> => {
-      try {
-        const resp = await fetch("/api/proxies/assignments/import", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ assignments: data }),
-        });
-        const result: ImportDiff = await resp.json();
-        return result;
-      } catch {
-        return null;
-      }
+      const resp = await fetch("/api/proxies/assignments/import", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ assignments: data }),
+      });
+      if (!resp.ok) return null;
+      const result: ImportDiff = await resp.json();
+      return result;
     },
     [],
   );
 
   const applyImport = useCallback(
     async (assignments: Array<{ accountId: string; proxyId: string }>) => {
-      try {
-        await fetch("/api/proxies/assignments/apply", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ assignments }),
-        });
-      } catch {
-        // network error
+      const resp = await fetch("/api/proxies/assignments/apply", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ assignments }),
+      });
+      if (!resp.ok) {
+        const err = await resp.json().catch(() => ({ error: "Request failed" }));
+        throw new Error((err as { error?: string }).error ?? "Request failed");
       }
       await refresh();
     },

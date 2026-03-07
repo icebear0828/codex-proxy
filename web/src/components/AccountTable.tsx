@@ -78,6 +78,8 @@ export function AccountTable({
   const totalPages = Math.max(1, Math.ceil(totalCount / PAGE_SIZE));
   const safePage = Math.min(page, totalPages - 1);
   const pageAccounts = filtered.slice(safePage * PAGE_SIZE, (safePage + 1) * PAGE_SIZE);
+  const pageAccountsRef = useRef(pageAccounts);
+  pageAccountsRef.current = pageAccounts;
 
   // Reset page when filters change
   const handleSearch = useCallback((value: string) => {
@@ -97,14 +99,15 @@ export function AccountTable({
   const toggleSelect = useCallback(
     (id: string, index: number, shiftKey: boolean) => {
       const newSet = new Set(selectedIds);
+      const currentPage = pageAccountsRef.current;
 
       if (shiftKey && lastClickedIndex.current !== null) {
         // Range select
         const start = Math.min(lastClickedIndex.current, index);
         const end = Math.max(lastClickedIndex.current, index);
         for (let i = start; i <= end; i++) {
-          if (pageAccounts[i]) {
-            newSet.add(pageAccounts[i].id);
+          if (currentPage[i]) {
+            newSet.add(currentPage[i].id);
           }
         }
       } else {
@@ -118,11 +121,12 @@ export function AccountTable({
       lastClickedIndex.current = index;
       onSelectionChange(newSet);
     },
-    [selectedIds, onSelectionChange, pageAccounts],
+    [selectedIds, onSelectionChange],
   );
 
   const toggleSelectAll = useCallback(() => {
-    const pageIds = pageAccounts.map((a) => a.id);
+    const currentPage = pageAccountsRef.current;
+    const pageIds = currentPage.map((a) => a.id);
     const allSelected = pageIds.every((id) => selectedIds.has(id));
     const newSet = new Set(selectedIds);
     if (allSelected) {
@@ -131,7 +135,7 @@ export function AccountTable({
       for (const id of pageIds) newSet.add(id);
     }
     onSelectionChange(newSet);
-  }, [selectedIds, onSelectionChange, pageAccounts]);
+  }, [selectedIds, onSelectionChange]);
 
   const allPageSelected = pageAccounts.length > 0 && pageAccounts.every((a) => selectedIds.has(a.id));
 

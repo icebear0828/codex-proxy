@@ -20,7 +20,7 @@ export function ProxySettings() {
     async (accountId: string, proxyId: string) => {
       await data.assignBulk([{ accountId, proxyId }]);
     },
-    [data],
+    [data.assignBulk],
   );
 
   // Bulk assign all selected to a single proxy
@@ -30,7 +30,7 @@ export function ProxySettings() {
       await data.assignBulk(assignments);
       setSelectedIds(new Set());
     },
-    [selectedIds, data],
+    [selectedIds, data.assignBulk],
   );
 
   // Even distribute selected across all active proxies
@@ -41,7 +41,7 @@ export function ProxySettings() {
     const ids = Array.from(selectedIds);
     await data.assignRule(ids, "round-robin", activeProxies.map((p) => p.id));
     setSelectedIds(new Set());
-  }, [selectedIds, data]);
+  }, [selectedIds, data.proxies, data.assignRule]);
 
   // Rule-based assignment
   const handleRuleAssign = useCallback(
@@ -51,7 +51,7 @@ export function ProxySettings() {
       setSelectedIds(new Set());
       setShowRuleAssign(false);
     },
-    [selectedIds, data],
+    [selectedIds, data.assignRule],
   );
 
   if (data.loading) {
