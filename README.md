@@ -58,6 +58,12 @@ cd codex-proxy
 ### Docker（推荐，所有平台通用）
 
 ```bash
+# macOS / Linux
+cp .env.example .env
+
+# Windows (PowerShell)
+# copy .env.example .env
+
 docker compose up -d
 # 打开 http://localhost:8080 登录
 ```

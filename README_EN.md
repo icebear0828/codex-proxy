@@ -58,6 +58,12 @@ cd codex-proxy
 #### Docker (Recommended)
 
 ```bash
+# macOS / Linux
+cp .env.example .env
+
+# Windows (PowerShell)
+# copy .env.example .env
+
 docker compose up -d
 # Open http://localhost:8080 to log in
 ```
