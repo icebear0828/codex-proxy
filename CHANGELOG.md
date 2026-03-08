@@ -8,6 +8,7 @@
 
 ### Fixed
 
+- Dockerfile HEALTHCHECK 端口改为 `${PORT:-8080}`，修复自定义 PORT 时健康检查永远失败导致容器重启循环的问题 (#40)
 - README Docker 快速开始补充 `cp .env.example .env` 步骤，修复新用户因缺少 `.env` 文件导致 `docker compose up -d` 启动失败的问题 (#38)
 - 识别 `response.output_item.done`、`response.incomplete`、`response.queued` Codex SSE 事件，消除 "Unknown event" 日志噪音
 - 流式 SSE 请求不再设置 `--max-time` 墙钟超时，修复思考链（reasoning/thinking）在 60 秒处中断的问题；连接保护由 header 超时 + AbortSignal 提供，非流式请求（models、usage）超时不受影响
