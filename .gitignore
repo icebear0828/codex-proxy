@@ -28,3 +28,7 @@ stitch-designs/
 stitch-screens/
 CLAUDE.md
 *.tar.gz
+
+
+#Ignore vscode AI rules
+.github\instructions\codacy.instructions.md
