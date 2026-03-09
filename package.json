@@ -32,6 +32,7 @@
   },
   "devDependencies": {
     "@electron/asar": "^3.2.0",
+    "@preact/preset-vite": "^2.10.3",
     "@types/js-yaml": "^4.0.0",
     "@types/node": "^22.0.0",
     "electron-to-chromium": "^1.5.302",

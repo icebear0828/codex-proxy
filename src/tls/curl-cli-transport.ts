@@ -14,6 +14,18 @@ import type { TlsTransport, TlsTransportResponse } from "./transport.js";
 const STATUS_SEPARATOR = "\n__CURL_HTTP_STATUS__";
 const HEADER_TIMEOUT_MS = 30_000;
 
+function normalizeHeadersForCurl(headers: Record<string, string>): Record<string, string> {
+  const normalized = { ...headers };
+
+  // Windows/system curl often lacks brotli/zstd support. If we advertise them
+  // while also using --compressed, curl aborts on OAuth/auth endpoints.
+  if (!curlIsImpersonate() && normalized["Accept-Encoding"]) {
+    normalized["Accept-Encoding"] = "gzip, deflate";
+  }
+
+  return normalized;
+}
+
 export class CurlCliTransport implements TlsTransport {
   /**
    * Streaming POST — spawns curl with -i to capture headers + stream body.
@@ -28,6 +40,7 @@ export class CurlCliTransport implements TlsTransport {
     proxyUrl?: string | null,
   ): Promise<TlsTransportResponse> {
     return new Promise((resolve, reject) => {
+      const normalizedHeaders = normalizeHeadersForCurl(headers);
       const args = [
         ...getChromeTlsArgs(),
         ...resolveProxyArgs(proxyUrl),
@@ -43,7 +56,7 @@ export class CurlCliTransport implements TlsTransport {
         args.push("--max-time", String(timeoutSec));
       }
 
-      for (const [key, value] of Object.entries(headers)) {
+      for (const [key, value] of Object.entries(normalizedHeaders)) {
         args.push("-H", `${key}: ${value}`);
       }
       // Suppress curl's auto Expect: 100-continue (Chromium never sends it)
@@ -162,6 +175,7 @@ export class CurlCliTransport implements TlsTransport {
     timeoutSec = 30,
     proxyUrl?: string | null,
   ): Promise<{ status: number; body: string }> {
+    const normalizedHeaders = normalizeHeadersForCurl(headers);
     const args = [
       ...getChromeTlsArgs(),
       ...resolveProxyArgs(proxyUrl),
@@ -170,7 +184,7 @@ export class CurlCliTransport implements TlsTransport {
       "--max-time", String(timeoutSec),
     ];
 
-    for (const [key, value] of Object.entries(headers)) {
+    for (const [key, value] of Object.entries(normalizedHeaders)) {
       args.push("-H", `${key}: ${value}`);
     }
     args.push("-H", "Expect:");
@@ -191,6 +205,7 @@ export class CurlCliTransport implements TlsTransport {
     timeoutSec = 30,
     proxyUrl?: string | null,
   ): Promise<{ status: number; body: string }> {
+    const normalizedHeaders = normalizeHeadersForCurl(headers);
     const args = [
       ...getChromeTlsArgs(),
       ...resolveProxyArgs(proxyUrl),
@@ -200,7 +215,7 @@ export class CurlCliTransport implements TlsTransport {
       "-X", "POST",
     ];
 
-    for (const [key, value] of Object.entries(headers)) {
+    for (const [key, value] of Object.entries(normalizedHeaders)) {
       args.push("-H", `${key}: ${value}`);
     }
     args.push("-H", "Expect:");

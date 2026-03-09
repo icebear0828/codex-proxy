@@ -41,6 +41,124 @@ interface PendingSession {
   createdAt: number;
 }
 
+function looksLikeCloudflareChallenge(body: string): boolean {
+  const lower = body.toLowerCase();
+  return lower.includes("cf-mitigated") ||
+    lower.includes("cloudflare") ||
+    lower.includes("attention required") ||
+    lower.includes("just a moment");
+}
+
+function shouldRetryAuthDirect(errOrResp: { status?: number; body?: string; message?: string }): boolean {
+  if (typeof errOrResp.status === "number" && errOrResp.status === 403) {
+    return looksLikeCloudflareChallenge(errOrResp.body ?? "");
+  }
+
+  const msg = (errOrResp.message ?? "").toLowerCase();
+  return msg.includes("schannel") ||
+    msg.includes("ssl/tls") ||
+    msg.includes("handshake") ||
+    msg.includes("econnreset") ||
+    msg.includes("socket hang up");
+}
+
+async function postAuthForm(body: URLSearchParams): Promise<TokenResponse> {
+  const config = getConfig();
+  const payload = body.toString();
+
+  try {
+    const resp = await curlFetchPost(
+      config.auth.oauth_token_endpoint,
+      "application/x-www-form-urlencoded",
+      payload,
+    );
+
+    if (!resp.ok) {
+      if (shouldRetryAuthDirect(resp)) {
+        console.warn("[OAuth] Token endpoint via proxy was challenged; retrying direct connection");
+        const directResp = await curlFetchPost(
+          config.auth.oauth_token_endpoint,
+          "application/x-www-form-urlencoded",
+          payload,
+          { proxyUrl: null },
+        );
+
+        if (!directResp.ok) {
+          throw new Error(`Token exchange failed (${directResp.status}): ${directResp.body}`);
+        }
+
+        return JSON.parse(directResp.body) as TokenResponse;
+      }
+
+      throw new Error(`Token exchange failed (${resp.status}): ${resp.body}`);
+    }
+
+    return JSON.parse(resp.body) as TokenResponse;
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    if (!shouldRetryAuthDirect({ message })) {
+      throw err;
+    }
+
+    console.warn("[OAuth] Token endpoint via proxy hit TLS/network issue; retrying direct connection");
+    const directResp = await curlFetchPost(
+      config.auth.oauth_token_endpoint,
+      "application/x-www-form-urlencoded",
+      payload,
+      { proxyUrl: null },
+    );
+
+    if (!directResp.ok) {
+      throw new Error(`Token exchange failed (${directResp.status}): ${directResp.body}`);
+    }
+
+    return JSON.parse(directResp.body) as TokenResponse;
+  }
+}
+
+async function postDeviceForm(url: string, body: URLSearchParams): Promise<CurlFetchResponseLike> {
+  const payload = body.toString();
+
+  try {
+    const resp = await curlFetchPost(
+      url,
+      "application/x-www-form-urlencoded",
+      payload,
+    );
+
+    if (!resp.ok && shouldRetryAuthDirect(resp)) {
+      console.warn("[OAuth] Device flow via proxy was challenged; retrying direct connection");
+      return await curlFetchPost(
+        url,
+        "application/x-www-form-urlencoded",
+        payload,
+        { proxyUrl: null },
+      );
+    }
+
+    return resp;
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    if (!shouldRetryAuthDirect({ message })) {
+      throw err;
+    }
+
+    console.warn("[OAuth] Device flow via proxy hit TLS/network issue; retrying direct connection");
+    return await curlFetchPost(
+      url,
+      "application/x-www-form-urlencoded",
+      payload,
+      { proxyUrl: null },
+    );
+  }
+}
+
+interface CurlFetchResponseLike {
+  status: number;
+  body: string;
+  ok: boolean;
+}
+
 /** In-memory store for pending OAuth sessions, keyed by `state`. */
 const pendingSessions = new Map<string, PendingSession>();
 
@@ -111,27 +229,14 @@ export async function exchangeCode(
   codeVerifier: string,
   redirectUri: string,
 ): Promise<TokenResponse> {
-  const config = getConfig();
-
   const body = new URLSearchParams({
     grant_type: "authorization_code",
-    client_id: config.auth.oauth_client_id,
+    client_id: getConfig().auth.oauth_client_id,
     code,
     redirect_uri: redirectUri,
     code_verifier: codeVerifier,
   });
-
-  const resp = await curlFetchPost(
-    config.auth.oauth_token_endpoint,
-    "application/x-www-form-urlencoded",
-    body.toString(),
-  );
-
-  if (!resp.ok) {
-    throw new Error(`Token exchange failed (${resp.status}): ${resp.body}`);
-  }
-
-  return JSON.parse(resp.body) as TokenResponse;
+  return postAuthForm(body);
 }
 
 /**
@@ -140,25 +245,12 @@ export async function exchangeCode(
 export async function refreshAccessToken(
   refreshToken: string,
 ): Promise<TokenResponse> {
-  const config = getConfig();
-
   const body = new URLSearchParams({
     grant_type: "refresh_token",
-    client_id: config.auth.oauth_client_id,
+    client_id: getConfig().auth.oauth_client_id,
     refresh_token: refreshToken,
   });
-
-  const resp = await curlFetchPost(
-    config.auth.oauth_token_endpoint,
-    "application/x-www-form-urlencoded",
-    body.toString(),
-  );
-
-  if (!resp.ok) {
-    throw new Error(`Token refresh failed (${resp.status}): ${resp.body}`);
-  }
-
-  return JSON.parse(resp.body) as TokenResponse;
+  return postAuthForm(body);
 }
 
 // ── Pending session management ─────────────────────────────────────
@@ -342,10 +434,9 @@ export async function requestDeviceCode(): Promise<DeviceCodeResponse> {
     scope: "openid profile email offline_access",
   });
 
-  const resp = await curlFetchPost(
+  const resp = await postDeviceForm(
     "https://auth.openai.com/oauth/device/code",
-    "application/x-www-form-urlencoded",
-    body.toString(),
+    body,
   );
 
   if (!resp.ok) {
@@ -368,11 +459,7 @@ export async function pollDeviceToken(deviceCode: string): Promise<TokenResponse
     client_id: config.auth.oauth_client_id,
   });
 
-  const resp = await curlFetchPost(
-    config.auth.oauth_token_endpoint,
-    "application/x-www-form-urlencoded",
-    body.toString(),
-  );
+  const resp = await postDeviceForm(config.auth.oauth_token_endpoint, body);
 
   if (!resp.ok) {
     const data = JSON.parse(resp.body) as { error?: string; error_description?: string };

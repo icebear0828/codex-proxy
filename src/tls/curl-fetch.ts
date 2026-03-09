@@ -17,14 +17,25 @@ export interface CurlFetchResponse {
   ok: boolean;
 }
 
+export interface CurlFetchOptions {
+  /**
+   * Per-request proxy override.
+   * undefined = use global default, null = direct, string = specific proxy.
+   */
+  proxyUrl?: string | null;
+}
+
 /**
  * Perform a GET request via the TLS transport.
  */
-export async function curlFetchGet(url: string): Promise<CurlFetchResponse> {
+export async function curlFetchGet(
+  url: string,
+  options?: CurlFetchOptions,
+): Promise<CurlFetchResponse> {
   const transport = getTransport();
   const headers = buildAnonymousHeaders();
 
-  const result = await transport.get(url, headers, 30);
+  const result = await transport.get(url, headers, 30, options?.proxyUrl);
   return {
     status: result.status,
     body: result.body,
@@ -39,12 +50,13 @@ export async function curlFetchPost(
   url: string,
   contentType: string,
   body: string,
+  options?: CurlFetchOptions,
 ): Promise<CurlFetchResponse> {
   const transport = getTransport();
   const headers = buildAnonymousHeaders();
   headers["Content-Type"] = contentType;
 
-  const result = await transport.simplePost(url, headers, body, 30);
+  const result = await transport.simplePost(url, headers, body, 30, options?.proxyUrl);
   return {
     status: result.status,
     body: result.body,
