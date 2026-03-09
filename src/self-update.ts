@@ -9,7 +9,7 @@ import { execFile, execFileSync } from "child_process";
 import { existsSync, readFileSync } from "fs";
 import { resolve } from "path";
 import { promisify } from "util";
-import { isEmbedded } from "./paths.js";
+import { getRootDir, isEmbedded } from "./paths.js";
 
 const execFileAsync = promisify(execFile);
 
@@ -58,7 +58,7 @@ let _checking = false;
 export function getProxyInfo(): ProxyInfo {
   let version = "unknown";
   try {
-    const pkg = JSON.parse(readFileSync(resolve(process.cwd(), "package.json"), "utf-8")) as { version?: string };
+    const pkg = JSON.parse(readFileSync(resolve(getRootDir(), "package.json"), "utf-8")) as { version?: string };
     version = pkg.version ?? "unknown";
   } catch { /* ignore */ }
 

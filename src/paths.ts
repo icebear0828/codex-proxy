@@ -8,6 +8,7 @@
 import { resolve } from "path";
 
 interface PathConfig {
+  rootDir: string;
   configDir: string;
   dataDir: string;
   binDir: string;
@@ -23,6 +24,11 @@ let _paths: PathConfig | null = null;
  */
 export function setPaths(config: PathConfig): void {
   _paths = config;
+}
+
+/** App root directory (where package.json lives). */
+export function getRootDir(): string {
+  return _paths?.rootDir ?? process.cwd();
 }
 
 /** Directory containing YAML config files. */
