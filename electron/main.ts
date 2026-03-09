@@ -115,6 +115,7 @@ app.on("ready", async () => {
 
     // 3. Set paths before starting the server
     setPaths({
+      rootDir: appRoot,
       configDir: resolve(distRoot, "config"),
       dataDir,
       binDir,
