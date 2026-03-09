@@ -26,14 +26,14 @@ export function AddAccount({ visible, onSubmitRelay, addInfo, addError }: AddAcc
   return (
     <>
       {addInfo && (
-        <p class="text-sm text-primary font-medium">{t(addInfo as TranslationKey)}</p>
+        <p class="text-sm text-primary">{t(addInfo as TranslationKey)}</p>
       )}
       {addError && (
-        <p class="text-sm text-red-500 font-medium">{t(addError as TranslationKey)}</p>
+        <p class="text-sm text-red-500">{t(addError as TranslationKey)}</p>
       )}
       {visible && (
-        <div class="card p-6">
-          <ol class="text-sm mb-5 space-y-2 list-decimal list-inside" style="color: var(--text-secondary);">
+        <section class="bg-white dark:bg-card-dark border border-gray-200 dark:border-border-dark rounded-xl p-5 shadow-sm transition-colors">
+          <ol class="text-sm text-slate-500 dark:text-text-dim mb-4 space-y-1.5 list-decimal list-inside">
             <li dangerouslySetInnerHTML={{ __html: t("addStep1") }} />
             <li dangerouslySetInnerHTML={{ __html: t("addStep2") }} />
             <li dangerouslySetInnerHTML={{ __html: t("addStep3") }} />
@@ -44,18 +44,17 @@ export function AddAccount({ visible, onSubmitRelay, addInfo, addError }: AddAcc
               value={input}
               onInput={(e) => setInput((e.target as HTMLInputElement).value)}
               placeholder={t("pasteCallback")}
-              class="input-field flex-1 px-3 py-2.5 text-sm font-mono"
+              class="flex-1 px-3 py-2.5 bg-slate-50 dark:bg-bg-dark border border-gray-200 dark:border-border-dark rounded-lg text-sm font-mono text-slate-600 dark:text-text-main focus:ring-2 focus:ring-primary/50 focus:border-primary outline-none transition-colors"
             />
             <button
               onClick={handleSubmit}
               disabled={submitting}
-              class="px-5 py-2.5 text-sm font-medium rounded-[var(--radius-button)] transition-colors duration-150 disabled:opacity-50"
-              style="background: var(--bg-input); border: 1px solid var(--border); color: var(--text-primary);"
+              class="px-4 py-2.5 bg-white dark:bg-card-dark border border-gray-200 dark:border-border-dark rounded-lg text-sm font-medium text-slate-700 dark:text-text-main hover:bg-slate-50 dark:hover:bg-border-dark transition-colors"
             >
               {submitting ? t("submitting") : t("submit")}
             </button>
           </div>
-        </div>
+        </section>
       )}
     </>
   );

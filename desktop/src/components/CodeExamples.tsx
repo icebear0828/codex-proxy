@@ -158,7 +158,7 @@ export function CodeExamples({ baseUrl, apiKey, model, reasoningEffort, serviceT
 
   const origin = typeof window !== "undefined" ? window.location.origin : "";
 
-  // Build compound model name with suffixes
+  // Build compound model name with suffixes for CLI users
   const displayModel = useMemo(() => {
     let name = model;
     if (reasoningEffort && reasoningEffort !== "medium") name += `-${reasoningEffort}`;
@@ -176,62 +176,53 @@ export function CodeExamples({ baseUrl, apiKey, model, reasoningEffort, serviceT
   const currentCode = examples[`${protocol}-${codeLang}`] || "Loading...";
   const getCode = useCallback(() => currentCode, [currentCode]);
 
+  const protoActive =
+    "px-6 py-3 text-[0.82rem] font-semibold text-primary border-b-2 border-primary bg-white dark:bg-card-dark transition-colors";
+  const protoInactive =
+    "px-6 py-3 text-[0.82rem] font-medium text-slate-500 dark:text-text-dim hover:text-slate-700 dark:hover:text-text-main hover:bg-slate-50 dark:hover:bg-[#21262d] border-b-2 border-transparent transition-colors";
+  const langActive =
+    "px-3 py-1.5 text-xs font-semibold rounded bg-white dark:bg-[#21262d] text-slate-800 dark:text-text-main shadow-sm border border-transparent dark:border-border-dark transition-all";
+  const langInactive =
+    "px-3 py-1.5 text-xs font-medium rounded text-slate-500 dark:text-text-dim hover:text-slate-700 dark:hover:text-text-main hover:bg-white/50 dark:hover:bg-[#21262d] border border-transparent transition-all";
+
   return (
     <section class="flex flex-col gap-4">
-      <h2 class="text-[0.95rem] font-semibold" style="color: var(--text-primary);">{t("integrationExamples")}</h2>
-      <div class="card overflow-hidden">
+      <h2 class="text-[0.95rem] font-bold">{t("integrationExamples")}</h2>
+      <div class="bg-white dark:bg-card-dark border border-gray-200 dark:border-border-dark rounded-xl overflow-hidden shadow-sm transition-colors">
         {/* Protocol Tabs */}
-        <div class="flex" style="border-bottom: 1px solid var(--border); background: var(--bg-input);">
+        <div class="flex border-b border-gray-200 dark:border-border-dark bg-slate-50/50 dark:bg-bg-dark/30">
           {protocols.map((p) => (
             <button
               key={p.id}
               onClick={() => setProtocol(p.id)}
-              class={`px-6 py-3 text-[0.82rem] font-medium transition-colors duration-150 border-b-2 ${
-                protocol === p.id
-                  ? "text-primary border-primary font-semibold"
-                  : "border-transparent hover:text-primary/70"
-              }`}
-              style={protocol === p.id
-                ? { background: "var(--bg-card)" }
-                : { color: "var(--text-secondary)" }
-              }
+              class={protocol === p.id ? protoActive : protoInactive}
             >
               {p.label}
             </button>
           ))}
         </div>
-
         {/* Language Tabs & Code */}
         <div class="p-5">
           <div class="flex items-center justify-between mb-4">
-            <div class="flex gap-1 p-1 rounded-lg" style="background: var(--bg-input);">
+            <div class="flex gap-2 p-1 bg-slate-100 dark:bg-bg-dark dark:border dark:border-border-dark rounded-lg">
               {langs.map((l) => (
                 <button
                   key={l.id}
                   onClick={() => setCodeLang(l.id)}
-                  class={`px-3 py-1.5 text-xs font-medium rounded transition-all duration-150 ${
-                    codeLang === l.id
-                      ? "shadow-sm font-semibold"
-                      : ""
-                  }`}
-                  style={codeLang === l.id
-                    ? { background: "var(--bg-card)", color: "var(--text-primary)", border: "1px solid var(--border)" }
-                    : { color: "var(--text-secondary)", border: "1px solid transparent" }
-                  }
+                  class={codeLang === l.id ? langActive : langInactive}
                 >
                   {l.label}
                 </button>
               ))}
             </div>
           </div>
-
           {/* Code Block */}
-          <div class="relative group rounded-lg overflow-hidden font-mono text-xs" style="background: #0d1117; border: 1px solid #21262d;">
-            <div class="absolute right-2 top-2 z-10 opacity-0 group-hover:opacity-100 transition-opacity duration-150">
+          <div class="relative group rounded-lg overflow-hidden bg-[#0d1117] text-slate-300 font-mono text-xs border border-slate-800 dark:border-border-dark">
+            <div class="absolute right-2 top-2 z-10 opacity-0 group-hover:opacity-100 transition-opacity">
               <CopyButton getText={getCode} variant="label" />
             </div>
             <div class="p-4 overflow-x-auto">
-              <pre class="m-0" style="color: #c9d1d9;"><code>{currentCode}</code></pre>
+              <pre class="m-0"><code>{currentCode}</code></pre>
             </div>
           </div>
         </div>

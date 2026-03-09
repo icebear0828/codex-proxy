@@ -1,6 +1,6 @@
 import { useI18n, useT } from "../../../shared/i18n/context";
 import { AccountCard } from "./AccountCard";
-import type { Account } from "../../../shared/types";
+import type { Account, ProxyEntry } from "../../../shared/types";
 
 interface AccountListProps {
   accounts: Account[];
@@ -9,9 +9,11 @@ interface AccountListProps {
   onRefresh: () => void;
   refreshing: boolean;
   lastUpdated: Date | null;
+  proxies?: ProxyEntry[];
+  onProxyChange?: (accountId: string, proxyId: string) => void;
 }
 
-export function AccountList({ accounts, loading, onDelete, onRefresh, refreshing, lastUpdated }: AccountListProps) {
+export function AccountList({ accounts, loading, onDelete, onRefresh, refreshing, lastUpdated, proxies, onProxyChange }: AccountListProps) {
   const t = useT();
   const { lang } = useI18n();
 
@@ -23,12 +25,12 @@ export function AccountList({ accounts, loading, onDelete, onRefresh, refreshing
     <section class="flex flex-col gap-4">
       <div class="flex items-center justify-between">
         <div class="flex flex-col gap-1">
-          <h2 class="text-[0.95rem] font-semibold tracking-tight" style="color: var(--text-primary);">{t("connectedAccounts")}</h2>
-          <p class="text-[0.8rem]" style="color: var(--text-secondary);">{t("connectedAccountsDesc")}</p>
+          <h2 class="text-[0.95rem] font-bold tracking-tight">{t("connectedAccounts")}</h2>
+          <p class="text-slate-500 dark:text-text-dim text-[0.8rem]">{t("connectedAccountsDesc")}</p>
         </div>
         <div class="flex items-center gap-2 shrink-0">
           {updatedAtText && (
-            <span class="text-[0.75rem]" style="color: var(--text-tertiary);">
+            <span class="text-[0.75rem] text-slate-400 dark:text-text-dim hidden sm:inline">
               {t("updatedAt")} {updatedAtText}
             </span>
           )}
@@ -36,8 +38,7 @@ export function AccountList({ accounts, loading, onDelete, onRefresh, refreshing
             onClick={onRefresh}
             disabled={refreshing}
             title={t("refresh")}
-            class="p-1.5 rounded-md transition-colors duration-150 hover:bg-primary/10 disabled:opacity-40 disabled:cursor-not-allowed"
-            style="color: var(--text-tertiary);"
+            class="p-1.5 text-slate-400 dark:text-text-dim hover:text-primary transition-colors rounded-md hover:bg-primary/10 disabled:opacity-40 disabled:cursor-not-allowed"
           >
             <svg
               class={`size-[18px] ${refreshing ? "animate-spin" : ""}`}
@@ -53,16 +54,16 @@ export function AccountList({ accounts, loading, onDelete, onRefresh, refreshing
       </div>
       <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
         {loading ? (
-          <div class="md:col-span-2 card text-center py-10 text-sm" style="color: var(--text-tertiary);">
+          <div class="md:col-span-2 text-center py-8 text-slate-400 dark:text-text-dim text-sm bg-white dark:bg-card-dark border border-gray-200 dark:border-border-dark rounded-xl transition-colors">
             {t("loadingAccounts")}
           </div>
         ) : accounts.length === 0 ? (
-          <div class="md:col-span-2 card text-center py-10 text-sm" style="color: var(--text-tertiary);">
+          <div class="md:col-span-2 text-center py-8 text-slate-400 dark:text-text-dim text-sm bg-white dark:bg-card-dark border border-gray-200 dark:border-border-dark rounded-xl transition-colors">
             {t("noAccounts")}
           </div>
         ) : (
           accounts.map((acct, i) => (
-            <AccountCard key={acct.id} account={acct} index={i} onDelete={onDelete} />
+            <AccountCard key={acct.id} account={acct} index={i} onDelete={onDelete} proxies={proxies} onProxyChange={onProxyChange} />
           ))
         )}
       </div>

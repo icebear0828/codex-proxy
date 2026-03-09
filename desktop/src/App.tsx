@@ -1,13 +1,17 @@
+import { useState, useEffect } from "preact/hooks";
 import { I18nProvider } from "../../shared/i18n/context";
 import { ThemeProvider } from "../../shared/theme/context";
 import { Header } from "./components/Header";
 import { AccountList } from "./components/AccountList";
 import { AddAccount } from "./components/AddAccount";
+import { ProxyPool } from "./components/ProxyPool";
 import { ApiConfig } from "./components/ApiConfig";
 import { AnthropicSetup } from "./components/AnthropicSetup";
 import { CodeExamples } from "./components/CodeExamples";
 import { Footer } from "./components/Footer";
+import { ProxySettings } from "./pages/ProxySettings";
 import { useAccounts } from "../../shared/hooks/use-accounts";
+import { useProxies } from "../../shared/hooks/use-proxies";
 import { useStatus } from "../../shared/hooks/use-status";
 import { useUpdateStatus } from "../../shared/hooks/use-update-status";
 import { useI18n } from "../../shared/i18n/context";
@@ -26,11 +30,8 @@ function useUpdateMessage() {
     if (r.proxy?.error) {
       parts.push(`Proxy: ${r.proxy.error}`);
       color = "text-red-500";
-    } else if (r.proxy?.update_applied) {
-      parts.push(t("updateApplied"));
-      color = "text-blue-500";
-    } else if (r.proxy && r.proxy.commits_behind > 0) {
-      parts.push(`Proxy: ${r.proxy.commits_behind} ${t("commits")} ${t("proxyBehind")}`);
+    } else if (r.proxy?.update_available) {
+      parts.push(t("updateAvailable"));
       color = "text-amber-500";
     }
 
@@ -38,7 +39,10 @@ function useUpdateMessage() {
       parts.push(`Codex: ${r.codex.error}`);
       color = "text-red-500";
     } else if (r.codex_update_in_progress) {
-      parts.push(t("fingerprintUpdated"));
+      parts.push(t("fingerprintUpdating"));
+    } else if (r.codex?.version_changed) {
+      parts.push(`Codex: v${r.codex.current_version}`);
+      color = "text-blue-500";
     }
 
     msg = parts.length > 0 ? parts.join(" · ") : t("upToDate");
@@ -47,13 +51,30 @@ function useUpdateMessage() {
     color = "text-red-500";
   }
 
-  return { ...update, msg, color };
+  const proxyUpdate = update.status?.proxy.update_available
+    ? {
+        mode: update.status.proxy.mode,
+        updateAvailable: true as const,
+        commits: update.status.proxy.commits,
+        release: update.status.proxy.release,
+        onApply: update.applyUpdate,
+        applying: update.applying,
+      }
+    : null;
+
+  return { ...update, msg, color, proxyUpdate };
 }
 
 function Dashboard() {
   const accounts = useAccounts();
+  const proxies = useProxies();
   const status = useStatus(accounts.list.length);
   const update = useUpdateMessage();
+
+  const handleProxyChange = async (accountId: string, proxyId: string) => {
+    accounts.patchLocal(accountId, { proxyId });
+    await proxies.assignProxy(accountId, proxyId);
+  };
 
   return (
     <>
@@ -63,9 +84,12 @@ function Dashboard() {
         checking={update.checking}
         updateStatusMsg={update.msg}
         updateStatusColor={update.color}
+        version={update.status?.proxy.version ?? null}
+        commit={update.status?.proxy.commit ?? null}
+        proxyUpdate={update.proxyUpdate}
       />
-      <main class="flex-grow px-8 lg:px-10 py-8 flex justify-center">
-        <div class="flex flex-col w-full max-w-[860px] gap-7">
+      <main class="flex-grow px-4 md:px-8 lg:px-40 py-8 flex justify-center">
+        <div class="flex flex-col w-full max-w-[960px] gap-6">
           <AddAccount
             visible={accounts.addVisible}
             onSubmitRelay={accounts.submitRelay}
@@ -79,7 +103,10 @@ function Dashboard() {
             onRefresh={accounts.refresh}
             refreshing={accounts.refreshing}
             lastUpdated={accounts.lastUpdated}
+            proxies={proxies.proxies}
+            onProxyChange={handleProxyChange}
           />
+          <ProxyPool proxies={proxies} />
           <ApiConfig
             baseUrl={status.baseUrl}
             apiKey={status.apiKey}
@@ -112,12 +139,46 @@ function Dashboard() {
   );
 }
 
+function useHash(): string {
+  const [hash, setHash] = useState(location.hash);
+  useEffect(() => {
+    const handler = () => setHash(location.hash);
+    window.addEventListener("hashchange", handler);
+    return () => window.removeEventListener("hashchange", handler);
+  }, []);
+  return hash;
+}
+
 export function App() {
+  const hash = useHash();
+  const isProxySettings = hash === "#/proxy-settings";
+
   return (
     <I18nProvider>
       <ThemeProvider>
-        <Dashboard />
+        {isProxySettings ? <ProxySettingsPage /> : <Dashboard />}
       </ThemeProvider>
     </I18nProvider>
+  );
+}
+
+function ProxySettingsPage() {
+  const update = useUpdateMessage();
+
+  return (
+    <>
+      <Header
+        onAddAccount={() => { location.hash = ""; }}
+        onCheckUpdate={update.checkForUpdate}
+        checking={update.checking}
+        updateStatusMsg={update.msg}
+        updateStatusColor={update.color}
+        version={update.status?.proxy.version ?? null}
+        commit={update.status?.proxy.commit ?? null}
+        isProxySettings
+        proxyUpdate={update.proxyUpdate}
+      />
+      <ProxySettings />
+    </>
   );
 }

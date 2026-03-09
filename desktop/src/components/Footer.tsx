@@ -13,18 +13,18 @@ export function Footer({ updateStatus }: FooterProps) {
   const codexVersion = updateStatus?.codex.current_version;
 
   return (
-    <footer class="mt-auto py-5" style="border-top: 1px solid var(--border);">
-      <div class="px-8 lg:px-10 flex flex-col items-center gap-1.5">
-        <div class="flex flex-wrap items-center justify-center gap-x-3 gap-y-1 text-[0.7rem] font-mono" style="color: var(--text-tertiary);">
+    <footer class="mt-auto border-t border-gray-200 dark:border-border-dark bg-white dark:bg-card-dark py-5 transition-colors">
+      <div class="container mx-auto px-4 flex flex-col items-center gap-2">
+        <div class="flex flex-wrap items-center justify-center gap-x-3 gap-y-1 text-[0.75rem] text-slate-400 dark:text-text-dim font-mono">
           <span>Proxy v{proxyVersion}{proxyCommit ? ` (${proxyCommit})` : ""}</span>
           {codexVersion && (
             <>
-              <span style="color: var(--border);">&middot;</span>
+              <span class="text-slate-300 dark:text-border-dark">&middot;</span>
               <span>Codex Desktop v{codexVersion}</span>
             </>
           )}
         </div>
-        <p class="text-[0.75rem]" style="color: var(--text-tertiary);">{t("footer")}</p>
+        <p class="text-[0.75rem] text-slate-400 dark:text-text-dim">{t("footer")}</p>
       </div>
     </footer>
   );

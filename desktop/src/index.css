@@ -2,92 +2,41 @@
 @tailwind components;
 @tailwind utilities;
 
-/* ── Shared design tokens ──────────────────────────────────────── */
 :root {
   --primary: 16 162 53;
   --primary-hover: 14 140 46;
-
-  /* Light mode defaults (overridden per platform below) */
-  --bg: #f6f8f6;
-  --bg-card: #ffffff;
-  --bg-input: #f1f3f1;
-  --border: #e2e5e2;
-  --border-focus: rgb(16 162 53);
-  --text-primary: #1a1a1a;
-  --text-secondary: #6b7280;
-  --text-tertiary: #9ca3af;
-  --shadow-card: 0 1px 3px rgba(0, 0, 0, 0.06);
-  --shadow-card-hover: 0 4px 12px rgba(0, 0, 0, 0.08);
-  --radius-card: 12px;
-  --radius-input: 8px;
-  --radius-button: 8px;
-  --transition: 150ms ease;
 }
 
 .dark {
   --primary: 16 163 127;
   --primary-hover: 14 140 108;
-  --bg-input: #1a1f26;
-  --text-primary: #e6edf3;
-  --text-secondary: #8b949e;
-  --text-tertiary: #6e7681;
-  --shadow-card: 0 1px 3px rgba(0, 0, 0, 0.2);
-  --shadow-card-hover: 0 4px 12px rgba(0, 0, 0, 0.3);
 }
 
-/* ── macOS platform tokens ─────────────────────────────────────── */
-.platform-mac {
-  --radius-card: 12px;
-  --radius-input: 8px;
-  --radius-button: 8px;
-}
-
-.platform-mac:not(.dark) {
-  --bg: #f6f8f6;
-  --bg-card: #ffffff;
-  --border: #e0e3e0;
-}
-
-.platform-mac.dark {
-  --bg: #0d1117;
-  --bg-card: #161b22;
-  --border: #30363d;
-}
-
-/* ── Windows platform tokens ───────────────────────────────────── */
-.platform-win {
-  --radius-card: 8px;
-  --radius-input: 4px;
-  --radius-button: 4px;
-}
-
-.platform-win:not(.dark) {
-  --bg: #f6f8f6;
-  --bg-card: #ffffff;
-  --border: #e5e7eb;
-}
-
+/* Windows dark mode overrides (macOS values are the Tailwind defaults) */
 .platform-win.dark {
-  --bg: #202020;
-  --bg-card: #2d2d2d;
-  --border: #3d3d3d;
+  --bg-dark: #202020;
+  --card-dark: #2d2d2d;
+  --border-dark: #3d3d3d;
 }
 
 /* ── macOS titlebar integration ────────────────────────────────── */
-.platform-mac header.desktop-header {
+.platform-mac header {
   -webkit-app-region: drag;
 }
 
-.platform-mac header.desktop-header button,
-.platform-mac header.desktop-header a,
-.platform-mac header.desktop-header input,
-.platform-mac header.desktop-header select {
+.platform-mac header button,
+.platform-mac header a,
+.platform-mac header input,
+.platform-mac header select {
   -webkit-app-region: no-drag;
 }
 
 /* Traffic light clearance */
-.platform-mac .header-content {
+.platform-mac header > div {
   padding-top: 6px;
+}
+
+.platform-mac header > div > div {
   padding-left: 72px;
 }
 
@@ -99,49 +48,6 @@
 
 /* ── Scrollbar styling ─────────────────────────────────────────── */
 pre::-webkit-scrollbar { height: 8px; }
-pre::-webkit-scrollbar-track { background: var(--bg-card); }
-
-.dark pre::-webkit-scrollbar-track { background: #0d1117; }
-pre::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
-pre::-webkit-scrollbar-thumb:hover { background: var(--text-tertiary); }
-
-/* ── Utility ───────────────────────────────────────────────────── */
-.card {
-  background: var(--bg-card);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-card);
-  box-shadow: var(--shadow-card);
-  transition: box-shadow var(--transition), border-color var(--transition);
-}
-
-.card:hover {
-  box-shadow: var(--shadow-card-hover);
-}
-
-.input-field {
-  background: var(--bg-input);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-input);
-  color: var(--text-primary);
-  transition: border-color var(--transition);
-  outline: none;
-}
-
-.input-field:focus {
-  border-color: var(--border-focus);
-}
-
-.btn-primary {
-  background: rgb(var(--primary));
-  color: #ffffff;
-  border-radius: var(--radius-button);
-  transition: background var(--transition), transform 100ms ease;
-}
-
-.btn-primary:hover {
-  background: rgb(var(--primary-hover));
-}
-
-.btn-primary:active {
-  transform: scale(0.97);
-}
+pre::-webkit-scrollbar-track { background: #0d1117; }
+pre::-webkit-scrollbar-thumb { background: #30363d; border-radius: 4px; }
+pre::-webkit-scrollbar-thumb:hover { background: #8b949e; }
