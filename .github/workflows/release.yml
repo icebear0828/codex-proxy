@@ -5,6 +5,11 @@ on:
     tags:
       - "v*"
   workflow_dispatch:
+    inputs:
+      tag:
+        description: "Tag to release (e.g. v1.0.11)"
+        required: true
+        type: string
 
 permissions:
   contents: write
@@ -30,6 +35,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag || github.ref }}
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -72,11 +79,14 @@ jobs:
   release:
     needs: build
     runs-on: ubuntu-latest
-    if: startsWith(github.ref, 'refs/tags/v')
+    if: startsWith(github.ref, 'refs/tags/v') || inputs.tag
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag || github.ref }}
+          fetch-depth: 0
 
       - name: Download all artifacts
         uses: actions/download-artifact@v4
@@ -84,14 +94,21 @@ jobs:
           path: artifacts
           merge-multiple: true
 
+      - name: Resolve tag
+        id: tag
+        run: |
+          TAG="${{ inputs.tag || github.ref_name }}"
+          echo "name=$TAG" >> "$GITHUB_OUTPUT"
+
       - name: Generate release notes
         id: notes
         run: |
-          PREV_TAG=$(git tag --sort=-v:refname | grep '^v' | sed -n '2p')
+          TAG="${{ steps.tag.outputs.name }}"
+          PREV_TAG=$(git tag --sort=-v:refname | grep '^v' | grep -v "^${TAG}$" | head -1)
           if [ -z "$PREV_TAG" ]; then
             BODY="Initial release"
           else
-            BODY=$(git log "${PREV_TAG}..HEAD" --no-merges --pretty=format:"%s" \
+            BODY=$(git log "${PREV_TAG}..${TAG}" --no-merges --pretty=format:"%s" \
               | grep -vE "^(chore|docs|ci)(\(.*\))?:" \
               | sed 's/^/- /')
             if [ -z "$BODY" ]; then
@@ -107,6 +124,7 @@ jobs:
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
+          tag_name: ${{ steps.tag.outputs.name }}
           body: ${{ steps.notes.outputs.NOTES }}
           draft: false
           prerelease: false

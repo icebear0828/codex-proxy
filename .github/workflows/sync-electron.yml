@@ -10,6 +10,7 @@ concurrency:
   cancel-in-progress: true
 
 permissions:
+  actions: write
   contents: write
   issues: write
 
@@ -92,6 +93,12 @@ jobs:
           else
             git push origin electron
           fi
+
+      - name: Trigger release workflow
+        if: env.BUMP == 'true'
+        run: gh workflow run release.yml -f tag="$NEW_TAG" --ref electron
+        env:
+          GH_TOKEN: ${{ github.token }}
 
       - name: Create issue on conflict
         if: env.CONFLICT == 'true'
