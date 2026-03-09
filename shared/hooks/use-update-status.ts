@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "preact/hooks";
+import { useState, useEffect, useCallback, useRef } from "preact/hooks";
 
 export interface UpdateStatus {
   proxy: {
@@ -45,12 +45,64 @@ export interface CheckResult {
   codex_update_in_progress: boolean;
 }
 
+const RESTART_POLL_INTERVAL = 2000;
+const RESTART_TIMEOUT = 30000;
+
 export function useUpdateStatus() {
   const [status, setStatus] = useState<UpdateStatus | null>(null);
   const [checking, setChecking] = useState(false);
   const [result, setResult] = useState<CheckResult | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [applying, setApplying] = useState(false);
+  const [restarting, setRestarting] = useState(false);
+  const [restartFailed, setRestartFailed] = useState(false);
+  const pollTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const clearPolling = useCallback(() => {
+    if (pollTimerRef.current) {
+      clearInterval(pollTimerRef.current);
+      pollTimerRef.current = null;
+    }
+    if (timeoutRef.current) {
+      clearTimeout(timeoutRef.current);
+      timeoutRef.current = null;
+    }
+  }, []);
+
+  // Cleanup on unmount
+  useEffect(() => clearPolling, [clearPolling]);
+
+  const startRestartPolling = useCallback(() => {
+    setRestarting(true);
+    setRestartFailed(false);
+    clearPolling();
+
+    // Wait a bit before first poll (server needs time to shut down)
+    const initialDelay = setTimeout(() => {
+      pollTimerRef.current = setInterval(async () => {
+        try {
+          const resp = await fetch("/health", { signal: AbortSignal.timeout(3000) });
+          if (resp.ok) {
+            clearPolling();
+            location.reload();
+          }
+        } catch {
+          // Server still down, keep polling
+        }
+      }, RESTART_POLL_INTERVAL);
+
+      // Timeout fallback
+      timeoutRef.current = setTimeout(() => {
+        clearPolling();
+        setRestarting(false);
+        setRestartFailed(true);
+      }, RESTART_TIMEOUT);
+    }, 2000);
+
+    // Store the initial delay timer for cleanup
+    timeoutRef.current = initialDelay;
+  }, [clearPolling]);
 
   const load = useCallback(async () => {
     try {
@@ -88,18 +140,24 @@ export function useUpdateStatus() {
     setError(null);
     try {
       const resp = await fetch("/admin/apply-update", { method: "POST" });
-      const data = await resp.json() as { started: boolean; error?: string };
+      const data = await resp.json() as { started: boolean; restarting?: boolean; error?: string };
       if (!resp.ok || !data.started) {
         setError(data.error ?? "Apply failed");
+        setApplying(false);
+      } else if (data.restarting) {
+        // Server will restart — start polling for it to come back
+        setApplying(false);
+        startRestartPolling();
       } else {
+        // Update succeeded but no auto-restart
+        setApplying(false);
         await load();
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Network error");
-    } finally {
       setApplying(false);
     }
-  }, [load]);
+  }, [load, startRestartPolling]);
 
-  return { status, checking, result, error, checkForUpdate, applyUpdate, applying };
+  return { status, checking, result, error, checkForUpdate, applyUpdate, applying, restarting, restartFailed };
 }

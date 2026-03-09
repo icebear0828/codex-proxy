@@ -10,6 +10,8 @@ import {
   requestDeviceCode,
   pollDeviceToken,
   importCliAuth,
+  markSessionCompleted,
+  isSessionCompleted,
 } from "../auth/oauth-pkce.js";
 
 export function createAuthRoutes(
@@ -80,6 +82,10 @@ export function createAuthRoutes(
 
     const session = consumeSession(state);
     if (!session) {
+      // Session already consumed by callback server — treat as success
+      if (isSessionCompleted(state)) {
+        return c.json({ success: true });
+      }
       return c.json({ error: "Invalid or expired session. Please try again." }, 400);
     }
 
@@ -87,6 +93,7 @@ export function createAuthRoutes(
       const tokens = await exchangeCode(code, session.codeVerifier, session.redirectUri);
       const entryId = pool.addAccount(tokens.access_token, tokens.refresh_token);
       scheduler.scheduleOne(entryId, tokens.access_token);
+      markSessionCompleted(state);
 
       console.log(`[Auth] OAuth via code-relay — account ${entryId} added`);
       return c.json({ success: true });
@@ -115,6 +122,12 @@ export function createAuthRoutes(
 
     const session = consumeSession(state);
     if (!session) {
+      // Session already consumed by callback server — redirect home
+      if (isSessionCompleted(state)) {
+        const config = getConfig();
+        const host = c.req.header("host") || `localhost:${config.server.port}`;
+        return c.redirect(`http://${host}/`);
+      }
       return c.html(errorPage("Invalid or expired OAuth session. Please try again."), 400);
     }
 
@@ -122,6 +135,7 @@ export function createAuthRoutes(
       const tokens = await exchangeCode(code, session.codeVerifier, session.redirectUri);
       const entryId = pool.addAccount(tokens.access_token, tokens.refresh_token);
       scheduler.scheduleOne(entryId, tokens.access_token);
+      markSessionCompleted(state);
 
       console.log(`[Auth] OAuth login completed — account ${entryId} added`);
 

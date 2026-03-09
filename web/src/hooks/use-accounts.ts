@@ -78,25 +78,43 @@ export function useAccounts() {
       window.open(data.authUrl, "oauth_add", "width=600,height=700,scrollbars=yes");
       setAddVisible(true);
 
-      // Poll for new account
+      // Poll for new account + focus/visibility detection
       const prevResp = await fetch("/auth/accounts");
       const prevData = await prevResp.json();
       const prevCount = prevData.accounts?.length || 0;
 
-      const pollTimer = setInterval(async () => {
+      const checkForNewAccount = async () => {
         try {
           const r = await fetch("/auth/accounts");
           const d = await r.json();
           if ((d.accounts?.length || 0) > prevCount) {
-            clearInterval(pollTimer);
+            cleanup();
             setAddVisible(false);
             setAddInfo("accountAdded");
             await loadAccounts();
           }
         } catch {}
-      }, 2000);
+      };
 
-      setTimeout(() => clearInterval(pollTimer), 5 * 60 * 1000);
+      // Focus event — check immediately when window regains focus
+      const onFocus = () => { checkForNewAccount(); };
+      window.addEventListener("focus", onFocus);
+
+      // Visibility change — check when tab becomes visible
+      const onVisible = () => {
+        if (document.visibilityState === "visible") checkForNewAccount();
+      };
+      document.addEventListener("visibilitychange", onVisible);
+
+      // Interval polling as fallback
+      const pollTimer = setInterval(checkForNewAccount, 2000);
+
+      const cleanup = () => {
+        clearInterval(pollTimer);
+        window.removeEventListener("focus", onFocus);
+        document.removeEventListener("visibilitychange", onVisible);
+      };
+      setTimeout(cleanup, 5 * 60 * 1000);
     } catch (err) {
       setAddError(err instanceof Error ? err.message : "failedStartLogin");
     }

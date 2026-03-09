@@ -11,6 +11,27 @@ import { resolve } from "path";
 import { promisify } from "util";
 import { getRootDir, isEmbedded } from "./paths.js";
 
+// ── Restart handler ──────────────────────────────────────────────────
+let _onRestart: (() => void) | null = null;
+
+/** Register a handler that will be called to restart the server process. */
+export function setRestartHandler(handler: () => void): void {
+  _onRestart = handler;
+}
+
+/** Schedule a server restart after a short delay (allows HTTP response to flush). */
+export function scheduleRestart(): void {
+  if (!_onRestart) {
+    console.warn("[SelfUpdate] No restart handler registered, manual restart required.");
+    return;
+  }
+  const handler = _onRestart;
+  setTimeout(() => {
+    console.log("[SelfUpdate] Restarting server...");
+    handler();
+  }, 500);
+}
+
 const execFileAsync = promisify(execFile);
 
 const GITHUB_REPO = "icebear0828/codex-proxy";
@@ -233,7 +254,7 @@ export async function checkProxySelfUpdate(): Promise<ProxySelfUpdateResult> {
  * Apply proxy self-update: git pull + npm install + npm run build.
  * Only works in git (CLI) mode.
  */
-export async function applyProxySelfUpdate(): Promise<{ started: boolean; error?: string }> {
+export async function applyProxySelfUpdate(): Promise<{ started: boolean; restarting?: boolean; error?: string }> {
   if (_proxyUpdateInProgress) {
     return { started: false, error: "Update already in progress" };
   }
@@ -251,9 +272,15 @@ export async function applyProxySelfUpdate(): Promise<{ started: boolean; error?
     console.log("[SelfUpdate] Building...");
     await execFileAsync("npm", ["run", "build"], { cwd, timeout: 120000, shell: true });
 
-    console.log("[SelfUpdate] Update complete. Server restart required.");
+    console.log("[SelfUpdate] Update complete. Scheduling restart...");
     _proxyUpdateInProgress = false;
-    return { started: true };
+
+    const willRestart = _onRestart !== null;
+    if (willRestart) {
+      scheduleRestart();
+    }
+
+    return { started: true, restarting: willRestart };
   } catch (err) {
     _proxyUpdateInProgress = false;
     const msg = err instanceof Error ? err.message : String(err);

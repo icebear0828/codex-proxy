@@ -1,3 +1,4 @@
+import { spawn } from "child_process";
 import { Hono } from "hono";
 import { serve } from "@hono/node-server";
 import { loadConfig, loadFingerprint, getConfig } from "./config.js";
@@ -19,7 +20,7 @@ import { ProxyPool } from "./proxy/proxy-pool.js";
 import { createProxyRoutes } from "./routes/proxies.js";
 import { createResponsesRoutes } from "./routes/responses.js";
 import { startUpdateChecker, stopUpdateChecker } from "./update-checker.js";
-import { startProxyUpdateChecker, stopProxyUpdateChecker } from "./self-update.js";
+import { startProxyUpdateChecker, stopProxyUpdateChecker, setRestartHandler } from "./self-update.js";
 import { initProxy } from "./tls/curl-binary.js";
 import { initTransport } from "./tls/transport.js";
 import { loadStaticModels } from "./models/model-store.js";
@@ -146,6 +147,22 @@ export async function startServer(options?: StartOptions): Promise<ServerHandle>
       });
     });
   };
+
+  // Register restart handler for self-update auto-restart
+  setRestartHandler(() => {
+    close().then(() => {
+      const child = spawn(process.argv[0], process.argv.slice(1), {
+        detached: true,
+        stdio: "ignore",
+        cwd: process.cwd(),
+        windowsHide: true,
+      });
+      child.unref();
+      process.exit(0);
+    }).catch(() => {
+      process.exit(1);
+    });
+  });
 
   return { close, port };
 }

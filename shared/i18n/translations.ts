@@ -149,6 +149,10 @@ export const translations = {
     newVersion: "New version",
     dockerUpdateCmd: "Run to update:",
     downloadUpdate: "Download",
+    updateTitle: "Update Available",
+    updateRestarting: "Restarting server...",
+    restartFailed: "Server not responding. Please restart manually.",
+    close: "Close",
   },
   zh: {
     serverOnline: "\u670d\u52a1\u8fd0\u884c\u4e2d",
@@ -303,6 +307,10 @@ export const translations = {
     newVersion: "\u65b0\u7248\u672c",
     dockerUpdateCmd: "\u6267\u884c\u66f4\u65b0\u547d\u4ee4\uff1a",
     downloadUpdate: "\u4e0b\u8f7d",
+    updateTitle: "\u6709\u53ef\u7528\u66f4\u65b0",
+    updateRestarting: "\u6b63\u5728\u91cd\u542f\u670d\u52a1...",
+    restartFailed: "\u670d\u52a1\u5668\u672a\u54cd\u5e94\uff0c\u8bf7\u624b\u52a8\u91cd\u542f\u3002",
+    close: "\u5173\u95ed",
   },
 } as const;
 

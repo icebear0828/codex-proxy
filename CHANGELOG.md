@@ -6,6 +6,10 @@
 
 ## [Unreleased]
 
+### Added
+
+- 更新弹窗 + 自动重启：点击"有可用更新"弹出 Modal 显示 changelog，一键更新后服务器自动重启、前端自动刷新，零人工干预（git 模式 spawn 新进程、Docker/Electron 显示对应操作指引）
+
 ### Fixed
 
 - Docker 端口修复：锁定容器内 `PORT=8080`（`environment` 覆盖 `env_file`），HEALTHCHECK 固定检查 8080，`.env` 的 PORT 仅控制宿主机暴露端口，修复自定义 PORT 时健康检查失败和端口映射不匹配的问题 (#40)

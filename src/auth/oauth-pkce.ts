@@ -47,6 +47,9 @@ const isCfResponse = (r: CurlFetchResponse) => isCloudflareChallengeResponse(r.s
 /** In-memory store for pending OAuth sessions, keyed by `state`. */
 const pendingSessions = new Map<string, PendingSession>();
 
+/** Track completed sessions so code-relay doesn't error after callback server already handled it. */
+const completedSessions = new Map<string, number>();
+
 // Clean up expired sessions every 60 seconds
 const SESSION_TTL_MS = 5 * 60 * 1000; // 5 minutes
 setInterval(() => {
@@ -56,7 +59,22 @@ setInterval(() => {
       pendingSessions.delete(state);
     }
   }
+  for (const [state, completedAt] of completedSessions) {
+    if (now - completedAt > SESSION_TTL_MS) {
+      completedSessions.delete(state);
+    }
+  }
 }, 60_000).unref();
+
+/** Mark a session as successfully completed. */
+export function markSessionCompleted(state: string): void {
+  completedSessions.set(state, Date.now());
+}
+
+/** Check if a session was already completed (callback server handled it). */
+export function isSessionCompleted(state: string): boolean {
+  return completedSessions.has(state);
+}
 
 /**
  * Generate a PKCE code_verifier + code_challenge (S256).
@@ -427,6 +445,7 @@ export function startOAuthFlow(
   startCallbackServer(port, (accessToken, refreshToken) => {
     const entryId = pool.addAccount(accessToken, refreshToken);
     scheduler.scheduleOne(entryId, accessToken);
+    markSessionCompleted(state);
     console.log(`[Auth] OAuth via callback server — account ${entryId} added`);
   });
   return { authUrl, state };

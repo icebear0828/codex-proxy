@@ -1,7 +1,8 @@
-import { useState, useEffect } from "preact/hooks";
+import { useState, useEffect, useRef } from "preact/hooks";
 import { I18nProvider } from "../../shared/i18n/context";
 import { ThemeProvider } from "../../shared/theme/context";
 import { Header } from "./components/Header";
+import { UpdateModal } from "./components/UpdateModal";
 import { AccountList } from "./components/AccountList";
 import { AddAccount } from "./components/AddAccount";
 import { ProxyPool } from "./components/ProxyPool";
@@ -51,18 +52,16 @@ function useUpdateMessage() {
     color = "text-red-500";
   }
 
-  const proxyUpdate = update.status?.proxy.update_available
+  const hasUpdate = update.status?.proxy.update_available ?? false;
+  const proxyUpdateInfo = hasUpdate
     ? {
-        mode: update.status.proxy.mode,
-        updateAvailable: true as const,
-        commits: update.status.proxy.commits,
-        release: update.status.proxy.release,
-        onApply: update.applyUpdate,
-        applying: update.applying,
+        mode: update.status!.proxy.mode,
+        commits: update.status!.proxy.commits,
+        release: update.status!.proxy.release,
       }
     : null;
 
-  return { ...update, msg, color, proxyUpdate };
+  return { ...update, msg, color, hasUpdate, proxyUpdateInfo };
 }
 
 function Dashboard() {
@@ -70,6 +69,16 @@ function Dashboard() {
   const proxies = useProxies();
   const status = useStatus(accounts.list.length);
   const update = useUpdateMessage();
+  const [showModal, setShowModal] = useState(false);
+  const prevUpdateAvailable = useRef(false);
+
+  // Auto-open modal when update becomes available after a check
+  useEffect(() => {
+    if (update.hasUpdate && !prevUpdateAvailable.current) {
+      setShowModal(true);
+    }
+    prevUpdateAvailable.current = update.hasUpdate;
+  }, [update.hasUpdate]);
 
   const handleProxyChange = async (accountId: string, proxyId: string) => {
     accounts.patchLocal(accountId, { proxyId });
@@ -81,12 +90,13 @@ function Dashboard() {
       <Header
         onAddAccount={accounts.startAdd}
         onCheckUpdate={update.checkForUpdate}
+        onOpenUpdateModal={() => setShowModal(true)}
         checking={update.checking}
         updateStatusMsg={update.msg}
         updateStatusColor={update.color}
         version={update.status?.proxy.version ?? null}
         commit={update.status?.proxy.commit ?? null}
-        proxyUpdate={update.proxyUpdate}
+        hasUpdate={update.hasUpdate}
       />
       <main class="flex-grow px-4 md:px-8 lg:px-40 py-8 flex justify-center">
         <div class="flex flex-col w-full max-w-[960px] gap-6">
@@ -135,6 +145,19 @@ function Dashboard() {
         </div>
       </main>
       <Footer updateStatus={update.status} />
+      {update.proxyUpdateInfo && (
+        <UpdateModal
+          open={showModal}
+          onClose={() => setShowModal(false)}
+          mode={update.proxyUpdateInfo.mode}
+          commits={update.proxyUpdateInfo.commits}
+          release={update.proxyUpdateInfo.release}
+          onApply={update.applyUpdate}
+          applying={update.applying}
+          restarting={update.restarting}
+          restartFailed={update.restartFailed}
+        />
+      )}
     </>
   );
 }
@@ -176,7 +199,7 @@ function ProxySettingsPage() {
         version={update.status?.proxy.version ?? null}
         commit={update.status?.proxy.commit ?? null}
         isProxySettings
-        proxyUpdate={update.proxyUpdate}
+        hasUpdate={update.hasUpdate}
       />
       <ProxySettings />
     </>
