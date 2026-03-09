@@ -109,14 +109,14 @@ export function ProxyPool({ proxies }: ProxyPoolProps) {
             <button
               onClick={handleCheckAll}
               disabled={checkingAll}
-              class="px-3 py-1.5 text-xs font-medium rounded-lg border border-gray-200 dark:border-border-dark hover:bg-slate-50 dark:hover:bg-border-dark transition-colors disabled:opacity-50"
+              class="px-3 py-1.5 text-xs font-medium rounded-lg border border-gray-200 dark:border-border-dark hover:bg-slate-50 dark:hover:bg-border-dark transition-colors disabled:opacity-50 focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 dark:focus-visible:ring-offset-bg-dark outline-none"
             >
               {checkingAll ? "..." : t("checkAllHealth")}
             </button>
           )}
           <button
             onClick={() => setShowAdd(!showAdd)}
-            class="px-3 py-1.5 text-xs font-medium rounded-lg bg-primary text-white hover:bg-primary/90 transition-colors"
+            class="px-3 py-1.5 text-xs font-medium rounded-lg bg-primary text-white hover:bg-primary/90 transition-colors focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 dark:focus-visible:ring-offset-bg-dark outline-none"
           >
             {t("addProxy")}
           </button>
@@ -131,7 +131,7 @@ export function ProxyPool({ proxies }: ProxyPoolProps) {
             <select
               value={newProtocol}
               onChange={(e) => setNewProtocol((e.target as HTMLSelectElement).value)}
-              class={`${inputCls} w-[110px]`}
+              class={`${inputCls} w-[110px] focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 dark:focus-visible:ring-offset-bg-dark outline-none`}
             >
               {PROTOCOLS.map((p) => (
                 <option key={p} value={p}>{p}://</option>
@@ -142,14 +142,14 @@ export function ProxyPool({ proxies }: ProxyPoolProps) {
               placeholder={t("proxyHost")}
               value={newHost}
               onInput={(e) => setNewHost((e.target as HTMLInputElement).value)}
-              class={`${inputCls} font-mono`}
+              class={`${inputCls} font-mono focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 dark:focus-visible:ring-offset-bg-dark outline-none`}
             />
             <input
               type="text"
               placeholder={t("proxyPort")}
               value={newPort}
               onInput={(e) => setNewPort((e.target as HTMLInputElement).value)}
-              class={`${inputCls} font-mono`}
+              class={`${inputCls} font-mono focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 dark:focus-visible:ring-offset-bg-dark outline-none`}
             />
           </div>
           <div class="grid grid-cols-2 sm:grid-cols-3 gap-2 mt-2">
@@ -159,21 +159,21 @@ export function ProxyPool({ proxies }: ProxyPoolProps) {
               placeholder={`${t("proxyName")} (${t("proxyOptional")})`}
               value={newName}
               onInput={(e) => setNewName((e.target as HTMLInputElement).value)}
-              class={inputCls}
+              class={`${inputCls} focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 dark:focus-visible:ring-offset-bg-dark outline-none`}
             />
             <input
               type="text"
               placeholder={`${t("proxyUsername")} (${t("proxyOptional")})`}
               value={newUsername}
               onInput={(e) => setNewUsername((e.target as HTMLInputElement).value)}
-              class={inputCls}
+              class={`${inputCls} focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 dark:focus-visible:ring-offset-bg-dark outline-none`}
             />
             <input
               type="password"
               placeholder={`${t("proxyPassword")} (${t("proxyOptional")})`}
               value={newPassword}
               onInput={(e) => setNewPassword((e.target as HTMLInputElement).value)}
-              class={`${inputCls} col-span-2 sm:col-span-1`}
+              class={`${inputCls} col-span-2 sm:col-span-1 focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 dark:focus-visible:ring-offset-bg-dark outline-none`}
             />
           </div>
           <div class="flex items-center justify-between mt-3">
@@ -183,7 +183,7 @@ export function ProxyPool({ proxies }: ProxyPoolProps) {
             <div class="ml-auto">
               <button
                 onClick={handleAdd}
-                class="px-4 py-2 text-sm font-medium rounded-lg bg-primary text-white hover:bg-primary/90 transition-colors whitespace-nowrap"
+                class="px-4 py-2 text-sm font-medium rounded-lg bg-primary text-white hover:bg-primary/90 transition-colors whitespace-nowrap focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 dark:focus-visible:ring-offset-bg-dark outline-none"
               >
                 {t("addProxy")}
               </button>
@@ -256,7 +256,7 @@ export function ProxyPool({ proxies }: ProxyPoolProps) {
                     <button
                       onClick={() => handleCheck(proxy.id)}
                       disabled={isChecking}
-                      class="px-2 py-1 text-xs rounded-md hover:bg-slate-100 dark:hover:bg-border-dark transition-colors disabled:opacity-50"
+                      class="px-2 py-1 text-xs rounded-md hover:bg-slate-100 dark:hover:bg-border-dark transition-colors disabled:opacity-50 focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 dark:focus-visible:ring-offset-bg-dark outline-none"
                       title={t("checkHealth")}
                     >
                       {isChecking ? "..." : t("checkHealth")}
@@ -264,22 +264,23 @@ export function ProxyPool({ proxies }: ProxyPoolProps) {
                     {proxy.status === "disabled" ? (
                       <button
                         onClick={() => proxies.enableProxy(proxy.id)}
-                        class="px-2 py-1 text-xs rounded-md hover:bg-green-50 dark:hover:bg-green-900/20 text-green-600 transition-colors"
+                        class="px-2 py-1 text-xs rounded-md hover:bg-green-50 dark:hover:bg-green-900/20 text-green-600 transition-colors focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 dark:focus-visible:ring-offset-bg-dark outline-none"
                       >
                         {t("enableProxy")}
                       </button>
                     ) : (
                       <button
                         onClick={() => proxies.disableProxy(proxy.id)}
-                        class="px-2 py-1 text-xs rounded-md hover:bg-slate-100 dark:hover:bg-border-dark text-slate-500 transition-colors"
+                        class="px-2 py-1 text-xs rounded-md hover:bg-slate-100 dark:hover:bg-border-dark text-slate-500 transition-colors focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 dark:focus-visible:ring-offset-bg-dark outline-none"
                       >
                         {t("disableProxy")}
                       </button>
                     )}
                     <button
                       onClick={() => handleDelete(proxy.id)}
-                      class="p-1 text-slate-400 dark:text-text-dim hover:text-red-500 transition-colors rounded-md hover:bg-red-50 dark:hover:bg-red-900/20"
+                      class="p-1 text-slate-400 dark:text-text-dim hover:text-red-500 transition-colors rounded-md hover:bg-red-50 dark:hover:bg-red-900/20 focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 dark:focus-visible:ring-offset-bg-dark outline-none"
                       title={t("deleteProxy")}
+                      aria-label={t("deleteProxy")}
                     >
                       <svg
                         class="size-4"

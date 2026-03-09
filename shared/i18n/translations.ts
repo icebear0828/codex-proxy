@@ -3,6 +3,7 @@ export const translations = {
     serverOnline: "Server Online",
     addAccount: "Add Account",
     toggleTheme: "Toggle theme",
+    toggleLanguage: "Toggle language",
     connectedAccounts: "Connected Accounts",
     connectedAccountsDesc:
       "Manage your AI model proxy services and usage limits.",
@@ -154,6 +155,7 @@ export const translations = {
     serverOnline: "\u670d\u52a1\u8fd0\u884c\u4e2d",
     addAccount: "\u6dfb\u52a0\u8d26\u6237",
     toggleTheme: "\u5207\u6362\u4e3b\u9898",
+    toggleLanguage: "\u5207\u6362\u8bed\u8a00",
     connectedAccounts: "\u5df2\u8fde\u63a5\u8d26\u6237",
     connectedAccountsDesc:
       "\u7ba1\u7406\u4f60\u7684 AI \u6a21\u578b\u4ee3\u7406\u670d\u52a1\u548c\u7528\u91cf\u9650\u5236\u3002",

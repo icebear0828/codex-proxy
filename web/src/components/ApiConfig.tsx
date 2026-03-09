@@ -109,7 +109,7 @@ export function ApiConfig({
               {/* Trigger button */}
               <button
                 onClick={() => setOpen(!open)}
-                class="w-full flex items-center justify-between px-3 py-2.5 bg-white dark:bg-bg-dark border border-gray-200 dark:border-border-dark rounded-lg text-[0.78rem] text-slate-700 dark:text-text-main font-medium focus:ring-1 focus:ring-primary focus:border-primary outline-none cursor-pointer transition-colors"
+                class="w-full flex items-center justify-between px-3 py-2.5 bg-white dark:bg-bg-dark border border-gray-200 dark:border-border-dark rounded-lg text-[0.78rem] text-slate-700 dark:text-text-main font-medium focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 dark:focus-visible:ring-offset-bg-dark focus:border-primary outline-none cursor-pointer transition-colors"
               >
                 <span>{currentFamily?.displayName ?? selectedModel}</span>
                 <svg class={`size-[18px] text-slate-500 dark:text-text-dim transition-transform ${open ? "rotate-180" : ""}`} viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -124,7 +124,7 @@ export function ApiConfig({
                       <button
                         key={f.id}
                         onClick={() => handleFamilySelect(f)}
-                        class={`w-full text-left px-3 py-2 text-[0.78rem] font-medium border-b border-gray-100 dark:border-border-dark last:border-b-0 transition-colors ${
+                        class={`w-full text-left px-3 py-2 text-[0.78rem] font-medium border-b border-gray-100 dark:border-border-dark last:border-b-0 transition-colors focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-inset outline-none ${
                           selectedModel === f.id
                             ? "bg-primary/10 text-primary dark:bg-primary/20"
                             : "text-slate-700 dark:text-text-main hover:bg-slate-50 dark:hover:bg-[#21262d]"
@@ -144,7 +144,7 @@ export function ApiConfig({
                       key={e.reasoningEffort}
                       onClick={() => onEffortChange(e.reasoningEffort)}
                       title={e.description}
-                      class={`px-2.5 py-1 text-[0.7rem] font-semibold rounded transition-all ${
+                      class={`px-2.5 py-1 text-[0.7rem] font-semibold rounded transition-all focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 dark:focus-visible:ring-offset-bg-dark outline-none ${
                         selectedEffort === e.reasoningEffort
                           ? "bg-primary text-white shadow-sm"
                           : "bg-white dark:bg-[#21262d] text-slate-600 dark:text-text-dim border border-gray-200 dark:border-border-dark hover:border-primary/50"
@@ -160,7 +160,7 @@ export function ApiConfig({
                 <span class="text-[0.68rem] font-medium text-slate-500 dark:text-text-dim mr-1">{t("speed")}</span>
                 <button
                   onClick={() => onSpeedChange(null)}
-                  class={`px-2.5 py-1 text-[0.7rem] font-semibold rounded transition-all ${
+                  class={`px-2.5 py-1 text-[0.7rem] font-semibold rounded transition-all focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 dark:focus-visible:ring-offset-bg-dark outline-none ${
                     selectedSpeed === null
                       ? "bg-primary text-white shadow-sm"
                       : "bg-white dark:bg-[#21262d] text-slate-600 dark:text-text-dim border border-gray-200 dark:border-border-dark hover:border-primary/50"
@@ -170,7 +170,7 @@ export function ApiConfig({
                 </button>
                 <button
                   onClick={() => onSpeedChange("fast")}
-                  class={`px-2.5 py-1 text-[0.7rem] font-semibold rounded transition-all ${
+                  class={`px-2.5 py-1 text-[0.7rem] font-semibold rounded transition-all focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 dark:focus-visible:ring-offset-bg-dark outline-none ${
                     selectedSpeed === "fast"
                       ? "bg-primary text-white shadow-sm"
                       : "bg-white dark:bg-[#21262d] text-slate-600 dark:text-text-dim border border-gray-200 dark:border-border-dark hover:border-primary/50"
@@ -183,7 +183,7 @@ export function ApiConfig({
           ) : (
             <div class="relative">
               <select
-                class="w-full appearance-none pl-3 pr-10 py-2.5 bg-white dark:bg-bg-dark border border-gray-200 dark:border-border-dark rounded-lg text-[0.78rem] text-slate-700 dark:text-text-main font-medium focus:ring-1 focus:ring-primary focus:border-primary outline-none cursor-pointer transition-colors"
+                class="w-full appearance-none pl-3 pr-10 py-2.5 bg-white dark:bg-bg-dark border border-gray-200 dark:border-border-dark rounded-lg text-[0.78rem] text-slate-700 dark:text-text-main font-medium focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 dark:focus-visible:ring-offset-bg-dark focus:border-primary outline-none cursor-pointer transition-colors"
                 value={selectedModel}
                 onChange={(e) => onModelChange((e.target as HTMLSelectElement).value)}
               >

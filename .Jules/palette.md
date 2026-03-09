@@ -1,0 +1,3 @@
+## 2025-05-22 - Accessibility and Focus State Pattern
+**Learning:** Found that several interactive elements (icon-only buttons, custom inputs) lacked consistent focus indicators and ARIA labels. Implementing a standard Tailwind focus ring pattern (`focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 dark:focus-visible:ring-offset-bg-dark outline-none`) significantly improves keyboard navigation visibility without impacting mouse interaction.
+**Action:** Always apply the standard focus ring style to new interactive components and ensure icon-only buttons have translated `aria-label` attributes.
