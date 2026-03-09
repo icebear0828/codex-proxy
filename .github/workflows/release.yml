@@ -84,10 +84,30 @@ jobs:
           path: artifacts
           merge-multiple: true
 
+      - name: Generate release notes
+        id: notes
+        run: |
+          PREV_TAG=$(git tag --sort=-v:refname | grep '^v' | sed -n '2p')
+          if [ -z "$PREV_TAG" ]; then
+            BODY="Initial release"
+          else
+            BODY=$(git log "${PREV_TAG}..HEAD" --no-merges --pretty=format:"%s" \
+              | grep -vE "^(chore|docs|ci)(\(.*\))?:" \
+              | sed 's/^/- /')
+            if [ -z "$BODY" ]; then
+              BODY="Bug fixes and improvements"
+            fi
+          fi
+          {
+            echo "NOTES<<EOFNOTES"
+            echo "$BODY"
+            echo "EOFNOTES"
+          } >> "$GITHUB_OUTPUT"
+
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          generate_release_notes: true
+          body: ${{ steps.notes.outputs.NOTES }}
           draft: false
           prerelease: false
           files: artifacts/*
