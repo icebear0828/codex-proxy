@@ -59,7 +59,10 @@ export function useAccounts() {
       const prevData = await prevResp.json();
       const prevCount = prevData.accounts?.length || 0;
 
+      let checking = false;
       const checkForNewAccount = async () => {
+        if (checking) return;
+        checking = true;
         try {
           const r = await fetch("/auth/accounts");
           const d = await r.json();
@@ -69,7 +72,9 @@ export function useAccounts() {
             setAddInfo("accountAdded");
             await loadAccounts();
           }
-        } catch {}
+        } catch {} finally {
+          checking = false;
+        }
       };
 
       // Focus event — check immediately when window regains focus
