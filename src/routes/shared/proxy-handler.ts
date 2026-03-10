@@ -56,12 +56,13 @@ export interface FormatAdapter {
  */
 /** Check if a CodexApiError indicates the model is not supported on the account's plan. */
 function isModelNotSupportedError(err: CodexApiError): boolean {
+  // Only 4xx client errors (exclude 429 rate-limit)
+  if (err.status < 400 || err.status >= 500 || err.status === 429) return false;
   const lower = err.message.toLowerCase();
   // Must contain "model" to avoid false positives like "feature not supported"
   if (!lower.includes("model")) return false;
   return lower.includes("not supported") || lower.includes("not_supported")
-    || lower.includes("not available") || lower.includes("not_available")
-    || lower.includes("invalid");
+    || lower.includes("not available") || lower.includes("not_available");
 }
 
 export async function handleProxyRequest(
@@ -222,7 +223,6 @@ export async function handleProxyRequest(
             `[${fmt.tag}] Account ${activeEntryId} (${failedEmail}) | Model "${req.codexRequest.model}" not supported, trying different account...`,
           );
           accountPool.release(activeEntryId);
-          triedEntryIds.push(activeEntryId);
 
           const retry = accountPool.acquire({
             model: req.codexRequest.model,
@@ -236,7 +236,10 @@ export async function handleProxyRequest(
             console.log(`[${fmt.tag}] Retrying with account ${retry.entryId}`);
             continue; // re-enter model retry loop
           }
-          // No other account available — fall through to error response
+          // No other account available — return error (already released above)
+          const code = (err.status >= 400 && err.status < 600 ? err.status : 502) as StatusCode;
+          c.status(code);
+          return c.json(fmt.formatError(code, err.message));
         }
 
         console.error(

@@ -169,15 +169,7 @@ export class AccountPool {
 
     const result: Array<{ planType: string; entryId: string; token: string; accountId: string | null }> = [];
     for (const [plan, group] of byPlan) {
-      // Sort by least_used
-      group.sort((a, b) => {
-        const diff = a.usage.request_count - b.usage.request_count;
-        if (diff !== 0) return diff;
-        const aTime = a.usage.last_used ? new Date(a.usage.last_used).getTime() : 0;
-        const bTime = b.usage.last_used ? new Date(b.usage.last_used).getTime() : 0;
-        return aTime - bTime;
-      });
-      const selected = group[0];
+      const selected = this.selectByStrategy(group);
       this.acquireLocks.set(selected.id, Date.now());
       result.push({
         planType: plan,
