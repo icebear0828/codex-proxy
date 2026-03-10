@@ -32,6 +32,7 @@
   },
   "dependencies": {
     "@hono/node-server": "^1.0.0",
+    "electron-updater": "^6.3.0",
     "hono": "^4.0.0",
     "js-yaml": "^4.1.0",
     "undici": "^7.0.0",

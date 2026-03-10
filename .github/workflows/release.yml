@@ -61,20 +61,10 @@ jobs:
       - name: Build app
         run: npm run app:build
 
-      - name: Pack (${{ matrix.platform }})
-        run: npx electron-builder --config electron-builder.yml --${{ matrix.platform }} --publish never
-
-      - name: Upload artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: release-${{ matrix.artifact }}
-          path: |
-            release/*.exe
-            release/*.dmg
-            release/*.AppImage
-            release/*.yml
-            release/*.yaml
-          if-no-files-found: ignore
+      - name: Pack and publish (${{ matrix.platform }})
+        run: npx electron-builder --config electron-builder.yml --${{ matrix.platform }} --publish always
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   release:
     needs: build
@@ -88,20 +78,13 @@ jobs:
           ref: ${{ inputs.tag || github.ref }}
           fetch-depth: 0
 
-      - name: Download all artifacts
-        uses: actions/download-artifact@v4
-        with:
-          path: artifacts
-          merge-multiple: true
-
       - name: Resolve tag
         id: tag
         run: |
           TAG="${{ inputs.tag || github.ref_name }}"
           echo "name=$TAG" >> "$GITHUB_OUTPUT"
 
-      - name: Generate release notes
-        id: notes
+      - name: Generate release notes and publish
         run: |
           TAG="${{ steps.tag.outputs.name }}"
           PREV_TAG=$(git tag --sort=-v:refname | grep '^v' | grep -v "^${TAG}$" | head -1)
@@ -115,17 +98,7 @@ jobs:
               BODY="Bug fixes and improvements"
             fi
           fi
-          {
-            echo "NOTES<<EOFNOTES"
-            echo "$BODY"
-            echo "EOFNOTES"
-          } >> "$GITHUB_OUTPUT"
-
-      - name: Create GitHub Release
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: ${{ steps.tag.outputs.name }}
-          body: ${{ steps.notes.outputs.NOTES }}
-          draft: false
-          prerelease: false
-          files: artifacts/*
+          echo "$BODY" > /tmp/release-notes.md
+          gh release edit "$TAG" --draft=false --notes-file /tmp/release-notes.md
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

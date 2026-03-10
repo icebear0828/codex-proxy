@@ -1,6 +1,11 @@
 appId: com.codex-proxy.app
 productName: Codex Proxy
 
+publish:
+  provider: github
+  owner: icebear0828
+  repo: codex-proxy
+
 directories:
   output: release
 
@@ -45,6 +50,8 @@ nsis:
 mac:
   target:
     - target: dmg
+      arch: [arm64, x64]
+    - target: zip
       arch: [arm64, x64]
   icon: electron/assets/icon.png
   category: public.app-category.developer-tools

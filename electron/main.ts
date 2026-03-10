@@ -9,6 +9,14 @@ import { app, BrowserWindow, Tray, Menu, shell, nativeImage, dialog } from "elec
 import { resolve, join } from "path";
 import { pathToFileURL } from "url";
 import { existsSync, mkdirSync } from "fs";
+import {
+  initAutoUpdater,
+  getAutoUpdateState,
+  checkForUpdateManual,
+  installUpdate,
+  downloadUpdate,
+  stopAutoUpdater,
+} from "./auto-updater.js";
 
 const IS_MAC = process.platform === "darwin";
 
@@ -132,6 +140,14 @@ app.on("ready", async () => {
 
     // 5. Main window
     createWindow();
+
+    // 6. Auto-updater (only in packaged mode)
+    if (app.isPackaged) {
+      initAutoUpdater({
+        getMainWindow: () => mainWindow,
+        rebuildTrayMenu,
+      });
+    }
   } catch (err) {
     console.error("[Electron] Startup failed:", err);
     dialog.showErrorBox(
@@ -208,6 +224,80 @@ function createWindow(): void {
 
 // ── Tray ─────────────────────────────────────────────────────────────
 
+function buildTrayMenu(): Electron.MenuItemConstructorOptions[] {
+  const items: Electron.MenuItemConstructorOptions[] = [
+    {
+      label: "Open Dashboard",
+      click: () => createWindow(),
+    },
+    { type: "separator" },
+    {
+      label: `Port: ${serverHandle?.port ?? 8080}`,
+      enabled: false,
+    },
+    { type: "separator" },
+  ];
+
+  // Auto-update menu items
+  const updateState = getAutoUpdateState();
+  if (updateState.downloaded) {
+    items.push({
+      label: `Install Update (v${updateState.version})`,
+      click: () => installUpdate(),
+    });
+  } else if (updateState.downloading) {
+    items.push({
+      label: `Downloading Update... ${updateState.progress}%`,
+      enabled: false,
+    });
+  } else if (updateState.updateAvailable) {
+    items.push({
+      label: `Download Update (v${updateState.version})`,
+      click: () => downloadUpdate(),
+    });
+  } else {
+    items.push({
+      label: "Check for Updates",
+      click: () => checkForUpdateManual(),
+    });
+  }
+
+  items.push(
+    { type: "separator" },
+    {
+      label: "Quit",
+      click: () => {
+        isQuitting = true;
+
+        if (serverHandle) {
+          const forceQuit = setTimeout(() => {
+            console.error("[Electron] Server close timeout, forcing exit");
+            app.exit(0);
+          }, 5000);
+
+          serverHandle.close()
+            .then(() => { clearTimeout(forceQuit); app.quit(); })
+            .catch((err: unknown) => {
+              console.error("[Electron] Server close error:", err);
+              clearTimeout(forceQuit);
+              app.quit();
+            });
+        } else {
+          app.quit();
+        }
+      },
+    },
+  );
+
+  return items;
+}
+
+function rebuildTrayMenu(): void {
+  if (tray) {
+    tray.setContextMenu(Menu.buildFromTemplate(buildTrayMenu()));
+  }
+}
+
 function createTray(): void {
   // In packaged mode: icon is inside asar at {app.asar}/electron/assets/icon.png
   // In dev mode: relative to dist-electron/ → ../electron/assets/icon.png
@@ -226,44 +316,7 @@ function createTray(): void {
 
   tray = new Tray(icon.isEmpty() ? nativeImage.createEmpty() : icon);
   tray.setToolTip("Codex Proxy");
-
-  const contextMenu = Menu.buildFromTemplate([
-    {
-      label: "Open Dashboard",
-      click: () => createWindow(),
-    },
-    { type: "separator" },
-    {
-      label: `Port: ${serverHandle?.port ?? 8080}`,
-      enabled: false,
-    },
-    { type: "separator" },
-    {
-      label: "Quit",
-      click: () => {
-        isQuitting = true;
-
-        if (serverHandle) {
-          const forceQuit = setTimeout(() => {
-            console.error("[Electron] Server close timeout, forcing exit");
-            app.exit(0);
-          }, 5000);
-
-          serverHandle.close()
-            .then(() => { clearTimeout(forceQuit); app.quit(); })
-            .catch((err) => {
-              console.error("[Electron] Server close error:", err);
-              clearTimeout(forceQuit);
-              app.quit();
-            });
-        } else {
-          app.quit();
-        }
-      },
-    },
-  ]);
-
-  tray.setContextMenu(contextMenu);
+  tray.setContextMenu(Menu.buildFromTemplate(buildTrayMenu()));
   tray.on("double-click", () => createWindow());
 }
 
@@ -275,6 +328,7 @@ app.on("activate", () => {
 // Allow quit from macOS dock/menu bar and system shutdown
 app.on("before-quit", () => {
   isQuitting = true;
+  stopAutoUpdater();
 });
 
 // Prevent app from quitting when all windows are closed (tray keeps it alive)
