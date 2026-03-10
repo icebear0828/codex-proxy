@@ -21,6 +21,7 @@ export interface GeminiUsageInfo {
   input_tokens: number;
   output_tokens: number;
   cached_tokens?: number;
+  reasoning_tokens?: number;
 }
 
 /**
@@ -115,7 +116,7 @@ export async function* streamCodexToGemini(
           inputTokens = evt.usage.input_tokens;
           outputTokens = evt.usage.output_tokens;
           cachedTokens = evt.usage.cached_tokens;
-          onUsage?.({ input_tokens: inputTokens, output_tokens: outputTokens, cached_tokens: cachedTokens });
+          onUsage?.({ input_tokens: inputTokens, output_tokens: outputTokens, cached_tokens: cachedTokens, reasoning_tokens: evt.usage.reasoning_tokens });
         }
 
         // Inject error text if stream completed with no content
@@ -207,7 +208,7 @@ export async function collectCodexToGeminiResponse(
   const usage: GeminiUsageInfo = {
     input_tokens: inputTokens,
     output_tokens: outputTokens,
-    cached_tokens: cachedTokens,
+    ...(cachedTokens != null ? { cached_tokens: cachedTokens } : {}),
   };
 
   const usageMetadata: GeminiUsageMetadata = {

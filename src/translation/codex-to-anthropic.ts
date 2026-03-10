@@ -23,6 +23,7 @@ export interface AnthropicUsageInfo {
   input_tokens: number;
   output_tokens: number;
   cached_tokens?: number;
+  reasoning_tokens?: number;
 }
 
 /** Format an Anthropic SSE event with named event type */
@@ -221,7 +222,7 @@ export async function* streamCodexToAnthropic(
           inputTokens = evt.usage.input_tokens;
           outputTokens = evt.usage.output_tokens;
           cachedTokens = evt.usage.cached_tokens;
-          onUsage?.({ input_tokens: inputTokens, output_tokens: outputTokens, cached_tokens: cachedTokens });
+          onUsage?.({ input_tokens: inputTokens, output_tokens: outputTokens, cached_tokens: cachedTokens, reasoning_tokens: evt.usage.reasoning_tokens });
         }
         // Inject error text if stream completed with no content
         if (!hasContent) {
