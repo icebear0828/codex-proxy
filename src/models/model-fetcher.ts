@@ -14,7 +14,7 @@ import type { ProxyPool } from "../proxy/proxy-pool.js";
 import { jitter } from "../utils/jitter.js";
 
 const REFRESH_INTERVAL_HOURS = 1;
-const INITIAL_DELAY_MS = 5_000; // 5s after startup
+const INITIAL_DELAY_MS = 1_000; // 1s after startup (fast plan-map population for mixed-plan routing)
 
 let _refreshTimer: ReturnType<typeof setTimeout> | null = null;
 let _accountPool: AccountPool | null = null;

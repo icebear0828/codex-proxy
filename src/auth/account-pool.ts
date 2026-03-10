@@ -105,8 +105,10 @@ export class AccountPool {
         const matched = available.filter((a) => a.planType && planSet.has(a.planType));
         if (matched.length > 0) {
           candidates = matched;
+        } else {
+          // No account matches the model's plan requirements — don't fallback to incompatible accounts
+          return null;
         }
-        // else: fallback to all available (graceful degradation)
       }
     }
 
