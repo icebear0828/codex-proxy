@@ -184,7 +184,7 @@ curl http://localhost:8080/v1/chat/completions \
 > **Model name suffixes**: Append `-fast` to any model name to enable Fast mode, or `-high`/`-low` etc. to change reasoning effort.
 > Examples: `codex-fast`, `gpt-5.2-codex-high-fast`.
 >
-> **Note**: `gpt-5.4` and `gpt-5.3-codex` families have been removed for free/plus accounts. Only business accounts retain access.
+> **Note**: `gpt-5.4` and `gpt-5.3-codex` families have been removed for free accounts. Plus and above accounts retain access.
 > Models are dynamically fetched from the backend and will automatically sync the latest available catalog.
 
 ## 🔗 Client Setup

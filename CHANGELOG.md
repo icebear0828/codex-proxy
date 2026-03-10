@@ -13,7 +13,7 @@
 
 ### Changed
 
-- 模型目录大幅更新：后端移除 free/plus 账号的 `gpt-5.4`、`gpt-5.3-codex` 全系列，新旗舰模型为 `gpt-5.2-codex`（`codex` 别名指向此模型）
+- 模型目录大幅更新：后端移除 free 账号的 `gpt-5.4`、`gpt-5.3-codex` 全系列（plus 及以上仍可用），新旗舰模型为 `gpt-5.2-codex`（`codex` 别名指向此模型）
 - 新增模型：`gpt-5.2`、`gpt-5.1-codex`、`gpt-5.1`、`gpt-5-codex`、`gpt-5`、`gpt-oss-120b`、`gpt-oss-20b`、`gpt-5-codex-mini`
 - 模型目录从 23 个静态模型精简为 11 个（匹配后端实际返回）
 
