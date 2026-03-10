@@ -39,6 +39,8 @@ interface ModelsConfig {
 let _catalog: CodexModelInfo[] = [];
 let _aliases: Record<string, string> = {};
 let _lastFetchTime: string | null = null;
+/** modelId → Set<planType> — tracks which plans can access each model */
+let _modelPlanMap: Map<string, Set<string>> = new Map();
 
 // ── Static loading ─────────────────────────────────────────────────
 
@@ -53,6 +55,7 @@ export function loadStaticModels(configDir?: string): void {
 
   _catalog = (raw.models ?? []).map((m) => ({ ...m, source: "static" as const }));
   _aliases = raw.aliases ?? {};
+  _modelPlanMap = new Map(); // Reset plan map on reload
   console.log(`[ModelStore] Loaded ${_catalog.length} static models, ${Object.keys(_aliases).length} aliases`);
 }
 
@@ -206,6 +209,45 @@ export function applyBackendModels(backendModels: BackendModelEntry[]): void {
   );
 }
 
+/**
+ * Merge backend models for a specific plan type.
+ * Clears old records for this planType, applies merge, then records plan→model mappings.
+ */
+export function applyBackendModelsForPlan(planType: string, backendModels: BackendModelEntry[]): void {
+  // Clear old planType records
+  for (const [modelId, plans] of _modelPlanMap) {
+    plans.delete(planType);
+    if (plans.size === 0) _modelPlanMap.delete(modelId);
+  }
+
+  // Merge into catalog (existing logic)
+  applyBackendModels(backendModels);
+
+  // Record which models this plan can access (only admitted models)
+  const staticIds = new Set(_catalog.map((m) => m.id));
+  for (const raw of backendModels) {
+    const id = raw.slug ?? raw.id ?? raw.name ?? "";
+    if (staticIds.has(id) || isCodexCompatibleId(id)) {
+      let plans = _modelPlanMap.get(id);
+      if (!plans) {
+        plans = new Set();
+        _modelPlanMap.set(id, plans);
+      }
+      plans.add(planType);
+    }
+  }
+
+  console.log(`[ModelStore] Plan "${planType}" has ${backendModels.length} backend models, ${_modelPlanMap.size} models tracked across plans`);
+}
+
+/**
+ * Get which plan types are known to support a given model.
+ * Empty array means unknown (static-only or not yet fetched).
+ */
+export function getModelPlanTypes(modelId: string): string[] {
+  return [...(_modelPlanMap.get(modelId) ?? [])];
+}
+
 // ── Model name suffix parsing ───────────────────────────────────────
 
 export interface ParsedModelName {
@@ -314,8 +356,13 @@ export function getModelStoreDebug(): {
   aliasCount: number;
   lastFetchTime: string | null;
   models: Array<{ id: string; source: string }>;
+  planMap: Record<string, string[]>;
 } {
   const backendCount = _catalog.filter((m) => m.source === "backend").length;
+  const planMap: Record<string, string[]> = {};
+  for (const [modelId, plans] of _modelPlanMap) {
+    planMap[modelId] = [...plans];
+  }
   return {
     totalModels: _catalog.length,
     backendModels: backendCount,
@@ -323,5 +370,6 @@ export function getModelStoreDebug(): {
     aliasCount: Object.keys(_aliases).length,
     lastFetchTime: _lastFetchTime,
     models: _catalog.map((m) => ({ id: m.id, source: m.source ?? "static" })),
+    planMap,
   };
 }

@@ -7,7 +7,7 @@
  */
 
 import { CodexApi } from "../proxy/codex-api.js";
-import { applyBackendModels, type BackendModelEntry } from "./model-store.js";
+import { applyBackendModelsForPlan } from "./model-store.js";
 import type { AccountPool } from "../auth/account-pool.js";
 import type { CookieJar } from "../proxy/cookie-jar.js";
 import type { ProxyPool } from "../proxy/proxy-pool.js";
@@ -22,7 +22,8 @@ let _cookieJar: CookieJar | null = null;
 let _proxyPool: ProxyPool | null = null;
 
 /**
- * Fetch models from the Codex backend using an available account.
+ * Fetch models from the Codex backend, one query per distinct plan type.
+ * This discovers plan-specific model availability (e.g. Team has gpt-5.4, Free has gpt-oss-*).
  */
 async function fetchModelsFromBackend(
   accountPool: AccountPool,
@@ -31,34 +32,37 @@ async function fetchModelsFromBackend(
 ): Promise<void> {
   if (!accountPool.isAuthenticated()) return; // silently skip when no accounts
 
-  const acquired = accountPool.acquire();
-  if (!acquired) {
-    console.warn("[ModelFetcher] No available account — skipping model fetch");
+  const planAccounts = accountPool.getDistinctPlanAccounts();
+  if (planAccounts.length === 0) {
+    console.warn("[ModelFetcher] No available accounts — skipping model fetch");
     return;
   }
 
-  try {
-    const proxyUrl = proxyPool?.resolveProxyUrl(acquired.entryId);
-    const api = new CodexApi(
-      acquired.token,
-      acquired.accountId,
-      cookieJar,
-      acquired.entryId,
-      proxyUrl,
-    );
+  console.log(`[ModelFetcher] Fetching models for ${planAccounts.length} plan(s): ${planAccounts.map((p) => p.planType).join(", ")}`);
 
-    const models = await api.getModels();
-    if (models && models.length > 0) {
-      applyBackendModels(models);
-      console.log(`[ModelFetcher] Fetched ${models.length} models from backend`);
-    } else {
-      console.log("[ModelFetcher] Backend returned empty model list — keeping static models");
+  const results = await Promise.allSettled(
+    planAccounts.map(async (pa) => {
+      try {
+        const proxyUrl = proxyPool?.resolveProxyUrl(pa.entryId);
+        const api = new CodexApi(pa.token, pa.accountId, cookieJar, pa.entryId, proxyUrl);
+        const models = await api.getModels();
+        if (models && models.length > 0) {
+          applyBackendModelsForPlan(pa.planType, models);
+          console.log(`[ModelFetcher] Plan "${pa.planType}": ${models.length} models`);
+        } else {
+          console.log(`[ModelFetcher] Plan "${pa.planType}": empty model list — keeping existing`);
+        }
+      } finally {
+        accountPool.release(pa.entryId);
+      }
+    }),
+  );
+
+  for (const r of results) {
+    if (r.status === "rejected") {
+      const msg = r.reason instanceof Error ? r.reason.message : String(r.reason);
+      console.warn(`[ModelFetcher] Plan fetch failed: ${msg}`);
     }
-  } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
-    console.warn(`[ModelFetcher] Backend fetch failed: ${msg}`);
-  } finally {
-    accountPool.release(acquired.entryId);
   }
 }
 

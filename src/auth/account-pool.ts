@@ -21,6 +21,7 @@ import {
   extractUserProfile,
   isTokenExpired,
 } from "./jwt-utils.js";
+import { getModelPlanTypes } from "../models/model-store.js";
 import type {
   AccountEntry,
   AccountInfo,
@@ -65,9 +66,11 @@ export class AccountPool {
   /**
    * Acquire the best available account for a request.
    * Returns null if no accounts are available.
+   *
+   * @param options.model - Prefer accounts whose planType matches this model's known plans
+   * @param options.excludeIds - Entry IDs to exclude (e.g. already tried)
    */
-  acquire(): AcquiredAccount | null {
-    const config = getConfig();
+  acquire(options?: { model?: string; excludeIds?: string[] }): AcquiredAccount | null {
     const now = new Date();
     const nowMs = now.getTime();
 
@@ -84,36 +87,107 @@ export class AccountPool {
       }
     }
 
+    const excludeSet = new Set(options?.excludeIds ?? []);
+
     // Filter available accounts
     const available = [...this.accounts.values()].filter(
-      (a) => a.status === "active" && !this.acquireLocks.has(a.id),
+      (a) => a.status === "active" && !this.acquireLocks.has(a.id) && !excludeSet.has(a.id),
     );
 
     if (available.length === 0) return null;
 
-    let selected: AccountEntry;
-    if (config.auth.rotation_strategy === "round_robin") {
-      this.roundRobinIndex = this.roundRobinIndex % available.length;
-      selected = available[this.roundRobinIndex];
-      this.roundRobinIndex++;
-    } else {
-      // least_used: sort by request_count asc, then by last_used asc (LRU)
-      available.sort((a, b) => {
-        const diff = a.usage.request_count - b.usage.request_count;
-        if (diff !== 0) return diff;
-        const aTime = a.usage.last_used ? new Date(a.usage.last_used).getTime() : 0;
-        const bTime = b.usage.last_used ? new Date(b.usage.last_used).getTime() : 0;
-        return aTime - bTime;
-      });
-      selected = available[0];
+    // Model-aware selection: prefer accounts whose planType matches the model's known plans
+    let candidates = available;
+    if (options?.model) {
+      const preferredPlans = getModelPlanTypes(options.model);
+      if (preferredPlans.length > 0) {
+        const planSet = new Set(preferredPlans);
+        const matched = available.filter((a) => a.planType && planSet.has(a.planType));
+        if (matched.length > 0) {
+          candidates = matched;
+        }
+        // else: fallback to all available (graceful degradation)
+      }
     }
 
+    const selected = this.selectByStrategy(candidates);
     this.acquireLocks.set(selected.id, Date.now());
     return {
       entryId: selected.id,
       token: selected.token,
       accountId: selected.accountId,
     };
+  }
+
+  /**
+   * Select an account from candidates using the configured rotation strategy.
+   */
+  private selectByStrategy(candidates: AccountEntry[]): AccountEntry {
+    const config = getConfig();
+    if (config.auth.rotation_strategy === "round_robin") {
+      this.roundRobinIndex = this.roundRobinIndex % candidates.length;
+      const selected = candidates[this.roundRobinIndex];
+      this.roundRobinIndex++;
+      return selected;
+    }
+    // least_used: sort by request_count asc, then by last_used asc (LRU)
+    candidates.sort((a, b) => {
+      const diff = a.usage.request_count - b.usage.request_count;
+      if (diff !== 0) return diff;
+      const aTime = a.usage.last_used ? new Date(a.usage.last_used).getTime() : 0;
+      const bTime = b.usage.last_used ? new Date(b.usage.last_used).getTime() : 0;
+      return aTime - bTime;
+    });
+    return candidates[0];
+  }
+
+  /**
+   * Get one account per distinct planType for model discovery.
+   * Each returned account is locked (caller must release).
+   */
+  getDistinctPlanAccounts(): Array<{ planType: string; entryId: string; token: string; accountId: string | null }> {
+    const now = new Date();
+    for (const entry of this.accounts.values()) {
+      this.refreshStatus(entry, now);
+    }
+
+    const available = [...this.accounts.values()].filter(
+      (a) => a.status === "active" && !this.acquireLocks.has(a.id) && a.planType,
+    );
+
+    // Group by planType, pick least-used from each group
+    const byPlan = new Map<string, AccountEntry[]>();
+    for (const a of available) {
+      const plan = a.planType!;
+      let group = byPlan.get(plan);
+      if (!group) {
+        group = [];
+        byPlan.set(plan, group);
+      }
+      group.push(a);
+    }
+
+    const result: Array<{ planType: string; entryId: string; token: string; accountId: string | null }> = [];
+    for (const [plan, group] of byPlan) {
+      // Sort by least_used
+      group.sort((a, b) => {
+        const diff = a.usage.request_count - b.usage.request_count;
+        if (diff !== 0) return diff;
+        const aTime = a.usage.last_used ? new Date(a.usage.last_used).getTime() : 0;
+        const bTime = b.usage.last_used ? new Date(b.usage.last_used).getTime() : 0;
+        return aTime - bTime;
+      });
+      const selected = group[0];
+      this.acquireLocks.set(selected.id, Date.now());
+      result.push({
+        planType: plan,
+        entryId: selected.id,
+        token: selected.token,
+        accountId: selected.accountId,
+      });
+    }
+
+    return result;
   }
 
   /**
