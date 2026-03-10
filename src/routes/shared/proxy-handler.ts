@@ -35,7 +35,7 @@ export interface FormatAdapter {
     api: CodexApi,
     response: Response,
     model: string,
-    onUsage: (u: { input_tokens: number; output_tokens: number }) => void,
+    onUsage: (u: { input_tokens: number; output_tokens: number; cached_tokens?: number; reasoning_tokens?: number }) => void,
     onResponseId: (id: string) => void,
   ) => AsyncGenerator<string>;
   collectTranslator: (
@@ -44,7 +44,7 @@ export interface FormatAdapter {
     model: string,
   ) => Promise<{
     response: unknown;
-    usage: { input_tokens: number; output_tokens: number };
+    usage: { input_tokens: number; output_tokens: number; cached_tokens?: number; reasoning_tokens?: number };
     responseId: string | null;
   }>;
 }
@@ -94,7 +94,7 @@ export async function handleProxyRequest(
     JSON.stringify(req.codexRequest).slice(0, 300),
   );
 
-  let usageInfo: { input_tokens: number; output_tokens: number } | undefined;
+  let usageInfo: { input_tokens: number; output_tokens: number; cached_tokens?: number; reasoning_tokens?: number } | undefined;
 
   // P0-2: AbortController to kill curl when client disconnects
   const abortController = new AbortController();

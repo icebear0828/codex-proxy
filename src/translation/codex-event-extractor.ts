@@ -14,6 +14,8 @@ import {
 export interface UsageInfo {
   input_tokens: number;
   output_tokens: number;
+  cached_tokens?: number;
+  reasoning_tokens?: number;
 }
 
 export interface FunctionCallStart {

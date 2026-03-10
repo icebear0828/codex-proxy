@@ -22,6 +22,7 @@ import { iterateCodexEvents, EmptyResponseError } from "./codex-event-extractor.
 export interface AnthropicUsageInfo {
   input_tokens: number;
   output_tokens: number;
+  cached_tokens?: number;
 }
 
 /** Format an Anthropic SSE event with named event type */
@@ -47,6 +48,7 @@ export async function* streamCodexToAnthropic(
   const msgId = `msg_${randomUUID().replace(/-/g, "").slice(0, 24)}`;
   let outputTokens = 0;
   let inputTokens = 0;
+  let cachedTokens: number | undefined;
   let hasToolCalls = false;
   let hasContent = false;
   let contentIndex = 0;
@@ -218,7 +220,8 @@ export async function* streamCodexToAnthropic(
         if (evt.usage) {
           inputTokens = evt.usage.input_tokens;
           outputTokens = evt.usage.output_tokens;
-          onUsage?.({ input_tokens: inputTokens, output_tokens: outputTokens });
+          cachedTokens = evt.usage.cached_tokens;
+          onUsage?.({ input_tokens: inputTokens, output_tokens: outputTokens, cached_tokens: cachedTokens });
         }
         // Inject error text if stream completed with no content
         if (!hasContent) {
@@ -242,7 +245,11 @@ export async function* streamCodexToAnthropic(
   yield formatSSE("message_delta", {
     type: "message_delta",
     delta: { stop_reason: hasToolCalls ? "tool_use" : "end_turn" },
-    usage: { input_tokens: inputTokens, output_tokens: outputTokens },
+    usage: {
+      input_tokens: inputTokens,
+      output_tokens: outputTokens,
+      ...(cachedTokens != null ? { cache_read_input_tokens: cachedTokens } : {}),
+    },
   });
 
   // 5. message_stop
@@ -270,6 +277,7 @@ export async function collectCodexToAnthropicResponse(
   let fullReasoning = "";
   let inputTokens = 0;
   let outputTokens = 0;
+  let cachedTokens: number | undefined;
   let responseId: string | null = null;
 
   // Collect tool calls
@@ -285,6 +293,7 @@ export async function collectCodexToAnthropicResponse(
     if (evt.usage) {
       inputTokens = evt.usage.input_tokens;
       outputTokens = evt.usage.output_tokens;
+      cachedTokens = evt.usage.cached_tokens;
     }
     if (evt.functionCallDone) {
       let parsedInput: Record<string, unknown> = {};
@@ -323,6 +332,7 @@ export async function collectCodexToAnthropicResponse(
   const usage: AnthropicUsage = {
     input_tokens: inputTokens,
     output_tokens: outputTokens,
+    ...(cachedTokens != null ? { cache_read_input_tokens: cachedTokens } : {}),
   };
 
   return {

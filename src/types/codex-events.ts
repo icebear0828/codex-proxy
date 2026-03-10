@@ -14,6 +14,8 @@ export interface CodexResponseData {
   usage?: {
     input_tokens: number;
     output_tokens: number;
+    cached_tokens?: number;
+    reasoning_tokens?: number;
   };
   [key: string]: unknown;
 }
@@ -156,6 +158,16 @@ function parseResponseData(data: unknown): CodexResponseData | undefined {
       input_tokens: typeof resp.usage.input_tokens === "number" ? resp.usage.input_tokens : 0,
       output_tokens: typeof resp.usage.output_tokens === "number" ? resp.usage.output_tokens : 0,
     };
+    // Extract cached_tokens from input_tokens_details
+    const inputDetails = isRecord(resp.usage.input_tokens_details) ? resp.usage.input_tokens_details : undefined;
+    if (inputDetails && typeof inputDetails.cached_tokens === "number") {
+      result.usage.cached_tokens = inputDetails.cached_tokens;
+    }
+    // Extract reasoning_tokens from output_tokens_details
+    const outputDetails = isRecord(resp.usage.output_tokens_details) ? resp.usage.output_tokens_details : undefined;
+    if (outputDetails && typeof outputDetails.reasoning_tokens === "number") {
+      result.usage.reasoning_tokens = outputDetails.reasoning_tokens;
+    }
   }
   return result;
 }

@@ -101,6 +101,12 @@ export interface ChatCompletionUsage {
   prompt_tokens: number;
   completion_tokens: number;
   total_tokens: number;
+  prompt_tokens_details?: {
+    cached_tokens?: number;
+  };
+  completion_tokens_details?: {
+    reasoning_tokens?: number;
+  };
 }
 
 export interface ChatCompletionResponse {
@@ -143,6 +149,7 @@ export interface ChatCompletionChunk {
   created: number;
   model: string;
   choices: ChatCompletionChunkChoice[];
+  usage?: ChatCompletionUsage | null;
 }
 
 // --- Error ---

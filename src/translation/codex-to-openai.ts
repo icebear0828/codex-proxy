@@ -240,6 +240,20 @@ export async function* streamCodexToOpenAI(
             ],
           });
         }
+        // Build usage object for final chunk (OpenAI includes usage in last streaming chunk)
+        const chunkUsage: ChatCompletionChunk["usage"] = evt.usage
+          ? {
+              prompt_tokens: evt.usage.input_tokens,
+              completion_tokens: evt.usage.output_tokens,
+              total_tokens: evt.usage.input_tokens + evt.usage.output_tokens,
+              ...(evt.usage.cached_tokens != null
+                ? { prompt_tokens_details: { cached_tokens: evt.usage.cached_tokens } }
+                : {}),
+              ...(evt.usage.reasoning_tokens != null
+                ? { completion_tokens_details: { reasoning_tokens: evt.usage.reasoning_tokens } }
+                : {}),
+            }
+          : null;
         yield formatSSE({
           id: chunkId,
           object: "chat.completion.chunk",
@@ -252,6 +266,7 @@ export async function* streamCodexToOpenAI(
               finish_reason: hasToolCalls ? "tool_calls" : "stop",
             },
           ],
+          usage: chunkUsage,
         });
         break;
       }
@@ -278,6 +293,8 @@ export async function collectCodexResponse(
   let fullReasoning = "";
   let promptTokens = 0;
   let completionTokens = 0;
+  let cachedTokens: number | undefined;
+  let reasoningTokens: number | undefined;
   let responseId: string | null = null;
 
   // Collect tool calls
@@ -293,6 +310,8 @@ export async function collectCodexResponse(
     if (evt.usage) {
       promptTokens = evt.usage.input_tokens;
       completionTokens = evt.usage.output_tokens;
+      cachedTokens = evt.usage.cached_tokens;
+      reasoningTokens = evt.usage.reasoning_tokens;
     }
     if (evt.functionCallDone) {
       toolCalls.push({
@@ -340,11 +359,19 @@ export async function collectCodexResponse(
         prompt_tokens: promptTokens,
         completion_tokens: completionTokens,
         total_tokens: promptTokens + completionTokens,
+        ...(cachedTokens != null
+          ? { prompt_tokens_details: { cached_tokens: cachedTokens } }
+          : {}),
+        ...(reasoningTokens != null
+          ? { completion_tokens_details: { reasoning_tokens: reasoningTokens } }
+          : {}),
       },
     },
     usage: {
       input_tokens: promptTokens,
       output_tokens: completionTokens,
+      cached_tokens: cachedTokens,
+      reasoning_tokens: reasoningTokens,
     },
     responseId,
   };

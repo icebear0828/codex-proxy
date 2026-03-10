@@ -20,6 +20,7 @@ import { iterateCodexEvents, EmptyResponseError } from "./codex-event-extractor.
 export interface GeminiUsageInfo {
   input_tokens: number;
   output_tokens: number;
+  cached_tokens?: number;
 }
 
 /**
@@ -35,6 +36,7 @@ export async function* streamCodexToGemini(
 ): AsyncGenerator<string> {
   let inputTokens = 0;
   let outputTokens = 0;
+  let cachedTokens: number | undefined;
   let hasContent = false;
 
   for await (const evt of iterateCodexEvents(codexApi, rawResponse)) {
@@ -112,7 +114,8 @@ export async function* streamCodexToGemini(
         if (evt.usage) {
           inputTokens = evt.usage.input_tokens;
           outputTokens = evt.usage.output_tokens;
-          onUsage?.({ input_tokens: inputTokens, output_tokens: outputTokens });
+          cachedTokens = evt.usage.cached_tokens;
+          onUsage?.({ input_tokens: inputTokens, output_tokens: outputTokens, cached_tokens: cachedTokens });
         }
 
         // Inject error text if stream completed with no content
@@ -148,6 +151,7 @@ export async function* streamCodexToGemini(
             promptTokenCount: inputTokens,
             candidatesTokenCount: outputTokens,
             totalTokenCount: inputTokens + outputTokens,
+            ...(cachedTokens != null ? { cachedContentTokenCount: cachedTokens } : {}),
           },
           modelVersion: model,
         };
@@ -174,6 +178,7 @@ export async function collectCodexToGeminiResponse(
   let fullText = "";
   let inputTokens = 0;
   let outputTokens = 0;
+  let cachedTokens: number | undefined;
   let responseId: string | null = null;
   const functionCallParts: GeminiPart[] = [];
 
@@ -186,6 +191,7 @@ export async function collectCodexToGeminiResponse(
     if (evt.usage) {
       inputTokens = evt.usage.input_tokens;
       outputTokens = evt.usage.output_tokens;
+      cachedTokens = evt.usage.cached_tokens;
     }
     if (evt.functionCallDone) {
       let args: Record<string, unknown> = {};
@@ -201,12 +207,14 @@ export async function collectCodexToGeminiResponse(
   const usage: GeminiUsageInfo = {
     input_tokens: inputTokens,
     output_tokens: outputTokens,
+    cached_tokens: cachedTokens,
   };
 
   const usageMetadata: GeminiUsageMetadata = {
     promptTokenCount: inputTokens,
     candidatesTokenCount: outputTokens,
     totalTokenCount: inputTokens + outputTokens,
+    ...(cachedTokens != null ? { cachedContentTokenCount: cachedTokens } : {}),
   };
 
   // Detect empty response (HTTP 200 but no content)
