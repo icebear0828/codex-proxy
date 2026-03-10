@@ -34,3 +34,5 @@ tls:
   curl_binary: auto
   impersonate_profile: chrome144
   proxy_url: null
+  # 当代理不支持 HTTP/2 时启用此选项（如遇到 SETTINGS frame 错误）
+  force_http11: true

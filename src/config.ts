@@ -49,6 +49,7 @@ const ConfigSchema = z.object({
     impersonate_profile: z.string().default("chrome136"),
     proxy_url: z.string().nullable().default(null),
     transport: z.enum(["auto", "curl-cli", "libcurl-ffi"]).default("auto"),
+    force_http11: z.boolean().default(false),
   }).default({}),
 });
 

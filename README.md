@@ -288,7 +288,23 @@ for await (const chunk of stream) {
 | `client` | `app_version`, `build_number`, `chromium_version` | 模拟的 Codex Desktop 版本与 Chromium 版本 |
 | `model` | `default`, `default_reasoning_effort`, `default_service_tier` | 默认模型、推理强度与速度模式 |
 | `auth` | `rotation_strategy`, `rate_limit_backoff_seconds` | 轮换策略与限流退避 |
-| `tls` | `curl_binary`, `impersonate_profile`, `proxy_url` | TLS 伪装与代理配置 |
+| `tls` | `curl_binary`, `impersonate_profile`, `proxy_url`, `force_http11` | TLS 伪装与代理配置 |
+
+#### TLS 配置选项
+
+```yaml
+tls:
+  curl_binary: auto                # curl 二进制路径（auto 自动检测）
+  impersonate_profile: chrome136   # Chrome 伪装版本
+  proxy_url: null                  # 代理地址（null 自动检测本地代理）
+  force_http11: false              # 强制使用 HTTP/1.1（解决代理不支持 HTTP/2 的问题）
+```
+
+**`force_http11`**：当你的代理（如 Clash/mihomo）出现以下错误时启用：
+```
+curl: (16) Remote peer returned unexpected data while we expected SETTINGS frame.
+Perhaps, peer does not support HTTP/2 properly.
+```
 
 ### API 密钥 (proxy_api_key)
 

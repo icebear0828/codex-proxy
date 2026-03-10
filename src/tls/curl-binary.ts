@@ -165,6 +165,7 @@ function detectImpersonateSupport(binary: string): string[] {
  * Get Chrome TLS profile args to prepend to curl commands.
  * Returns empty array when using system curl (args are curl-impersonate specific).
  * Uses --impersonate flag when available, otherwise falls back to manual CHROME_TLS_ARGS.
+ * When force_http11 is enabled, adds --http1.1 to force HTTP/1.1 protocol.
  */
 export function getChromeTlsArgs(): string[] {
   // Ensure binary is resolved first
@@ -173,7 +174,13 @@ export function getChromeTlsArgs(): string[] {
   if (!_tlsArgs) {
     _tlsArgs = detectImpersonateSupport(_resolved!);
   }
-  return [..._tlsArgs];
+  const args = [..._tlsArgs];
+  // Force HTTP/1.1 when configured (for proxies that don't support HTTP/2)
+  const config = getConfig();
+  if (config.tls.force_http11) {
+    args.push("--http1.1");
+  }
+  return args;
 }
 
 /**

@@ -14,6 +14,7 @@ import type { IKoffiLib, IKoffiCType, IKoffiRegisteredCallback, KoffiFunction } 
 import type { TlsTransport, TlsTransportResponse } from "./transport.js";
 import { getProxyUrl, getResolvedProfile } from "./curl-binary.js";
 import { getBinDir } from "../paths.js";
+import { getConfig } from "../config.js";
 
 // ── libcurl constants ──────────────────────────────────────────────
 
@@ -30,6 +31,7 @@ const CURLOPT_PROXY = 10004;
 const CURLOPT_CAINFO = 10065;
 const CURLOPT_ACCEPT_ENCODING = 10102;
 const CURLOPT_HTTP_VERSION = 84;
+const CURL_HTTP_VERSION_1_1 = 2;
 const CURL_HTTP_VERSION_2_0 = 3;
 const CURLINFO_RESPONSE_CODE = 0x200002;
 const CURLM_OK = 0;
@@ -462,7 +464,11 @@ export class LibcurlFfiTransport implements TlsTransport {
 
     b.curl_easy_setopt_str(easy, CURLOPT_URL, url);
     b.curl_easy_setopt_long(easy, CURLOPT_NOSIGNAL, 1);
-    b.curl_easy_setopt_long(easy, CURLOPT_HTTP_VERSION, CURL_HTTP_VERSION_2_0);
+
+    // HTTP version: use HTTP/1.1 when force_http11 is enabled (for proxies that don't support HTTP/2)
+    const config = getConfig();
+    const httpVersion = config.tls.force_http11 ? CURL_HTTP_VERSION_1_1 : CURL_HTTP_VERSION_2_0;
+    b.curl_easy_setopt_long(easy, CURLOPT_HTTP_VERSION, httpVersion);
 
     // Accept-Encoding — let libcurl handle decompression
     b.curl_easy_setopt_str(easy, CURLOPT_ACCEPT_ENCODING, "");
