@@ -38,6 +38,7 @@ const INITIAL_DELAY_MS = 30_000; // 30 seconds after startup
 
 let checkTimer: ReturnType<typeof setInterval> | null = null;
 let initialTimer: ReturnType<typeof setTimeout> | null = null;
+let dismissedVersion: string | null = null;
 
 export function getAutoUpdateState(): AutoUpdateState {
   return { ...state };
@@ -59,6 +60,9 @@ export function initAutoUpdater(options: AutoUpdaterOptions): void {
     state.version = info.version;
     options.rebuildTrayMenu();
 
+    // Don't re-prompt if user already dismissed this version
+    if (info.version === dismissedVersion) return;
+
     const win = options.getMainWindow();
     const msgOptions = {
       type: "info" as const,
@@ -73,9 +77,12 @@ export function initAutoUpdater(options: AutoUpdaterOptions): void {
       : dialog.showMessageBox(msgOptions);
     promise.then(({ response }) => {
       if (response === 0) {
-        autoUpdater.downloadUpdate().catch((err: Error) => {
-          console.error("[AutoUpdater] Download failed:", err.message);
+        autoUpdater.downloadUpdate().catch((err: unknown) => {
+          const msg = err instanceof Error ? err.message : String(err);
+          console.error("[AutoUpdater] Download failed:", msg);
         });
+      } else {
+        dismissedVersion = info.version;
       }
     });
   });
@@ -87,7 +94,14 @@ export function initAutoUpdater(options: AutoUpdaterOptions): void {
 
   autoUpdater.on("download-progress", (progress: ProgressInfo) => {
     state.downloading = true;
-    state.progress = Math.round(progress.percent);
+    const rounded = Math.round(progress.percent);
+    // Throttle tray rebuilds to every 10% increment
+    if (rounded - state.progress >= 10 || rounded === 100) {
+      state.progress = rounded;
+      options.rebuildTrayMenu();
+    } else {
+      state.progress = rounded;
+    }
   });
 
   autoUpdater.on("update-downloaded", (info: UpdateInfo) => {
@@ -120,6 +134,7 @@ export function initAutoUpdater(options: AutoUpdaterOptions): void {
     state.downloading = false;
     state.error = err.message;
     console.error("[AutoUpdater] Error:", err.message);
+    options.rebuildTrayMenu();
   });
 
   // Initial check after delay
