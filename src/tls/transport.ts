@@ -58,6 +58,8 @@ export interface TlsTransport {
 }
 
 let _transport: TlsTransport | null = null;
+let _transportType: "libcurl-ffi" | "curl-cli" | "none" = "none";
+let _ffiError: string | null = null;
 
 /**
  * Initialize the transport singleton. Must be called once at startup
@@ -74,6 +76,7 @@ export async function initTransport(): Promise<TlsTransport> {
     try {
       const { createLibcurlFfiTransport } = await import("./libcurl-ffi-transport.js");
       _transport = await createLibcurlFfiTransport();
+      _transportType = "libcurl-ffi";
       console.log("[TLS] Using libcurl-impersonate FFI transport");
       return _transport;
     } catch (err) {
@@ -81,12 +84,14 @@ export async function initTransport(): Promise<TlsTransport> {
       if (setting === "libcurl-ffi") {
         throw new Error(`Failed to initialize libcurl FFI transport: ${msg}`);
       }
+      _ffiError = msg;
       console.warn(`[TLS] FFI transport unavailable (${msg}), falling back to curl CLI`);
     }
   }
 
   const { CurlCliTransport } = await import("./curl-cli-transport.js");
   _transport = new CurlCliTransport();
+  _transportType = "curl-cli";
   console.log("[TLS] Using curl CLI transport");
   return _transport;
 }
@@ -111,7 +116,24 @@ function shouldUseFfi(): boolean {
   return existsSync(dllPath);
 }
 
+/** Get transport diagnostic info. */
+export function getTransportInfo(): {
+  type: "libcurl-ffi" | "curl-cli" | "none";
+  initialized: boolean;
+  impersonate: boolean;
+  ffi_error: string | null;
+} {
+  return {
+    type: _transportType,
+    initialized: _transport !== null,
+    impersonate: _transport?.isImpersonate() ?? false,
+    ffi_error: _ffiError,
+  };
+}
+
 /** Reset transport singleton (for testing). */
 export function resetTransport(): void {
   _transport = null;
+  _transportType = "none";
+  _ffiError = null;
 }

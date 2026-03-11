@@ -10,6 +10,7 @@ import { ApiConfig } from "./components/ApiConfig";
 import { AnthropicSetup } from "./components/AnthropicSetup";
 import { CodeExamples } from "./components/CodeExamples";
 import { SettingsPanel } from "./components/SettingsPanel";
+import { TestConnection } from "./components/TestConnection";
 import { Footer } from "./components/Footer";
 import { ProxySettings } from "./pages/ProxySettings";
 import { useAccounts } from "../../shared/hooks/use-accounts";
@@ -144,6 +145,7 @@ function Dashboard() {
             serviceTier={status.selectedSpeed}
           />
           <SettingsPanel />
+          <TestConnection />
         </div>
       </main>
       <Footer updateStatus={update.status} />

@@ -4,7 +4,9 @@ import { readFileSync, existsSync } from "fs";
 import { resolve } from "path";
 import type { AccountPool } from "../auth/account-pool.js";
 import { getConfig, getFingerprint, reloadAllConfigs } from "../config.js";
-import { getPublicDir, getDesktopPublicDir, getConfigDir, getDataDir, isEmbedded } from "../paths.js";
+import { getPublicDir, getDesktopPublicDir, getConfigDir, getDataDir, getBinDir, isEmbedded } from "../paths.js";
+import { getTransport, getTransportInfo } from "../tls/transport.js";
+import { getCurlDiagnostics } from "../tls/curl-binary.js";
 import { getUpdateState, checkForUpdate, isUpdateInProgress } from "../update-checker.js";
 import { getProxyInfo, canSelfUpdate, checkProxySelfUpdate, applyProxySelfUpdate, isProxyUpdateInProgress, getCachedProxyUpdateResult, getDeployMode } from "../self-update.js";
 import { mutateYaml } from "../utils/yaml-mutate.js";
@@ -123,6 +125,52 @@ export function createWebRoutes(accountPool: AccountPool): Hono {
     });
   });
 
+  app.get("/debug/diagnostics", (c) => {
+    const remoteAddr = c.req.header("x-forwarded-for") ?? c.req.header("x-real-ip") ?? "";
+    const isLocalhost = remoteAddr === "" || remoteAddr === "127.0.0.1" || remoteAddr === "::1";
+    if (process.env.NODE_ENV === "production" && !isLocalhost) {
+      c.status(404);
+      return c.json({ error: { message: "Not found", type: "invalid_request_error" } });
+    }
+
+    const transport = getTransportInfo();
+    const curl = getCurlDiagnostics();
+    const poolSummary = accountPool.getPoolSummary();
+    const caCertPath = resolve(getBinDir(), "cacert.pem");
+
+    return c.json({
+      transport: {
+        type: transport.type,
+        initialized: transport.initialized,
+        impersonate: transport.impersonate,
+        ffi_error: transport.ffi_error,
+      },
+      curl: {
+        binary: curl.binary,
+        is_impersonate: curl.is_impersonate,
+        profile: curl.profile,
+      },
+      proxy: { url: curl.proxy_url },
+      ca_cert: { found: existsSync(caCertPath), path: caCertPath },
+      accounts: {
+        total: poolSummary.total,
+        active: poolSummary.active,
+        authenticated: accountPool.isAuthenticated(),
+      },
+      paths: {
+        bin: getBinDir(),
+        config: getConfigDir(),
+        data: getDataDir(),
+      },
+      runtime: {
+        platform: process.platform,
+        arch: process.arch,
+        node_version: process.version,
+        embedded: isEmbedded(),
+      },
+    });
+  });
+
   // --- Update management endpoints ---
 
   app.get("/admin/update-status", (c) => {
@@ -229,6 +277,130 @@ export function createWebRoutes(accountPool: AccountPool): Hono {
     }
     const result = await applyProxySelfUpdate();
     return c.json(result);
+  });
+
+  // --- Test connection endpoint ---
+
+  app.post("/admin/test-connection", async (c) => {
+    type DiagStatus = "pass" | "fail" | "skip";
+    interface DiagCheck { name: string; status: DiagStatus; latencyMs: number; detail: string | null; error: string | null; }
+    const checks: DiagCheck[] = [];
+    let overallFailed = false;
+
+    // 1. Server check — if we're responding, it's a pass
+    const serverStart = Date.now();
+    checks.push({
+      name: "server",
+      status: "pass",
+      latencyMs: Date.now() - serverStart,
+      detail: `PID ${process.pid}`,
+      error: null,
+    });
+
+    // 2. Accounts check — any authenticated accounts?
+    const accountsStart = Date.now();
+    const poolSummary = accountPool.getPoolSummary();
+    const hasActive = poolSummary.active > 0;
+    checks.push({
+      name: "accounts",
+      status: hasActive ? "pass" : "fail",
+      latencyMs: Date.now() - accountsStart,
+      detail: hasActive
+        ? `${poolSummary.active} active / ${poolSummary.total} total`
+        : `0 active / ${poolSummary.total} total`,
+      error: hasActive ? null : "No active accounts",
+    });
+    if (!hasActive) overallFailed = true;
+
+    // 3. Transport check — TLS transport initialized?
+    const transportStart = Date.now();
+    const transportInfo = getTransportInfo();
+    const caCertPath = resolve(getBinDir(), "cacert.pem");
+    const caCertExists = existsSync(caCertPath);
+    const transportOk = transportInfo.initialized;
+    checks.push({
+      name: "transport",
+      status: transportOk ? "pass" : "fail",
+      latencyMs: Date.now() - transportStart,
+      detail: transportOk
+        ? `${transportInfo.type}, impersonate=${transportInfo.impersonate}, ca_cert=${caCertExists}`
+        : null,
+      error: transportOk
+        ? (transportInfo.ffi_error ? `FFI fallback: ${transportInfo.ffi_error}` : null)
+        : (transportInfo.ffi_error ?? "Transport not initialized"),
+    });
+    if (!transportOk) overallFailed = true;
+
+    // 4. Upstream check — can we reach chatgpt.com?
+    if (!hasActive) {
+      // Skip upstream if no accounts
+      checks.push({
+        name: "upstream",
+        status: "skip",
+        latencyMs: 0,
+        detail: "Skipped (no active accounts)",
+        error: null,
+      });
+    } else {
+      const upstreamStart = Date.now();
+      const acquired = accountPool.acquire();
+      if (!acquired) {
+        checks.push({
+          name: "upstream",
+          status: "fail",
+          latencyMs: Date.now() - upstreamStart,
+          detail: null,
+          error: "Could not acquire account for test",
+        });
+        overallFailed = true;
+      } else {
+        try {
+          const transport = getTransport();
+          const config = getConfig();
+          const url = `${config.api.base_url}/codex/usage`;
+          const { buildHeaders } = await import("../fingerprint/manager.js");
+          const headers = buildHeaders(acquired.token, acquired.accountId);
+          const resp = await transport.get(url, headers, 15);
+          const latency = Date.now() - upstreamStart;
+          if (resp.status >= 200 && resp.status < 400) {
+            checks.push({
+              name: "upstream",
+              status: "pass",
+              latencyMs: latency,
+              detail: `HTTP ${resp.status} (${latency}ms)`,
+              error: null,
+            });
+          } else {
+            checks.push({
+              name: "upstream",
+              status: "fail",
+              latencyMs: latency,
+              detail: `HTTP ${resp.status}`,
+              error: `Upstream returned ${resp.status}`,
+            });
+            overallFailed = true;
+          }
+        } catch (err) {
+          const latency = Date.now() - upstreamStart;
+          checks.push({
+            name: "upstream",
+            status: "fail",
+            latencyMs: latency,
+            detail: null,
+            error: err instanceof Error ? err.message : String(err),
+          });
+          overallFailed = true;
+        } finally {
+          accountPool.releaseWithoutCounting(acquired.entryId);
+        }
+      }
+    }
+
+    return c.json({
+      checks,
+      overall: overallFailed ? "fail" as const : "pass" as const,
+      timestamp: new Date().toISOString(),
+    });
   });
 
   // --- Settings endpoints ---

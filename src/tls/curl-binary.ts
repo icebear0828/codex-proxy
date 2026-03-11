@@ -288,6 +288,23 @@ export function getProxyUrl(): string | null {
 }
 
 /**
+ * Get curl diagnostic info for /debug/diagnostics endpoint.
+ */
+export function getCurlDiagnostics(): {
+  binary: string | null;
+  is_impersonate: boolean;
+  profile: string;
+  proxy_url: string | null;
+} {
+  return {
+    binary: _resolved,
+    is_impersonate: _isImpersonate,
+    profile: _resolvedProfile,
+    proxy_url: _proxyUrl ?? null,
+  };
+}
+
+/**
  * Reset the cached binary path (useful for testing).
  */
 export function resetCurlBinaryCache(): void {

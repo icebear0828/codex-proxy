@@ -45,3 +45,19 @@ export interface ProxyAssignment {
   accountId: string;
   proxyId: string;
 }
+
+export type DiagnosticStatus = "pass" | "fail" | "skip";
+
+export interface DiagnosticCheck {
+  name: string;
+  status: DiagnosticStatus;
+  latencyMs: number;
+  detail: string | null;
+  error: string | null;
+}
+
+export interface TestConnectionResult {
+  checks: DiagnosticCheck[];
+  overall: DiagnosticStatus;
+  timestamp: string;
+}

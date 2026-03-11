@@ -211,6 +211,13 @@ export class AccountPool {
   }
 
   /**
+   * Release an account without counting usage (for diagnostics).
+   */
+  releaseWithoutCounting(entryId: string): void {
+    this.acquireLocks.delete(entryId);
+  }
+
+  /**
    * Mark an account as rate-limited after a 429.
    * P1-6: countRequest option to track 429s as usage without exposing entry internals.
    */
