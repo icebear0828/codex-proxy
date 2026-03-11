@@ -1,5 +1,6 @@
 import { Hono } from "hono";
 import { serveStatic } from "@hono/node-server/serve-static";
+import { getConnInfo } from "@hono/node-server/conninfo";
 import { readFileSync, existsSync } from "fs";
 import { resolve } from "path";
 import type { AccountPool } from "../auth/account-pool.js";
@@ -7,6 +8,7 @@ import { getConfig, getFingerprint, reloadAllConfigs } from "../config.js";
 import { getPublicDir, getDesktopPublicDir, getConfigDir, getDataDir, getBinDir, isEmbedded } from "../paths.js";
 import { getTransport, getTransportInfo } from "../tls/transport.js";
 import { getCurlDiagnostics } from "../tls/curl-binary.js";
+import { buildHeaders } from "../fingerprint/manager.js";
 import { getUpdateState, checkForUpdate, isUpdateInProgress } from "../update-checker.js";
 import { getProxyInfo, canSelfUpdate, checkProxySelfUpdate, applyProxySelfUpdate, isProxyUpdateInProgress, getCachedProxyUpdateResult, getDeployMode } from "../self-update.js";
 import { mutateYaml } from "../utils/yaml-mutate.js";
@@ -64,8 +66,8 @@ export function createWebRoutes(accountPool: AccountPool): Hono {
   app.get("/debug/fingerprint", (c) => {
     // Only allow in development or from localhost
     const isProduction = process.env.NODE_ENV === "production";
-    const remoteAddr = c.req.header("x-forwarded-for") ?? c.req.header("x-real-ip") ?? "";
-    const isLocalhost = remoteAddr === "" || remoteAddr === "127.0.0.1" || remoteAddr === "::1";
+    const remoteAddr = getConnInfo(c).remote.address ?? "";
+    const isLocalhost = remoteAddr === "" || remoteAddr === "127.0.0.1" || remoteAddr === "::1" || remoteAddr === "::ffff:127.0.0.1";
     if (isProduction && !isLocalhost) {
       c.status(404);
       return c.json({ error: { message: "Not found", type: "invalid_request_error" } });
@@ -126,8 +128,8 @@ export function createWebRoutes(accountPool: AccountPool): Hono {
   });
 
   app.get("/debug/diagnostics", (c) => {
-    const remoteAddr = c.req.header("x-forwarded-for") ?? c.req.header("x-real-ip") ?? "";
-    const isLocalhost = remoteAddr === "" || remoteAddr === "127.0.0.1" || remoteAddr === "::1";
+    const remoteAddr = getConnInfo(c).remote.address ?? "";
+    const isLocalhost = remoteAddr === "" || remoteAddr === "127.0.0.1" || remoteAddr === "::1" || remoteAddr === "::ffff:127.0.0.1";
     if (process.env.NODE_ENV === "production" && !isLocalhost) {
       c.status(404);
       return c.json({ error: { message: "Not found", type: "invalid_request_error" } });
@@ -358,7 +360,6 @@ export function createWebRoutes(accountPool: AccountPool): Hono {
           const transport = getTransport();
           const config = getConfig();
           const url = `${config.api.base_url}/codex/usage`;
-          const { buildHeaders } = await import("../fingerprint/manager.js");
           const headers = buildHeaders(acquired.token, acquired.accountId);
           const resp = await transport.get(url, headers, 15);
           const latency = Date.now() - upstreamStart;
