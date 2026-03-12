@@ -387,11 +387,19 @@ export class AccountPool {
 
     const oldResetAt = entry.usage.window_reset_at;
     if (oldResetAt != null && oldResetAt !== newResetAt) {
-      console.log(`[AccountPool] Rate limit window rolled for ${entryId} (${entry.email ?? "?"}), resetting window counters`);
-      entry.usage.window_request_count = 0;
-      entry.usage.window_input_tokens = 0;
-      entry.usage.window_output_tokens = 0;
-      entry.usage.window_counters_reset_at = new Date().toISOString();
+      // Codex API reset_at drifts slightly between calls (activity-based sliding window).
+      // Only reset counters on a true window rollover: when reset_at jumps by a large amount
+      // (at least half the window size), not just a small drift of a few hundred seconds.
+      const drift = Math.abs(newResetAt - oldResetAt);
+      const windowSec = limitWindowSeconds ?? entry.usage.limit_window_seconds ?? 0;
+      const threshold = windowSec > 0 ? windowSec * 0.5 : 3600;
+      if (drift >= threshold) {
+        console.log(`[AccountPool] Rate limit window rolled for ${entryId} (${entry.email ?? "?"}), resetting window counters (drift=${drift}s, threshold=${threshold}s)`);
+        entry.usage.window_request_count = 0;
+        entry.usage.window_input_tokens = 0;
+        entry.usage.window_output_tokens = 0;
+        entry.usage.window_counters_reset_at = new Date().toISOString();
+      }
     }
     entry.usage.window_reset_at = newResetAt;
     if (limitWindowSeconds != null) {
