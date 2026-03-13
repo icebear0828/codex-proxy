@@ -410,7 +410,7 @@ async function main() {
     let mainPath = join(buildDir, "main.js");
     if (existsSync(buildDir)) {
       const files = readdirSync(buildDir);
-      const chunk = files.find((f) => /^main-[A-Za-z0-9]+\.js$/.test(f));
+      const chunk = files.find((f) => /^main-[A-Za-z0-9_-]+\.js$/.test(f));
       if (chunk) {
         mainPath = join(buildDir, chunk);
         console.log(`[extract] Found chunk: ${chunk}`);
