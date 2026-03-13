@@ -189,6 +189,17 @@ function extractFromMainJs(
 }
 
 /**
+ * Find the nearest `[` bracket within maxDistance chars before the given position.
+ * Prevents unbounded `lastIndexOf("[")` from matching a wrong bracket thousands of chars away.
+ */
+function findNearbyBracket(content: string, position: number, maxDistance = 50): number {
+  const searchStart = Math.max(0, position - maxDistance);
+  const slice = content.slice(searchStart, position);
+  const idx = slice.lastIndexOf("[");
+  return idx !== -1 ? searchStart + idx : -1;
+}
+
+/**
  * Step B (continued): Extract system prompts from main.js
  */
 function extractPrompts(content: string): {
@@ -227,8 +238,8 @@ function extractPrompts(content: string): {
     // Find the enclosing array end: ].join(
     const joinIdx = content.indexOf("].join(", titleStart);
     if (joinIdx !== -1) {
-      // Extract the array content between [ and ]
-      const bracketStart = content.lastIndexOf("[", titleStart);
+      // Find the opening [ within 50 chars before the marker (not unbounded lastIndexOf)
+      const bracketStart = findNearbyBracket(content, titleStart);
       if (bracketStart !== -1) {
         const arrayContent = content.slice(bracketStart + 1, joinIdx);
         // Parse string literals from the array
@@ -244,7 +255,7 @@ function extractPrompts(content: string): {
   if (prStart !== -1) {
     const joinIdx = content.indexOf("].join(", prStart);
     if (joinIdx !== -1) {
-      const bracketStart = content.lastIndexOf("[", prStart);
+      const bracketStart = findNearbyBracket(content, prStart);
       if (bracketStart !== -1) {
         const arrayContent = content.slice(bracketStart + 1, joinIdx);
         prGeneration = parseStringArray(arrayContent);
@@ -317,6 +328,17 @@ function savePrompt(name: string, content: string | null): { hash: string | null
 
   const sanitized = sanitizePrompt(content);
   if (!sanitized) return { hash: null, path: null };
+
+  // Validate: reject suspiciously short or garbled content
+  if (sanitized.length < 50) {
+    console.warn(`[extract] Prompt "${name}" too short (${sanitized.length} chars), skipping save`);
+    return { hash: null, path: null };
+  }
+  const garbageLines = sanitized.split("\n").filter((l) => /^[,`'"]\s*$/.test(l.trim()));
+  if (garbageLines.length > 3) {
+    console.warn(`[extract] Prompt "${name}" has ${garbageLines.length} garbled lines, skipping save`);
+    return { hash: null, path: null };
+  }
 
   mkdirSync(PROMPTS_DIR, { recursive: true });
   const filePath = join(PROMPTS_DIR, `${name}.md`);
@@ -433,7 +455,47 @@ async function main() {
   if (mainJs) {
     console.log(`[extract] main.js loaded (${mainJs.split("\n").length} lines)`);
 
-    mainJsResults = extractFromMainJs(mainJs, patterns.main_js);
+    try {
+      mainJsResults = extractFromMainJs(mainJs, patterns.main_js);
+    } catch (err) {
+      console.warn(`[extract] Primary extraction failed: ${(err as Error).message}`);
+      console.log("[extract] Scanning all .vite/build/*.js for fallback...");
+
+      const buildDir = join(asarRoot, ".vite/build");
+      if (existsSync(buildDir)) {
+        const jsFiles = readdirSync(buildDir).filter((f) => f.endsWith(".js"));
+        for (const file of jsFiles) {
+          const content = readFileSync(join(buildDir, file), "utf-8");
+          const origPattern = patterns.main_js.originator;
+          if (origPattern?.pattern) {
+            const m = content.match(new RegExp(origPattern.pattern));
+            if (m) {
+              mainJsResults.originator = m[origPattern.group ?? 0] ?? m[0];
+              console.log(`[extract] Originator found in fallback file: ${file}`);
+              break;
+            }
+          }
+        }
+      }
+
+      // Re-extract non-critical fields from mainJs
+      const apiPattern = patterns.main_js.api_base_url;
+      if (apiPattern?.pattern) {
+        const m = mainJs.match(new RegExp(apiPattern.pattern));
+        if (m) mainJsResults.apiBaseUrl = m[0];
+      }
+      const modelPattern = patterns.main_js.models;
+      if (modelPattern?.pattern) {
+        const re = new RegExp(modelPattern.pattern, "g");
+        const groupIdx = modelPattern.group ?? 0;
+        const modelSet = new Set<string>();
+        for (const m of mainJs.matchAll(re)) {
+          modelSet.add(m[groupIdx] ?? m[0]);
+        }
+        mainJsResults.models = [...modelSet].sort();
+      }
+    }
+
     console.log(`  API base URL:  ${mainJsResults.apiBaseUrl}`);
     console.log(`  originator:    ${mainJsResults.originator}`);
     console.log(`  models:        ${mainJsResults.models.join(", ")}`);
@@ -446,6 +508,31 @@ async function main() {
     console.log(`  title-generation:    ${promptResults.titleGeneration ? "found" : "NOT FOUND"}`);
     console.log(`  pr-generation:       ${promptResults.prGeneration ? "found" : "NOT FOUND"}`);
     console.log(`  automation-response: ${promptResults.automationResponse ? "found" : "NOT FOUND"}`);
+  }
+
+  // Scan webview assets for additional model IDs
+  const webviewAssetsDir = join(asarRoot, "webview/assets");
+  if (existsSync(webviewAssetsDir)) {
+    console.log("[extract] Scanning webview assets for additional models...");
+    const modelPattern = patterns.main_js.models;
+    if (modelPattern?.pattern) {
+      const webviewFiles = readdirSync(webviewAssetsDir).filter((f) => f.endsWith(".js"));
+      const webviewModels = new Set<string>();
+      for (const file of webviewFiles) {
+        const content = readFileSync(join(webviewAssetsDir, file), "utf-8");
+        const re = new RegExp(modelPattern.pattern, "g");
+        const groupIdx = modelPattern.group ?? 0;
+        for (const m of content.matchAll(re)) {
+          webviewModels.add(m[groupIdx] ?? m[0]);
+        }
+      }
+      const existingModels = new Set(mainJsResults.models);
+      const newFromWebview = [...webviewModels].filter((m) => !existingModels.has(m));
+      if (newFromWebview.length > 0) {
+        console.log(`[extract] Webview: ${newFromWebview.length} additional models: ${newFromWebview.join(", ")}`);
+        mainJsResults.models = [...mainJsResults.models, ...newFromWebview].sort();
+      }
+    }
   }
 
   // Save extracted prompts

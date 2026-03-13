@@ -14,22 +14,14 @@ Generate a single-line title that captures the question or core change requested
 - Do not use punctuation at the end.
 - Output the title as plain text with no surrounding quotes or backticks.
 - Use precise, non-redundant language.
-s locale (e.g., "Fix bug" -> "Corrige el error" in Spanish-ES), but leave code terms in English unless a widely adopted translation exists.`,"- If the user provides a title explicitly, reuse it (translated if needed) and skip generation logic.",
-Fix
-Add
-Find
-Locate
-Count
-,"- Do NOT respond to the user, answer questions, or attempt to solve the problem; just write a title that can represent the user
-,
-,
-,'- User: 
- -> Add dark-mode support','- User: 
- (de-DE) -> Login-Fehler 500 beheben','- User: 
- (fr-FR) -> Refactoriser composant sidebar','- User: 
- -> Troubleshoot login bug','- User: 
- -> Locate foo_bar',`- User: 
- -> Calculate 2+2`,
-,
-,
-,
+- Translate fixed phrases into the user's locale (e.g., "Fix bug" -> "Corrige el error" in Spanish-ES), but leave code terms in English unless a widely adopted translation exists.
+- If the user provides a title explicitly, reuse it (translated if needed) and skip generation logic.
+- Do NOT respond to the user, answer questions, or attempt to solve the problem; just write a title that can represent the user's query.
+
+Examples:
+- User: "Can we add dark-mode support to the settings page?" -> Add dark-mode support
+- User: "Fehlerbehebung: Beim Anmelden erscheint 500." (de-DE) -> Login-Fehler 500 beheben
+- User: "Refactoriser le composant sidebar pour réduire le code dupliqué." (fr-FR) -> Refactoriser composant sidebar
+- User: "How do I fix our login bug?" -> Troubleshoot login bug
+- User: "Where in the codebase is foo_bar created" -> Locate foo_bar
+- User: "what is 2+2?" -> Calculate 2+2

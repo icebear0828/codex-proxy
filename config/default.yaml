@@ -3,8 +3,8 @@ api:
   timeout_seconds: 60
 client:
   originator: Codex Desktop
-  app_version: 26.305.950
-  build_number: "863"
+  app_version: 26.309.31024
+  build_number: "962"
   platform: darwin
   arch: arm64
   chromium_version: "144"
@@ -34,5 +34,4 @@ tls:
   curl_binary: auto
   impersonate_profile: chrome144
   proxy_url: null
-  # 当代理不支持 HTTP/2 时启用此选项（如遇到 SETTINGS frame 错误）
   force_http11: true

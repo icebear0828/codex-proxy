@@ -8,11 +8,24 @@
 
 ### Added
 
+- 双窗口配额显示：Dashboard 账号卡片同时展示主窗口（小时限制）和次窗口（周限制）的用量百分比、进度条和重置时间，后端 `secondary_window` 不再被忽略
 - 更新弹窗 + 自动重启：点击"有可用更新"弹出 Modal 显示 changelog，一键更新后服务器自动重启、前端自动刷新，零人工干预（git 模式 spawn 新进程、Docker/Electron 显示对应操作指引）
 - Model-aware 多计划账号路由：不同 plan（free/plus/business）的账号自动路由到各自支持的模型，business 账号可继续使用 gpt-5.4 等高端模型 (#57)
 - Structured Outputs 支持：`/v1/chat/completions` 支持 `response_format`（`json_object` / `json_schema`），Gemini 端点支持 `responseMimeType` + `responseSchema`，自动翻译为 Codex Responses API 的 `text.format`；`/v1/responses` 直通 `text` 字段
 
 ### Changed
+
+- 提取管道强化：`extract-fingerprint.ts` 新增 fallback 扫描（`.vite/build/*.js` 全文件回退）和 webview 模型发现（`webview/assets/*.js`），pattern 失败不再中断整个流程
+- 模型/别名自动添加降级为 semi-auto：后端已通过 `isCodexCompatibleId()` 自动合并新模型，`apply-update.ts` 不再自动写入 `models.yaml`（避免 `mutateYaml` 破坏 YAML 格式）
+- Codex Desktop 版本更新至 v26.309.31024 (build 962)
+
+### Fixed (pipeline)
+
+- Prompt 提取括号定位修复：`extractPrompts()` 的 `lastIndexOf("[")` 无限回溯导致匹配到无关 `[`，截取错误代码片段产出乱码；改为 50 字符窗口内搜索
+- Prompt 覆写安全校验：`savePrompt()` 和 `applyAutoChanges()` 新增内容验证（最小长度 50 字符、乱码行数 ≤3），拒绝将损坏数据写入 `config/prompts/`
+- `title-generation.md` 修复：还原因提取 bug 损坏的 title 生成 prompt（第 17-35 行乱码）
+
+### Changed (previous)
 
 - 模型目录大幅更新：后端移除 free 账号的 `gpt-5.4`、`gpt-5.3-codex` 全系列（plus 及以上仍可用），新旗舰模型为 `gpt-5.2-codex`（`codex` 别名指向此模型）
 - 新增模型：`gpt-5.2`、`gpt-5.1-codex`、`gpt-5.1`、`gpt-5-codex`、`gpt-5`、`gpt-oss-120b`、`gpt-oss-20b`、`gpt-5-codex-mini`
@@ -20,6 +33,9 @@
 
 ### Fixed
 
+- 429 真实冷却时间：从 429 错误响应体解析 `resets_in_seconds` / `resets_at`，账号按后端实际冷却期（如 free 计划 5.5 天）标记限速，不再使用硬编码 60s 默认值 (#65)
+- 429 自动降级：收到 429 后自动尝试下一个可用账号，所有账号耗尽后才返回 429 给客户端 (#65)
+- 调度优先级优化：`least_used` 策略新增 `window_reset_at` 二级排序，配额窗口更早重置的账号优先使用 (#65)
 - JSON Schema `additionalProperties` 递归注入：`injectAdditionalProperties()` 递归注入 `additionalProperties: false` 到 JSON Schema 所有 object 节点，覆盖 `properties`、`patternProperties`、`$defs`/`definitions`、`items`、`prefixItems`、组合器（`oneOf`/`anyOf`/`allOf`）、条件（`if`/`then`/`else`），含循环检测；三个端点（OpenAI/Gemini/Responses passthrough）统一调用 (#64)
 - CONNECT tunnel header 解析：循环跳过中间 header block（CONNECT 200、100 Continue），修复代理模式下 tunnel 的 `HTTP/1.1 200` 被当作真实状态码导致上游 4xx 错误被掩盖为 502 的问题 (#64)
 - 上游 HTTP 状态码透传：非流式 collect 路径从错误消息提取真实 HTTP 状态码，不再硬编码 502；提取 `toErrorStatus()` 辅助函数统一 4 处 StatusCode 转换 (#64)
