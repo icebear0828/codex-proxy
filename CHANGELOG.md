@@ -19,6 +19,10 @@
 - 模型/别名自动添加降级为 semi-auto：后端已通过 `isCodexCompatibleId()` 自动合并新模型，`apply-update.ts` 不再自动写入 `models.yaml`（避免 `mutateYaml` 破坏 YAML 格式）
 - Codex Desktop 版本更新至 v26.309.31024 (build 962)
 
+### Fixed
+
+- 自动更新重启可靠性：移除 `.restart-helper.cjs` 临时脚本方案，改为直接 spawn 新进程 + 复用 `index.ts` 内置 EADDRINUSE 重试（10 次 × 1s）；新增 nodeExe 存在性校验防止无声死亡，子进程输出写入 `.restart.log` 便于排查启动失败
+
 ### Fixed (pipeline)
 
 - Prompt 提取括号定位修复：`extractPrompts()` 的 `lastIndexOf("[")` 无限回溯导致匹配到无关 `[`，截取错误代码片段产出乱码；改为 50 字符窗口内搜索

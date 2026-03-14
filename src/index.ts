@@ -163,7 +163,7 @@ async function main() {
   let handle: ServerHandle;
 
   // Retry on EADDRINUSE — the previous process may still be releasing the port after a self-update restart
-  const MAX_RETRIES = 5;
+  const MAX_RETRIES = 10;
   const RETRY_DELAY_MS = 1000;
   for (let attempt = 1; ; attempt++) {
     try {

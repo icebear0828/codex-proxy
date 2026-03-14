@@ -6,11 +6,10 @@
  */
 
 import { execFile, execFileSync, spawn } from "child_process";
-import { existsSync, readFileSync, writeFileSync } from "fs";
+import { existsSync, openSync, readFileSync } from "fs";
 import { resolve } from "path";
 import { promisify } from "util";
 import { getRootDir, isEmbedded } from "./paths.js";
-import { getConfig } from "./config.js";
 
 // ── Restart ─────────────────────────────────────────────────────────
 let _closeHandler: (() => Promise<void>) | null = null;
@@ -21,53 +20,36 @@ export function setCloseHandler(handler: () => Promise<void>): void {
 }
 
 /**
- * Restart the server: try graceful close (up to 3s), then spawn a helper
- * that waits for the port to be free before starting the new server process.
+ * Restart the server: try graceful close (up to 3s), then spawn the new
+ * server process directly. The new process has built-in EADDRINUSE retry
+ * (in index.ts) so it handles port-release timing automatically.
  */
 function hardRestart(cwd: string): void {
   const nodeExe = process.argv[0];
   const serverArgs = process.argv.slice(1);
-  const port = getPort();
-
-  // Write a temporary CJS helper script that waits for the port to be free, then starts the server
-  const helperPath = resolve(cwd, ".restart-helper.cjs");
-  const helperContent = [
-    `const net = require("net");`,
-    `const { spawn, execSync } = require("child_process");`,
-    `const fs = require("fs");`,
-    `const nodeExe = ${JSON.stringify(nodeExe)};`,
-    `const args = ${JSON.stringify(serverArgs)};`,
-    `const cwd = ${JSON.stringify(cwd)};`,
-    `const port = ${port};`,
-    `let attempts = 0;`,
-    `function tryStart() {`,
-    `  attempts++;`,
-    `  const s = net.createServer();`,
-    `  s.once("error", () => {`,
-    `    if (attempts >= 20) { cleanup(); process.exit(1); }`,
-    `    setTimeout(tryStart, 500);`,
-    `  });`,
-    `  s.once("listening", () => {`,
-    `    s.close(() => {`,
-    `      spawn(nodeExe, args, { detached: true, stdio: "ignore", cwd }).unref();`,
-    `      cleanup();`,
-    `      process.exit(0);`,
-    `    });`,
-    `  });`,
-    `  s.listen(port);`,
-    `}`,
-    `function cleanup() { try { fs.unlinkSync(${JSON.stringify(helperPath)}); } catch {} }`,
-    `tryStart();`,
-  ].join("\n");
 
   const doRestart = () => {
-    console.log("[SelfUpdate] Writing restart helper and exiting...");
-    writeFileSync(helperPath, helperContent, "utf-8");
-    spawn(nodeExe, [helperPath], {
+    if (!existsSync(nodeExe)) {
+      console.error(`[SelfUpdate] Node executable not found: ${nodeExe}, aborting restart`);
+      return;
+    }
+
+    console.log("[SelfUpdate] Spawning new server process...");
+
+    // Redirect child output to a log file for post-mortem debugging
+    let outFd: number | null = null;
+    try {
+      outFd = openSync(resolve(cwd, ".restart.log"), "w");
+    } catch { /* fall back to ignore */ }
+
+    const child = spawn(nodeExe, serverArgs, {
       detached: true,
-      stdio: "ignore",
+      stdio: ["ignore", outFd ?? "ignore", outFd ?? "ignore"],
       cwd,
-    }).unref();
+    });
+    child.unref();
+
+    console.log(`[SelfUpdate] New process spawned (pid: ${child.pid ?? "unknown"}). Exiting...`);
     process.exit(0);
   };
 
@@ -90,16 +72,6 @@ function hardRestart(cwd: string): void {
     clearTimeout(timer);
     doRestart();
   });
-}
-
-/** Read the configured port for the restart helper. */
-function getPort(): number {
-  try {
-    const config = getConfig();
-    return config.server.port ?? 8080;
-  } catch {
-    return 8080;
-  }
 }
 
 const execFileAsync = promisify(execFile);
