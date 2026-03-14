@@ -5,31 +5,55 @@
  * - Electron (embedded): GitHub Releases API
  */
 
-import { execFile, execFileSync } from "child_process";
+import { execFile, execFileSync, spawn } from "child_process";
 import { existsSync, readFileSync } from "fs";
 import { resolve } from "path";
 import { promisify } from "util";
 import { getRootDir, isEmbedded } from "./paths.js";
 
-// ── Restart handler ──────────────────────────────────────────────────
-let _onRestart: (() => void) | null = null;
+// ── Restart ─────────────────────────────────────────────────────────
+let _closeHandler: (() => Promise<void>) | null = null;
 
-/** Register a handler that will be called to restart the server process. */
-export function setRestartHandler(handler: () => void): void {
-  _onRestart = handler;
+/** Register the server's close function for graceful shutdown before restart. */
+export function setCloseHandler(handler: () => Promise<void>): void {
+  _closeHandler = handler;
 }
 
-/** Schedule a server restart after a short delay (allows HTTP response to flush). */
-export function scheduleRestart(): void {
-  if (!_onRestart) {
-    console.warn("[SelfUpdate] No restart handler registered, manual restart required.");
+/**
+ * Restart the server: try graceful close (up to 3s), then spawn new process and exit.
+ * Works even without a close handler — always spawns and exits.
+ */
+function hardRestart(cwd: string): void {
+  const doRestart = () => {
+    console.log("[SelfUpdate] Spawning new process and exiting...");
+    const child = spawn(process.argv[0], process.argv.slice(1), {
+      detached: true,
+      stdio: "ignore",
+      cwd,
+    });
+    child.unref();
+    process.exit(0);
+  };
+
+  if (!_closeHandler) {
+    doRestart();
     return;
   }
-  const handler = _onRestart;
-  setTimeout(() => {
-    console.log("[SelfUpdate] Restarting server...");
-    handler();
-  }, 500);
+
+  // Try graceful close with 3s timeout
+  const timer = setTimeout(() => {
+    console.warn("[SelfUpdate] Graceful close timed out (3s), forcing restart...");
+    doRestart();
+  }, 3000);
+  timer.unref();
+
+  _closeHandler().then(() => {
+    clearTimeout(timer);
+    doRestart();
+  }).catch(() => {
+    clearTimeout(timer);
+    doRestart();
+  });
 }
 
 const execFileAsync = promisify(execFile);
@@ -295,15 +319,13 @@ export async function applyProxySelfUpdate(): Promise<{ started: boolean; restar
     console.log("[SelfUpdate] Building...");
     await execFileAsync("npm", ["run", "build"], { cwd, timeout: 120000, shell: true });
 
-    console.log("[SelfUpdate] Update complete. Scheduling restart...");
+    console.log("[SelfUpdate] Update complete. Restarting in 500ms...");
     _proxyUpdateInProgress = false;
 
-    const willRestart = _onRestart !== null;
-    if (willRestart) {
-      scheduleRestart();
-    }
+    // Delay 500ms to let HTTP response flush, then restart
+    setTimeout(() => hardRestart(cwd), 500);
 
-    return { started: true, restarting: willRestart };
+    return { started: true, restarting: true };
   } catch (err) {
     _proxyUpdateInProgress = false;
     const msg = err instanceof Error ? err.message : String(err);

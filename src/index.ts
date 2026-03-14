@@ -1,4 +1,3 @@
-import { spawn } from "child_process";
 import { Hono } from "hono";
 import { serve } from "@hono/node-server";
 import { loadConfig, loadFingerprint, getConfig } from "./config.js";
@@ -20,7 +19,7 @@ import { ProxyPool } from "./proxy/proxy-pool.js";
 import { createProxyRoutes } from "./routes/proxies.js";
 import { createResponsesRoutes } from "./routes/responses.js";
 import { startUpdateChecker, stopUpdateChecker } from "./update-checker.js";
-import { startProxyUpdateChecker, stopProxyUpdateChecker, setRestartHandler } from "./self-update.js";
+import { startProxyUpdateChecker, stopProxyUpdateChecker, setCloseHandler } from "./self-update.js";
 import { initProxy } from "./tls/curl-binary.js";
 import { initTransport } from "./tls/transport.js";
 import { loadStaticModels } from "./models/model-store.js";
@@ -135,7 +134,7 @@ export async function startServer(options?: StartOptions): Promise<ServerHandle>
 
   const close = (): Promise<void> => {
     return new Promise((resolve) => {
-      const cleanup = () => {
+      server.close(() => {
         stopUpdateChecker();
         stopProxyUpdateChecker();
         stopModelRefresh();
@@ -144,35 +143,12 @@ export async function startServer(options?: StartOptions): Promise<ServerHandle>
         cookieJar.destroy();
         accountPool.destroy();
         resolve();
-      };
-      // Force-close after 3s if active connections prevent graceful shutdown
-      const forceTimer = setTimeout(() => {
-        console.warn("[Server] Graceful close timed out (3s), forcing shutdown...");
-        cleanup();
-      }, 3000);
-      forceTimer.unref();
-      server.close(() => {
-        clearTimeout(forceTimer);
-        cleanup();
       });
     });
   };
 
-  // Register restart handler for self-update auto-restart
-  setRestartHandler(() => {
-    close().then(() => {
-      const child = spawn(process.argv[0], process.argv.slice(1), {
-        detached: true,
-        stdio: "ignore",
-        cwd: process.cwd(),
-        windowsHide: true,
-      });
-      child.unref();
-      process.exit(0);
-    }).catch(() => {
-      process.exit(1);
-    });
-  });
+  // Register close handler so self-update can attempt graceful shutdown before restart
+  setCloseHandler(close);
 
   return { close, port };
 }
@@ -181,13 +157,26 @@ export async function startServer(options?: StartOptions): Promise<ServerHandle>
 
 async function main() {
   let handle: ServerHandle;
-  try {
-    handle = await startServer();
-  } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
-    console.error(`[Init] Failed to start server: ${msg}`);
-    console.error("[Init] Make sure config/default.yaml and config/fingerprint.yaml exist and are valid YAML.");
-    process.exit(1);
+
+  // Retry on EADDRINUSE — the previous process may still be releasing the port after a self-update restart
+  const MAX_RETRIES = 5;
+  const RETRY_DELAY_MS = 1000;
+  for (let attempt = 1; ; attempt++) {
+    try {
+      handle = await startServer();
+      break;
+    } catch (err) {
+      const code = (err as NodeJS.ErrnoException).code;
+      if (code === "EADDRINUSE" && attempt < MAX_RETRIES) {
+        console.warn(`[Init] Port in use, retrying in ${RETRY_DELAY_MS}ms (attempt ${attempt}/${MAX_RETRIES})...`);
+        await new Promise((r) => setTimeout(r, RETRY_DELAY_MS));
+        continue;
+      }
+      const msg = err instanceof Error ? err.message : String(err);
+      console.error(`[Init] Failed to start server: ${msg}`);
+      console.error("[Init] Make sure config/default.yaml and config/fingerprint.yaml exist and are valid YAML.");
+      process.exit(1);
+    }
   }
 
   // P1-7: Graceful shutdown — stop accepting, drain, then cleanup
