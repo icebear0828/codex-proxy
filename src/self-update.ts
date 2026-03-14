@@ -10,6 +10,7 @@ import { existsSync, readFileSync } from "fs";
 import { resolve } from "path";
 import { promisify } from "util";
 import { getRootDir, isEmbedded } from "./paths.js";
+import { getConfig } from "./config.js";
 
 // ── Restart ─────────────────────────────────────────────────────────
 let _closeHandler: (() => Promise<void>) | null = null;
@@ -20,18 +21,45 @@ export function setCloseHandler(handler: () => Promise<void>): void {
 }
 
 /**
- * Restart the server: try graceful close (up to 3s), then spawn new process and exit.
- * Works even without a close handler — always spawns and exits.
+ * Restart the server: try graceful close (up to 3s), then spawn a helper
+ * that waits for the port to be free before starting the new server process.
  */
 function hardRestart(cwd: string): void {
+  const nodeExe = process.argv[0];
+  const serverArgs = process.argv.slice(1);
+
+  // Inline script: wait for the port to be free, then start the real server
+  const helperScript = `
+    const net = require("net");
+    const { spawn } = require("child_process");
+    const args = ${JSON.stringify(serverArgs)};
+    const cwd = ${JSON.stringify(cwd)};
+    let attempts = 0;
+    function tryStart() {
+      attempts++;
+      const s = net.createServer();
+      s.once("error", () => {
+        if (attempts >= 20) process.exit(1);
+        setTimeout(tryStart, 500);
+      });
+      s.once("listening", () => {
+        s.close(() => {
+          spawn(${JSON.stringify(nodeExe)}, args, { detached: true, stdio: "ignore", cwd }).unref();
+          process.exit(0);
+        });
+      });
+      s.listen(${getPort()});
+    }
+    tryStart();
+  `;
+
   const doRestart = () => {
-    console.log("[SelfUpdate] Spawning new process and exiting...");
-    const child = spawn(process.argv[0], process.argv.slice(1), {
+    console.log("[SelfUpdate] Spawning restart helper and exiting...");
+    spawn(nodeExe, ["-e", helperScript], {
       detached: true,
       stdio: "ignore",
       cwd,
-    });
-    child.unref();
+    }).unref();
     process.exit(0);
   };
 
@@ -54,6 +82,16 @@ function hardRestart(cwd: string): void {
     clearTimeout(timer);
     doRestart();
   });
+}
+
+/** Read the configured port for the restart helper. */
+function getPort(): number {
+  try {
+    const config = getConfig();
+    return config.server.port ?? 8080;
+  } catch {
+    return 8080;
+  }
 }
 
 const execFileAsync = promisify(execFile);
@@ -297,34 +335,47 @@ export async function checkProxySelfUpdate(): Promise<ProxySelfUpdateResult> {
   return result;
 }
 
+/** Progress callback for streaming update status. */
+export type UpdateProgressCallback = (step: string, status: "running" | "done" | "error", detail?: string) => void;
+
 /**
  * Apply proxy self-update: git pull + npm install + npm run build.
  * Only works in git (CLI) mode.
+ * @param onProgress Optional callback to report step-by-step progress.
  */
-export async function applyProxySelfUpdate(): Promise<{ started: boolean; restarting?: boolean; error?: string }> {
+export async function applyProxySelfUpdate(
+  onProgress?: UpdateProgressCallback,
+): Promise<{ started: boolean; restarting?: boolean; error?: string }> {
   if (_proxyUpdateInProgress) {
     return { started: false, error: "Update already in progress" };
   }
 
   _proxyUpdateInProgress = true;
   const cwd = process.cwd();
+  const report = onProgress ?? (() => {});
 
   try {
+    report("pull", "running");
     console.log("[SelfUpdate] Pulling latest code...");
-    // Discard local modifications (e.g. package-lock.json drift) that would block git pull
     await execFileAsync("git", ["checkout", "--", "."], { cwd, timeout: 10000 }).catch(() => {});
     await execFileAsync("git", ["pull", "origin", "master"], { cwd, timeout: 60000 });
+    report("pull", "done");
 
+    report("install", "running");
     console.log("[SelfUpdate] Installing dependencies...");
     await execFileAsync("npm", ["install"], { cwd, timeout: 120000, shell: true });
+    report("install", "done");
 
+    report("build", "running");
     console.log("[SelfUpdate] Building...");
     await execFileAsync("npm", ["run", "build"], { cwd, timeout: 120000, shell: true });
+    report("build", "done");
 
-    console.log("[SelfUpdate] Update complete. Restarting in 500ms...");
+    report("restart", "running");
+    console.log("[SelfUpdate] Update complete. Restarting...");
     _proxyUpdateInProgress = false;
 
-    // Delay 500ms to let HTTP response flush, then restart
+    // Delay 500ms to let SSE flush, then restart
     setTimeout(() => hardRestart(cwd), 500);
 
     return { started: true, restarting: true };

@@ -190,7 +190,7 @@ export function CodeExamples({ baseUrl, apiKey, model, reasoningEffort, serviceT
       <h2 class="text-[0.95rem] font-bold">{t("integrationExamples")}</h2>
       <div class="bg-white dark:bg-card-dark border border-gray-200 dark:border-border-dark rounded-xl overflow-hidden shadow-sm transition-colors">
         {/* Protocol Tabs */}
-        <div class="flex border-b border-gray-200 dark:border-border-dark bg-slate-50/50 dark:bg-bg-dark/30">
+        <div class="flex border-b border-gray-200 dark:border-border-dark bg-slate-50/50 dark:bg-[#0d1117]">
           {protocols.map((p) => (
             <button
               key={p.id}

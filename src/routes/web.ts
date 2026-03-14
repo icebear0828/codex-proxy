@@ -1,4 +1,5 @@
 import { Hono } from "hono";
+import { stream } from "hono/streaming";
 import { serveStatic } from "@hono/node-server/serve-static";
 import { getConnInfo } from "@hono/node-server/conninfo";
 import { readFileSync, existsSync } from "fs";
@@ -285,8 +286,21 @@ export function createWebRoutes(accountPool: AccountPool): Hono {
       c.status(400);
       return c.json({ started: false, error: "Self-update not available in this deploy mode" });
     }
-    const result = await applyProxySelfUpdate();
-    return c.json(result);
+
+    // SSE stream for progress updates
+    c.header("Content-Type", "text/event-stream");
+    c.header("Cache-Control", "no-cache");
+    c.header("Connection", "keep-alive");
+
+    return stream(c, async (s) => {
+      const send = (data: Record<string, unknown>) => s.write(`data: ${JSON.stringify(data)}\n\n`);
+
+      const result = await applyProxySelfUpdate((step, status, detail) => {
+        void send({ step, status, detail });
+      });
+
+      await send({ ...result, done: true });
+    });
   });
 
   // --- Test connection endpoint ---

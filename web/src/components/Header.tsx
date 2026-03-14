@@ -80,12 +80,6 @@ export function Header({ onAddAccount, onCheckUpdate, onOpenUpdateModal, checkin
                 <span class="relative inline-flex rounded-full h-2.5 w-2.5 bg-primary" />
               </span>
               <StableText tKey="serverOnline" class="text-xs font-semibold text-primary">{t("serverOnline")}</StableText>
-              {version && (
-                <span class="text-[0.65rem] font-mono text-primary/70 whitespace-nowrap">v{version}</span>
-              )}
-              {commit && (
-                <span class="text-[0.6rem] font-mono text-primary/40">{commit.slice(0, 7)}</span>
-              )}
             </div>
             {/* Star on GitHub */}
             <a

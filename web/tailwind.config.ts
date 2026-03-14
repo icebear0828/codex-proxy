@@ -13,7 +13,7 @@ export default {
         "card-dark": "var(--card-dark, #161b22)",
         "border-dark": "var(--border-dark, #30363d)",
         "text-main": "#e6edf3",
-        "text-dim": "rgb(139 148 158 / <alpha-value>)",
+        "text-dim": "#8b949e",
       },
       fontFamily: {
         display: [
