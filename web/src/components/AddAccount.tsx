@@ -44,12 +44,13 @@ export function AddAccount({ visible, onSubmitRelay, addInfo, addError }: AddAcc
               value={input}
               onInput={(e) => setInput((e.target as HTMLInputElement).value)}
               placeholder={t("pasteCallback")}
-              class="flex-1 px-3 py-2.5 bg-slate-50 dark:bg-bg-dark border border-gray-200 dark:border-border-dark rounded-lg text-sm font-mono text-slate-600 dark:text-text-main focus:ring-2 focus:ring-primary/50 focus:border-primary outline-none transition-colors"
+              aria-label={t("pasteCallback")}
+              class="flex-1 px-3 py-2.5 bg-slate-50 dark:bg-bg-dark border border-gray-200 dark:border-border-dark rounded-lg text-sm font-mono text-slate-600 dark:text-text-main focus:ring-2 focus:ring-primary/50 focus:border-primary focus-visible:ring-offset-2 dark:focus-visible:ring-offset-bg-dark outline-none transition-shadow"
             />
             <button
               onClick={handleSubmit}
               disabled={submitting}
-              class="px-4 py-2.5 bg-white dark:bg-card-dark border border-gray-200 dark:border-border-dark rounded-lg text-sm font-medium text-slate-700 dark:text-text-main hover:bg-slate-50 dark:hover:bg-border-dark transition-colors"
+              class="px-4 py-2.5 bg-white dark:bg-card-dark border border-gray-200 dark:border-border-dark rounded-lg text-sm font-medium text-slate-700 dark:text-text-main hover:bg-slate-50 dark:hover:bg-border-dark focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 dark:focus-visible:ring-offset-bg-dark outline-none transition-all disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {submitting ? t("submitting") : t("submit")}
             </button>
