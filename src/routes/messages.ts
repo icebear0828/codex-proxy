@@ -40,9 +40,9 @@ function makeAnthropicFormat(wantThinking: boolean): FormatAdapter {
       ),
     format429: (msg) => makeError("rate_limit_error", msg),
     formatError: (_status, msg) => makeError("api_error", msg),
-    streamTranslator: (api, response, model, onUsage, onResponseId) =>
+    streamTranslator: (api, response, model, onUsage, onResponseId, _tupleSchema) =>
       streamCodexToAnthropic(api, response, model, onUsage, onResponseId, wantThinking),
-    collectTranslator: (api, response, model) =>
+    collectTranslator: (api, response, model, _tupleSchema) =>
       collectCodexToAnthropicResponse(api, response, model, wantThinking),
   };
 }

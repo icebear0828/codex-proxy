@@ -67,8 +67,10 @@ const GEMINI_FORMAT: FormatAdapter = {
     ),
   format429: (msg) => makeError(429, msg, "RESOURCE_EXHAUSTED"),
   formatError: (status, msg) => makeError(status, msg),
-  streamTranslator: streamCodexToGemini,
-  collectTranslator: collectCodexToGeminiResponse,
+  streamTranslator: (api, response, model, onUsage, onResponseId, tupleSchema) =>
+    streamCodexToGemini(api, response, model, onUsage, onResponseId, tupleSchema),
+  collectTranslator: (api, response, model, tupleSchema) =>
+    collectCodexToGeminiResponse(api, response, model, tupleSchema),
 };
 
 export function createGeminiRoutes(
@@ -142,7 +144,7 @@ export function createGeminiRoutes(
     }
     const req = validationResult.data;
 
-    const codexRequest = translateGeminiToCodexRequest(
+    const { codexRequest, tupleSchema } = translateGeminiToCodexRequest(
       req,
       geminiModel,
     );
@@ -159,6 +161,7 @@ export function createGeminiRoutes(
         codexRequest,
         model: geminiModel,
         isStreaming,
+        tupleSchema,
       },
       GEMINI_FORMAT,
       proxyPool,

@@ -12,7 +12,7 @@ import type { CookieJar } from "../proxy/cookie-jar.js";
 import type { ProxyPool } from "../proxy/proxy-pool.js";
 import type { CodexResponsesRequest, CodexInputItem, CodexApi } from "../proxy/codex-api.js";
 import { getConfig } from "../config.js";
-import { injectAdditionalProperties } from "../translation/shared-utils.js";
+import { prepareSchema } from "../translation/shared-utils.js";
 import { parseModelName, resolveModelId, getModelInfo, buildDisplayModelName } from "../models/model-store.js";
 import { EmptyResponseError } from "../translation/codex-event-extractor.js";
 import {
@@ -275,7 +275,7 @@ export function createResponsesRoutes(
             ? { name: body.text.format.name }
             : {}),
           ...(isRecord(body.text.format.schema)
-            ? { schema: injectAdditionalProperties(body.text.format.schema as Record<string, unknown>) }
+            ? { schema: prepareSchema(body.text.format.schema as Record<string, unknown>).schema }
             : {}),
           ...(typeof body.text.format.strict === "boolean"
             ? { strict: body.text.format.strict }

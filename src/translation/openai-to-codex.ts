@@ -10,7 +10,7 @@ import type {
 } from "../proxy/codex-api.js";
 import { parseModelName, getModelInfo } from "../models/model-store.js";
 import { getConfig } from "../config.js";
-import { buildInstructions, injectAdditionalProperties } from "./shared-utils.js";
+import { buildInstructions, prepareSchema } from "./shared-utils.js";
 import {
   openAIToolsToCodex,
   openAIToolChoiceToCodex,
@@ -78,9 +78,15 @@ function extractContent(
  *   - model → resolved model ID
  *   - reasoning_effort → reasoning.effort
  */
+export interface TranslationResult {
+  codexRequest: CodexResponsesRequest;
+  /** Original schema before tuple conversion — null if no tuples were found. */
+  tupleSchema: Record<string, unknown> | null;
+}
+
 export function translateToCodexRequest(
   req: ChatCompletionRequest,
-): CodexResponsesRequest {
+): TranslationResult {
   // Collect system/developer messages as instructions
   const systemMessages = req.messages.filter(
     (m) => m.role === "system" || m.role === "developer",
@@ -193,6 +199,7 @@ export function translateToCodexRequest(
   }
 
   // Response format: translate response_format → text.format
+  let tupleSchema: Record<string, unknown> | null = null;
   if (req.response_format && req.response_format.type !== "text") {
     if (req.response_format.type === "json_object") {
       request.text = { format: { type: "json_object" } };
@@ -200,13 +207,15 @@ export function translateToCodexRequest(
       req.response_format.type === "json_schema" &&
       req.response_format.json_schema
     ) {
+      const prepared = prepareSchema(
+        req.response_format.json_schema.schema as Record<string, unknown>,
+      );
+      tupleSchema = prepared.originalSchema;
       request.text = {
         format: {
           type: "json_schema",
           name: req.response_format.json_schema.name,
-          schema: injectAdditionalProperties(
-            req.response_format.json_schema.schema as Record<string, unknown>,
-          ),
+          schema: prepared.schema,
           ...(req.response_format.json_schema.strict !== undefined
             ? { strict: req.response_format.json_schema.strict }
             : {}),
@@ -215,5 +224,5 @@ export function translateToCodexRequest(
     }
   }
 
-  return request;
+  return { codexRequest: request, tupleSchema };
 }
