@@ -170,6 +170,9 @@ curl http://localhost:8080/v1/chat/completions \
 
 | Model ID | Alias | Reasoning Efforts | Description |
 |----------|-------|-------------------|-------------|
+| `gpt-5.4` | `gpt-5.4-codex` | none / low / medium / high / xhigh | Latest flagship model |
+| `gpt-5.3-codex` | — | low / medium / high | Agentic coding model |
+| `gpt-5.3-codex-spark` | — | minimal / low | Ultra-fast coding model |
 | `gpt-5.2-codex` | `codex` | low / medium / high / xhigh | Frontier agentic coding model (default) |
 | `gpt-5.2` | — | low / medium / high / xhigh | Professional work & long-running agents |
 | `gpt-5.1-codex-max` | — | low / medium / high / xhigh | Extended context / deepest reasoning |
@@ -185,7 +188,7 @@ curl http://localhost:8080/v1/chat/completions \
 > **Model name suffixes**: Append `-fast` to any model name to enable Fast mode, or `-high`/`-low` etc. to change reasoning effort.
 > Examples: `codex-fast`, `gpt-5.2-codex-high-fast`.
 >
-> **Note**: `gpt-5.4` and `gpt-5.3-codex` families have been removed for free accounts. Plus and above accounts retain access.
+> **Availability**: `gpt-5.4`, `gpt-5.3-codex`, and `gpt-5.3-codex-spark` are plan-restricted and depend on the backend catalog for the current account. `gpt-5.4-codex` is accepted as a compatibility alias of `gpt-5.4`.
 > Models are dynamically fetched from the backend and will automatically sync the latest available catalog.
 
 ## 🔗 Client Setup
@@ -287,19 +290,36 @@ All configuration is in `config/default.yaml`:
 
 | Section | Key Settings | Description |
 |---------|-------------|-------------|
-| `server` | `host`, `port`, `proxy_api_key` | Listen address and API key |
+| `server` | `host`, `port`, `proxy_api_key`, `admin_basic_auth_*` | Listen address, API key, and management Basic Auth |
 | `api` | `base_url`, `timeout_seconds` | Upstream API URL and timeout |
-| `client_identity` | `app_version`, `build_number` | Codex Desktop version to impersonate |
+| `client` | `originator`, `app_version`, `build_number`, `platform`, `arch`, `chromium_version` | Codex Desktop / Chromium identity to impersonate |
 | `model` | `default`, `default_reasoning_effort`, `default_service_tier` | Default model, reasoning effort and speed mode |
 | `auth` | `rotation_strategy`, `rate_limit_backoff_seconds` | Rotation strategy and rate limit backoff |
+
+### Management Basic Auth
+
+Add HTTP Basic Authentication for all management pages and endpoints except `/v1/*`, `/v1beta/*`, and `/health`:
+
+```yaml
+server:
+  admin_basic_auth_username: admin
+  admin_basic_auth_password: change-me
+```
+
+- When enabled, the dashboard UI and management endpoints such as `/auth/*`, `/admin/*`, `/api/*`, and `/debug/*` require Basic Auth
+- `/v1/*` and `/v1beta/*` remain unchanged so OpenAI / Anthropic / Gemini clients can continue using the proxy directly
+- `/health` remains unauthenticated for reverse proxy and container health checks
+- You can also override these values with `ADMIN_BASIC_AUTH_USERNAME` and `ADMIN_BASIC_AUTH_PASSWORD`
 
 ### Environment Variable Overrides
 
 | Variable | Overrides |
 |----------|-----------|
 | `PORT` | `server.port` |
-| `CODEX_PLATFORM` | `client_identity.platform` |
-| `CODEX_ARCH` | `client_identity.arch` |
+| `ADMIN_BASIC_AUTH_USERNAME` | `server.admin_basic_auth_username` |
+| `ADMIN_BASIC_AUTH_PASSWORD` | `server.admin_basic_auth_password` |
+| `CODEX_PLATFORM` | `client.platform` |
+| `CODEX_ARCH` | `client.arch` |
 
 ## 📡 API Endpoints
 

@@ -7,9 +7,51 @@
 # Dynamic fetch merges with static; backend entries win for shared IDs.
 # Models endpoint now requires ?client_version= query parameter.
 #
-# Last updated: 2026-03-10 (backend removed gpt-5.4, gpt-5.3-codex family)
+# Last updated: 2026-03-15 (restored plan-restricted gpt-5.4 / gpt-5.3-codex entries for compatibility)
 
 models:
+  # ── GPT-5.4 ──────────────────────────────────────────────────────────
+  - id: gpt-5.4
+    displayName: GPT-5.4
+    description: Latest flagship model for agentic, coding, and professional workflows
+    isDefault: false
+    supportedReasoningEfforts:
+      - { reasoningEffort: none,   description: "No reasoning" }
+      - { reasoningEffort: low,    description: "Fastest responses" }
+      - { reasoningEffort: medium, description: "Balanced speed and quality" }
+      - { reasoningEffort: high,   description: "Deepest reasoning" }
+      - { reasoningEffort: xhigh,  description: "Extended deep reasoning" }
+    defaultReasoningEffort: medium
+    inputModalities: [text, image]
+    supportsPersonality: true
+    upgrade: null
+
+  # ── GPT-5.3 Codex family ──────────────────────────────────────────
+  - id: gpt-5.3-codex
+    displayName: GPT-5.3 Codex
+    description: Agentic coding model for long-running tasks
+    isDefault: false
+    supportedReasoningEfforts:
+      - { reasoningEffort: low,    description: "Fastest responses" }
+      - { reasoningEffort: medium, description: "Balanced speed and quality" }
+      - { reasoningEffort: high,   description: "Deepest reasoning" }
+    defaultReasoningEffort: medium
+    inputModalities: [text]
+    supportsPersonality: false
+    upgrade: null
+
+  - id: gpt-5.3-codex-spark
+    displayName: GPT-5.3 Codex Spark
+    description: Ultra-fast real-time coding model
+    isDefault: false
+    supportedReasoningEfforts:
+      - { reasoningEffort: minimal, description: "Minimal reasoning" }
+      - { reasoningEffort: low,     description: "Fastest responses" }
+    defaultReasoningEffort: low
+    inputModalities: [text]
+    supportsPersonality: false
+    upgrade: null
+
   # ── GPT-5.2 Codex (current flagship) ────────────────────────────────
   - id: gpt-5.2-codex
     displayName: GPT-5.2 Codex
@@ -162,3 +204,4 @@ models:
 
 aliases:
   codex: "gpt-5.2-codex"
+  gpt-5.4-codex: "gpt-5.4"

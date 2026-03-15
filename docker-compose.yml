@@ -1,12 +1,12 @@
 services:
   codex-proxy:
-    image: ghcr.io/icebear0828/codex-proxy:latest
+    image: yuwei/codex-proxy:latest
     # To build from source instead: comment out 'image' above, uncomment 'build' below
     # build: .
     extra_hosts:
       - "host.docker.internal:host-gateway"
     ports:
-      - "${PORT:-8080}:8080"
+      - "${PORT:-18080}:18080"
       - "1455:1455"
     volumes:
       - ./data:/app/data
@@ -16,7 +16,7 @@ services:
       - .env
     environment:
       - NODE_ENV=production
-      - PORT=8080
+      - PORT=18080
 
   # -- Automatic updates (uncomment to enable) --
   # watchtower:

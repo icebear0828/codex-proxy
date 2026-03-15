@@ -19,6 +19,7 @@ import {
   handleProxyRequest,
   type FormatAdapter,
 } from "./shared/proxy-handler.js";
+import { extractProxyApiKey, OPENAI_PROXY_KEY_SOURCES } from "./shared/proxy-auth.js";
 
 // ── Helpers ────────────────────────────────────────────────────────
 
@@ -169,8 +170,7 @@ export function createResponsesRoutes(
     // Optional proxy API key check
     const config = getConfig();
     if (config.server.proxy_api_key) {
-      const authHeader = c.req.header("Authorization");
-      const providedKey = authHeader?.replace("Bearer ", "");
+      const providedKey = extractProxyApiKey(c.req, OPENAI_PROXY_KEY_SOURCES);
       if (!providedKey || !accountPool.validateProxyApiKey(providedKey)) {
         c.status(401);
         return c.json({
@@ -200,17 +200,35 @@ export function createResponsesRoutes(
       });
     }
 
-    if (!isRecord(body) || typeof body.instructions !== "string") {
+
+    if (!isRecord(body)) {
       c.status(400);
       return c.json({
         type: "error",
         error: {
           type: "invalid_request_error",
           code: "invalid_request",
-          message: "Missing required field: instructions (string)",
+          message: "Request body must be a JSON object",
         },
       });
     }
+
+    if (body.instructions !== undefined && typeof body.instructions !== "string") {
+      c.status(400);
+      return c.json({
+        type: "error",
+        error: {
+          type: "invalid_request_error",
+          code: "invalid_request",
+          message: "Invalid field: instructions must be a string",
+        },
+      });
+    }
+
+    const instructions =
+      typeof body.instructions === "string"
+        ? body.instructions
+        : "You are a helpful assistant.";
 
     // Resolve model (suffix parsing extracts service_tier and reasoning_effort)
     const rawModel = typeof body.model === "string" ? body.model : "codex";
@@ -224,7 +242,7 @@ export function createResponsesRoutes(
     // When client sends stream:false, the proxy collects SSE events and returns assembled JSON.
     const codexRequest: CodexResponsesRequest = {
       model: modelId,
-      instructions: body.instructions,
+      instructions,
       input: Array.isArray(body.input) ? (body.input as CodexInputItem[]) : [],
       stream: true,
       store: false,

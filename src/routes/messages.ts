@@ -21,6 +21,10 @@ import {
   handleProxyRequest,
   type FormatAdapter,
 } from "./shared/proxy-handler.js";
+import {
+  ANTHROPIC_PROXY_KEY_SOURCES,
+  extractProxyApiKey,
+} from "./shared/proxy-auth.js";
 
 function makeError(
   type: AnthropicErrorType,
@@ -66,10 +70,7 @@ export function createMessagesRoutes(
     // Optional proxy API key check (x-api-key or Bearer token)
     const config = getConfig();
     if (config.server.proxy_api_key) {
-      const xApiKey = c.req.header("x-api-key");
-      const authHeader = c.req.header("Authorization");
-      const bearerKey = authHeader?.replace("Bearer ", "");
-      const providedKey = xApiKey ?? bearerKey;
+      const providedKey = extractProxyApiKey(c.req, ANTHROPIC_PROXY_KEY_SOURCES);
 
       if (!providedKey || !accountPool.validateProxyApiKey(providedKey)) {
         c.status(401);

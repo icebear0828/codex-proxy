@@ -14,6 +14,7 @@ import {
   handleProxyRequest,
   type FormatAdapter,
 } from "./shared/proxy-handler.js";
+import { extractProxyApiKey, OPENAI_PROXY_KEY_SOURCES } from "./shared/proxy-auth.js";
 
 function makeOpenAIFormat(wantReasoning: boolean): FormatAdapter {
   return {
@@ -75,8 +76,7 @@ export function createChatRoutes(
     // Optional proxy API key check
     const config = getConfig();
     if (config.server.proxy_api_key) {
-      const authHeader = c.req.header("Authorization");
-      const providedKey = authHeader?.replace("Bearer ", "");
+      const providedKey = extractProxyApiKey(c.req, OPENAI_PROXY_KEY_SOURCES);
       if (
         !providedKey ||
         !accountPool.validateProxyApiKey(providedKey)

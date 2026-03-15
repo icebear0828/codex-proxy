@@ -25,6 +25,7 @@ import {
   handleProxyRequest,
   type FormatAdapter,
 } from "./shared/proxy-handler.js";
+import { extractProxyApiKey, GEMINI_PROXY_KEY_SOURCES } from "./shared/proxy-auth.js";
 
 function makeError(
   code: number,
@@ -113,11 +114,7 @@ export function createGeminiRoutes(
     // API key check: query param ?key= or header x-goog-api-key
     const config = getConfig();
     if (config.server.proxy_api_key) {
-      const queryKey = c.req.query("key");
-      const headerKey = c.req.header("x-goog-api-key");
-      const authHeader = c.req.header("Authorization");
-      const bearerKey = authHeader?.replace("Bearer ", "");
-      const providedKey = queryKey ?? headerKey ?? bearerKey;
+      const providedKey = extractProxyApiKey(c.req, GEMINI_PROXY_KEY_SOURCES);
 
       if (!providedKey || !accountPool.validateProxyApiKey(providedKey)) {
         c.status(401);

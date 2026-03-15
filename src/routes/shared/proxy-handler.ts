@@ -16,6 +16,10 @@ import type { AccountPool } from "../../auth/account-pool.js";
 import type { CookieJar } from "../../proxy/cookie-jar.js";
 import type { ProxyPool } from "../../proxy/proxy-pool.js";
 import { withRetry } from "../../utils/retry.js";
+import {
+  logCodexRequest,
+  type LlmInteractionContext,
+} from "../../utils/llm-interaction-log.js";
 
 /** Data prepared by each route after parsing and translating the request. */
 export interface ProxyRequest {
@@ -95,6 +99,8 @@ export async function handleProxyRequest(
   fmt: FormatAdapter,
   proxyPool?: ProxyPool,
 ): Promise<Response> {
+  const requestId = c.get("requestId");
+  const rid = typeof requestId === "string" ? requestId : "-";
   // 1. Acquire account (model-aware)
   const acquired = accountPool.acquire({ model: req.codexRequest.model });
   if (!acquired) {
@@ -105,30 +111,42 @@ export async function handleProxyRequest(
   const { entryId, token, accountId } = acquired;
   const proxyUrl = proxyPool?.resolveProxyUrl(entryId);
   let codexApi = new CodexApi(token, accountId, cookieJar, entryId, proxyUrl);
+  const getInteractionContext = (activeEntryId: string): LlmInteractionContext => ({
+    rid,
+    tag: fmt.tag,
+    entryId: activeEntryId,
+    clientModel: req.model,
+    upstreamModel: req.codexRequest.model,
+    isStreaming: req.isStreaming,
+  });
+  const bindInteractionContext = (api: CodexApi, activeEntryId: string): void => {
+    api.setInteractionContext(getInteractionContext(activeEntryId));
+  };
+  const sendCodexRequest = async (api: CodexApi, activeEntryId: string): Promise<Response> => {
+    bindInteractionContext(api, activeEntryId);
+    logCodexRequest(getInteractionContext(activeEntryId), req.codexRequest);
+    return withRetry(
+      () => api.createResponse(req.codexRequest, abortController.signal),
+      { tag: fmt.tag },
+    );
+  };
   // Tracks which account the outer catch should release (updated by retry loop)
   let activeEntryId = entryId;
   // Track tried accounts for model retry exclusion
   const triedEntryIds: string[] = [entryId];
   let modelRetried = false;
 
-  console.log(
-    `[${fmt.tag}] Account ${entryId} | Codex request:`,
-    JSON.stringify(req.codexRequest).slice(0, 300),
-  );
-
   let usageInfo: { input_tokens: number; output_tokens: number; cached_tokens?: number; reasoning_tokens?: number } | undefined;
 
   // P0-2: AbortController to kill curl when client disconnects
   const abortController = new AbortController();
   c.req.raw.signal.addEventListener("abort", () => abortController.abort(), { once: true });
+  bindInteractionContext(codexApi, activeEntryId);
 
   for (;;) { // model retry loop (max 1 retry)
     try {
       // 3. Retry + send to Codex
-      const rawResponse = await withRetry(
-        () => codexApi.createResponse(req.codexRequest, abortController.signal),
-        { tag: fmt.tag },
-      );
+      const rawResponse = await sendCodexRequest(codexApi, activeEntryId);
 
       // 4. Stream or collect
       if (req.isStreaming) {
@@ -201,10 +219,7 @@ export async function handleProxyRequest(
               const retryProxyUrl = proxyPool?.resolveProxyUrl(newAcquired.entryId);
               currentCodexApi = new CodexApi(newAcquired.token, newAcquired.accountId, cookieJar, newAcquired.entryId, retryProxyUrl);
               try {
-                currentRawResponse = await withRetry(
-                  () => currentCodexApi.createResponse(req.codexRequest, abortController.signal),
-                  { tag: fmt.tag },
-                );
+                currentRawResponse = await sendCodexRequest(currentCodexApi, currentEntryId);
               } catch (retryErr) {
                 accountPool.release(currentEntryId);
                 if (retryErr instanceof CodexApiError) {
@@ -259,6 +274,7 @@ export async function handleProxyRequest(
             triedEntryIds.push(retry.entryId);
             const retryProxyUrl = proxyPool?.resolveProxyUrl(retry.entryId);
             codexApi = new CodexApi(retry.token, retry.accountId, cookieJar, retry.entryId, retryProxyUrl);
+            bindInteractionContext(codexApi, activeEntryId);
             console.log(`[${fmt.tag}] Retrying with account ${retry.entryId}`);
             continue; // re-enter model retry loop
           }
@@ -292,6 +308,7 @@ export async function handleProxyRequest(
             triedEntryIds.push(retry.entryId);
             const retryProxyUrl = proxyPool?.resolveProxyUrl(retry.entryId);
             codexApi = new CodexApi(retry.token, retry.accountId, cookieJar, retry.entryId, retryProxyUrl);
+            bindInteractionContext(codexApi, activeEntryId);
             console.log(`[${fmt.tag}] 429 fallback → account ${retry.entryId}`);
             continue;
           }

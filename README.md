@@ -250,6 +250,9 @@ curl http://localhost:8080/v1/chat/completions \
 
 | 模型 ID | 别名 | 推理等级 | 说明 |
 |---------|------|---------|------|
+| `gpt-5.4` | `gpt-5.4-codex` | none / low / medium / high / xhigh | 最新旗舰模型 |
+| `gpt-5.3-codex` | — | low / medium / high | agentic 编程模型 |
+| `gpt-5.3-codex-spark` | — | minimal / low | 超低延迟编程模型 |
 | `gpt-5.2-codex` | `codex` | low / medium / high / xhigh | 前沿 agentic 编程模型（默认） |
 | `gpt-5.2` | — | low / medium / high / xhigh | 专业工作 + 长时间代理 |
 | `gpt-5.1-codex-max` | — | low / medium / high / xhigh | 扩展上下文 / 深度推理 |
@@ -265,7 +268,7 @@ curl http://localhost:8080/v1/chat/completions \
 > **模型名后缀**：在任意模型名后追加 `-fast` 启用 Fast 模式，追加 `-high`/`-low` 等切换推理等级。
 > 例如：`codex-fast`、`gpt-5.2-codex-high-fast`。
 >
-> **注意**：`gpt-5.4`、`gpt-5.3-codex` 系列已从 free 账号移除，plus 及以上账号仍可使用。
+> **可用性说明**：`gpt-5.4`、`gpt-5.3-codex`、`gpt-5.3-codex-spark` 属于计划受限模型，是否可用取决于当前账号对应的后端模型目录。`gpt-5.4-codex` 作为兼容别名会映射到 `gpt-5.4`。
 > 模型列表由后端动态获取，会自动同步最新可用模型。
 
 ## 🔗 客户端接入 (Client Setup)
@@ -404,11 +407,28 @@ server:
 - **自动生成**：设为 `null`，代理会根据账号信息自动生成一个 `codex-proxy-` 前缀的哈希密钥
 - 当前密钥始终显示在控制面板（`http://localhost:8080`）的 API Configuration 区域
 
+### 管理端 Basic Auth
+
+为除 `/v1/*`、`/v1beta/*` 和 `/health` 之外的管理端页面与接口增加 HTTP Basic Authentication：
+
+```yaml
+server:
+  admin_basic_auth_username: admin
+  admin_basic_auth_password: change-me
+```
+
+- 启用后，控制面板页面、`/auth/*`、`/admin/*`、`/api/*`、`/debug/*` 等管理端接口会要求 Basic Auth
+- `/v1/*` 与 `/v1beta/*` 客户端协议接口不受影响，便于 OpenAI / Anthropic / Gemini 客户端继续直接接入
+- `/health` 保持免认证，便于反向代理和容器健康检查
+- 也可通过环境变量覆盖：`ADMIN_BASIC_AUTH_USERNAME`、`ADMIN_BASIC_AUTH_PASSWORD`
+
 ### 环境变量覆盖
 
 | 环境变量 | 覆盖配置 |
 |---------|---------|
 | `PORT` | `server.port` |
+| `ADMIN_BASIC_AUTH_USERNAME` | `server.admin_basic_auth_username` |
+| `ADMIN_BASIC_AUTH_PASSWORD` | `server.admin_basic_auth_password` |
 | `CODEX_PLATFORM` | `client.platform` |
 | `CODEX_ARCH` | `client.arch` |
 | `HTTPS_PROXY` | `tls.proxy_url` |

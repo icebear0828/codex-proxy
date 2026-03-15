@@ -17,6 +17,10 @@ import {
 } from "../fingerprint/manager.js";
 import type { CookieJar } from "./cookie-jar.js";
 import type { BackendModelEntry } from "../models/model-store.js";
+import {
+  createCodexStreamLogger,
+  type LlmInteractionContext,
+} from "../utils/llm-interaction-log.js";
 
 let _firstModelFetchLogged = false;
 
@@ -69,6 +73,7 @@ export class CodexApi {
   private cookieJar: CookieJar | null;
   private entryId: string | null;
   private proxyUrl: string | null | undefined;
+  private interactionContext: LlmInteractionContext | null = null;
 
   constructor(
     token: string,
@@ -86,6 +91,10 @@ export class CodexApi {
 
   setToken(token: string): void {
     this.token = token;
+  }
+
+  setInteractionContext(context: LlmInteractionContext | null): void {
+    this.interactionContext = context;
   }
 
   /** Build headers with cookies injected. */
@@ -321,6 +330,10 @@ export class CodexApi {
       throw new Error("Response body is null — cannot stream");
     }
 
+    const interactionLogger = this.interactionContext
+      ? createCodexStreamLogger(this.interactionContext)
+      : null;
+
     const reader = response.body
       .pipeThrough(new TextDecoderStream())
       .getReader();
@@ -328,6 +341,7 @@ export class CodexApi {
     const MAX_SSE_BUFFER = 10 * 1024 * 1024; // 10MB
     let buffer = "";
     let yieldedAny = false;
+    let streamError: unknown;
     try {
       while (true) {
         const { done, value } = await reader.read();
@@ -345,6 +359,7 @@ export class CodexApi {
           const evt = this.parseSSEBlock(part);
           if (evt) {
             yieldedAny = true;
+            interactionLogger?.observe(evt);
             yield evt;
           }
         }
@@ -355,6 +370,7 @@ export class CodexApi {
         const evt = this.parseSSEBlock(buffer);
         if (evt) {
           yieldedAny = true;
+          interactionLogger?.observe(evt);
           yield evt;
         }
       }
@@ -373,12 +389,18 @@ export class CodexApi {
             ?? (typeof errObj?.message === "string" ? errObj.message : null)
             ?? errorMessage;
         } catch { /* use raw text */ }
-        yield {
+        const evt = {
           event: "error",
           data: { error: { type: "error", code: "non_sse_response", message: errorMessage } },
         };
+        interactionLogger?.observe(evt);
+        yield evt;
       }
+    } catch (err) {
+      streamError = err;
+      throw err;
     } finally {
+      interactionLogger?.finish({ error: streamError });
       reader.releaseLock();
     }
   }
