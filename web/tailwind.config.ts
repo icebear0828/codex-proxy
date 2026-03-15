@@ -8,7 +8,7 @@ export default {
       colors: {
         primary: "rgb(var(--primary) / <alpha-value>)",
         "primary-hover": "rgb(var(--primary-hover) / <alpha-value>)",
-        "bg-light": "#f6f8f6",
+        "bg-light": "#ffffff",
         "bg-dark": "var(--bg-dark, #0d1117)",
         "card-dark": "var(--card-dark, #161b22)",
         "border-dark": "var(--border-dark, #30363d)",

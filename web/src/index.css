@@ -5,11 +5,13 @@
 :root {
   --primary: 16 162 53;
   --primary-hover: 14 140 46;
+  color-scheme: light;
 }
 
 .dark {
   --primary: 16 163 127;
   --primary-hover: 14 140 108;
+  color-scheme: dark;
 }
 
 /* Dark scrollbar for code blocks */

@@ -18,13 +18,14 @@ function getInitialDark(): boolean {
   return window.matchMedia("(prefers-color-scheme: dark)").matches;
 }
 
-// Sync dark class to <html> on initial load (before first render to avoid flash)
+// Sync dark class + color-scheme to <html> on initial load (before first render to avoid flash)
 const _initialDark = getInitialDark();
 if (_initialDark) {
   document.documentElement.classList.add("dark");
 } else {
   document.documentElement.classList.remove("dark");
 }
+document.documentElement.style.colorScheme = _initialDark ? "dark" : "light";
 
 export function ThemeProvider({ children }: { children: ComponentChildren }) {
   const [isDark, setIsDark] = useState(_initialDark);
@@ -38,6 +39,7 @@ export function ThemeProvider({ children }: { children: ComponentChildren }) {
       } else {
         document.documentElement.classList.remove("dark");
       }
+      document.documentElement.style.colorScheme = next ? "dark" : "light";
       return next;
     });
   }, []);

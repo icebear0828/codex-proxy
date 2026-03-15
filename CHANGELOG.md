@@ -14,8 +14,11 @@
 - Model-aware 多计划账号路由：不同 plan（free/plus/business）的账号自动路由到各自支持的模型，business 账号可继续使用 gpt-5.4 等高端模型 (#57)
 - Structured Outputs 支持：`/v1/chat/completions` 支持 `response_format`（`json_object` / `json_schema`），Gemini 端点支持 `responseMimeType` + `responseSchema`，自动翻译为 Codex Responses API 的 `text.format`；`/v1/responses` 直通 `text` 字段
 
+- 模型列表自动同步：后端动态 fetch 成功后自动回写 `config/models.yaml`，静态配置不再滞后；前端每 60s 轮询模型列表，新模型无需刷新页面即可选择
+
 ### Changed
 
+- Light mode 背景色从 `#f6f8f6` 改为纯白 `#ffffff`，增大亮/暗主题视觉差异
 - 提取管道强化：`extract-fingerprint.ts` 新增 fallback 扫描（`.vite/build/*.js` 全文件回退）和 webview 模型发现（`webview/assets/*.js`），pattern 失败不再中断整个流程
 - 模型/别名自动添加降级为 semi-auto：后端已通过 `isCodexCompatibleId()` 自动合并新模型，`apply-update.ts` 不再自动写入 `models.yaml`（避免 `mutateYaml` 破坏 YAML 格式）
 - Codex Desktop 版本更新至 v26.309.31024 (build 962)

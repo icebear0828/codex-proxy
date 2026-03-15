@@ -51,7 +51,7 @@ export function useStatus(accountCount: number) {
   const [selectedEffort, setSelectedEffort] = useState("medium");
   const [selectedSpeed, setSelectedSpeed] = useState<string | null>(null);
 
-  const loadModels = useCallback(async () => {
+  const fetchModels = useCallback(async (isInitial: boolean) => {
     try {
       // Fetch full catalog for effort info
       const catalogResp = await fetch("/v1/models/catalog");
@@ -64,15 +64,25 @@ export function useStatus(accountCount: number) {
       const ids: string[] = data.data.map((m: { id: string }) => m.id);
       if (ids.length > 0) {
         setModels(ids);
-        const defaultModel = catalogData.find((m) => m.isDefault)?.id ?? ids[0] ?? "";
-        setSelectedModel(defaultModel);
+        if (isInitial) {
+          const defaultModel = catalogData.find((m) => m.isDefault)?.id ?? ids[0] ?? "";
+          setSelectedModel(defaultModel);
+        } else {
+          // On refresh: only reset if current selection is no longer available
+          setSelectedModel((prev) => {
+            if (ids.includes(prev)) return prev;
+            return catalogData.find((m) => m.isDefault)?.id ?? ids[0] ?? prev;
+          });
+        }
       }
     } catch {
-      setModels([]);
+      if (isInitial) setModels([]);
     }
   }, []);
 
   useEffect(() => {
+    let intervalId: ReturnType<typeof setInterval> | null = null;
+
     async function loadStatus() {
       try {
         const resp = await fetch("/auth/status");
@@ -80,13 +90,18 @@ export function useStatus(accountCount: number) {
         if (!data.authenticated) return;
         setBaseUrl(`${window.location.origin}/v1`);
         setApiKey(data.proxy_api_key || "any-string");
-        await loadModels();
+        await fetchModels(true);
+
+        // Refresh model list every 60s to pick up dynamic backend changes
+        intervalId = setInterval(() => { fetchModels(false); }, 60_000);
       } catch (err) {
         console.error("Status load error:", err);
       }
     }
     loadStatus();
-  }, [loadModels, accountCount]);
+
+    return () => { if (intervalId) clearInterval(intervalId); };
+  }, [fetchModels, accountCount]);
 
   // Build model families — group catalog by family, excluding tier variants
   const modelFamilies = useMemo((): ModelFamily[] => {

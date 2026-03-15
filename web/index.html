@@ -4,11 +4,13 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Codex Proxy Developer Dashboard</title>
+  <meta name="color-scheme" content="light dark">
   <script>
     try {
       const t = localStorage.getItem('codex-proxy-theme');
-      if (t === 'dark' || (!t && window.matchMedia('(prefers-color-scheme: dark)').matches))
-        document.documentElement.classList.add('dark');
+      const isDark = t === 'dark' || (!t && window.matchMedia('(prefers-color-scheme: dark)').matches);
+      if (isDark) document.documentElement.classList.add('dark');
+      document.documentElement.style.colorScheme = isDark ? 'dark' : 'light';
     } catch {}
   </script>
 </head>

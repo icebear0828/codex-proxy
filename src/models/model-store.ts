@@ -9,7 +9,7 @@
  * Aliases always come from YAML (user-customizable), never from backend.
  */
 
-import { readFileSync } from "fs";
+import { readFileSync, writeFile } from "fs";
 import { resolve } from "path";
 import yaml from "js-yaml";
 import { getConfig } from "../config.js";
@@ -210,6 +210,45 @@ export function applyBackendModels(backendModels: BackendModelEntry[]): void {
   console.log(
     `[ModelStore] Merged ${filtered.length} backend (${skipped} non-codex skipped) + ${merged.length - filtered.length} static-only = ${merged.length} total models`,
   );
+
+  // Auto-sync merged catalog back to models.yaml
+  syncStaticModels();
+}
+
+/**
+ * Write the current merged catalog back to config/models.yaml so it stays
+ * up-to-date as a fallback for future cold starts.  Fire-and-forget.
+ */
+function syncStaticModels(): void {
+  const configPath = resolve(getConfigDir(), "models.yaml");
+  const today = new Date().toISOString().slice(0, 10);
+
+  // Strip internal `source` field before serializing
+  const models = _catalog.map(({ source: _s, ...rest }) => rest);
+
+  const header = [
+    "# Codex model catalog",
+    "#",
+    "# Sources:",
+    "#   1. Static (below) — baseline for cold starts",
+    "#   2. Dynamic          — fetched from /backend-api/codex/models, auto-synced here",
+    "#",
+    `# Last updated: ${today} (auto-synced by model-store)`,
+    "",
+  ].join("\n");
+
+  const body = yaml.dump(
+    { models, aliases: _aliases },
+    { lineWidth: 120, noRefs: true, sortKeys: false },
+  );
+
+  writeFile(configPath, header + body, "utf-8", (err) => {
+    if (err) {
+      console.warn(`[ModelStore] Failed to sync models.yaml: ${err.message}`);
+    } else {
+      console.log(`[ModelStore] Synced ${models.length} models to models.yaml`);
+    }
+  });
 }
 
 /**
