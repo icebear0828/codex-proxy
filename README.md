@@ -407,11 +407,28 @@ server:
 - **自动生成**：设为 `null`，代理会根据账号信息自动生成一个 `codex-proxy-` 前缀的哈希密钥
 - 当前密钥始终显示在控制面板（`http://localhost:8080`）的 API Configuration 区域
 
+### 管理端 Basic Auth
+
+为除 `/v1/*`、`/v1beta/*` 和 `/health` 之外的管理端页面与接口增加 HTTP Basic Authentication：
+
+```yaml
+server:
+  admin_basic_auth_username: admin
+  admin_basic_auth_password: change-me
+```
+
+- 启用后，控制面板页面、`/auth/*`、`/admin/*`、`/api/*`、`/debug/*` 等管理端接口会要求 Basic Auth
+- `/v1/*` 与 `/v1beta/*` 客户端协议接口不受影响，便于 OpenAI / Anthropic / Gemini 客户端继续直接接入
+- `/health` 保持免认证，便于反向代理和容器健康检查
+- 也可通过环境变量覆盖：`ADMIN_BASIC_AUTH_USERNAME`、`ADMIN_BASIC_AUTH_PASSWORD`
+
 ### 环境变量覆盖
 
 | 环境变量 | 覆盖配置 |
 |---------|---------|
 | `PORT` | `server.port` |
+| `ADMIN_BASIC_AUTH_USERNAME` | `server.admin_basic_auth_username` |
+| `ADMIN_BASIC_AUTH_PASSWORD` | `server.admin_basic_auth_password` |
 | `CODEX_PLATFORM` | `client.platform` |
 | `CODEX_ARCH` | `client.arch` |
 | `HTTPS_PROXY` | `tls.proxy_url` |

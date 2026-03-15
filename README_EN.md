@@ -290,19 +290,36 @@ All configuration is in `config/default.yaml`:
 
 | Section | Key Settings | Description |
 |---------|-------------|-------------|
-| `server` | `host`, `port`, `proxy_api_key` | Listen address and API key |
+| `server` | `host`, `port`, `proxy_api_key`, `admin_basic_auth_*` | Listen address, API key, and management Basic Auth |
 | `api` | `base_url`, `timeout_seconds` | Upstream API URL and timeout |
-| `client_identity` | `app_version`, `build_number` | Codex Desktop version to impersonate |
+| `client` | `originator`, `app_version`, `build_number`, `platform`, `arch`, `chromium_version` | Codex Desktop / Chromium identity to impersonate |
 | `model` | `default`, `default_reasoning_effort`, `default_service_tier` | Default model, reasoning effort and speed mode |
 | `auth` | `rotation_strategy`, `rate_limit_backoff_seconds` | Rotation strategy and rate limit backoff |
+
+### Management Basic Auth
+
+Add HTTP Basic Authentication for all management pages and endpoints except `/v1/*`, `/v1beta/*`, and `/health`:
+
+```yaml
+server:
+  admin_basic_auth_username: admin
+  admin_basic_auth_password: change-me
+```
+
+- When enabled, the dashboard UI and management endpoints such as `/auth/*`, `/admin/*`, `/api/*`, and `/debug/*` require Basic Auth
+- `/v1/*` and `/v1beta/*` remain unchanged so OpenAI / Anthropic / Gemini clients can continue using the proxy directly
+- `/health` remains unauthenticated for reverse proxy and container health checks
+- You can also override these values with `ADMIN_BASIC_AUTH_USERNAME` and `ADMIN_BASIC_AUTH_PASSWORD`
 
 ### Environment Variable Overrides
 
 | Variable | Overrides |
 |----------|-----------|
 | `PORT` | `server.port` |
-| `CODEX_PLATFORM` | `client_identity.platform` |
-| `CODEX_ARCH` | `client_identity.arch` |
+| `ADMIN_BASIC_AUTH_USERNAME` | `server.admin_basic_auth_username` |
+| `ADMIN_BASIC_AUTH_PASSWORD` | `server.admin_basic_auth_password` |
+| `CODEX_PLATFORM` | `client.platform` |
+| `CODEX_ARCH` | `client.arch` |
 
 ## 📡 API Endpoints
 

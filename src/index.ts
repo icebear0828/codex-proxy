@@ -7,6 +7,7 @@ import { RefreshScheduler } from "./auth/refresh-scheduler.js";
 import { requestId } from "./middleware/request-id.js";
 import { logger } from "./middleware/logger.js";
 import { errorHandler } from "./middleware/error-handler.js";
+import { adminBasicAuth } from "./middleware/admin-basic-auth.js";
 import { createAuthRoutes } from "./routes/auth.js";
 import { createAccountRoutes } from "./routes/accounts.js";
 import { createChatRoutes } from "./routes/chat.js";
@@ -67,6 +68,7 @@ export async function startServer(options?: StartOptions): Promise<ServerHandle>
   app.use("*", requestId);
   app.use("*", logger);
   app.use("*", errorHandler);
+  app.use("*", adminBasicAuth);
 
   // Mount routes
   const authRoutes = createAuthRoutes(accountPool, refreshScheduler);

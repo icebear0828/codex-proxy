@@ -39,6 +39,8 @@ const ConfigSchema = z.object({
     host: z.string().default("0.0.0.0"),
     port: z.number().min(1).max(65535).default(8080),
     proxy_api_key: z.string().nullable().default(null),
+    admin_basic_auth_username: z.string().nullable().default(null),
+    admin_basic_auth_password: z.string().nullable().default(null),
   }),
   session: z.object({
     ttl_minutes: z.number().min(1).default(60),
@@ -88,6 +90,14 @@ function applyEnvOverrides(raw: Record<string, unknown>): Record<string, unknown
     if (!isNaN(parsed)) {
       (raw.server as Record<string, unknown>).port = parsed;
     }
+  }
+  if (process.env.ADMIN_BASIC_AUTH_USERNAME !== undefined) {
+    (raw.server as Record<string, unknown>).admin_basic_auth_username =
+      process.env.ADMIN_BASIC_AUTH_USERNAME;
+  }
+  if (process.env.ADMIN_BASIC_AUTH_PASSWORD !== undefined) {
+    (raw.server as Record<string, unknown>).admin_basic_auth_password =
+      process.env.ADMIN_BASIC_AUTH_PASSWORD;
   }
   const proxyEnv = process.env.HTTPS_PROXY || process.env.https_proxy;
   if (proxyEnv) {

@@ -26,6 +26,8 @@ server:
   host: "0.0.0.0"
   port: 18080
   proxy_api_key: "sk-2bf2321a5c234a9b3e5acec615fb53081e41f86e861373cf4c1eca4237c8825e"
+  admin_basic_auth_username: "admin"
+  admin_basic_auth_password: "f4c1eca4237c8825e"
 session:
   ttl_minutes: 60
   cleanup_interval_minutes: 5
