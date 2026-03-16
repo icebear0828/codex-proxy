@@ -28,12 +28,16 @@ export function createWebRoutes(accountPool: AccountPool): Hono {
   console.log(`[Web] publicDir: ${publicDir} (exists: ${hasWebUI})`);
   console.log(`[Web] desktopPublicDir: ${desktopPublicDir} (exists: ${hasDesktopUI})`);
 
-  // Serve Vite build assets (web)
-  app.use("/assets/*", serveStatic({ root: publicDir }));
+  // Serve Vite build assets (web) — immutable cache (filenames contain content hash)
+  app.use("/assets/*", async (c, next) => {
+    c.header("Cache-Control", "public, max-age=31536000, immutable");
+    await next();
+  }, serveStatic({ root: publicDir }));
 
   app.get("/", (c) => {
     try {
       const html = readFileSync(webIndexPath, "utf-8");
+      c.header("Cache-Control", "no-cache");
       return c.html(html);
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
@@ -44,13 +48,17 @@ export function createWebRoutes(accountPool: AccountPool): Hono {
 
   // Desktop UI — served at /desktop for Electron
   if (hasDesktopUI) {
-    app.use("/desktop/assets/*", serveStatic({
+    app.use("/desktop/assets/*", async (c, next) => {
+      c.header("Cache-Control", "public, max-age=31536000, immutable");
+      await next();
+    }, serveStatic({
       root: desktopPublicDir,
       rewriteRequestPath: (path) => path.replace(/^\/desktop/, ""),
     }));
 
     app.get("/desktop", (c) => {
       const html = readFileSync(desktopIndexPath, "utf-8");
+      c.header("Cache-Control", "no-cache");
       return c.html(html);
     });
   } else {

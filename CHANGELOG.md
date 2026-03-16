@@ -17,6 +17,10 @@
 - 模型列表自动同步：后端动态 fetch 成功后自动回写 `config/models.yaml`，静态配置不再滞后；前端每 60s 轮询模型列表，新模型无需刷新页面即可选择
 - Tuple Schema 支持：`prefixItems`（JSON Schema 2020-12 tuple）自动转换为等价 object schema 发给上游，响应侧还原为数组；OpenAI / Gemini / Responses 三端点统一支持
 
+### Fixed
+
+- 前端缓存问题：`index.html` 设置 `Cache-Control: no-cache` 防止浏览器缓存旧页面，`/assets/*` 设置 immutable 长缓存（Vite content hash）
+
 ### Changed
 
 - Light mode 背景色从 `#f6f8f6` 改为纯白 `#ffffff`，增大亮/暗主题视觉差异
