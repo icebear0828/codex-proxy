@@ -250,8 +250,8 @@ export async function* streamCodexToOpenAI(
                 },
               ],
             });
-          } catch {
-            // Parse failed — emit raw buffered text
+          } catch (e) {
+            console.warn("[tuple-reconvert] streaming JSON parse failed, emitting raw text:", e);
             yield formatSSE({
               id: chunkId,
               object: "chat.completion.chunk",
@@ -381,7 +381,7 @@ export async function collectCodexResponse(
     try {
       const parsed = JSON.parse(fullText) as unknown;
       fullText = JSON.stringify(reconvertTupleValues(parsed, tupleSchema));
-    } catch { /* not valid JSON — pass through as-is */ }
+    } catch (e) { console.warn("[tuple-reconvert] collect JSON parse failed, passing through:", e); }
   }
 
   const hasToolCalls = toolCalls.length > 0;

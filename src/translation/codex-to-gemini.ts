@@ -125,7 +125,7 @@ export async function* streamCodexToGemini(
           try {
             const parsed = JSON.parse(tupleTextBuffer) as unknown;
             text = JSON.stringify(reconvertTupleValues(parsed, tupleSchema));
-          } catch { /* parse failed — emit raw */ }
+          } catch (e) { console.warn("[tuple-reconvert] streaming JSON parse failed, emitting raw text:", e); }
           const tupleChunk: GeminiGenerateContentResponse = {
             candidates: [
               {
@@ -257,7 +257,7 @@ export async function collectCodexToGeminiResponse(
     try {
       const parsed = JSON.parse(fullText) as unknown;
       fullText = JSON.stringify(reconvertTupleValues(parsed, tupleSchema));
-    } catch { /* not valid JSON — pass through */ }
+    } catch (e) { console.warn("[tuple-reconvert] collect JSON parse failed, passing through:", e); }
   }
 
   // Build response parts: text + function calls
