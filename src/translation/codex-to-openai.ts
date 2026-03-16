@@ -19,6 +19,7 @@ import type {
   ChatCompletionChunkToolCall,
 } from "../types/openai.js";
 import { iterateCodexEvents, EmptyResponseError, type UsageInfo } from "./codex-event-extractor.js";
+import { reconvertTupleValues } from "./tuple-schema.js";
 
 export type { UsageInfo };
 
@@ -39,11 +40,14 @@ export async function* streamCodexToOpenAI(
   onUsage?: (usage: UsageInfo) => void,
   onResponseId?: (id: string) => void,
   wantReasoning?: boolean,
+  tupleSchema?: Record<string, unknown> | null,
 ): AsyncGenerator<string> {
   const chunkId = `chatcmpl-${randomUUID().replace(/-/g, "").slice(0, 24)}`;
   const created = Math.floor(Date.now() / 1000);
   let hasToolCalls = false;
   let hasContent = false;
+  // When tupleSchema is set, buffer text deltas to reconvert at response.completed
+  let tupleTextBuffer = tupleSchema ? "" : null;
   // Track tool call indices by call_id
   const toolCallIndexMap = new Map<string, number>();
   let nextToolCallIndex = 0;
@@ -205,24 +209,65 @@ export async function* streamCodexToOpenAI(
       case "response.output_text.delta": {
         if (evt.textDelta) {
           hasContent = true;
-          yield formatSSE({
-            id: chunkId,
-            object: "chat.completion.chunk",
-            created,
-            model,
-            choices: [
-              {
-                index: 0,
-                delta: { content: evt.textDelta },
-                finish_reason: null,
-              },
-            ],
-          });
+          if (tupleTextBuffer !== null) {
+            // Buffer text for reconversion
+            tupleTextBuffer += evt.textDelta;
+          } else {
+            yield formatSSE({
+              id: chunkId,
+              object: "chat.completion.chunk",
+              created,
+              model,
+              choices: [
+                {
+                  index: 0,
+                  delta: { content: evt.textDelta },
+                  finish_reason: null,
+                },
+              ],
+            });
+          }
         }
         break;
       }
 
       case "response.completed": {
+        // Flush buffered tuple text as reconverted JSON
+        if (tupleTextBuffer !== null && tupleSchema && tupleTextBuffer) {
+          try {
+            const parsed = JSON.parse(tupleTextBuffer) as unknown;
+            const reconverted = reconvertTupleValues(parsed, tupleSchema);
+            yield formatSSE({
+              id: chunkId,
+              object: "chat.completion.chunk",
+              created,
+              model,
+              choices: [
+                {
+                  index: 0,
+                  delta: { content: JSON.stringify(reconverted) },
+                  finish_reason: null,
+                },
+              ],
+            });
+          } catch (e) {
+            console.warn("[tuple-reconvert] streaming JSON parse failed, emitting raw text:", e);
+            yield formatSSE({
+              id: chunkId,
+              object: "chat.completion.chunk",
+              created,
+              model,
+              choices: [
+                {
+                  index: 0,
+                  delta: { content: tupleTextBuffer },
+                  finish_reason: null,
+                },
+              ],
+            });
+          }
+        }
+
         if (evt.usage) onUsage?.(evt.usage);
         // Inject error text if stream completed with no content
         if (!hasContent) {
@@ -286,6 +331,7 @@ export async function collectCodexResponse(
   rawResponse: Response,
   model: string,
   wantReasoning?: boolean,
+  tupleSchema?: Record<string, unknown> | null,
 ): Promise<{ response: ChatCompletionResponse; usage: UsageInfo; responseId: string | null }> {
   const id = `chatcmpl-${randomUUID().replace(/-/g, "").slice(0, 24)}`;
   const created = Math.floor(Date.now() / 1000);
@@ -328,6 +374,14 @@ export async function collectCodexResponse(
   // Detect empty response (HTTP 200 but no content)
   if (!fullText && toolCalls.length === 0 && completionTokens === 0) {
     throw new EmptyResponseError(responseId, { input_tokens: promptTokens, output_tokens: completionTokens });
+  }
+
+  // Reconvert tuple objects back to arrays in structured output
+  if (tupleSchema && fullText) {
+    try {
+      const parsed = JSON.parse(fullText) as unknown;
+      fullText = JSON.stringify(reconvertTupleValues(parsed, tupleSchema));
+    } catch (e) { console.warn("[tuple-reconvert] collect JSON parse failed, passing through:", e); }
   }
 
   const hasToolCalls = toolCalls.length > 0;

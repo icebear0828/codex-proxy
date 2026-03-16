@@ -15,6 +15,7 @@
 - Structured Outputs 支持：`/v1/chat/completions` 支持 `response_format`（`json_object` / `json_schema`），Gemini 端点支持 `responseMimeType` + `responseSchema`，自动翻译为 Codex Responses API 的 `text.format`；`/v1/responses` 直通 `text` 字段
 
 - 模型列表自动同步：后端动态 fetch 成功后自动回写 `config/models.yaml`，静态配置不再滞后；前端每 60s 轮询模型列表，新模型无需刷新页面即可选择
+- Tuple Schema 支持：`prefixItems`（JSON Schema 2020-12 tuple）自动转换为等价 object schema 发给上游，响应侧还原为数组；OpenAI / Gemini / Responses 三端点统一支持
 
 ### Changed
 

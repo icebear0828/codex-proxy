@@ -44,10 +44,10 @@ function makeOpenAIFormat(wantReasoning: boolean): FormatAdapter {
         code: "codex_api_error",
       },
     }),
-    streamTranslator: (api, response, model, onUsage, onResponseId) =>
-      streamCodexToOpenAI(api, response, model, onUsage, onResponseId, wantReasoning),
-    collectTranslator: (api, response, model) =>
-      collectCodexResponse(api, response, model, wantReasoning),
+    streamTranslator: (api, response, model, onUsage, onResponseId, tupleSchema) =>
+      streamCodexToOpenAI(api, response, model, onUsage, onResponseId, wantReasoning, tupleSchema),
+    collectTranslator: (api, response, model, tupleSchema) =>
+      collectCodexResponse(api, response, model, wantReasoning, tupleSchema),
   };
 }
 
@@ -122,7 +122,7 @@ export function createChatRoutes(
     }
     const req = parsed.data;
 
-    const codexRequest = translateToCodexRequest(req);
+    const { codexRequest, tupleSchema } = translateToCodexRequest(req);
     const displayModel = buildDisplayModelName(parseModelName(req.model));
     const wantReasoning = !!req.reasoning_effort;
 
@@ -134,6 +134,7 @@ export function createChatRoutes(
         codexRequest,
         model: displayModel,
         isStreaming: req.stream,
+        tupleSchema,
       },
       makeOpenAIFormat(wantReasoning),
       proxyPool,

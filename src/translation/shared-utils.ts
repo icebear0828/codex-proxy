@@ -8,6 +8,7 @@ import { readFileSync } from "fs";
 import { resolve } from "path";
 import { getConfig } from "../config.js";
 import { getConfigDir } from "../paths.js";
+import { hasTupleSchemas, convertTupleSchemas } from "./tuple-schema.js";
 
 let cachedDesktopContext: string | null = null;
 
@@ -73,6 +74,25 @@ export function injectAdditionalProperties(
   schema: Record<string, unknown>,
 ): Record<string, unknown> {
   return walkSchema(structuredClone(schema), new Set());
+}
+
+/**
+ * Prepare a JSON Schema for Codex: convert tuple schemas (prefixItems) to
+ * equivalent object schemas, then inject additionalProperties: false.
+ *
+ * Returns the converted schema and the original (pre-conversion) schema if
+ * tuples were found (needed for response-side reconversion), or null otherwise.
+ */
+export function prepareSchema(
+  schema: Record<string, unknown>,
+): { schema: Record<string, unknown>; originalSchema: Record<string, unknown> | null } {
+  const cloned = structuredClone(schema);
+  if (!hasTupleSchemas(cloned)) {
+    return { schema: walkSchema(cloned, new Set()), originalSchema: null };
+  }
+  const originalSchema = structuredClone(schema);
+  convertTupleSchemas(cloned);
+  return { schema: walkSchema(cloned, new Set()), originalSchema };
 }
 
 function walkSchema(node: Record<string, unknown>, seen: Set<object>): Record<string, unknown> {

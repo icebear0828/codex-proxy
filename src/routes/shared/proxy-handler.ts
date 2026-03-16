@@ -22,6 +22,8 @@ export interface ProxyRequest {
   codexRequest: CodexResponsesRequest;
   model: string;
   isStreaming: boolean;
+  /** Original schema before tuple→object conversion (for response reconversion). */
+  tupleSchema?: Record<string, unknown> | null;
 }
 
 /** Format-specific adapter provided by each route. */
@@ -37,11 +39,13 @@ export interface FormatAdapter {
     model: string,
     onUsage: (u: { input_tokens: number; output_tokens: number; cached_tokens?: number; reasoning_tokens?: number }) => void,
     onResponseId: (id: string) => void,
+    tupleSchema?: Record<string, unknown> | null,
   ) => AsyncGenerator<string>;
   collectTranslator: (
     api: CodexApi,
     response: Response,
     model: string,
+    tupleSchema?: Record<string, unknown> | null,
   ) => Promise<{
     response: unknown;
     usage: { input_tokens: number; output_tokens: number; cached_tokens?: number; reasoning_tokens?: number };
@@ -147,6 +151,7 @@ export async function handleProxyRequest(
                 usageInfo = u;
               },
               () => {},
+              req.tupleSchema,
             )) {
               await s.write(chunk);
             }
@@ -176,6 +181,7 @@ export async function handleProxyRequest(
               currentCodexApi,
               currentRawResponse,
               req.model,
+              req.tupleSchema,
             );
             accountPool.release(currentEntryId, result.usage);
             return c.json(result.response);

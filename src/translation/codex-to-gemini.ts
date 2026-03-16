@@ -16,6 +16,7 @@ import type {
   GeminiPart,
 } from "../types/gemini.js";
 import { iterateCodexEvents, EmptyResponseError } from "./codex-event-extractor.js";
+import { reconvertTupleValues } from "./tuple-schema.js";
 
 export interface GeminiUsageInfo {
   input_tokens: number;
@@ -34,11 +35,13 @@ export async function* streamCodexToGemini(
   model: string,
   onUsage?: (usage: GeminiUsageInfo) => void,
   onResponseId?: (id: string) => void,
+  tupleSchema?: Record<string, unknown> | null,
 ): AsyncGenerator<string> {
   let inputTokens = 0;
   let outputTokens = 0;
   let cachedTokens: number | undefined;
   let hasContent = false;
+  let tupleTextBuffer = tupleSchema ? "" : null;
 
   for await (const evt of iterateCodexEvents(codexApi, rawResponse)) {
     if (evt.responseId) onResponseId?.(evt.responseId);
@@ -94,11 +97,40 @@ export async function* streamCodexToGemini(
       case "response.output_text.delta": {
         if (evt.textDelta) {
           hasContent = true;
-          const chunk: GeminiGenerateContentResponse = {
+          if (tupleTextBuffer !== null) {
+            tupleTextBuffer += evt.textDelta;
+          } else {
+            const chunk: GeminiGenerateContentResponse = {
+              candidates: [
+                {
+                  content: {
+                    parts: [{ text: evt.textDelta }],
+                    role: "model",
+                  },
+                  index: 0,
+                },
+              ],
+              modelVersion: model,
+            };
+            yield `data: ${JSON.stringify(chunk)}\n\n`;
+          }
+        }
+        break;
+      }
+
+      case "response.completed": {
+        // Flush buffered tuple text as reconverted JSON
+        if (tupleTextBuffer !== null && tupleSchema && tupleTextBuffer) {
+          let text = tupleTextBuffer;
+          try {
+            const parsed = JSON.parse(tupleTextBuffer) as unknown;
+            text = JSON.stringify(reconvertTupleValues(parsed, tupleSchema));
+          } catch (e) { console.warn("[tuple-reconvert] streaming JSON parse failed, emitting raw text:", e); }
+          const tupleChunk: GeminiGenerateContentResponse = {
             candidates: [
               {
                 content: {
-                  parts: [{ text: evt.textDelta }],
+                  parts: [{ text }],
                   role: "model",
                 },
                 index: 0,
@@ -106,12 +138,8 @@ export async function* streamCodexToGemini(
             ],
             modelVersion: model,
           };
-          yield `data: ${JSON.stringify(chunk)}\n\n`;
+          yield `data: ${JSON.stringify(tupleChunk)}\n\n`;
         }
-        break;
-      }
-
-      case "response.completed": {
         if (evt.usage) {
           inputTokens = evt.usage.input_tokens;
           outputTokens = evt.usage.output_tokens;
@@ -171,6 +199,7 @@ export async function collectCodexToGeminiResponse(
   codexApi: CodexApi,
   rawResponse: Response,
   model: string,
+  tupleSchema?: Record<string, unknown> | null,
 ): Promise<{
   response: GeminiGenerateContentResponse;
   usage: GeminiUsageInfo;
@@ -221,6 +250,14 @@ export async function collectCodexToGeminiResponse(
   // Detect empty response (HTTP 200 but no content)
   if (!fullText && functionCallParts.length === 0 && outputTokens === 0) {
     throw new EmptyResponseError(responseId, { input_tokens: inputTokens, output_tokens: outputTokens });
+  }
+
+  // Reconvert tuple objects back to arrays
+  if (tupleSchema && fullText) {
+    try {
+      const parsed = JSON.parse(fullText) as unknown;
+      fullText = JSON.stringify(reconvertTupleValues(parsed, tupleSchema));
+    } catch (e) { console.warn("[tuple-reconvert] collect JSON parse failed, passing through:", e); }
   }
 
   // Build response parts: text + function calls

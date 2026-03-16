@@ -12,7 +12,8 @@ import type { CookieJar } from "../proxy/cookie-jar.js";
 import type { ProxyPool } from "../proxy/proxy-pool.js";
 import type { CodexResponsesRequest, CodexInputItem, CodexApi } from "../proxy/codex-api.js";
 import { getConfig } from "../config.js";
-import { injectAdditionalProperties } from "../translation/shared-utils.js";
+import { prepareSchema } from "../translation/shared-utils.js";
+import { reconvertTupleValues } from "../translation/tuple-schema.js";
 import { parseModelName, resolveModelId, getModelInfo, buildDisplayModelName } from "../models/model-store.js";
 import { EmptyResponseError } from "../translation/codex-event-extractor.js";
 import {
@@ -34,8 +35,57 @@ async function* streamPassthrough(
   _model: string,
   onUsage: (u: { input_tokens: number; output_tokens: number }) => void,
   onResponseId: (id: string) => void,
+  tupleSchema?: Record<string, unknown> | null,
 ): AsyncGenerator<string> {
+  // When tupleSchema is present, buffer text deltas and reconvert on completion.
+  // This means the client receives zero incremental text — all text arrives at once
+  // after response.completed. This is a known tradeoff for tuple reconversion correctness.
+  let tupleTextBuffer = tupleSchema ? "" : null;
+
   for await (const raw of api.parseStream(response)) {
+    // Buffer text deltas when tuple reconversion is active
+    if (tupleTextBuffer !== null && raw.event === "response.output_text.delta") {
+      const data = raw.data;
+      if (isRecord(data) && typeof data.delta === "string") {
+        tupleTextBuffer += data.delta;
+        continue; // suppress this event — will flush reconverted text on completion
+      }
+    }
+
+    // On completion, flush reconverted text before emitting the completed event
+    if (tupleTextBuffer !== null && tupleSchema && raw.event === "response.completed") {
+      if (tupleTextBuffer) {
+        let reconvertedText = tupleTextBuffer;
+        try {
+          const parsed = JSON.parse(tupleTextBuffer) as unknown;
+          reconvertedText = JSON.stringify(reconvertTupleValues(parsed, tupleSchema));
+        } catch (e) {
+          console.warn("[tuple-reconvert] streaming JSON parse failed, emitting raw text:", e);
+        }
+        // Emit a single text delta with reconverted content
+        yield `event: response.output_text.delta\ndata: ${JSON.stringify({ type: "response.output_text.delta", delta: reconvertedText })}\n\n`;
+      }
+      // Patch the completed event's output text if present
+      const data = raw.data;
+      if (isRecord(data) && isRecord(data.response) && tupleTextBuffer) {
+        const resp = data.response;
+        if (Array.isArray(resp.output)) {
+          for (const item of resp.output as unknown[]) {
+            if (isRecord(item) && Array.isArray(item.content)) {
+              for (const part of item.content as unknown[]) {
+                if (isRecord(part) && part.type === "output_text" && typeof part.text === "string") {
+                  try {
+                    const parsed = JSON.parse(part.text) as unknown;
+                    part.text = JSON.stringify(reconvertTupleValues(parsed, tupleSchema));
+                  } catch { /* leave as-is */ }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+
     // Re-emit raw SSE event
     yield `event: ${raw.event}\ndata: ${JSON.stringify(raw.data)}\n\n`;
 
@@ -66,6 +116,7 @@ async function collectPassthrough(
   api: CodexApi,
   response: Response,
   _model: string,
+  tupleSchema?: Record<string, unknown> | null,
 ): Promise<{
   response: unknown;
   usage: { input_tokens: number; output_tokens: number };
@@ -107,6 +158,27 @@ async function collectPassthrough(
     throw new EmptyResponseError(responseId, usage);
   }
 
+  // Reconvert tuple objects back to arrays in output text
+  if (tupleSchema && isRecord(finalResponse)) {
+    const resp = finalResponse;
+    if (Array.isArray(resp.output)) {
+      for (const item of resp.output as unknown[]) {
+        if (isRecord(item) && Array.isArray(item.content)) {
+          for (const part of item.content as unknown[]) {
+            if (isRecord(part) && part.type === "output_text" && typeof part.text === "string") {
+              try {
+                const parsed = JSON.parse(part.text) as unknown;
+                part.text = JSON.stringify(reconvertTupleValues(parsed, tupleSchema));
+              } catch (e) {
+                console.warn("[tuple-reconvert] collect JSON parse failed, passing through:", e);
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+
   return { response: finalResponse, usage, responseId };
 }
 
@@ -139,8 +211,10 @@ const PASSTHROUGH_FORMAT: FormatAdapter = {
       message: msg,
     },
   }),
-  streamTranslator: streamPassthrough,
-  collectTranslator: collectPassthrough,
+  streamTranslator: (api, response, model, onUsage, onResponseId, tupleSchema) =>
+    streamPassthrough(api, response, model, onUsage, onResponseId, tupleSchema),
+  collectTranslator: (api, response, model, tupleSchema) =>
+    collectPassthrough(api, response, model, tupleSchema),
 };
 
 // ── Route ──────────────────────────────────────────────────────────
@@ -263,20 +337,25 @@ export function createResponsesRoutes(
     }
 
     // Pass through text format (JSON mode / structured outputs) as-is
+    let tupleSchema: Record<string, unknown> | null = null;
     if (
       isRecord(body.text) &&
       isRecord(body.text.format) &&
       typeof body.text.format.type === "string"
     ) {
+      let formatSchema: Record<string, unknown> | undefined;
+      if (isRecord(body.text.format.schema)) {
+        const prepared = prepareSchema(body.text.format.schema as Record<string, unknown>);
+        formatSchema = prepared.schema;
+        tupleSchema = prepared.originalSchema;
+      }
       codexRequest.text = {
         format: {
           type: body.text.format.type as "text" | "json_object" | "json_schema",
           ...(typeof body.text.format.name === "string"
             ? { name: body.text.format.name }
             : {}),
-          ...(isRecord(body.text.format.schema)
-            ? { schema: injectAdditionalProperties(body.text.format.schema as Record<string, unknown>) }
-            : {}),
+          ...(formatSchema ? { schema: formatSchema } : {}),
           ...(typeof body.text.format.strict === "boolean"
             ? { strict: body.text.format.strict }
             : {}),
@@ -295,6 +374,7 @@ export function createResponsesRoutes(
         codexRequest,
         model: displayModel,
         isStreaming: clientWantsStream,
+        tupleSchema,
       },
       PASSTHROUGH_FORMAT,
       proxyPool,
