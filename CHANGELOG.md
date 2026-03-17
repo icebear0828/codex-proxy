@@ -6,6 +6,10 @@
 
 ## [Unreleased]
 
+### Added
+
+- Dashboard 额度设置面板：可在 Web UI 直接调整额度刷新间隔、主/次预警阈值、自动跳过耗尽账号开关，无需手动编辑 YAML；API `GET/POST /admin/quota-settings` 支持鉴权 (#92)
+
 ### Fixed
 
 - macOS Electron 桌面版登录报 `spawn Unknown system error -86`：CI 在 arm64 runner 上同时构建 arm64/x64 DMG，但只下载 arm64 的 curl-impersonate，导致 Intel Mac 用户 spawn 失败（EBADARCH）；拆分为 per-arch 构建 + `setup-curl.ts` 支持 `--arch` 交叉下载；错误提示改为明确的架构不匹配诊断 (#96)
