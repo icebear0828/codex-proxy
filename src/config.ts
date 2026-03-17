@@ -51,6 +51,14 @@ const ConfigSchema = z.object({
     transport: z.enum(["auto", "curl-cli", "libcurl-ffi"]).default("auto"),
     force_http11: z.boolean().default(false),
   }).default({}),
+  quota: z.object({
+    refresh_interval_minutes: z.number().min(1).default(5),
+    warning_thresholds: z.object({
+      primary: z.array(z.number().min(1).max(100)).default([80, 90]),
+      secondary: z.array(z.number().min(1).max(100)).default([80, 90]),
+    }).default({}),
+    skip_exhausted: z.boolean().default(true),
+  }).default({}),
 });
 
 export type AppConfig = z.infer<typeof ConfigSchema>;

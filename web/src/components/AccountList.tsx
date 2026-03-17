@@ -1,8 +1,8 @@
-import { useState, useCallback } from "preact/hooks";
+import { useState, useCallback, useEffect } from "preact/hooks";
 import { useI18n, useT } from "../../../shared/i18n/context";
 import { AccountCard } from "./AccountCard";
 import { AccountImportExport } from "./AccountImportExport";
-import type { Account, ProxyEntry } from "../../../shared/types";
+import type { Account, ProxyEntry, QuotaWarning } from "../../../shared/types";
 
 interface AccountListProps {
   accounts: Account[];
@@ -21,6 +21,21 @@ export function AccountList({ accounts, loading, onDelete, onRefresh, refreshing
   const t = useT();
   const { lang } = useI18n();
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [warnings, setWarnings] = useState<QuotaWarning[]>([]);
+
+  // Poll quota warnings
+  useEffect(() => {
+    const fetchWarnings = async () => {
+      try {
+        const resp = await fetch("/auth/quota/warnings");
+        const data = await resp.json();
+        setWarnings(data.warnings || []);
+      } catch { /* ignore */ }
+    };
+    fetchWarnings();
+    const timer = setInterval(fetchWarnings, 30_000);
+    return () => clearInterval(timer);
+  }, []);
 
   const toggleSelect = useCallback((id: string) => {
     setSelectedIds((prev) => {
@@ -91,6 +106,27 @@ export function AccountList({ accounts, loading, onDelete, onRefresh, refreshing
           </button>
         </div>
       </div>
+      {/* Quota warning banners */}
+      {warnings.filter((w) => w.level === "critical").length > 0 && (
+        <div class="px-4 py-2.5 rounded-lg bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800/30 text-red-700 dark:text-red-400 text-sm flex items-center gap-2">
+          <svg class="size-4 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126ZM12 15.75h.007v.008H12v-.008Z" />
+          </svg>
+          <span>
+            {t("quotaCriticalWarning").replace("{count}", String(warnings.filter((w) => w.level === "critical").length))}
+          </span>
+        </div>
+      )}
+      {warnings.filter((w) => w.level === "warning").length > 0 && warnings.filter((w) => w.level === "critical").length === 0 && (
+        <div class="px-4 py-2.5 rounded-lg bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800/30 text-amber-700 dark:text-amber-400 text-sm flex items-center gap-2">
+          <svg class="size-4 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126ZM12 15.75h.007v.008H12v-.008Z" />
+          </svg>
+          <span>
+            {t("quotaWarning").replace("{count}", String(warnings.filter((w) => w.level === "warning").length))}
+          </span>
+        </div>
+      )}
       <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
         {loading ? (
           <div class="md:col-span-2 text-center py-8 text-slate-400 dark:text-text-dim text-sm bg-white dark:bg-card-dark border border-gray-200 dark:border-border-dark rounded-xl transition-colors">

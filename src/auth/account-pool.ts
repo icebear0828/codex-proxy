@@ -28,6 +28,7 @@ import type {
   AccountUsage,
   AcquiredAccount,
   AccountsFile,
+  CodexQuota,
 } from "./types.js";
 
 function getAccountsFile(): string {
@@ -304,6 +305,8 @@ export class AccountPool {
         limit_window_seconds: null,
       },
       addedAt: new Date().toISOString(),
+      cachedQuota: null,
+      quotaFetchedAt: null,
     };
 
     this.accounts.set(id, entry);
@@ -318,6 +321,36 @@ export class AccountPool {
     const entry = this.accounts.get(entryId);
     if (!entry) return;
     entry.usage.empty_response_count++;
+    this.schedulePersist();
+  }
+
+  /**
+   * Update cached quota for an account (called by background quota refresher).
+   */
+  updateCachedQuota(entryId: string, quota: CodexQuota): void {
+    const entry = this.accounts.get(entryId);
+    if (!entry) return;
+    entry.cachedQuota = quota;
+    entry.quotaFetchedAt = new Date().toISOString();
+    this.schedulePersist();
+  }
+
+  /**
+   * Mark an account as quota-exhausted by setting it rate_limited until resetAt.
+   * Reuses the rate_limited mechanism so acquire() skips it and refreshStatus() auto-recovers.
+   */
+  markQuotaExhausted(entryId: string, resetAtUnix: number | null): void {
+    const entry = this.accounts.get(entryId);
+    if (!entry) return;
+    // Only mark if currently active — don't override other states
+    if (entry.status !== "active") return;
+
+    const until = resetAtUnix
+      ? new Date(resetAtUnix * 1000).toISOString()
+      : new Date(Date.now() + 300_000).toISOString(); // fallback 5 min
+    entry.status = "rate_limited";
+    entry.usage.rate_limit_until = until;
+    this.acquireLocks.delete(entryId);
     this.schedulePersist();
   }
 
@@ -545,7 +578,7 @@ export class AccountPool {
   private toInfo(entry: AccountEntry): AccountInfo {
     const payload = decodeJwtPayload(entry.token);
     const exp = payload?.exp;
-    return {
+    const info: AccountInfo = {
       id: entry.id,
       email: entry.email,
       accountId: entry.accountId,
@@ -558,6 +591,11 @@ export class AccountPool {
           ? new Date(exp * 1000).toISOString()
           : null,
     };
+    if (entry.cachedQuota) {
+      info.quota = entry.cachedQuota;
+      info.quotaFetchedAt = entry.quotaFetchedAt;
+    }
+    return info;
   }
 
   // ── Persistence ─────────────────────────────────────────────────
@@ -629,6 +667,12 @@ export class AccountPool {
               entry.usage.limit_window_seconds = null;
               needsPersist = true;
             }
+            // Backfill cachedQuota fields for old entries
+            if (entry.cachedQuota === undefined) {
+              entry.cachedQuota = null;
+              entry.quotaFetchedAt = null;
+              needsPersist = true;
+            }
             this.accounts.set(entry.id, entry);
           }
         }
@@ -680,6 +724,8 @@ export class AccountPool {
           limit_window_seconds: null,
         },
         addedAt: new Date().toISOString(),
+        cachedQuota: null,
+        quotaFetchedAt: null,
       };
 
       this.accounts.set(id, entry);

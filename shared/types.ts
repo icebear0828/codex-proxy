@@ -1,10 +1,22 @@
+export interface AccountQuotaWindow {
+  used_percent?: number | null;
+  limit_reached?: boolean;
+  reset_at?: number | null;
+  limit_window_seconds?: number | null;
+}
+
 export interface AccountQuota {
-  rate_limit?: {
-    used_percent?: number | null;
-    limit_reached?: boolean;
-    reset_at?: number | null;
-    limit_window_seconds?: number | null;
-  };
+  rate_limit?: AccountQuotaWindow;
+  secondary_rate_limit?: AccountQuotaWindow | null;
+}
+
+export interface QuotaWarning {
+  accountId: string;
+  email: string | null;
+  window: "primary" | "secondary";
+  level: "warning" | "critical";
+  usedPercent: number;
+  resetAt: number | null;
 }
 
 export interface Account {
@@ -21,6 +33,7 @@ export interface Account {
     window_output_tokens?: number;
   };
   quota?: AccountQuota;
+  quotaFetchedAt?: string | null;
   proxyId?: string;
   proxyName?: string;
 }

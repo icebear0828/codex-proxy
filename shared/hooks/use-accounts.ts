@@ -10,10 +10,11 @@ export function useAccounts() {
   const [addInfo, setAddInfo] = useState("");
   const [addError, setAddError] = useState("");
 
-  const loadAccounts = useCallback(async () => {
+  const loadAccounts = useCallback(async (fresh = false) => {
     setRefreshing(true);
     try {
-      const resp = await fetch("/auth/accounts?quota=true");
+      const url = fresh ? "/auth/accounts?quota=fresh" : "/auth/accounts?quota=true";
+      const resp = await fetch(url);
       const data = await resp.json();
       setList(data.accounts || []);
       setLastUpdated(new Date());
@@ -27,6 +28,12 @@ export function useAccounts() {
 
   useEffect(() => {
     loadAccounts();
+  }, [loadAccounts]);
+
+  // Auto-poll cached quota every 30s
+  useEffect(() => {
+    const timer = setInterval(() => loadAccounts(), 30_000);
+    return () => clearInterval(timer);
   }, [loadAccounts]);
 
   // Listen for OAuth callback success
@@ -218,7 +225,7 @@ export function useAccounts() {
     addVisible,
     addInfo,
     addError,
-    refresh: loadAccounts,
+    refresh: useCallback(() => loadAccounts(true), [loadAccounts]),
     patchLocal,
     startAdd,
     submitRelay,

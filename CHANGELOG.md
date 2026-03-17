@@ -8,6 +8,7 @@
 
 ### Added
 
+- 额度自动刷新 + 分层预警：后台每 5 分钟（可配置）定时拉取所有账号的官方额度，缓存到 AccountEntry 供 Dashboard 即时读取；额度达到阈值（默认 80%/90%，可自定义）时显示 warning/critical 横幅；额度耗尽的账号自动标记为 rate_limited 跳过分配，到期自动恢复 (#92)
 - Docker 镜像自动发布：push master 自动构建多架构（amd64/arm64）镜像到 GHCR（`ghcr.io/icebear0828/codex-proxy`），docker-compose.yml 切换为预构建镜像，支持 Watchtower 自动更新
 - 双窗口配额显示：Dashboard 账号卡片同时展示主窗口（小时限制）和次窗口（周限制）的用量百分比、进度条和重置时间，后端 `secondary_window` 不再被忽略
 - 更新弹窗 + 自动重启：点击"有可用更新"弹出 Modal 显示 changelog，一键更新后服务器自动重启、前端自动刷新，零人工干预（git 模式 spawn 新进程、Docker/Electron 显示对应操作指引）

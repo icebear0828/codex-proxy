@@ -35,3 +35,9 @@ tls:
   impersonate_profile: chrome144
   proxy_url: null
   force_http11: true
+quota:
+  refresh_interval_minutes: 5
+  warning_thresholds:
+    primary: [80, 90]
+    secondary: [80, 90]
+  skip_exhausted: true

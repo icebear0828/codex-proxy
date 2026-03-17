@@ -25,6 +25,8 @@ import type { CodexUsageResponse } from "../proxy/codex-api.js";
 import type { CodexQuota, AccountInfo } from "../auth/types.js";
 import type { CookieJar } from "../proxy/cookie-jar.js";
 import type { ProxyPool } from "../proxy/proxy-pool.js";
+import { toQuota } from "../auth/quota-utils.js";
+import { getActiveWarnings, getWarningsLastUpdated } from "../auth/quota-warnings.js";
 
 const BulkImportSchema = z.object({
   accounts: z.array(z.object({
@@ -32,38 +34,6 @@ const BulkImportSchema = z.object({
     refreshToken: z.string().nullable().optional(),
   })).min(1),
 });
-
-function toQuota(usage: CodexUsageResponse): CodexQuota {
-  const sw = usage.rate_limit.secondary_window;
-  return {
-    plan_type: usage.plan_type,
-    rate_limit: {
-      allowed: usage.rate_limit.allowed,
-      limit_reached: usage.rate_limit.limit_reached,
-      used_percent: usage.rate_limit.primary_window?.used_percent ?? null,
-      reset_at: usage.rate_limit.primary_window?.reset_at ?? null,
-      limit_window_seconds: usage.rate_limit.primary_window?.limit_window_seconds ?? null,
-    },
-    secondary_rate_limit: sw
-      ? {
-          limit_reached: usage.rate_limit.limit_reached,
-          used_percent: sw.used_percent ?? null,
-          reset_at: sw.reset_at ?? null,
-          limit_window_seconds: sw.limit_window_seconds ?? null,
-        }
-      : null,
-    code_review_rate_limit: usage.code_review_rate_limit
-      ? {
-          allowed: usage.code_review_rate_limit.allowed,
-          limit_reached: usage.code_review_rate_limit.limit_reached,
-          used_percent:
-            usage.code_review_rate_limit.primary_window?.used_percent ?? null,
-          reset_at:
-            usage.code_review_rate_limit.primary_window?.reset_at ?? null,
-        }
-      : null,
-  };
-}
 
 export function createAccountRoutes(
   pool: AccountPool,
@@ -143,53 +113,72 @@ export function createAccountRoutes(
     return c.json({ success: true, added, updated, failed, errors });
   });
 
-  // List all accounts (with optional ?quota=true)
+  // List all accounts
+  // ?quota=true  → return cached quota (fast, from background refresh)
+  // ?quota=fresh → force live fetch from upstream (manual refresh button)
   app.get("/auth/accounts", async (c) => {
-    const accounts = pool.getAccounts();
-    const wantQuota = c.req.query("quota") === "true";
+    const quotaParam = c.req.query("quota");
+    const wantFresh = quotaParam === "fresh";
 
-    if (!wantQuota) {
-      const enrichedBasic = accounts.map((acct) => ({
-        ...acct,
-        proxyId: proxyPool?.getAssignment(acct.id) ?? "global",
-        proxyName: proxyPool?.getAssignmentDisplayName(acct.id) ?? "Global Default",
-      }));
-      return c.json({ accounts: enrichedBasic });
+    if (wantFresh) {
+      // Live fetch quota for every active account in parallel
+      const accounts = pool.getAccounts();
+      const enriched: AccountInfo[] = await Promise.all(
+        accounts.map(async (acct) => {
+          if (acct.status !== "active") {
+            return {
+              ...acct,
+              proxyId: proxyPool?.getAssignment(acct.id) ?? "global",
+              proxyName: proxyPool?.getAssignmentDisplayName(acct.id) ?? "Global Default",
+            };
+          }
+
+          const entry = pool.getEntry(acct.id);
+          if (!entry) {
+            return {
+              ...acct,
+              proxyId: proxyPool?.getAssignment(acct.id) ?? "global",
+              proxyName: proxyPool?.getAssignmentDisplayName(acct.id) ?? "Global Default",
+            };
+          }
+
+          try {
+            const api = makeApi(acct.id, entry.token, entry.accountId);
+            const usage = await api.getUsage();
+            const quota = toQuota(usage);
+            // Cache the fresh quota
+            pool.updateCachedQuota(acct.id, quota);
+            // Sync rate limit window — auto-reset local counters on window rollover
+            const resetAt = usage.rate_limit.primary_window?.reset_at ?? null;
+            const windowSec = usage.rate_limit.primary_window?.limit_window_seconds ?? null;
+            pool.syncRateLimitWindow(acct.id, resetAt, windowSec);
+            // Re-read usage after potential reset
+            const freshAcct = pool.getAccounts().find((a) => a.id === acct.id) ?? acct;
+            return {
+              ...freshAcct,
+              quota,
+              proxyId: proxyPool?.getAssignment(acct.id) ?? "global",
+              proxyName: proxyPool?.getAssignmentDisplayName(acct.id) ?? "Global Default",
+            };
+          } catch {
+            return {
+              ...acct,
+              proxyId: proxyPool?.getAssignment(acct.id) ?? "global",
+              proxyName: proxyPool?.getAssignmentDisplayName(acct.id) ?? "Global Default",
+            };
+          }
+        }),
+      );
+      return c.json({ accounts: enriched });
     }
 
-    // Fetch quota for every active account in parallel
-    const enriched: AccountInfo[] = await Promise.all(
-      accounts.map(async (acct) => {
-        if (acct.status !== "active") return acct;
-
-        const entry = pool.getEntry(acct.id);
-        if (!entry) return acct;
-
-        try {
-          const api = makeApi(acct.id, entry.token, entry.accountId);
-          const usage = await api.getUsage();
-          // Sync rate limit window — auto-reset local counters on window rollover
-          const resetAt = usage.rate_limit.primary_window?.reset_at ?? null;
-          const windowSec = usage.rate_limit.primary_window?.limit_window_seconds ?? null;
-          pool.syncRateLimitWindow(acct.id, resetAt, windowSec);
-          // Re-read usage after potential reset
-          const freshAcct = pool.getAccounts().find((a) => a.id === acct.id) ?? acct;
-          return {
-            ...freshAcct,
-            quota: toQuota(usage),
-            proxyId: proxyPool?.getAssignment(acct.id) ?? "global",
-            proxyName: proxyPool?.getAssignmentDisplayName(acct.id) ?? "Global Default",
-          };
-        } catch {
-          return {
-            ...acct,
-            proxyId: proxyPool?.getAssignment(acct.id) ?? "global",
-            proxyName: proxyPool?.getAssignmentDisplayName(acct.id) ?? "Global Default",
-          };
-        }
-      }),
-    );
-
+    // Default: return accounts with cached quota (populated by toInfo())
+    const accounts = pool.getAccounts();
+    const enriched = accounts.map((acct) => ({
+      ...acct,
+      proxyId: proxyPool?.getAssignment(acct.id) ?? "global",
+      proxyName: proxyPool?.getAssignmentDisplayName(acct.id) ?? "Global Default",
+    }));
     return c.json({ accounts: enriched });
   });
 
@@ -332,6 +321,15 @@ export function createAccountRoutes(
     }
     cookieJar?.clear(id);
     return c.json({ success: true });
+  });
+
+  // ── Quota warnings ──────────────────────────────────────────────
+
+  app.get("/auth/quota/warnings", (c) => {
+    return c.json({
+      warnings: getActiveWarnings(),
+      updatedAt: getWarningsLastUpdated(),
+    });
   });
 
   return app;

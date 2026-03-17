@@ -24,6 +24,7 @@ import { initProxy } from "./tls/curl-binary.js";
 import { initTransport } from "./tls/transport.js";
 import { loadStaticModels } from "./models/model-store.js";
 import { startModelRefresh, stopModelRefresh } from "./models/model-fetcher.js";
+import { startQuotaRefresh, stopQuotaRefresh } from "./auth/usage-refresher.js";
 
 export interface ServerHandle {
   close: () => Promise<void>;
@@ -126,6 +127,9 @@ export async function startServer(options?: StartOptions): Promise<ServerHandle>
   // Start background model refresh (requires auth to be ready)
   startModelRefresh(accountPool, cookieJar, proxyPool);
 
+  // Start background quota refresh
+  startQuotaRefresh(accountPool, cookieJar, proxyPool);
+
   // Start proxy health check timer (if proxies exist)
   proxyPool.startHealthCheckTimer();
 
@@ -145,6 +149,7 @@ export async function startServer(options?: StartOptions): Promise<ServerHandle>
         stopUpdateChecker();
         stopProxyUpdateChecker();
         stopModelRefresh();
+        stopQuotaRefresh();
         refreshScheduler.destroy();
         proxyPool.destroy();
         cookieJar.destroy();

@@ -41,6 +41,10 @@ export interface AccountEntry {
   status: AccountStatus;
   usage: AccountUsage;
   addedAt: string;
+  /** Cached official quota from background refresh. Null until first fetch. */
+  cachedQuota: CodexQuota | null;
+  /** ISO timestamp of when cachedQuota was last updated. */
+  quotaFetchedAt: string | null;
 }
 
 /** Public info (no token) */
@@ -54,6 +58,7 @@ export interface AccountInfo {
   addedAt: string;
   expiresAt: string | null;
   quota?: CodexQuota;
+  quotaFetchedAt?: string | null;
 }
 
 /** A single rate limit window (primary or secondary). */

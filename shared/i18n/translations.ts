@@ -179,6 +179,8 @@ export const translations = {
     statusPass: "Pass",
     statusFail: "Fail",
     statusSkip: "Skip",
+    quotaCriticalWarning: "{count} account(s) approaching quota limit",
+    quotaWarning: "{count} account(s) quota usage elevated",
   },
   zh: {
     serverOnline: "\u670d\u52a1\u8fd0\u884c\u4e2d",
@@ -363,6 +365,8 @@ export const translations = {
     statusPass: "\u901a\u8fc7",
     statusFail: "\u5931\u8d25",
     statusSkip: "\u8df3\u8fc7",
+    quotaCriticalWarning: "{count} \u4e2a\u8d26\u53f7\u989d\u5ea6\u5373\u5c06\u8017\u5c3d",
+    quotaWarning: "{count} \u4e2a\u8d26\u53f7\u989d\u5ea6\u7528\u91cf\u8f83\u9ad8",
   },
 } as const;
 
