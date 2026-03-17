@@ -1,6 +1,6 @@
 {
   "name": "codex-proxy",
-  "version": "1.0.54",
+  "version": "1.0.55",
   "description": "Reverse proxy that exposes Codex Desktop Responses API as OpenAI-compatible /v1/chat/completions",
   "type": "module",
   "scripts": {
