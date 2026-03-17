@@ -26,7 +26,7 @@ import type { CodexQuota, AccountInfo } from "../auth/types.js";
 import type { CookieJar } from "../proxy/cookie-jar.js";
 import type { ProxyPool } from "../proxy/proxy-pool.js";
 import { toQuota } from "../auth/quota-utils.js";
-import { getActiveWarnings, getWarningsLastUpdated } from "../auth/quota-warnings.js";
+import { clearWarnings, getActiveWarnings, getWarningsLastUpdated } from "../auth/quota-warnings.js";
 
 const BulkImportSchema = z.object({
   accounts: z.array(z.object({
@@ -216,6 +216,7 @@ export function createAccountRoutes(
       return c.json({ error: "Account not found" });
     }
     cookieJar?.clear(id);
+    clearWarnings(id);
     return c.json({ success: true });
   });
 
