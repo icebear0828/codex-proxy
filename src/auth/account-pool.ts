@@ -96,10 +96,7 @@ export class AccountPool {
 
     if (available.length === 0) return null;
 
-    // Model-aware selection: prefer accounts whose planType matches the model's known plans.
-    // If no account matches, fall back to all available accounts — the backend API's
-    // model list per plan is incomplete (e.g. free can use gpt-5.4 but /codex/models
-    // doesn't return it), so hard-blocking would reject valid requests.
+    // Model-aware selection: prefer accounts whose planType matches the model's known plans
     let candidates = available;
     if (options?.model) {
       const preferredPlans = getModelPlanTypes(options.model);
@@ -108,8 +105,10 @@ export class AccountPool {
         const matched = available.filter((a) => a.planType && planSet.has(a.planType));
         if (matched.length > 0) {
           candidates = matched;
+        } else {
+          // No account matches the model's plan requirements — don't fallback to incompatible accounts
+          return null;
         }
-        // else: no matching plan accounts — fall back to all available
       }
     }
 
