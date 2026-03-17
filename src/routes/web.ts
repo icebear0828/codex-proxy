@@ -451,6 +451,86 @@ export function createWebRoutes(accountPool: AccountPool): Hono {
     return c.json({ proxy_api_key: config.server.proxy_api_key });
   });
 
+  // --- Quota settings endpoints ---
+
+  app.get("/admin/quota-settings", (c) => {
+    const config = getConfig();
+    return c.json({
+      refresh_interval_minutes: config.quota.refresh_interval_minutes,
+      warning_thresholds: config.quota.warning_thresholds,
+      skip_exhausted: config.quota.skip_exhausted,
+    });
+  });
+
+  app.post("/admin/quota-settings", async (c) => {
+    const config = getConfig();
+    const currentKey = config.server.proxy_api_key;
+
+    // Auth: if a key is currently set, require Bearer token matching it
+    if (currentKey) {
+      const authHeader = c.req.header("Authorization") ?? "";
+      const token = authHeader.startsWith("Bearer ") ? authHeader.slice(7) : "";
+      if (token !== currentKey) {
+        c.status(401);
+        return c.json({ error: "Invalid current API key" });
+      }
+    }
+
+    const body = await c.req.json() as {
+      refresh_interval_minutes?: number;
+      warning_thresholds?: { primary?: number[]; secondary?: number[] };
+      skip_exhausted?: boolean;
+    };
+
+    // Validate refresh_interval_minutes
+    if (body.refresh_interval_minutes !== undefined) {
+      if (!Number.isInteger(body.refresh_interval_minutes) || body.refresh_interval_minutes < 1) {
+        c.status(400);
+        return c.json({ error: "refresh_interval_minutes must be an integer >= 1" });
+      }
+    }
+
+    // Validate thresholds (1-100)
+    const validateThresholds = (arr?: number[]): boolean => {
+      if (!arr) return true;
+      return arr.every((v) => Number.isInteger(v) && v >= 1 && v <= 100);
+    };
+    if (body.warning_thresholds) {
+      if (!validateThresholds(body.warning_thresholds.primary) ||
+          !validateThresholds(body.warning_thresholds.secondary)) {
+        c.status(400);
+        return c.json({ error: "Thresholds must be integers between 1 and 100" });
+      }
+    }
+
+    const configPath = resolve(getConfigDir(), "default.yaml");
+    mutateYaml(configPath, (data) => {
+      if (!data.quota) data.quota = {};
+      const quota = data.quota as Record<string, unknown>;
+      if (body.refresh_interval_minutes !== undefined) {
+        quota.refresh_interval_minutes = body.refresh_interval_minutes;
+      }
+      if (body.warning_thresholds) {
+        const existing = (quota.warning_thresholds ?? {}) as Record<string, unknown>;
+        if (body.warning_thresholds.primary) existing.primary = body.warning_thresholds.primary;
+        if (body.warning_thresholds.secondary) existing.secondary = body.warning_thresholds.secondary;
+        quota.warning_thresholds = existing;
+      }
+      if (body.skip_exhausted !== undefined) {
+        quota.skip_exhausted = body.skip_exhausted;
+      }
+    });
+    reloadAllConfigs();
+
+    const updated = getConfig();
+    return c.json({
+      success: true,
+      refresh_interval_minutes: updated.quota.refresh_interval_minutes,
+      warning_thresholds: updated.quota.warning_thresholds,
+      skip_exhausted: updated.quota.skip_exhausted,
+    });
+  });
+
   app.post("/admin/settings", async (c) => {
     const config = getConfig();
     const currentKey = config.server.proxy_api_key;
