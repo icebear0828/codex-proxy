@@ -25,7 +25,12 @@ jobs:
             artifact: windows
           - os: macos-latest
             platform: mac
-            artifact: macos
+            arch: arm64
+            artifact: macos-arm64
+          - os: macos-latest
+            platform: mac
+            arch: x64
+            artifact: macos-x64
           - os: ubuntu-latest
             platform: linux
             artifact: linux
@@ -48,7 +53,7 @@ jobs:
         run: npm ci --ignore-scripts
 
       - name: Setup curl-impersonate
-        run: npx tsx scripts/setup-curl.ts
+        run: npx tsx scripts/setup-curl.ts ${{ matrix.arch && format('--arch {0}', matrix.arch) || '' }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
@@ -61,8 +66,8 @@ jobs:
       - name: Build app
         run: npm run app:build
 
-      - name: Pack (${{ matrix.platform }})
-        run: npx electron-builder --config electron-builder.yml --${{ matrix.platform }} --publish never
+      - name: Pack (${{ matrix.platform }}${{ matrix.arch && format('-{0}', matrix.arch) || '' }})
+        run: npx electron-builder --config electron-builder.yml --${{ matrix.platform }} ${{ matrix.arch && format('--{0}', matrix.arch) || '' }} --publish never
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4

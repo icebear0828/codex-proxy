@@ -160,7 +160,7 @@ export class CurlCliTransport implements TlsTransport {
         if (signal) {
           signal.removeEventListener("abort", onAbort);
         }
-        reject(new Error(`curl spawn error: ${err.message}`));
+        reject(new Error(formatSpawnError(err)));
       });
     });
   }
@@ -228,6 +228,24 @@ export class CurlCliTransport implements TlsTransport {
   }
 }
 
+/**
+ * Format a spawn error with architecture hint for EBADARCH (-86) on macOS.
+ * This commonly happens when curl-impersonate binary doesn't match the CPU arch.
+ */
+export function formatSpawnError(err: Error & { errno?: number; code?: string }): string {
+  // errno -86 = EBADARCH (Bad CPU type in executable) on macOS
+  if (err.errno === -86 || err.message.includes("-86")) {
+    const binary = resolveCurlBinary();
+    return (
+      `curl-impersonate binary has wrong CPU architecture for this system. ` +
+      `Binary: ${binary}, Host arch: ${process.arch}. ` +
+      `Fix: run "npm run setup -- --force" to download the correct binary, ` +
+      `or delete bin/curl-impersonate to fall back to system curl.`
+    );
+  }
+  return `curl spawn error: ${err.message}`;
+}
+
 /** Execute curl via execFile and parse the status code from the output. */
 function execCurl(args: string[]): Promise<{ status: number; body: string }> {
   return new Promise((resolve, reject) => {
@@ -237,7 +255,13 @@ function execCurl(args: string[]): Promise<{ status: number; body: string }> {
       { maxBuffer: 2 * 1024 * 1024 },
       (err, stdout, stderr) => {
         if (err) {
-          reject(new Error(`curl failed: ${err.message} ${stderr}`));
+          const castErr = err as Error & { errno?: number };
+          // Check for EBADARCH first (architecture mismatch)
+          if (castErr.errno === -86 || err.message.includes("-86")) {
+            reject(new Error(formatSpawnError(castErr)));
+          } else {
+            reject(new Error(`curl failed: ${err.message} ${stderr}`));
+          }
           return;
         }
 

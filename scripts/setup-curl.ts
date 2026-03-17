@@ -27,9 +27,18 @@ interface PlatformInfo {
   destName: string;
 }
 
+/** Parse --arch flag from CLI args to override process.arch (for cross-compilation). */
+function getTargetArch(): string {
+  const idx = process.argv.indexOf("--arch");
+  if (idx !== -1 && process.argv[idx + 1]) {
+    return process.argv[idx + 1];
+  }
+  return process.arch;
+}
+
 function getPlatformInfo(version: string): PlatformInfo {
   const platform = process.platform;
-  const arch = process.arch;
+  const arch = getTargetArch();
 
   if (platform === "linux") {
     const archStr = arch === "arm64" ? "aarch64-linux-gnu" : "x86_64-linux-gnu";
@@ -227,7 +236,8 @@ async function main() {
   // Resolve latest version from GitHub
   const version = await getLatestVersion();
   console.log(`[setup] curl-impersonate setup (${version})`);
-  console.log(`[setup] Platform: ${process.platform}-${process.arch}`);
+  const targetArch = getTargetArch();
+  console.log(`[setup] Platform: ${process.platform}-${targetArch}${targetArch !== process.arch ? ` (cross: host=${process.arch})` : ""}`);
 
   const info = getPlatformInfo(version);
   const isWindowsDll = process.platform === "win32";
