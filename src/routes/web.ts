@@ -5,7 +5,7 @@ import { getConnInfo } from "@hono/node-server/conninfo";
 import { readFileSync, existsSync } from "fs";
 import { resolve } from "path";
 import type { AccountPool } from "../auth/account-pool.js";
-import { getConfig, getFingerprint, reloadAllConfigs } from "../config.js";
+import { getConfig, getFingerprint, reloadAllConfigs, ROTATION_STRATEGIES } from "../config.js";
 import { getPublicDir, getDesktopPublicDir, getConfigDir, getDataDir, getBinDir, isEmbedded } from "../paths.js";
 import { getTransport, getTransportInfo } from "../tls/transport.js";
 import { getCurlDiagnostics } from "../tls/curl-binary.js";
@@ -469,10 +469,10 @@ export function createWebRoutes(accountPool: AccountPool): Hono {
     }
 
     const body = await c.req.json() as { rotation_strategy?: string };
-    const valid = ["least_used", "round_robin", "sticky"];
+    const valid: readonly string[] = ROTATION_STRATEGIES;
     if (!body.rotation_strategy || !valid.includes(body.rotation_strategy)) {
       c.status(400);
-      return c.json({ error: "rotation_strategy must be one of: least_used, round_robin, sticky" });
+      return c.json({ error: `rotation_strategy must be one of: ${ROTATION_STRATEGIES.join(", ")}` });
     }
 
     const configPath = resolve(getConfigDir(), "default.yaml");

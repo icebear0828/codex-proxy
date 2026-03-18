@@ -6,6 +6,8 @@ import { loadStaticModels } from "./models/model-store.js";
 import { triggerImmediateRefresh } from "./models/model-fetcher.js";
 import { getConfigDir } from "./paths.js";
 
+export const ROTATION_STRATEGIES = ["least_used", "round_robin", "sticky"] as const;
+
 const ConfigSchema = z.object({
   api: z.object({
     base_url: z.string().default("https://chatgpt.com/backend-api"),
@@ -30,7 +32,7 @@ const ConfigSchema = z.object({
     jwt_token: z.string().nullable().default(null),
     chatgpt_oauth: z.boolean().default(true),
     refresh_margin_seconds: z.number().min(0).default(300),
-    rotation_strategy: z.enum(["least_used", "round_robin", "sticky"]).default("least_used"),
+    rotation_strategy: z.enum(ROTATION_STRATEGIES).default("least_used"),
     rate_limit_backoff_seconds: z.number().min(1).default(60),
     oauth_client_id: z.string().default("app_EMoamEEZ73f0CkXaXp7hrann"),
     oauth_auth_endpoint: z.string().default("https://auth.openai.com/oauth/authorize"),

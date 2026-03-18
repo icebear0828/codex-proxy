@@ -21,6 +21,7 @@ const mockConfig = {
 vi.mock("../../config.js", () => ({
   getConfig: vi.fn(() => mockConfig),
   reloadAllConfigs: vi.fn(),
+  ROTATION_STRATEGIES: ["least_used", "round_robin", "sticky"],
 }));
 
 vi.mock("../../paths.js", () => ({
