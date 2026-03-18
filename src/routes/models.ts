@@ -11,6 +11,8 @@ import {
   getModelStoreDebug,
   type CodexModelInfo,
 } from "../models/model-store.js";
+import { triggerImmediateRefresh } from "../models/model-fetcher.js";
+import { getConfig } from "../config.js";
 
 // --- Routes ---
 
@@ -100,6 +102,22 @@ export function createModelRoutes(): Hono {
   // Debug endpoint: model store internals
   app.get("/debug/models", (c) => {
     return c.json(getModelStoreDebug());
+  });
+
+  // Admin endpoint: trigger immediate model refresh
+  app.post("/admin/refresh-models", (c) => {
+    const config = getConfig();
+    const configKey = config.server.proxy_api_key;
+    if (configKey) {
+      const authHeader = c.req.header("Authorization") ?? "";
+      const token = authHeader.startsWith("Bearer ") ? authHeader.slice(7) : "";
+      if (token !== configKey) {
+        c.status(401);
+        return c.json({ error: "Unauthorized" });
+      }
+    }
+    triggerImmediateRefresh();
+    return c.json({ ok: true, message: "Model refresh triggered" });
   });
 
   return app;
