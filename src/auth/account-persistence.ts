@@ -21,7 +21,7 @@ import {
 import type { AccountEntry, AccountsFile } from "./types.js";
 
 export interface AccountPersistence {
-  load(): AccountEntry[];
+  load(): { entries: AccountEntry[]; needsPersist: boolean };
   save(accounts: AccountEntry[]): void;
 }
 
@@ -33,15 +33,22 @@ function getLegacyAuthFile(): string {
 }
 
 export function createFsPersistence(): AccountPersistence {
-  return {
-    load(): AccountEntry[] {
+  const persistence: AccountPersistence = {
+    load(): { entries: AccountEntry[]; needsPersist: boolean } {
       // Migrate from legacy auth.json if needed
       const migrated = migrateFromLegacy();
 
       // Load from accounts.json
-      const loaded = loadPersisted();
+      const { entries: loaded, needsPersist } = loadPersisted();
 
-      return migrated.length > 0 && loaded.length === 0 ? migrated : loaded;
+      const entries = migrated.length > 0 && loaded.length === 0 ? migrated : loaded;
+
+      // Auto-persist when backfill was applied (preserves original behavior)
+      if (needsPersist && loaded.length > 0) {
+        persistence.save(loaded);
+      }
+
+      return { entries, needsPersist };
     },
 
     save(accounts: AccountEntry[]): void {
@@ -58,6 +65,7 @@ export function createFsPersistence(): AccountPersistence {
       }
     },
   };
+  return persistence;
 }
 
 function migrateFromLegacy(): AccountEntry[] {
@@ -121,13 +129,13 @@ function migrateFromLegacy(): AccountEntry[] {
   }
 }
 
-function loadPersisted(): AccountEntry[] {
+function loadPersisted(): { entries: AccountEntry[]; needsPersist: boolean } {
   try {
     const accountsFile = getAccountsFile();
-    if (!existsSync(accountsFile)) return [];
+    if (!existsSync(accountsFile)) return { entries: [], needsPersist: false };
     const raw = readFileSync(accountsFile, "utf-8");
     const data = JSON.parse(raw) as AccountsFile;
-    if (!Array.isArray(data.accounts)) return [];
+    if (!Array.isArray(data.accounts)) return { entries: [], needsPersist: false };
 
     const entries: AccountEntry[] = [];
     let needsPersist = false;
@@ -175,9 +183,9 @@ function loadPersisted(): AccountEntry[] {
       entries.push(entry);
     }
 
-    return entries;
+    return { entries, needsPersist };
   } catch (err) {
     console.warn("[AccountPool] Failed to load accounts:", err instanceof Error ? err.message : err);
-    return [];
+    return { entries: [], needsPersist: false };
   }
 }

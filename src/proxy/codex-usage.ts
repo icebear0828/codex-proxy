@@ -4,8 +4,7 @@
 
 import { getConfig } from "../config.js";
 import { getTransport } from "../tls/transport.js";
-import { CodexApiError } from "./codex-api.js";
-import type { CodexUsageResponse } from "./codex-types.js";
+import { CodexApiError, type CodexUsageResponse } from "./codex-types.js";
 
 export async function fetchUsage(
   headers: Record<string, string>,

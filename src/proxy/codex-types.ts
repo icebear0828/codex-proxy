@@ -72,3 +72,19 @@ export interface CodexUsageResponse {
   credits: unknown;
   promo: unknown;
 }
+
+export class CodexApiError extends Error {
+  constructor(
+    public readonly status: number,
+    public readonly body: string,
+  ) {
+    let detail: string;
+    try {
+      const parsed = JSON.parse(body);
+      detail = parsed.detail ?? parsed.error?.message ?? body;
+    } catch {
+      detail = body;
+    }
+    super(`Codex API error (${status}): ${detail}`);
+  }
+}

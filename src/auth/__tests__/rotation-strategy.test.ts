@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { createRotationStrategy } from "../rotation-strategy.js";
+import { getRotationStrategy } from "../rotation-strategy.js";
 import type { RotationState } from "../rotation-strategy.js";
 import type { AccountEntry } from "../types.js";
 
@@ -35,7 +35,7 @@ function makeEntry(id: string, overrides?: Partial<AccountEntry["usage"]>): Acco
 
 describe("rotation-strategy", () => {
   describe("least_used", () => {
-    const strategy = createRotationStrategy("least_used");
+    const strategy = getRotationStrategy("least_used");
     const state: RotationState = { roundRobinIndex: 0 };
 
     it("selects account with fewest requests", () => {
@@ -59,7 +59,7 @@ describe("rotation-strategy", () => {
   });
 
   describe("round_robin", () => {
-    const strategy = createRotationStrategy("round_robin");
+    const strategy = getRotationStrategy("round_robin");
 
     it("cycles through candidates in order", () => {
       const state: RotationState = { roundRobinIndex: 0 };
@@ -84,7 +84,7 @@ describe("rotation-strategy", () => {
   });
 
   describe("sticky", () => {
-    const strategy = createRotationStrategy("sticky");
+    const strategy = getRotationStrategy("sticky");
     const state: RotationState = { roundRobinIndex: 0 };
 
     it("selects most recently used account", () => {
@@ -103,11 +103,23 @@ describe("rotation-strategy", () => {
     });
   });
 
-  it("createRotationStrategy returns distinct strategy objects", () => {
-    const lu = createRotationStrategy("least_used");
-    const rr = createRotationStrategy("round_robin");
-    const st = createRotationStrategy("sticky");
+  it("getRotationStrategy returns distinct strategy objects per name", () => {
+    const lu = getRotationStrategy("least_used");
+    const rr = getRotationStrategy("round_robin");
+    const st = getRotationStrategy("sticky");
     expect(lu).not.toBe(rr);
     expect(rr).not.toBe(st);
+  });
+
+  it("select does not mutate the input candidates array", () => {
+    const strategy = getRotationStrategy("least_used");
+    const state: RotationState = { roundRobinIndex: 0 };
+    const a = makeEntry("a", { request_count: 5 });
+    const b = makeEntry("b", { request_count: 2 });
+    const c = makeEntry("c", { request_count: 8 });
+    const candidates = [a, b, c];
+    strategy.select(candidates, state);
+    // Original order preserved
+    expect(candidates.map((e) => e.id)).toEqual(["a", "b", "c"]);
   });
 });

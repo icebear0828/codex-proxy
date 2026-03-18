@@ -60,9 +60,11 @@ describe("account-persistence", () => {
   });
 
   describe("load", () => {
-    it("returns empty array when no files exist", () => {
+    it("returns empty entries when no files exist", () => {
       const p = createFsPersistence();
-      expect(p.load()).toEqual([]);
+      const result = p.load();
+      expect(result.entries).toEqual([]);
+      expect(result.needsPersist).toBe(false);
     });
 
     it("loads from accounts.json", () => {
@@ -75,8 +77,8 @@ describe("account-persistence", () => {
 
       const p = createFsPersistence();
       const result = p.load();
-      expect(result).toHaveLength(1);
-      expect(result[0].id).toBe("a");
+      expect(result.entries).toHaveLength(1);
+      expect(result.entries[0].id).toBe("a");
     });
 
     it("skips entries without id or token", () => {
@@ -87,10 +89,10 @@ describe("account-persistence", () => {
       mockFs.readFileSync.mockReturnValue(JSON.stringify(data));
 
       const p = createFsPersistence();
-      expect(p.load()).toEqual([]);
+      expect(p.load().entries).toEqual([]);
     });
 
-    it("backfills missing empty_response_count", () => {
+    it("backfills missing empty_response_count and auto-persists", () => {
       const entry = makeEntry("a");
       (entry.usage as unknown as Record<string, unknown>).empty_response_count = undefined;
       const data: AccountsFile = { accounts: [entry] };
@@ -101,7 +103,11 @@ describe("account-persistence", () => {
 
       const p = createFsPersistence();
       const result = p.load();
-      expect(result[0].usage.empty_response_count).toBe(0);
+      expect(result.entries[0].usage.empty_response_count).toBe(0);
+      expect(result.needsPersist).toBe(true);
+      // Verify auto-persist was triggered (write + rename for atomic save)
+      expect(mockFs.writeFileSync).toHaveBeenCalledTimes(1);
+      expect(mockFs.renameSync).toHaveBeenCalledTimes(1);
     });
   });
 
@@ -159,8 +165,8 @@ describe("account-persistence", () => {
 
       const p = createFsPersistence();
       const result = p.load();
-      expect(result).toHaveLength(1);
-      expect(result[0].token).toBe("legacy-token");
+      expect(result.entries).toHaveLength(1);
+      expect(result.entries[0].token).toBe("legacy-token");
       // Should rename old file
       expect(mockFs.renameSync).toHaveBeenCalled();
     });

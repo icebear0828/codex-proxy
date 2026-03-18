@@ -1,6 +1,6 @@
 /**
- * Rotation strategy — pure-function selection logic for AccountPool.
- * No side effects, no config reads.
+ * Rotation strategy — stateless selection logic for AccountPool.
+ * Strategies do not mutate input arrays or read config.
  */
 
 import type { AccountEntry } from "./types.js";
@@ -17,7 +17,7 @@ export interface RotationStrategy {
 
 const leastUsed: RotationStrategy = {
   select(candidates) {
-    candidates.sort((a, b) => {
+    const sorted = [...candidates].sort((a, b) => {
       const diff = a.usage.request_count - b.usage.request_count;
       if (diff !== 0) return diff;
       const aReset = a.usage.window_reset_at ?? Infinity;
@@ -27,7 +27,7 @@ const leastUsed: RotationStrategy = {
       const bTime = b.usage.last_used ? new Date(b.usage.last_used).getTime() : 0;
       return aTime - bTime;
     });
-    return candidates[0];
+    return sorted[0];
   },
 };
 
@@ -42,12 +42,12 @@ const roundRobin: RotationStrategy = {
 
 const sticky: RotationStrategy = {
   select(candidates) {
-    candidates.sort((a, b) => {
+    const sorted = [...candidates].sort((a, b) => {
       const aTime = a.usage.last_used ? new Date(a.usage.last_used).getTime() : 0;
       const bTime = b.usage.last_used ? new Date(b.usage.last_used).getTime() : 0;
       return bTime - aTime;
     });
-    return candidates[0];
+    return sorted[0];
   },
 };
 
@@ -57,6 +57,9 @@ const strategies: Record<RotationStrategyName, RotationStrategy> = {
   sticky,
 };
 
-export function createRotationStrategy(name: RotationStrategyName): RotationStrategy {
+export function getRotationStrategy(name: RotationStrategyName): RotationStrategy {
   return strategies[name] ?? strategies.least_used;
 }
+
+/** @deprecated Use getRotationStrategy instead */
+export const createRotationStrategy = getRotationStrategy;

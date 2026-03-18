@@ -13,7 +13,7 @@ import {
   isTokenExpired,
 } from "./jwt-utils.js";
 import { getModelPlanTypes } from "../models/model-store.js";
-import { createRotationStrategy } from "./rotation-strategy.js";
+import { getRotationStrategy } from "./rotation-strategy.js";
 import { createFsPersistence } from "./account-persistence.js";
 import type { AccountPersistence } from "./account-persistence.js";
 import type { RotationStrategy, RotationState } from "./rotation-strategy.js";
@@ -40,10 +40,11 @@ export class AccountPool {
   constructor(options?: { persistence?: AccountPersistence }) {
     this.persistence = options?.persistence ?? createFsPersistence();
     const config = getConfig();
-    this.strategy = createRotationStrategy(config.auth.rotation_strategy);
+    this.strategy = getRotationStrategy(config.auth.rotation_strategy);
 
     // Load persisted accounts (handles migration from legacy format)
-    for (const entry of this.persistence.load()) {
+    const { entries } = this.persistence.load();
+    for (const entry of entries) {
       this.accounts.set(entry.id, entry);
     }
 
@@ -121,7 +122,7 @@ export class AccountPool {
    * Switch rotation strategy at runtime (e.g. from admin API).
    */
   setRotationStrategy(name: "least_used" | "round_robin" | "sticky"): void {
-    this.strategy = createRotationStrategy(name);
+    this.strategy = getRotationStrategy(name);
     this.rotationState.roundRobinIndex = 0;
   }
 

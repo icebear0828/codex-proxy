@@ -22,7 +22,7 @@ import { fetchModels, probeEndpoint as probeEndpointFn } from "./codex-models.js
 import type { CookieJar } from "./cookie-jar.js";
 import type { BackendModelEntry } from "../models/model-store.js";
 
-// Re-export all types from codex-types.ts for backward compatibility
+// Re-export types from codex-types.ts for backward compatibility
 export type {
   CodexResponsesRequest,
   CodexContentPart,
@@ -36,10 +36,11 @@ export type {
 // Re-export SSE utilities for consumers that used them via CodexApi
 export { parseSSEBlock, parseSSEStream } from "./codex-sse.js";
 
-import type {
-  CodexResponsesRequest,
-  CodexSSEEvent,
-  CodexUsageResponse,
+import {
+  CodexApiError,
+  type CodexResponsesRequest,
+  type CodexSSEEvent,
+  type CodexUsageResponse,
 } from "./codex-types.js";
 
 export class CodexApi {
@@ -83,6 +84,7 @@ export class CodexApi {
     }
   }
 
+  /** Query official Codex usage/quota. Delegates to standalone fetchUsage(). */
   async getUsage(): Promise<CodexUsageResponse> {
     const headers = this.applyHeaders(
       buildHeaders(this.token, this.accountId),
@@ -90,6 +92,7 @@ export class CodexApi {
     return fetchUsage(headers, this.proxyUrl);
   }
 
+  /** Fetch available models from the Codex backend. Probes known endpoints; returns null if none respond. */
   async getModels(): Promise<BackendModelEntry[] | null> {
     const headers = this.applyHeaders(
       buildHeaders(this.token, this.accountId),
@@ -97,6 +100,7 @@ export class CodexApi {
     return fetchModels(headers, this.proxyUrl);
   }
 
+  /** Probe a backend endpoint and return raw JSON (for debug). */
   async probeEndpoint(path: string): Promise<Record<string, unknown> | null> {
     const headers = this.applyHeaders(
       buildHeaders(this.token, this.accountId),
@@ -126,6 +130,11 @@ export class CodexApi {
     return this.createResponseViaHttp(request, signal);
   }
 
+  /**
+   * Create a response via WebSocket (for previous_response_id support).
+   * Returns a Response with SSE-formatted body, compatible with parseStream().
+   * No Content-Type header — WebSocket upgrade handles auth via same headers.
+   */
   private async createResponseViaWebSocket(
     request: CodexResponsesRequest,
     signal?: AbortSignal,
@@ -157,6 +166,11 @@ export class CodexApi {
     return createWebSocketResponse(wsUrl, headers, wsRequest, signal, this.proxyUrl);
   }
 
+  /**
+   * Create a response via HTTP SSE (default transport).
+   * Uses curl-impersonate for TLS fingerprinting.
+   * No wall-clock timeout — header timeout + AbortSignal provide protection.
+   */
   private async createResponseViaHttp(
     request: CodexResponsesRequest,
     signal?: AbortSignal,
@@ -224,18 +238,5 @@ export class CodexApi {
   }
 }
 
-export class CodexApiError extends Error {
-  constructor(
-    public readonly status: number,
-    public readonly body: string,
-  ) {
-    let detail: string;
-    try {
-      const parsed = JSON.parse(body);
-      detail = parsed.detail ?? parsed.error?.message ?? body;
-    } catch {
-      detail = body;
-    }
-    super(`Codex API error (${status}): ${detail}`);
-  }
-}
+// Re-export CodexApiError for backward compatibility
+export { CodexApiError } from "./codex-types.js";
