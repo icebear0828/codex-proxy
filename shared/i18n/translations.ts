@@ -2,6 +2,8 @@ export const translations = {
   en: {
     serverOnline: "Server Online",
     addAccount: "Add Account",
+    batchAddJsonTokenFile: "Batch Add via JSON Token File",
+    importingJsonTokenFile: "Importing JSON...",
     toggleTheme: "Toggle theme",
     connectedAccounts: "Connected Accounts",
     connectedAccountsDesc:
@@ -140,7 +142,6 @@ export const translations = {
     nextPage: "Next",
     totalItems: "total",
     shiftSelectHint: "Shift+click to select range",
-    selectAll: "Select all",
     exportSuccess: "Export complete",
     importFile: "Select JSON file",
     downloadJson: "Download JSON",
@@ -205,6 +206,8 @@ export const translations = {
   zh: {
     serverOnline: "\u670d\u52a1\u8fd0\u884c\u4e2d",
     addAccount: "\u6dfb\u52a0\u8d26\u6237",
+    batchAddJsonTokenFile: "JSON Token \u6279\u91cf\u5bfc\u5165",
+    importingJsonTokenFile: "JSON \u5bfc\u5165\u4e2d...",
     toggleTheme: "\u5207\u6362\u4e3b\u9898",
     connectedAccounts: "\u5df2\u8fde\u63a5\u8d26\u6237",
     connectedAccountsDesc:
@@ -346,7 +349,6 @@ export const translations = {
     nextPage: "\u4e0b\u4e00\u9875",
     totalItems: "\u5171",
     shiftSelectHint: "Shift+\u70b9\u51fb\u8fde\u7eed\u591a\u9009",
-    selectAll: "\u5168\u9009",
     exportSuccess: "\u5bfc\u51fa\u6210\u529f",
     importFile: "\u9009\u62e9 JSON \u6587\u4ef6",
     downloadJson: "\u4e0b\u8f7d JSON",

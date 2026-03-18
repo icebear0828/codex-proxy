@@ -1,3 +1,4 @@
+import { useCallback, useRef, useState } from "preact/hooks";
 import { useI18n } from "../../../shared/i18n/context";
 import { translations, type TranslationKey } from "../../../shared/i18n/translations";
 import { useTheme } from "../../../shared/theme/context";
@@ -30,6 +31,7 @@ function StableText({ tKey, children, class: cls }: { tKey: TranslationKey; chil
 
 interface HeaderProps {
   onAddAccount: () => void;
+  onBatchImport?: (file: File) => Promise<unknown>;
   onCheckUpdate: () => void;
   onOpenUpdateModal?: () => void;
   checking: boolean;
@@ -41,12 +43,39 @@ interface HeaderProps {
   hasUpdate?: boolean;
 }
 
-export function Header({ onAddAccount, onCheckUpdate, onOpenUpdateModal, checking, updateStatusMsg, updateStatusColor, version, commit, isProxySettings, hasUpdate }: HeaderProps) {
+export function Header({ onAddAccount, onBatchImport, onCheckUpdate, onOpenUpdateModal, checking, updateStatusMsg, updateStatusColor, version, commit, isProxySettings, hasUpdate }: HeaderProps) {
   const { lang, toggleLang, t } = useI18n();
   const { isDark, toggle: toggleTheme } = useTheme();
+  const fileRef = useRef<HTMLInputElement>(null);
+  const [importingJson, setImportingJson] = useState(false);
+
+  const triggerBatchImport = useCallback(() => {
+    if (!onBatchImport || importingJson) return;
+    fileRef.current?.click();
+  }, [importingJson, onBatchImport]);
+
+  const handleFileChange = useCallback(async () => {
+    const file = fileRef.current?.files?.[0];
+    if (!file || !onBatchImport) return;
+
+    setImportingJson(true);
+    try {
+      await onBatchImport(file);
+    } finally {
+      setImportingJson(false);
+      if (fileRef.current) fileRef.current.value = "";
+    }
+  }, [onBatchImport]);
 
   return (
     <header class="sticky top-0 z-50 w-full bg-white dark:bg-card-dark border-b border-gray-200 dark:border-border-dark shadow-sm transition-colors">
+      <input
+        ref={fileRef}
+        type="file"
+        accept=".json,application/json"
+        onChange={handleFileChange}
+        class="hidden"
+      />
       <div class="px-4 md:px-8 lg:px-40 flex h-14 items-center justify-center">
         <div class="flex w-full max-w-[960px] items-center justify-between">
           {/* Logo & Title */}
@@ -149,6 +178,19 @@ export function Header({ onAddAccount, onCheckUpdate, onOpenUpdateModal, checkin
                     <path stroke-linecap="round" stroke-linejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
                   </svg>
                   <StableText tKey="addAccount">{t("addAccount")}</StableText>
+                </button>
+                <button
+                  onClick={triggerBatchImport}
+                  disabled={!onBatchImport || importingJson}
+                  class="flex items-center gap-2 px-4 py-2 border border-gray-200 dark:border-border-dark bg-white dark:bg-card-dark text-slate-700 dark:text-text-main text-xs font-semibold rounded-lg transition-colors shadow-sm hover:bg-slate-50 dark:hover:bg-border-dark disabled:opacity-50 disabled:cursor-not-allowed"
+                  title={t("batchAddJsonTokenFile")}
+                >
+                  <svg class="size-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 0 0-3.375-3.375h-1.5A1.125 1.125 0 0 1 13.5 7.125v-1.5A3.375 3.375 0 0 0 10.125 2.25H6.75A2.25 2.25 0 0 0 4.5 4.5v15A2.25 2.25 0 0 0 6.75 21.75h10.5A2.25 2.25 0 0 0 19.5 19.5v-1.5m-6-4.5h3m-1.5-1.5v3" />
+                  </svg>
+                  <StableText tKey="batchAddJsonTokenFile">
+                    {importingJson ? t("importingJsonTokenFile") : t("batchAddJsonTokenFile")}
+                  </StableText>
                 </button>
               </>
             )}

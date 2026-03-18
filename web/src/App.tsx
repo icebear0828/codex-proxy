@@ -94,6 +94,7 @@ function Dashboard() {
     <>
       <Header
         onAddAccount={accounts.startAdd}
+        onBatchImport={accounts.importTokenJsonFile}
         onCheckUpdate={update.checkForUpdate}
         onOpenUpdateModal={() => setShowModal(true)}
         checking={update.checking}

@@ -1,6 +1,76 @@
 import { useState, useEffect, useCallback } from "preact/hooks";
 import type { Account } from "../types";
 
+interface AccountImportResult {
+  success: boolean;
+  added: number;
+  updated: number;
+  failed: number;
+  errors: string[];
+}
+
+interface ImportableAccountPayload {
+  token: string;
+  refreshToken?: string | null;
+}
+
+interface JsonTokenFileEntry {
+  token?: unknown;
+  refreshToken?: unknown;
+  access_token?: unknown;
+  refresh_token?: unknown;
+}
+
+function normalizeImportEntry(entry: unknown): ImportableAccountPayload | null {
+  if (!entry || typeof entry !== "object") return null;
+
+  const candidate = entry as JsonTokenFileEntry;
+  const token =
+    typeof candidate.token === "string"
+      ? candidate.token.trim()
+      : typeof candidate.access_token === "string"
+        ? candidate.access_token.trim()
+        : "";
+
+  if (!token) return null;
+
+  const refreshToken =
+    typeof candidate.refreshToken === "string"
+      ? candidate.refreshToken.trim()
+      : typeof candidate.refresh_token === "string"
+        ? candidate.refresh_token.trim()
+        : null;
+
+  return {
+    token,
+    refreshToken: refreshToken || null,
+  };
+}
+
+function parseImportAccounts(parsed: unknown): ImportableAccountPayload[] | null {
+  if (Array.isArray(parsed)) {
+    const accounts = parsed
+      .map(normalizeImportEntry)
+      .filter((entry): entry is ImportableAccountPayload => !!entry);
+    return accounts.length > 0 ? accounts : null;
+  }
+
+  if (parsed && typeof parsed === "object") {
+    const maybeAccounts = (parsed as { accounts?: unknown }).accounts;
+    if (Array.isArray(maybeAccounts)) {
+      const accounts = maybeAccounts
+        .map(normalizeImportEntry)
+        .filter((entry): entry is ImportableAccountPayload => !!entry);
+      return accounts.length > 0 ? accounts : null;
+    }
+
+    const single = normalizeImportEntry(parsed);
+    return single ? [single] : null;
+  }
+
+  return null;
+}
+
 export function useAccounts() {
   const [list, setList] = useState<Account[]>([]);
   const [loading, setLoading] = useState(true);
@@ -181,13 +251,7 @@ export function useAccounts() {
     URL.revokeObjectURL(url);
   }, []);
 
-  const importAccounts = useCallback(async (file: File): Promise<{
-    success: boolean;
-    added: number;
-    updated: number;
-    failed: number;
-    errors: string[];
-  }> => {
+  const importAccounts = useCallback(async (file: File): Promise<AccountImportResult> => {
     const text = await file.text();
     let parsed: unknown;
     try {
@@ -195,14 +259,16 @@ export function useAccounts() {
     } catch {
       return { success: false, added: 0, updated: 0, failed: 0, errors: ["Invalid JSON file"] };
     }
-    // Support both { accounts: [...] } (export format) and raw array
-    const accounts = Array.isArray(parsed)
-      ? parsed
-      : Array.isArray(parsed.accounts)
-        ? parsed.accounts
-        : null;
+
+    const accounts = parseImportAccounts(parsed);
     if (!accounts) {
-      return { success: false, added: 0, updated: 0, failed: 0, errors: ["Invalid format: expected { accounts: [...] }"] };
+      return {
+        success: false,
+        added: 0,
+        updated: 0,
+        failed: 0,
+        errors: ["Invalid format: expected a token JSON object, an array, or { accounts: [...] }"],
+      };
     }
 
     const resp = await fetch("/auth/accounts/import", {
@@ -216,6 +282,37 @@ export function useAccounts() {
     }
     return result;
   }, [loadAccounts]);
+
+  const importTokenJsonFile = useCallback(async (file: File): Promise<AccountImportResult> => {
+    setAddInfo("");
+    setAddError("");
+
+    try {
+      const result = await importAccounts(file);
+      if (!result.success) {
+        setAddError(result.errors[0] || "Import failed");
+        return result;
+      }
+
+      setAddInfo(
+        `Imported: ${result.added} added, ${result.updated} updated, ${result.failed} failed`,
+      );
+      if (result.failed > 0 && result.errors.length > 0) {
+        setAddError(result.errors[0]);
+      }
+      return result;
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      setAddError("Import failed: " + message);
+      return {
+        success: false,
+        added: 0,
+        updated: 0,
+        failed: 0,
+        errors: [message],
+      };
+    }
+  }, [importAccounts]);
 
   return {
     list,
@@ -232,5 +329,6 @@ export function useAccounts() {
     deleteAccount,
     exportAccounts,
     importAccounts,
+    importTokenJsonFile,
   };
 }
