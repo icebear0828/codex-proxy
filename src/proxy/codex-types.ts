@@ -1,0 +1,74 @@
+/**
+ * Type definitions for the Codex Responses API.
+ * Extracted from codex-api.ts for consumers that only need types.
+ */
+
+export interface CodexResponsesRequest {
+  model: string;
+  instructions?: string | null;
+  input: CodexInputItem[];
+  stream: true;
+  store: false;
+  /** Optional: reasoning effort + summary mode */
+  reasoning?: { effort?: string; summary?: string };
+  /** Optional: service tier ("fast" / "flex") */
+  service_tier?: string | null;
+  /** Optional: tools available to the model */
+  tools?: unknown[];
+  /** Optional: tool choice strategy */
+  tool_choice?: string | { type: string; name: string };
+  /** Optional: text output format (JSON mode / structured outputs) */
+  text?: {
+    format: {
+      type: "text" | "json_object" | "json_schema";
+      name?: string;
+      schema?: Record<string, unknown>;
+      strict?: boolean;
+    };
+  };
+  /** Optional: reference a previous response for multi-turn (WebSocket only). */
+  previous_response_id?: string;
+  /** When true, use WebSocket transport (enables previous_response_id and server-side storage). */
+  useWebSocket?: boolean;
+}
+
+/** Structured content part for multimodal Codex input. */
+export type CodexContentPart =
+  | { type: "input_text"; text: string }
+  | { type: "input_image"; image_url: string };
+
+export type CodexInputItem =
+  | { role: "user"; content: string | CodexContentPart[] }
+  | { role: "assistant"; content: string }
+  | { role: "system"; content: string }
+  | { type: "function_call"; id?: string; call_id: string; name: string; arguments: string }
+  | { type: "function_call_output"; call_id: string; output: string };
+
+/** Parsed SSE event from the Codex Responses stream */
+export interface CodexSSEEvent {
+  event: string;
+  data: unknown;
+}
+
+/** Response from GET /backend-api/codex/usage */
+export interface CodexUsageRateWindow {
+  used_percent: number;
+  limit_window_seconds: number;
+  reset_after_seconds: number;
+  reset_at: number;
+}
+
+export interface CodexUsageRateLimit {
+  allowed: boolean;
+  limit_reached: boolean;
+  primary_window: CodexUsageRateWindow | null;
+  secondary_window: CodexUsageRateWindow | null;
+}
+
+export interface CodexUsageResponse {
+  plan_type: string;
+  rate_limit: CodexUsageRateLimit;
+  code_review_rate_limit: CodexUsageRateLimit | null;
+  credits: unknown;
+  promo: unknown;
+}

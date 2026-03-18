@@ -3,17 +3,8 @@
  * Replaces the single-account AuthManager.
  */
 
-import {
-  readFileSync,
-  writeFileSync,
-  renameSync,
-  existsSync,
-  mkdirSync,
-} from "fs";
-import { resolve, dirname } from "path";
 import { randomBytes } from "crypto";
 import { getConfig } from "../config.js";
-import { getDataDir } from "../paths.js";
 import { jitter } from "../utils/jitter.js";
 import {
   decodeJwtPayload,
@@ -22,6 +13,10 @@ import {
   isTokenExpired,
 } from "./jwt-utils.js";
 import { getModelPlanTypes } from "../models/model-store.js";
+import { createRotationStrategy } from "./rotation-strategy.js";
+import { createFsPersistence } from "./account-persistence.js";
+import type { AccountPersistence } from "./account-persistence.js";
+import type { RotationStrategy, RotationState } from "./rotation-strategy.js";
 import type {
   AccountEntry,
   AccountInfo,
@@ -31,28 +26,28 @@ import type {
   CodexQuota,
 } from "./types.js";
 
-function getAccountsFile(): string {
-  return resolve(getDataDir(), "accounts.json");
-}
-function getLegacyAuthFile(): string {
-  return resolve(getDataDir(), "auth.json");
-}
-
 // P1-4: Lock TTL — auto-release locks older than this
 const ACQUIRE_LOCK_TTL_MS = 5 * 60 * 1000; // 5 minutes
 
 export class AccountPool {
   private accounts: Map<string, AccountEntry> = new Map();
   private acquireLocks: Map<string, number> = new Map(); // entryId → timestamp
-  private roundRobinIndex = 0;
+  private strategy: RotationStrategy;
+  private rotationState: RotationState = { roundRobinIndex: 0 };
+  private persistence: AccountPersistence;
   private persistTimer: ReturnType<typeof setTimeout> | null = null;
 
-  constructor() {
-    this.migrateFromLegacy();
-    this.loadPersisted();
+  constructor(options?: { persistence?: AccountPersistence }) {
+    this.persistence = options?.persistence ?? createFsPersistence();
+    const config = getConfig();
+    this.strategy = createRotationStrategy(config.auth.rotation_strategy);
+
+    // Load persisted accounts (handles migration from legacy format)
+    for (const entry of this.persistence.load()) {
+      this.accounts.set(entry.id, entry);
+    }
 
     // Override with config jwt_token if set
-    const config = getConfig();
     if (config.auth.jwt_token) {
       this.addAccount(config.auth.jwt_token);
     }
@@ -113,7 +108,7 @@ export class AccountPool {
       }
     }
 
-    const selected = this.selectByStrategy(candidates);
+    const selected = this.strategy.select(candidates, this.rotationState);
     this.acquireLocks.set(selected.id, Date.now());
     return {
       entryId: selected.id,
@@ -123,38 +118,11 @@ export class AccountPool {
   }
 
   /**
-   * Select an account from candidates using the configured rotation strategy.
+   * Switch rotation strategy at runtime (e.g. from admin API).
    */
-  private selectByStrategy(candidates: AccountEntry[]): AccountEntry {
-    const config = getConfig();
-    if (config.auth.rotation_strategy === "round_robin") {
-      this.roundRobinIndex = this.roundRobinIndex % candidates.length;
-      const selected = candidates[this.roundRobinIndex];
-      this.roundRobinIndex++;
-      return selected;
-    }
-    if (config.auth.rotation_strategy === "sticky") {
-      // Sticky: prefer most recently used account (keep reusing until unavailable)
-      candidates.sort((a, b) => {
-        const aTime = a.usage.last_used ? new Date(a.usage.last_used).getTime() : 0;
-        const bTime = b.usage.last_used ? new Date(b.usage.last_used).getTime() : 0;
-        return bTime - aTime; // desc — most recent first
-      });
-      return candidates[0];
-    }
-    // least_used: sort by request_count asc → window_reset_at asc → last_used asc (LRU)
-    candidates.sort((a, b) => {
-      const diff = a.usage.request_count - b.usage.request_count;
-      if (diff !== 0) return diff;
-      // Prefer accounts whose quota window resets sooner (more fresh capacity)
-      const aReset = a.usage.window_reset_at ?? Infinity;
-      const bReset = b.usage.window_reset_at ?? Infinity;
-      if (aReset !== bReset) return aReset - bReset;
-      const aTime = a.usage.last_used ? new Date(a.usage.last_used).getTime() : 0;
-      const bTime = b.usage.last_used ? new Date(b.usage.last_used).getTime() : 0;
-      return aTime - bTime;
-    });
-    return candidates[0];
+  setRotationStrategy(name: "least_used" | "round_robin" | "sticky"): void {
+    this.strategy = createRotationStrategy(name);
+    this.rotationState.roundRobinIndex = 0;
   }
 
   /**
@@ -185,7 +153,7 @@ export class AccountPool {
 
     const result: Array<{ planType: string; entryId: string; token: string; accountId: string | null }> = [];
     for (const [plan, group] of byPlan) {
-      const selected = this.selectByStrategy(group);
+      const selected = this.strategy.select(group, this.rotationState);
       this.acquireLocks.set(selected.id, Date.now());
       result.push({
         planType: plan,
@@ -622,135 +590,7 @@ export class AccountPool {
       clearTimeout(this.persistTimer);
       this.persistTimer = null;
     }
-    try {
-      const accountsFile = getAccountsFile();
-      const dir = dirname(accountsFile);
-      if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
-      const data: AccountsFile = { accounts: [...this.accounts.values()] };
-      const tmpFile = accountsFile + ".tmp";
-      writeFileSync(tmpFile, JSON.stringify(data, null, 2), "utf-8");
-      renameSync(tmpFile, accountsFile);
-    } catch (err) {
-      console.error("[AccountPool] Failed to persist accounts:", err instanceof Error ? err.message : err);
-    }
-  }
-
-  private loadPersisted(): void {
-    try {
-      const accountsFile = getAccountsFile();
-      if (!existsSync(accountsFile)) return;
-      const raw = readFileSync(accountsFile, "utf-8");
-      const data = JSON.parse(raw) as AccountsFile;
-      if (Array.isArray(data.accounts)) {
-        let needsPersist = false;
-        for (const entry of data.accounts) {
-          if (entry.id && entry.token) {
-            // Backfill missing fields from JWT (e.g. planType was null before fix)
-            if (!entry.planType || !entry.email || !entry.accountId) {
-              const profile = extractUserProfile(entry.token);
-              const accountId = extractChatGptAccountId(entry.token);
-              if (!entry.planType && profile?.chatgpt_plan_type) {
-                entry.planType = profile.chatgpt_plan_type;
-                needsPersist = true;
-              }
-              if (!entry.email && profile?.email) {
-                entry.email = profile.email;
-                needsPersist = true;
-              }
-              if (!entry.accountId && accountId) {
-                entry.accountId = accountId;
-                needsPersist = true;
-              }
-            }
-            // Backfill empty_response_count for old entries
-            if (entry.usage.empty_response_count == null) {
-              entry.usage.empty_response_count = 0;
-              needsPersist = true;
-            }
-            // Backfill window counter fields for old entries
-            if (entry.usage.window_request_count == null) {
-              entry.usage.window_request_count = 0;
-              entry.usage.window_input_tokens = 0;
-              entry.usage.window_output_tokens = 0;
-              entry.usage.window_counters_reset_at = null;
-              entry.usage.limit_window_seconds = null;
-              needsPersist = true;
-            }
-            // Backfill cachedQuota fields for old entries
-            if (entry.cachedQuota === undefined) {
-              entry.cachedQuota = null;
-              entry.quotaFetchedAt = null;
-              needsPersist = true;
-            }
-            this.accounts.set(entry.id, entry);
-          }
-        }
-        if (needsPersist) this.persistNow();
-      }
-    } catch (err) {
-      console.warn("[AccountPool] Failed to load accounts:", err instanceof Error ? err.message : err);
-    }
-  }
-
-  private migrateFromLegacy(): void {
-    try {
-      const accountsFile = getAccountsFile();
-      const legacyAuthFile = getLegacyAuthFile();
-      if (existsSync(accountsFile)) return; // already migrated
-      if (!existsSync(legacyAuthFile)) return;
-
-      const raw = readFileSync(legacyAuthFile, "utf-8");
-      const data = JSON.parse(raw) as {
-        token: string;
-        proxyApiKey?: string | null;
-        userInfo?: { email?: string; accountId?: string; planType?: string } | null;
-      };
-
-      if (!data.token) return;
-
-      const id = randomBytes(8).toString("hex");
-      const accountId = extractChatGptAccountId(data.token);
-      const entry: AccountEntry = {
-        id,
-        token: data.token,
-        refreshToken: null,
-        email: data.userInfo?.email ?? null,
-        accountId: accountId,
-        planType: data.userInfo?.planType ?? null,
-        proxyApiKey: data.proxyApiKey ?? "codex-proxy-" + randomBytes(24).toString("hex"),
-        status: isTokenExpired(data.token) ? "expired" : "active",
-        usage: {
-          request_count: 0,
-          input_tokens: 0,
-          output_tokens: 0,
-          empty_response_count: 0,
-          last_used: null,
-          rate_limit_until: null,
-          window_request_count: 0,
-          window_input_tokens: 0,
-          window_output_tokens: 0,
-          window_counters_reset_at: null,
-          limit_window_seconds: null,
-        },
-        addedAt: new Date().toISOString(),
-        cachedQuota: null,
-        quotaFetchedAt: null,
-      };
-
-      this.accounts.set(id, entry);
-
-      // Write new format
-      const dir = dirname(accountsFile);
-      if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
-      const accountsData: AccountsFile = { accounts: [entry] };
-      writeFileSync(accountsFile, JSON.stringify(accountsData, null, 2), "utf-8");
-
-      // Rename old file
-      renameSync(legacyAuthFile, legacyAuthFile + ".bak");
-      console.log("[AccountPool] Migrated from auth.json → accounts.json");
-    } catch (err) {
-      console.warn("[AccountPool] Migration failed:", err);
-    }
+    this.persistence.save([...this.accounts.values()]);
   }
 
   /** Flush pending writes on shutdown */

@@ -16,57 +16,31 @@ import {
   buildHeadersWithContentType,
 } from "../fingerprint/manager.js";
 import { createWebSocketResponse, type WsCreateRequest } from "./ws-transport.js";
+import { parseSSEBlock, parseSSEStream } from "./codex-sse.js";
+import { fetchUsage } from "./codex-usage.js";
+import { fetchModels, probeEndpoint as probeEndpointFn } from "./codex-models.js";
 import type { CookieJar } from "./cookie-jar.js";
 import type { BackendModelEntry } from "../models/model-store.js";
 
-let _firstModelFetchLogged = false;
+// Re-export all types from codex-types.ts for backward compatibility
+export type {
+  CodexResponsesRequest,
+  CodexContentPart,
+  CodexInputItem,
+  CodexSSEEvent,
+  CodexUsageRateWindow,
+  CodexUsageRateLimit,
+  CodexUsageResponse,
+} from "./codex-types.js";
 
-export interface CodexResponsesRequest {
-  model: string;
-  instructions?: string | null;
-  input: CodexInputItem[];
-  stream: true;
-  store: false;
-  /** Optional: reasoning effort + summary mode */
-  reasoning?: { effort?: string; summary?: string };
-  /** Optional: service tier ("fast" / "flex") */
-  service_tier?: string | null;
-  /** Optional: tools available to the model */
-  tools?: unknown[];
-  /** Optional: tool choice strategy */
-  tool_choice?: string | { type: string; name: string };
-  /** Optional: text output format (JSON mode / structured outputs) */
-  text?: {
-    format: {
-      type: "text" | "json_object" | "json_schema";
-      name?: string;
-      schema?: Record<string, unknown>;
-      strict?: boolean;
-    };
-  };
-  /** Optional: reference a previous response for multi-turn (WebSocket only). */
-  previous_response_id?: string;
-  /** When true, use WebSocket transport (enables previous_response_id and server-side storage). */
-  useWebSocket?: boolean;
-}
+// Re-export SSE utilities for consumers that used them via CodexApi
+export { parseSSEBlock, parseSSEStream } from "./codex-sse.js";
 
-/** Structured content part for multimodal Codex input. */
-export type CodexContentPart =
-  | { type: "input_text"; text: string }
-  | { type: "input_image"; image_url: string };
-
-export type CodexInputItem =
-  | { role: "user"; content: string | CodexContentPart[] }
-  | { role: "assistant"; content: string }
-  | { role: "system"; content: string }
-  | { type: "function_call"; id?: string; call_id: string; name: string; arguments: string }
-  | { type: "function_call_output"; call_id: string; output: string };
-
-/** Parsed SSE event from the Codex Responses stream */
-export interface CodexSSEEvent {
-  event: string;
-  data: unknown;
-}
+import type {
+  CodexResponsesRequest,
+  CodexSSEEvent,
+  CodexUsageResponse,
+} from "./codex-types.js";
 
 export class CodexApi {
   private token: string;
@@ -109,142 +83,25 @@ export class CodexApi {
     }
   }
 
-  /**
-   * Query official Codex usage/quota.
-   * GET /backend-api/codex/usage
-   */
   async getUsage(): Promise<CodexUsageResponse> {
-    const config = getConfig();
-    const transport = getTransport();
-    const url = `${config.api.base_url}/codex/usage`;
-
     const headers = this.applyHeaders(
       buildHeaders(this.token, this.accountId),
     );
-    headers["Accept"] = "application/json";
-    // When transport lacks Chrome TLS fingerprint, downgrade Accept-Encoding
-    // to encodings system curl can always decompress.
-    if (!transport.isImpersonate()) {
-      headers["Accept-Encoding"] = "gzip, deflate";
-    }
-
-    let body: string;
-    try {
-      const result = await transport.get(url, headers, 15, this.proxyUrl);
-      body = result.body;
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
-      throw new CodexApiError(0, `transport GET failed: ${msg}`);
-    }
-
-    try {
-      const parsed = JSON.parse(body) as CodexUsageResponse;
-      // Validate we got actual usage data (not an error page)
-      if (!parsed.rate_limit) {
-        throw new CodexApiError(502, `Unexpected response: ${body.slice(0, 200)}`);
-      }
-      return parsed;
-    } catch (e) {
-      if (e instanceof CodexApiError) throw e;
-      throw new CodexApiError(502, `Invalid JSON from /codex/usage: ${body.slice(0, 200)}`);
-    }
+    return fetchUsage(headers, this.proxyUrl);
   }
 
-  /**
-   * Fetch available models from the Codex backend.
-   * Probes known endpoints; returns null if none respond.
-   */
   async getModels(): Promise<BackendModelEntry[] | null> {
-    const config = getConfig();
-    const transport = getTransport();
-    const baseUrl = config.api.base_url;
-
-    // Endpoints to probe (most specific first)
-    // /codex/models now requires ?client_version= query parameter
-    const clientVersion = config.client.app_version;
-    const endpoints = [
-      `${baseUrl}/codex/models?client_version=${clientVersion}`,
-      `${baseUrl}/models`,
-      `${baseUrl}/sentinel/chat-requirements`,
-    ];
-
     const headers = this.applyHeaders(
       buildHeaders(this.token, this.accountId),
     );
-    headers["Accept"] = "application/json";
-    if (!transport.isImpersonate()) {
-      headers["Accept-Encoding"] = "gzip, deflate";
-    }
-
-    for (const url of endpoints) {
-      try {
-        const result = await transport.get(url, headers, 15, this.proxyUrl);
-        const parsed = JSON.parse(result.body) as Record<string, unknown>;
-
-        // sentinel/chat-requirements returns { chat_models: { models: [...], ... } }
-        const sentinel = parsed.chat_models as Record<string, unknown> | undefined;
-        const models = sentinel?.models ?? parsed.models ?? parsed.data ?? parsed.categories;
-        if (Array.isArray(models) && models.length > 0) {
-          console.log(`[CodexApi] getModels() found ${models.length} entries from ${url}`);
-          if (!_firstModelFetchLogged) {
-            console.log(`[CodexApi] Raw response keys: ${Object.keys(parsed).join(", ")}`);
-            console.log(`[CodexApi] Raw model sample: ${JSON.stringify(models[0]).slice(0, 500)}`);
-            if (models.length > 1) {
-              console.log(`[CodexApi] Raw model sample[1]: ${JSON.stringify(models[1]).slice(0, 500)}`);
-            }
-            _firstModelFetchLogged = true;
-          }
-          // Flatten nested categories into a single list
-          const flattened: BackendModelEntry[] = [];
-          for (const item of models) {
-            if (item && typeof item === "object") {
-              const entry = item as Record<string, unknown>;
-              if (Array.isArray(entry.models)) {
-                for (const sub of entry.models as BackendModelEntry[]) {
-                  flattened.push(sub);
-                }
-              } else {
-                flattened.push(item as BackendModelEntry);
-              }
-            }
-          }
-          if (flattened.length > 0) {
-            console.log(`[CodexApi] getModels() total after flatten: ${flattened.length} models`);
-            return flattened;
-          }
-        }
-      } catch (err) {
-        const msg = err instanceof Error ? err.message : String(err);
-        console.log(`[CodexApi] Probe ${url} failed: ${msg}`);
-        continue;
-      }
-    }
-
-    return null;
+    return fetchModels(headers, this.proxyUrl);
   }
 
-  /**
-   * Probe a backend endpoint and return raw JSON (for debug).
-   */
   async probeEndpoint(path: string): Promise<Record<string, unknown> | null> {
-    const config = getConfig();
-    const transport = getTransport();
-    const url = `${config.api.base_url}${path}`;
-
     const headers = this.applyHeaders(
       buildHeaders(this.token, this.accountId),
     );
-    headers["Accept"] = "application/json";
-    if (!transport.isImpersonate()) {
-      headers["Accept-Encoding"] = "gzip, deflate";
-    }
-
-    try {
-      const result = await transport.get(url, headers, 15, this.proxyUrl);
-      return JSON.parse(result.body) as Record<string, unknown>;
-    } catch {
-      return null;
-    }
+    return probeEndpointFn(path, headers, this.proxyUrl);
   }
 
   /**
@@ -262,7 +119,6 @@ export class CodexApi {
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
         console.warn(`[CodexApi] WebSocket failed (${msg}), falling back to HTTP SSE`);
-        // Fallback: strip previous_response_id and use HTTP
         const { previous_response_id: _, useWebSocket: _ws, ...httpRequest } = request;
         return this.createResponseViaHttp(httpRequest as CodexResponsesRequest, signal);
       }
@@ -270,10 +126,6 @@ export class CodexApi {
     return this.createResponseViaHttp(request, signal);
   }
 
-  /**
-   * Create a response via WebSocket (for previous_response_id support).
-   * Returns a Response with SSE-formatted body, compatible with parseStream().
-   */
   private async createResponseViaWebSocket(
     request: CodexResponsesRequest,
     signal?: AbortSignal,
@@ -282,18 +134,16 @@ export class CodexApi {
     const baseUrl = config.api.base_url;
     const wsUrl = baseUrl.replace(/^https?:/, "wss:") + "/codex/responses";
 
-    // Build headers — same auth but no Content-Type (WebSocket upgrade)
     const headers = this.applyHeaders(
       buildHeaders(this.token, this.accountId),
     );
     headers["OpenAI-Beta"] = "responses_websockets=2026-02-06";
     headers["x-openai-internal-codex-residency"] = "us";
 
-    // Build flat WebSocket message — omit store, stream, service_tier
     const wsRequest: WsCreateRequest = {
       type: "response.create",
       model: request.model,
-      instructions: request.instructions,
+      instructions: request.instructions ?? "",
       input: request.input,
     };
     if (request.previous_response_id) {
@@ -307,10 +157,6 @@ export class CodexApi {
     return createWebSocketResponse(wsUrl, headers, wsRequest, signal, this.proxyUrl);
   }
 
-  /**
-   * Create a response via HTTP SSE (default transport).
-   * Uses curl-impersonate for TLS fingerprinting.
-   */
   private async createResponseViaHttp(
     request: CodexResponsesRequest,
     signal?: AbortSignal,
@@ -324,14 +170,11 @@ export class CodexApi {
       buildHeadersWithContentType(this.token, this.accountId),
     );
     headers["Accept"] = "text/event-stream";
-    // Codex Desktop sends this beta header to enable newer API features
     headers["OpenAI-Beta"] = "responses_websockets=2026-02-06";
 
-    // Strip non-API fields from body — not supported by HTTP SSE.
     const { service_tier: _st, previous_response_id: _pid, useWebSocket: _ws, ...bodyFields } = request;
     const body = JSON.stringify(bodyFields);
 
-    // No wall-clock timeout for streaming SSE — header timeout + AbortSignal provide protection
     let transportRes;
     try {
       transportRes = await transport.post(url, headers, body, signal, undefined, this.proxyUrl);
@@ -340,12 +183,10 @@ export class CodexApi {
       throw new CodexApiError(0, msg);
     }
 
-    // Capture cookies
     this.captureCookies(transportRes.setCookieHeaders);
 
     if (transportRes.status < 200 || transportRes.status >= 300) {
-      // Read the body for error details (cap at 1MB to prevent memory spikes)
-      const MAX_ERROR_BODY = 1024 * 1024; // 1MB
+      const MAX_ERROR_BODY = 1024 * 1024;
       const reader = transportRes.body.getReader();
       const chunks: Uint8Array[] = [];
       let totalSize = 0;
@@ -376,126 +217,11 @@ export class CodexApi {
 
   /**
    * Parse SSE stream from a Codex Responses API response.
-   * Yields individual events.
+   * Delegates to the standalone parseSSEStream() function.
    */
-  async *parseStream(
-    response: Response,
-  ): AsyncGenerator<CodexSSEEvent> {
-    if (!response.body) {
-      throw new Error("Response body is null — cannot stream");
-    }
-
-    const reader = response.body
-      .pipeThrough(new TextDecoderStream())
-      .getReader();
-
-    const MAX_SSE_BUFFER = 10 * 1024 * 1024; // 10MB
-    let buffer = "";
-    let yieldedAny = false;
-    try {
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-
-        buffer += value;
-        if (buffer.length > MAX_SSE_BUFFER) {
-          throw new Error(`SSE buffer exceeded ${MAX_SSE_BUFFER} bytes — aborting stream`);
-        }
-        const parts = buffer.split("\n\n");
-        buffer = parts.pop()!;
-
-        for (const part of parts) {
-          if (!part.trim()) continue;
-          const evt = this.parseSSEBlock(part);
-          if (evt) {
-            yieldedAny = true;
-            yield evt;
-          }
-        }
-      }
-
-      // Process remaining buffer
-      if (buffer.trim()) {
-        const evt = this.parseSSEBlock(buffer);
-        if (evt) {
-          yieldedAny = true;
-          yield evt;
-        }
-      }
-
-      // Non-SSE response detection: if the entire stream yielded no SSE events
-      // but has content, the upstream likely returned a plain JSON error body.
-      if (!yieldedAny && buffer.trim()) {
-        let errorMessage = buffer.trim();
-        try {
-          const parsed = JSON.parse(errorMessage) as Record<string, unknown>;
-          const errObj = typeof parsed.error === "object" && parsed.error !== null
-            ? (parsed.error as Record<string, unknown>)
-            : undefined;
-          errorMessage =
-            (typeof parsed.detail === "string" ? parsed.detail : null)
-            ?? (typeof errObj?.message === "string" ? errObj.message : null)
-            ?? errorMessage;
-        } catch { /* use raw text */ }
-        yield {
-          event: "error",
-          data: { error: { type: "error", code: "non_sse_response", message: errorMessage } },
-        };
-      }
-    } finally {
-      reader.releaseLock();
-    }
+  async *parseStream(response: Response): AsyncGenerator<CodexSSEEvent> {
+    yield* parseSSEStream(response);
   }
-
-  private parseSSEBlock(block: string): CodexSSEEvent | null {
-    let event = "";
-    const dataLines: string[] = [];
-
-    for (const line of block.split("\n")) {
-      if (line.startsWith("event:")) {
-        event = line.slice(6).trim();
-      } else if (line.startsWith("data:")) {
-        dataLines.push(line.slice(5).trimStart());
-      }
-    }
-
-    if (!event && dataLines.length === 0) return null;
-
-    const raw = dataLines.join("\n");
-    if (raw === "[DONE]") return null;
-
-    let data: unknown;
-    try {
-      data = JSON.parse(raw);
-    } catch {
-      data = raw;
-    }
-
-    return { event, data };
-  }
-}
-
-/** Response from GET /backend-api/codex/usage */
-export interface CodexUsageRateWindow {
-  used_percent: number;
-  limit_window_seconds: number;
-  reset_after_seconds: number;
-  reset_at: number;
-}
-
-export interface CodexUsageRateLimit {
-  allowed: boolean;
-  limit_reached: boolean;
-  primary_window: CodexUsageRateWindow | null;
-  secondary_window: CodexUsageRateWindow | null;
-}
-
-export interface CodexUsageResponse {
-  plan_type: string;
-  rate_limit: CodexUsageRateLimit;
-  code_review_rate_limit: CodexUsageRateLimit | null;
-  credits: unknown;
-  promo: unknown;
 }
 
 export class CodexApiError extends Error {

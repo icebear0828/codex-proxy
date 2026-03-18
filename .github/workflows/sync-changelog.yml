@@ -91,4 +91,11 @@ jobs:
           git diff --quiet README.md && echo "No changes" && exit 0
           git add README.md
           git commit -m "docs: auto-sync changelog to README [skip ci]"
-          git push
+          for i in 1 2 3; do
+            git push && exit 0
+            echo "Push failed (attempt $i/3), rebasing and retrying..."
+            git pull --rebase origin master
+            sleep 2
+          done
+          echo "::error::Push failed after 3 attempts"
+          exit 1
