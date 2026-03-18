@@ -133,6 +133,15 @@ export class AccountPool {
       this.roundRobinIndex++;
       return selected;
     }
+    if (config.auth.rotation_strategy === "sticky") {
+      // Sticky: prefer most recently used account (keep reusing until unavailable)
+      candidates.sort((a, b) => {
+        const aTime = a.usage.last_used ? new Date(a.usage.last_used).getTime() : 0;
+        const bTime = b.usage.last_used ? new Date(b.usage.last_used).getTime() : 0;
+        return bTime - aTime; // desc — most recent first
+      });
+      return candidates[0];
+    }
     // least_used: sort by request_count asc → window_reset_at asc → last_used asc (LRU)
     candidates.sort((a, b) => {
       const diff = a.usage.request_count - b.usage.request_count;

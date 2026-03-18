@@ -8,6 +8,13 @@
 
 ### Added
 
+- Sticky rotation strategy（#107）：新增 `sticky` 账号轮换策略，持续使用同一账号直到限速或额度耗尽
+  - `src/config.ts`：`rotation_strategy` 枚举新增 `"sticky"` 选项
+  - `selectByStrategy()` 按 `last_used` 降序排列，优先复用最近使用的账号
+  - `GET/POST /admin/rotation-settings` 端点：读取和更新轮换策略（支持 Bearer auth）
+  - Dashboard：RotationSettings 组件（粘滞 vs 轮换两层 radio group）
+  - i18n：中英文翻译（策略名称 + 描述）
+  - 13 个新测试覆盖 sticky 选择逻辑 + 路由端点
 - `POST /admin/refresh-models` 端点：手动触发模型列表刷新，解决 model-fetcher ~1h 缓存过时导致新模型不可用的问题；支持 Bearer auth（当配置 proxy_api_key 时）
 - Plan routing integration tests：通过 proxy handler 完整路径验证 free/team 账号的模型路由（7 cases），覆盖 plan map 更新后请求解除阻塞的场景
 

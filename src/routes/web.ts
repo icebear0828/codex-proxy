@@ -446,6 +446,49 @@ export function createWebRoutes(accountPool: AccountPool): Hono {
 
   // --- Settings endpoints ---
 
+  // --- Rotation settings endpoints ---
+
+  app.get("/admin/rotation-settings", (c) => {
+    const config = getConfig();
+    return c.json({
+      rotation_strategy: config.auth.rotation_strategy,
+    });
+  });
+
+  app.post("/admin/rotation-settings", async (c) => {
+    const config = getConfig();
+    const currentKey = config.server.proxy_api_key;
+
+    if (currentKey) {
+      const authHeader = c.req.header("Authorization") ?? "";
+      const token = authHeader.startsWith("Bearer ") ? authHeader.slice(7) : "";
+      if (token !== currentKey) {
+        c.status(401);
+        return c.json({ error: "Invalid current API key" });
+      }
+    }
+
+    const body = await c.req.json() as { rotation_strategy?: string };
+    const valid = ["least_used", "round_robin", "sticky"];
+    if (!body.rotation_strategy || !valid.includes(body.rotation_strategy)) {
+      c.status(400);
+      return c.json({ error: "rotation_strategy must be one of: least_used, round_robin, sticky" });
+    }
+
+    const configPath = resolve(getConfigDir(), "default.yaml");
+    mutateYaml(configPath, (data) => {
+      if (!data.auth) data.auth = {};
+      (data.auth as Record<string, unknown>).rotation_strategy = body.rotation_strategy;
+    });
+    reloadAllConfigs();
+
+    const updated = getConfig();
+    return c.json({
+      success: true,
+      rotation_strategy: updated.auth.rotation_strategy,
+    });
+  });
+
   app.get("/admin/settings", (c) => {
     const config = getConfig();
     return c.json({ proxy_api_key: config.server.proxy_api_key });

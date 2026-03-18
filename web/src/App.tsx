@@ -11,6 +11,7 @@ import { AnthropicSetup } from "./components/AnthropicSetup";
 import { CodeExamples } from "./components/CodeExamples";
 import { SettingsPanel } from "./components/SettingsPanel";
 import { QuotaSettings } from "./components/QuotaSettings";
+import { RotationSettings } from "./components/RotationSettings";
 import { TestConnection } from "./components/TestConnection";
 import { Footer } from "./components/Footer";
 import { ProxySettings } from "./pages/ProxySettings";
@@ -150,6 +151,7 @@ function Dashboard() {
           />
           <SettingsPanel />
           <QuotaSettings />
+          <RotationSettings />
           <TestConnection />
         </div>
       </main>
