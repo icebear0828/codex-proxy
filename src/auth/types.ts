@@ -36,6 +36,8 @@ export interface AccountEntry {
   refreshToken: string | null;
   email: string | null;
   accountId: string | null;
+  /** Per-user unique ID (chatgpt_user_id). Team members share accountId but have distinct userId. */
+  userId: string | null;
   planType: string | null;
   proxyApiKey: string;
   status: AccountStatus;
@@ -52,6 +54,7 @@ export interface AccountInfo {
   id: string;
   email: string | null;
   accountId: string | null;
+  userId: string | null;
   planType: string | null;
   status: AccountStatus;
   usage: AccountUsage;

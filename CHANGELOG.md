@@ -8,6 +8,9 @@
 
 ### Fixed
 
+- 同一 Team 的多个账号因共享 `chatgpt_account_id` 只能添加一个的问题（#126）
+  - 去重逻辑改为 `accountId + userId` 组合键，Team 成员各自保留独立条目
+  - `AccountEntry` 新增 `userId` 字段，持久化层自动回填
 - 额度耗尽账号仍显示「活跃」并接收请求的问题（#115）
   - `markQuotaExhausted()` 现在可以覆盖 `rate_limited` 状态（仅延长，不缩短 reset 时间）
   - 后台额度刷新现在同时检查 `rate_limited` 账号，防止因 429 短暂 backoff 导致漏检

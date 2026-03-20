@@ -92,6 +92,7 @@ function migrateFromLegacy(): AccountEntry[] {
       refreshToken: null,
       email: data.userInfo?.email ?? null,
       accountId: accountId,
+      userId: extractUserProfile(data.token)?.chatgpt_user_id ?? null,
       planType: data.userInfo?.planType ?? null,
       proxyApiKey: data.proxyApiKey ?? "codex-proxy-" + randomBytes(24).toString("hex"),
       status: isTokenExpired(data.token) ? "expired" : "active",
@@ -144,7 +145,7 @@ function loadPersisted(): { entries: AccountEntry[]; needsPersist: boolean } {
       if (!entry.id || !entry.token) continue;
 
       // Backfill missing fields from JWT
-      if (!entry.planType || !entry.email || !entry.accountId) {
+      if (!entry.planType || !entry.email || !entry.accountId || !entry.userId) {
         const profile = extractUserProfile(entry.token);
         const accountId = extractChatGptAccountId(entry.token);
         if (!entry.planType && profile?.chatgpt_plan_type) {
@@ -159,6 +160,15 @@ function loadPersisted(): { entries: AccountEntry[]; needsPersist: boolean } {
           entry.accountId = accountId;
           needsPersist = true;
         }
+        if (!entry.userId && profile?.chatgpt_user_id) {
+          entry.userId = profile.chatgpt_user_id;
+          needsPersist = true;
+        }
+      }
+      // Backfill userId for entries missing it (pre-v1.0.68)
+      if (entry.userId === undefined) {
+        entry.userId = null;
+        needsPersist = true;
       }
       // Backfill empty_response_count
       if (entry.usage.empty_response_count == null) {
