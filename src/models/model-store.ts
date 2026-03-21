@@ -9,11 +9,11 @@
  * Aliases always come from YAML (user-customizable), never from backend.
  */
 
-import { readFileSync, writeFile } from "fs";
+import { readFileSync, writeFile, existsSync, mkdirSync } from "fs";
 import { resolve } from "path";
 import yaml from "js-yaml";
 import { getConfig } from "../config.js";
-import { getConfigDir } from "../paths.js";
+import { getConfigDir, getDataDir } from "../paths.js";
 
 export interface CodexModelInfo {
   id: string;
@@ -60,6 +60,30 @@ export function loadStaticModels(configDir?: string): void {
   _planModelMap = new Map(); // Reset plan maps on reload
   _modelPlanIndex = new Map();
   console.log(`[ModelStore] Loaded ${_catalog.length} static models, ${Object.keys(_aliases).length} aliases`);
+
+  // Overlay cached backend models from data/ (cold-start fallback)
+  try {
+    const cachePath = resolve(getDataDir(), "models-cache.yaml");
+    if (existsSync(cachePath)) {
+      const cached = yaml.load(readFileSync(cachePath, "utf-8")) as ModelsConfig;
+      const cachedModels = cached.models ?? [];
+      if (cachedModels.length > 0) {
+        const staticIds = new Set(_catalog.map((m) => m.id));
+        let added = 0;
+        for (const m of cachedModels) {
+          if (!staticIds.has(m.id)) {
+            _catalog.push({ ...m, source: "backend" as const });
+            added++;
+          }
+        }
+        if (added > 0) {
+          console.log(`[ModelStore] Overlaid ${added} cached backend models from data/models-cache.yaml`);
+        }
+      }
+    }
+  } catch {
+    // Cache missing or corrupt — safe to ignore, backend fetch will repopulate
+  }
 }
 
 // ── Backend merge ──────────────────────────────────────────────────
@@ -201,24 +225,26 @@ export function applyBackendModels(backendModels: BackendModelEntry[]): void {
 }
 
 /**
- * Write the current merged catalog back to config/models.yaml so it stays
- * up-to-date as a fallback for future cold starts.  Fire-and-forget.
+ * Write the current merged catalog to data/models-cache.yaml so it serves
+ * as a fallback for future cold starts.  Fire-and-forget.
+ *
+ * config/models.yaml stays read-only (git-tracked baseline).
  */
 function syncStaticModels(): void {
-  const configPath = resolve(getConfigDir(), "models.yaml");
+  const dataDir = getDataDir();
+  const cachePath = resolve(dataDir, "models-cache.yaml");
   const today = new Date().toISOString().slice(0, 10);
 
   // Strip internal `source` field before serializing
   const models = _catalog.map(({ source: _s, ...rest }) => rest);
 
   const header = [
-    "# Codex model catalog",
+    "# Codex model cache",
     "#",
-    "# Sources:",
-    "#   1. Static (below) — baseline for cold starts",
-    "#   2. Dynamic          — fetched from /backend-api/codex/models, auto-synced here",
+    "# Auto-synced by model-store from backend fetch results.",
+    "# This is a runtime cache — do NOT commit to git.",
     "#",
-    `# Last updated: ${today} (auto-synced by model-store)`,
+    `# Last updated: ${today}`,
     "",
   ].join("\n");
 
@@ -227,11 +253,17 @@ function syncStaticModels(): void {
     { lineWidth: 120, noRefs: true, sortKeys: false },
   );
 
-  writeFile(configPath, header + body, "utf-8", (err) => {
+  try {
+    mkdirSync(dataDir, { recursive: true });
+  } catch {
+    // already exists
+  }
+
+  writeFile(cachePath, header + body, "utf-8", (err) => {
     if (err) {
-      console.warn(`[ModelStore] Failed to sync models.yaml: ${err.message}`);
+      console.warn(`[ModelStore] Failed to sync models cache: ${err.message}`);
     } else {
-      console.log(`[ModelStore] Synced ${models.length} models to models.yaml`);
+      console.log(`[ModelStore] Synced ${models.length} models to data/models-cache.yaml`);
     }
   });
 }

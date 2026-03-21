@@ -18,6 +18,11 @@
 
 ### Fixed
 
+- 运行时缓存（模型目录同步、版本检测结果）直接写入 git 跟踪的 `config/` 文件，导致仓库频繁变脏
+  - `model-store` 的 `syncStaticModels()` 改写 `data/models-cache.yaml`（gitignored）
+  - `update-checker` 的 `applyVersionUpdate()` 改写 `data/version-state.json`（gitignored）
+  - `config/` 目录现在对运行时操作只读，仅 admin API 设置变更例外
+
 - Responses SSE 新事件（`response.output_item.added` with `item.type=message`、`response.content_part.added/done`）未被识别，导致 `[CodexEvents] Unknown event` 日志刷屏
 - 新模型（如 `gpt-5.4-mini`）无法被动态发现的问题
   - 移除 `isCodexCompatibleId()` 白名单过滤，信任后端 `/codex/models` 返回

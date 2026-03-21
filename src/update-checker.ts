@@ -3,14 +3,13 @@
  * Automatically applies version updates to config file and runtime.
  */
 
-import { readFileSync, writeFileSync, mkdirSync } from "fs";
+import { readFileSync, writeFileSync, mkdirSync, existsSync } from "fs";
 import { resolve } from "path";
 import { fork } from "child_process";
 import yaml from "js-yaml";
 import { mutateClientConfig, reloadAllConfigs } from "./config.js";
 import { jitterInt } from "./utils/jitter.js";
 import { curlFetchGet } from "./tls/curl-fetch.js";
-import { mutateYaml } from "./utils/yaml-mutate.js";
 import { getConfigDir, getDataDir, isEmbedded } from "./paths.js";
 
 function getConfigPath(): string {
@@ -36,7 +35,27 @@ let _currentState: UpdateState | null = null;
 let _pollTimer: ReturnType<typeof setTimeout> | null = null;
 let _updateInProgress = false;
 
+function getVersionOverridePath(): string {
+  return resolve(getDataDir(), "version-state.json");
+}
+
 function loadCurrentConfig(): { app_version: string; build_number: string } {
+  // Check runtime override first (written by applyVersionUpdate)
+  try {
+    const overridePath = getVersionOverridePath();
+    if (existsSync(overridePath)) {
+      const override = JSON.parse(readFileSync(overridePath, "utf-8")) as {
+        app_version: string;
+        build_number: string;
+      };
+      if (override.app_version && override.build_number) {
+        return override;
+      }
+    }
+  } catch {
+    // Corrupt override — fall through to YAML baseline
+  }
+
   const raw = yaml.load(readFileSync(getConfigPath(), "utf-8")) as Record<string, unknown>;
   const client = raw.client as Record<string, string>;
   return {
@@ -69,11 +88,18 @@ function parseAppcast(xml: string): {
 }
 
 function applyVersionUpdate(version: string, build: string): void {
-  mutateYaml(getConfigPath(), (data) => {
-    const client = data.client as Record<string, unknown>;
-    client.app_version = version;
-    client.build_number = build;
-  });
+  // Persist to data/ (gitignored) — config/default.yaml stays read-only
+  try {
+    const dataDir = getDataDir();
+    mkdirSync(dataDir, { recursive: true });
+    writeFileSync(
+      getVersionOverridePath(),
+      JSON.stringify({ app_version: version, build_number: build }, null, 2),
+    );
+  } catch {
+    // best-effort persistence
+  }
+  // Update runtime config in memory
   mutateClientConfig({ app_version: version, build_number: build });
 }
 
