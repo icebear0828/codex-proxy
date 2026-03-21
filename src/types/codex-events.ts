@@ -63,11 +63,28 @@ export interface CodexOutputItemAddedEvent {
   type: "response.output_item.added";
   outputIndex: number;
   item: {
-    type: "function_call";
+    type: string;
     id: string;
-    call_id: string;
-    name: string;
+    call_id?: string;
+    name?: string;
+    [key: string]: unknown;
   };
+}
+
+export interface CodexContentPartAddedEvent {
+  type: "response.content_part.added";
+  contentIndex: number;
+  outputIndex: number;
+  itemId: string;
+  part: Record<string, unknown>;
+}
+
+export interface CodexContentPartDoneEvent {
+  type: "response.content_part.done";
+  contentIndex: number;
+  outputIndex: number;
+  itemId: string;
+  part: Record<string, unknown>;
 }
 
 export interface CodexFunctionCallArgsDeltaEvent {
@@ -133,6 +150,8 @@ export type TypedCodexEvent =
   | CodexCompletedEvent
   | CodexOutputItemAddedEvent
   | CodexOutputItemDoneEvent
+  | CodexContentPartAddedEvent
+  | CodexContentPartDoneEvent
   | CodexIncompleteEvent
   | CodexQueuedEvent
   | CodexFunctionCallArgsDeltaEvent
@@ -223,22 +242,30 @@ export function parseCodexEvent(evt: CodexSSEEvent): TypedCodexEvent {
         : { type: "unknown", raw: data };
     }
     case "response.output_item.added": {
-      if (
-        isRecord(data) &&
-        isRecord(data.item) &&
-        data.item.type === "function_call" &&
-        typeof data.item.call_id === "string" &&
-        typeof data.item.name === "string"
-      ) {
+      if (isRecord(data) && isRecord(data.item) && typeof data.item.type === "string") {
+        const item: CodexOutputItemAddedEvent["item"] = {
+          type: data.item.type,
+          id: typeof data.item.id === "string" ? data.item.id : "",
+        };
+        if (typeof data.item.call_id === "string") item.call_id = data.item.call_id;
+        if (typeof data.item.name === "string") item.name = data.item.name;
         return {
           type: "response.output_item.added",
           outputIndex: typeof data.output_index === "number" ? data.output_index : 0,
-          item: {
-            type: "function_call",
-            id: typeof data.item.id === "string" ? data.item.id : "",
-            call_id: data.item.call_id,
-            name: data.item.name,
-          },
+          item,
+        };
+      }
+      return { type: "unknown", raw: data };
+    }
+    case "response.content_part.added":
+    case "response.content_part.done": {
+      if (isRecord(data) && isRecord(data.part)) {
+        return {
+          type: evt.event as "response.content_part.added" | "response.content_part.done",
+          contentIndex: typeof data.content_index === "number" ? data.content_index : 0,
+          outputIndex: typeof data.output_index === "number" ? data.output_index : 0,
+          itemId: typeof data.item_id === "string" ? data.item_id : "",
+          part: data.part as Record<string, unknown>,
         };
       }
       return { type: "unknown", raw: data };

@@ -92,7 +92,7 @@ export async function* iterateCodexEvents(
         break;
 
       case "response.output_item.added":
-        if (typed.item.type === "function_call") {
+        if (typed.item.type === "function_call" && typed.item.call_id && typed.item.name) {
           // Register item_id → call_id mapping
           itemIdToCallInfo.set(typed.item.id, {
             callId: typed.item.call_id,
@@ -128,7 +128,9 @@ export async function* iterateCodexEvents(
       }
 
       case "response.output_item.done":
-        // Completion marker — tool call data already delivered via delta/done events
+      case "response.content_part.added":
+      case "response.content_part.done":
+        // Lifecycle markers — no data extraction needed
         break;
 
       case "response.incomplete":
