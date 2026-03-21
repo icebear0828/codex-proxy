@@ -67,7 +67,6 @@ export interface CodexOutputItemAddedEvent {
     id: string;
     call_id?: string;
     name?: string;
-    [key: string]: unknown;
   };
 }
 
