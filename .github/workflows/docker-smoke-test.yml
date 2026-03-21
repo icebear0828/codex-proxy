@@ -1,0 +1,76 @@
+name: Docker Smoke Test
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+    branches: [master]
+
+jobs:
+  test-docker:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build Docker image
+        run: docker build -t codex-proxy-test .
+
+      - name: Test Default Port (8080)
+        run: |
+          # 1. Run container
+          docker run -d --name test-container-default -p 8080:8080 codex-proxy-test
+
+          # 2. Wait for healthcheck to pass (up to 30s)
+          echo "Waiting for container to become healthy..."
+          for i in {1..30}; do
+            STATUS=$(docker inspect --format='{{json .State.Health.Status}}' test-container-default)
+            if [ "$STATUS" = "\"healthy\"" ]; then
+              echo "Container is healthy!"
+              break
+            fi
+            if [ "$i" -eq 30 ]; then
+              echo "Timeout waiting for container to become healthy."
+              docker logs test-container-default
+              exit 1
+            fi
+            sleep 1
+          done
+
+          # 3. Verify health endpoint returns 200
+          curl -fsSf http://localhost:8080/health
+
+          # 4. Cleanup
+          docker rm -f test-container-default
+
+      - name: Test Custom Port (8090)
+        run: |
+          # 1. Create custom config with port 8090
+          sed 's/port: 8080/port: 8090/' config/default.yaml > custom-config.yaml
+
+          # 2. Run container with config mounted and port mapped
+          docker run -d --name test-container-custom \
+            -v $(pwd)/custom-config.yaml:/app/config/default.yaml \
+            -p 8090:8090 \
+            codex-proxy-test
+
+          # 3. Wait for healthcheck to pass (up to 30s)
+          echo "Waiting for container to become healthy..."
+          for i in {1..30}; do
+            STATUS=$(docker inspect --format='{{json .State.Health.Status}}' test-container-custom)
+            if [ "$STATUS" = "\"healthy\"" ]; then
+              echo "Container is healthy!"
+              break
+            fi
+            if [ "$i" -eq 30 ]; then
+              echo "Timeout waiting for container to become healthy."
+              docker logs test-container-custom
+              exit 1
+            fi
+            sleep 1
+          done
+
+          # 4. Verify health endpoint returns 200 on new port
+          curl -fsSf http://localhost:8090/health
+
+          # 5. Cleanup
+          docker rm -f test-container-custom
