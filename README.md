@@ -465,9 +465,8 @@ server:
 <!-- CHANGELOG:START -->
 ### [Unreleased]
 
-- Sticky rotation strategy（#107）：新增 `sticky` 账号轮换策略，持续使用同一账号直到限速或额度耗尽
-- `POST /admin/refresh-models` 端点：手动触发模型列表刷新，解决 model-fetcher ~1h 缓存过时导致新模型不可用的问题；支持 Bearer auth（当配置 proxy_api_key 时）
-- Plan routing integration tests：通过 proxy handler 完整路径验证 free/team 账号的模型路由（7 cases），覆盖 plan map 更新后请求解除阻塞的场景
+- 账号封禁检测：上游返回非 Cloudflare 的 403 时自动标记为 `banned` 状态
+- 上游 401 token 吊销（"token has been invalidated"）自动标记过期并切换下一个账号
 
 ### [v0.8.0](https://github.com/icebear0828/codex-proxy/releases/tag/v0.8.0) - 2026-02-24
 
