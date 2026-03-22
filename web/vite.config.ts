@@ -9,6 +9,8 @@ export default defineConfig({
       // Allow shared/ files outside web/ to resolve preact from web/node_modules
       "preact": path.resolve(__dirname, "node_modules/preact"),
       "preact/hooks": path.resolve(__dirname, "node_modules/preact/hooks"),
+      "preact/jsx-runtime": path.resolve(__dirname, "node_modules/preact/jsx-runtime/dist/jsxRuntime.mjs"),
+      "preact/jsx-dev-runtime": path.resolve(__dirname, "node_modules/preact/jsx-runtime/dist/jsxRuntime.mjs"),
     },
   },
   build: {
