@@ -15,31 +15,35 @@ import { jitter } from "../utils/jitter.js";
 
 const REFRESH_INTERVAL_HOURS = 1;
 const INITIAL_DELAY_MS = 1_000; // 1s after startup (fast plan-map population for mixed-plan routing)
+const RETRY_DELAY_MS = 10_000; // 10s retry when accounts aren't ready yet
+const MAX_RETRIES = 12; // ~2 minutes of retries before falling back to hourly
 
 let _refreshTimer: ReturnType<typeof setTimeout> | null = null;
 let _accountPool: AccountPool | null = null;
 let _cookieJar: CookieJar | null = null;
 let _proxyPool: ProxyPool | null = null;
+let _hasFetchedOnce = false;
 
 /**
  * Fetch models from the Codex backend, one query per distinct plan type.
- * This discovers plan-specific model availability (e.g. Team has gpt-5.4, Free has gpt-oss-*).
+ * Returns true if at least one plan's models were fetched successfully.
  */
 async function fetchModelsFromBackend(
   accountPool: AccountPool,
   cookieJar: CookieJar,
   proxyPool: ProxyPool | null,
-): Promise<void> {
-  if (!accountPool.isAuthenticated()) return; // silently skip when no accounts
+): Promise<boolean> {
+  if (!accountPool.isAuthenticated()) return false;
 
   const planAccounts = accountPool.getDistinctPlanAccounts();
   if (planAccounts.length === 0) {
     console.warn("[ModelFetcher] No available accounts — skipping model fetch");
-    return;
+    return false;
   }
 
   console.log(`[ModelFetcher] Fetching models for ${planAccounts.length} plan(s): ${planAccounts.map((p) => p.planType).join(", ")}`);
 
+  let anySuccess = false;
   const results = await Promise.allSettled(
     planAccounts.map(async (pa) => {
       try {
@@ -49,6 +53,7 @@ async function fetchModelsFromBackend(
         if (models && models.length > 0) {
           applyBackendModelsForPlan(pa.planType, models);
           console.log(`[ModelFetcher] Plan "${pa.planType}": ${models.length} models`);
+          anySuccess = true;
         } else {
           console.log(`[ModelFetcher] Plan "${pa.planType}": empty model list — keeping existing`);
         }
@@ -64,11 +69,14 @@ async function fetchModelsFromBackend(
       console.warn(`[ModelFetcher] Plan fetch failed: ${msg}`);
     }
   }
+
+  return anySuccess;
 }
 
 /**
  * Start the background model refresh loop.
  * - First fetch after a short delay (auth must be ready)
+ * - If accounts aren't ready, retry every 10s (up to ~2 min) before falling back to hourly
  * - Subsequent fetches every ~1 hour with jitter
  */
 export function startModelRefresh(
@@ -79,17 +87,44 @@ export function startModelRefresh(
   _accountPool = accountPool;
   _cookieJar = cookieJar;
   _proxyPool = proxyPool ?? null;
+  _hasFetchedOnce = false;
 
   // Initial fetch after short delay
-  _refreshTimer = setTimeout(async () => {
-    try {
-      await fetchModelsFromBackend(accountPool, cookieJar, _proxyPool);
-    } finally {
-      scheduleNext(accountPool, cookieJar);
-    }
+  _refreshTimer = setTimeout(() => {
+    attemptInitialFetch(accountPool, cookieJar, 0);
   }, INITIAL_DELAY_MS);
 
   console.log("[ModelFetcher] Scheduled initial model fetch in 1s");
+}
+
+/**
+ * Attempt initial fetch with fast retry.
+ * Accounts may still be refreshing tokens at startup (Electron race condition).
+ * Retry every 10s until success or max retries, then fall back to hourly.
+ */
+function attemptInitialFetch(
+  accountPool: AccountPool,
+  cookieJar: CookieJar,
+  attempt: number,
+): void {
+  fetchModelsFromBackend(accountPool, cookieJar, _proxyPool)
+    .then((success) => {
+      if (success) {
+        _hasFetchedOnce = true;
+        scheduleNext(accountPool, cookieJar);
+      } else if (attempt < MAX_RETRIES) {
+        console.log(`[ModelFetcher] Accounts not ready, retry ${attempt + 1}/${MAX_RETRIES} in ${RETRY_DELAY_MS / 1000}s`);
+        _refreshTimer = setTimeout(() => {
+          attemptInitialFetch(accountPool, cookieJar, attempt + 1);
+        }, RETRY_DELAY_MS);
+      } else {
+        console.warn("[ModelFetcher] Max retries reached, falling back to hourly refresh");
+        scheduleNext(accountPool, cookieJar);
+      }
+    })
+    .catch(() => {
+      scheduleNext(accountPool, cookieJar);
+    });
 }
 
 function scheduleNext(
@@ -107,16 +142,25 @@ function scheduleNext(
 }
 
 /**
- * Trigger an immediate model refresh (e.g. after hot-reload).
+ * Trigger an immediate model refresh (e.g. after hot-reload or account login).
  * No-op if startModelRefresh() hasn't been called yet.
  */
 export function triggerImmediateRefresh(): void {
   if (_accountPool && _cookieJar) {
-    fetchModelsFromBackend(_accountPool, _cookieJar, _proxyPool).catch((err) => {
-      const msg = err instanceof Error ? err.message : String(err);
-      console.warn(`[ModelFetcher] Immediate refresh failed: ${msg}`);
-    });
+    fetchModelsFromBackend(_accountPool, _cookieJar, _proxyPool)
+      .then((success) => {
+        if (success) _hasFetchedOnce = true;
+      })
+      .catch((err) => {
+        const msg = err instanceof Error ? err.message : String(err);
+        console.warn(`[ModelFetcher] Immediate refresh failed: ${msg}`);
+      });
   }
+}
+
+/** Whether at least one successful backend fetch has completed. */
+export function hasFetchedModels(): boolean {
+  return _hasFetchedOnce;
 }
 
 /**

@@ -6,6 +6,12 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- 模型列表启动时不更新：token 刷新与 model fetch 存在竞态，初始 fetch 跳过后直接等 1 小时
+  - model-fetcher 改为 fast-retry（10s 间隔，最多 12 次），账号就绪后立即拉取
+  - `config/models.yaml` 补回 gpt-5.4/5.4-mini/5.3-codex（3/18 后端已恢复）
+
 ### Added
 
 - 账号封禁检测：上游返回非 Cloudflare 的 403 时自动标记为 `banned` 状态
