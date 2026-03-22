@@ -118,12 +118,12 @@ export function Header({ onAddAccount, onCheckUpdate, onOpenUpdateModal, checkin
             {onLogout && (
               <button
                 onClick={onLogout}
-                class="hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-full border border-gray-200 dark:border-border-dark text-slate-600 dark:text-text-dim hover:bg-slate-50 dark:hover:bg-border-dark transition-colors"
+                class="flex items-center gap-1.5 px-3 py-1.5 rounded-full border border-gray-200 dark:border-border-dark text-slate-600 dark:text-text-dim hover:bg-slate-50 dark:hover:bg-border-dark transition-colors"
               >
                 <svg class="size-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                   <path stroke-linecap="round" stroke-linejoin="round" d="M15.75 9V5.25A2.25 2.25 0 0013.5 3h-6a2.25 2.25 0 00-2.25 2.25v13.5A2.25 2.25 0 007.5 21h6a2.25 2.25 0 002.25-2.25V15m3 0l3-3m0 0l-3-3m3 3H9" />
                 </svg>
-                <StableText tKey="dashboardLogout" class="text-xs font-semibold">{t("dashboardLogout")}</StableText>
+                <span class="hidden sm:inline"><StableText tKey="dashboardLogout" class="text-xs font-semibold">{t("dashboardLogout")}</StableText></span>
               </button>
             )}
             {/* Language Toggle */}

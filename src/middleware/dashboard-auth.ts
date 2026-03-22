@@ -11,6 +11,7 @@ import { getConnInfo } from "@hono/node-server/conninfo";
 import { getConfig } from "../config.js";
 import { isLocalhostRequest } from "../utils/is-localhost.js";
 import { validateSession } from "../auth/dashboard-session.js";
+import { parseSessionCookie } from "../utils/parse-cookie.js";
 
 /** Paths that are always allowed through without dashboard session. */
 const ALLOWED_PREFIXES = ["/assets/", "/v1/", "/v1beta/"];
@@ -22,12 +23,6 @@ const ALLOWED_EXACT = new Set([
 ]);
 /** GET-only paths allowed (HTML shell must load to render login form). */
 const ALLOWED_GET_EXACT = new Set(["/", "/desktop"]);
-
-function parseCookieValue(cookieHeader: string | undefined, name: string): string | undefined {
-  if (!cookieHeader) return undefined;
-  const match = cookieHeader.match(new RegExp(`(?:^|;\\s*)${name}=([^;]*)`));
-  return match ? match[1] : undefined;
-}
 
 export async function dashboardAuth(c: Context, next: Next): Promise<Response | void> {
   const config = getConfig();
@@ -46,7 +41,7 @@ export async function dashboardAuth(c: Context, next: Next): Promise<Response | 
   if (c.req.method === "GET" && ALLOWED_GET_EXACT.has(path)) return next();
 
   // Check session cookie
-  const sessionId = parseCookieValue(c.req.header("cookie"), "_codex_session");
+  const sessionId = parseSessionCookie(c.req.header("cookie"));
   if (sessionId && validateSession(sessionId)) return next();
 
   // Not authenticated — reject

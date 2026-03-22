@@ -65,24 +65,23 @@ describe("dashboard-session", () => {
   });
 
   it("cleanup removes expired sessions", () => {
+    vi.useFakeTimers();
+    const baseTime = Date.now();
+
     const s1 = createSession();
     const s2 = createSession();
     expect(getSessionCount()).toBe(2);
 
-    // Expire both
-    vi.spyOn(Date, "now").mockReturnValue(s2.expiresAt + 1);
+    // Expire both sessions (ttl_minutes=1 → 60_000ms)
+    vi.setSystemTime(baseTime + 60_001);
 
-    // Start cleanup — it runs setInterval, trigger manually
+    // Start cleanup and advance to trigger interval (cleanup_interval_minutes=1 → 60_000ms)
     startSessionCleanup();
-
-    // Advance timers to trigger cleanup
-    vi.useFakeTimers({ shouldAdvanceTime: true });
     vi.advanceTimersByTime(60_001);
 
     expect(validateSession(s1.id)).toBe(false);
     expect(validateSession(s2.id)).toBe(false);
 
     vi.useRealTimers();
-    vi.restoreAllMocks();
   });
 });
