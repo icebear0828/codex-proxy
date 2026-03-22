@@ -13,6 +13,8 @@
   - 状态筛选下拉新增 `Banned` 选项
   - 被封账号自动跳过（`acquire()` 仅选 active），请求时自动切换到其他账号
   - 后台额度刷新周期性重试 banned 账号，成功即自动解封
+- 上游 401 token 吊销（"token has been invalidated"）自动标记过期并切换下一个账号
+  - 之前 401 直接透传给客户端，不标记也不重试
 
 ### Fixed
 

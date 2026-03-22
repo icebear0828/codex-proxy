@@ -32,6 +32,12 @@ function isBanError(err: unknown): boolean {
   return true;
 }
 
+/** Check if a CodexApiError is a 401 token invalidation. */
+function isTokenInvalidError(err: unknown): boolean {
+  if (!(err instanceof CodexApiError)) return false;
+  return err.status === 401;
+}
+
 const INITIAL_DELAY_MS = 3_000; // 3s after startup
 
 let _refreshTimer: ReturnType<typeof setTimeout> | null = null;
@@ -127,6 +133,9 @@ async function fetchQuotaForAllAccounts(
       if (isBanError(r.reason)) {
         pool.markStatus(entry.id, "banned");
         console.warn(`[QuotaRefresh] Account ${entry.id} (${entry.email ?? "?"}) banned — 403 from upstream`);
+      } else if (isTokenInvalidError(r.reason)) {
+        pool.markStatus(entry.id, "expired");
+        console.warn(`[QuotaRefresh] Account ${entry.id} (${entry.email ?? "?"}) token invalidated — 401 from upstream`);
       } else {
         console.warn(`[QuotaRefresh] Account ${entry.id} quota fetch failed: ${msg}`);
       }
