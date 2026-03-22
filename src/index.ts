@@ -7,6 +7,7 @@ import { RefreshScheduler } from "./auth/refresh-scheduler.js";
 import { requestId } from "./middleware/request-id.js";
 import { logger } from "./middleware/logger.js";
 import { errorHandler } from "./middleware/error-handler.js";
+import { dashboardAuth } from "./middleware/dashboard-auth.js";
 import { createAuthRoutes } from "./routes/auth.js";
 import { createAccountRoutes } from "./routes/accounts.js";
 import { createChatRoutes } from "./routes/chat.js";
@@ -26,6 +27,8 @@ import { loadStaticModels } from "./models/model-store.js";
 import { startModelRefresh, stopModelRefresh } from "./models/model-fetcher.js";
 import { startQuotaRefresh, stopQuotaRefresh } from "./auth/usage-refresher.js";
 import { UsageStatsStore } from "./auth/usage-stats.js";
+import { startSessionCleanup, stopSessionCleanup } from "./auth/dashboard-session.js";
+import { createDashboardAuthRoutes } from "./routes/dashboard-login.js";
 
 export interface ServerHandle {
   close: () => Promise<void>;
@@ -69,6 +72,7 @@ export async function startServer(options?: StartOptions): Promise<ServerHandle>
   app.use("*", requestId);
   app.use("*", logger);
   app.use("*", errorHandler);
+  app.use("*", dashboardAuth);
 
   // Mount routes
   const authRoutes = createAuthRoutes(accountPool, refreshScheduler);
@@ -81,6 +85,7 @@ export async function startServer(options?: StartOptions): Promise<ServerHandle>
   const usageStats = new UsageStatsStore();
   const webRoutes = createWebRoutes(accountPool, usageStats);
 
+  app.route("/", createDashboardAuthRoutes());
   app.route("/", authRoutes);
   app.route("/", accountRoutes);
   app.route("/", chatRoutes);
@@ -119,6 +124,9 @@ export async function startServer(options?: StartOptions): Promise<ServerHandle>
   }
   console.log();
 
+  // Start dashboard session cleanup
+  startSessionCleanup();
+
   // Start background update checkers
   // (Electron has its own native auto-updater — skip proxy update checker)
   startUpdateChecker();
@@ -152,6 +160,7 @@ export async function startServer(options?: StartOptions): Promise<ServerHandle>
         stopProxyUpdateChecker();
         stopModelRefresh();
         stopQuotaRefresh();
+        stopSessionCleanup();
         refreshScheduler.destroy();
         proxyPool.destroy();
         cookieJar.destroy();

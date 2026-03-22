@@ -1,8 +1,10 @@
 import { Hono } from "hono";
 import { resolve } from "path";
+import { getConnInfo } from "@hono/node-server/conninfo";
 import { getConfig, reloadAllConfigs, ROTATION_STRATEGIES } from "../../config.js";
 import { getConfigDir } from "../../paths.js";
 import { mutateYaml } from "../../utils/yaml-mutate.js";
+import { isLocalhostRequest } from "../../utils/is-localhost.js";
 
 export function createSettingsRoutes(): Hono {
   const app = new Hono();
@@ -72,6 +74,15 @@ export function createSettingsRoutes(): Hono {
 
     const body = await c.req.json() as { proxy_api_key?: string | null };
     const newKey = body.proxy_api_key === undefined ? currentKey : (body.proxy_api_key || null);
+
+    // Prevent remote sessions from clearing the key (would disable login gate)
+    if (currentKey && !newKey) {
+      const remoteAddr = getConnInfo(c).remote.address ?? "";
+      if (!isLocalhostRequest(remoteAddr)) {
+        c.status(403);
+        return c.json({ error: "Cannot clear API key from remote session — this would disable the login gate" });
+      }
+    }
 
     const configPath = resolve(getConfigDir(), "default.yaml");
     mutateYaml(configPath, (data) => {

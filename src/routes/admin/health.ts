@@ -7,6 +7,7 @@ import { getConfig, getFingerprint } from "../../config.js";
 import { getConfigDir, getDataDir, getBinDir, isEmbedded } from "../../paths.js";
 import { getTransportInfo } from "../../tls/transport.js";
 import { getCurlDiagnostics } from "../../tls/curl-binary.js";
+import { isLocalhostRequest } from "../../utils/is-localhost.js";
 
 export function createHealthRoutes(accountPool: AccountPool): Hono {
   const app = new Hono();
@@ -25,7 +26,7 @@ export function createHealthRoutes(accountPool: AccountPool): Hono {
   app.get("/debug/fingerprint", (c) => {
     const isProduction = process.env.NODE_ENV === "production";
     const remoteAddr = getConnInfo(c).remote.address ?? "";
-    const isLocalhost = remoteAddr === "" || remoteAddr === "127.0.0.1" || remoteAddr === "::1" || remoteAddr === "::ffff:127.0.0.1";
+    const isLocalhost = isLocalhostRequest(remoteAddr);
     if (isProduction && !isLocalhost) {
       c.status(404);
       return c.json({ error: { message: "Not found", type: "invalid_request_error" } });
@@ -86,7 +87,7 @@ export function createHealthRoutes(accountPool: AccountPool): Hono {
 
   app.get("/debug/diagnostics", (c) => {
     const remoteAddr = getConnInfo(c).remote.address ?? "";
-    const isLocalhost = remoteAddr === "" || remoteAddr === "127.0.0.1" || remoteAddr === "::1" || remoteAddr === "::ffff:127.0.0.1";
+    const isLocalhost = isLocalhostRequest(remoteAddr);
     if (process.env.NODE_ENV === "production" && !isLocalhost) {
       c.status(404);
       return c.json({ error: { message: "Not found", type: "invalid_request_error" } });

@@ -220,6 +220,13 @@ export const translations = {
     last24h: "Last 24h",
     last3d: "Last 3d",
     last7d: "Last 7d",
+    dashboardLogin: "Dashboard Login",
+    dashboardPassword: "Password",
+    dashboardLoginBtn: "Log In",
+    dashboardLoginError: "Invalid password",
+    dashboardLoginRequired: "Enter the proxy API key to access the dashboard.",
+    dashboardLogout: "Logout",
+    dashboardTooManyAttempts: "Too many attempts. Try again later.",
   },
   zh: {
     serverOnline: "\u670d\u52a1\u8fd0\u884c\u4e2d",
@@ -445,6 +452,13 @@ export const translations = {
     last24h: "最近 24h",
     last3d: "最近 3 天",
     last7d: "最近 7 天",
+    dashboardLogin: "控制台登录",
+    dashboardPassword: "密码",
+    dashboardLoginBtn: "登录",
+    dashboardLoginError: "密码错误",
+    dashboardLoginRequired: "请输入代理 API 密钥以访问控制台。",
+    dashboardLogout: "退出登录",
+    dashboardTooManyAttempts: "尝试次数过多，请稍后再试。",
   },
 } as const;
 

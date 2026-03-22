@@ -14,6 +14,14 @@
 
 ### Added
 
+- Dashboard 登录门（#141）：当 `proxy_api_key` 已配置且请求来自非 localhost 时，需输入密码才能访问控制台
+  - Cookie-based session，TTL 由 `session.ttl_minutes` 控制（默认 60 分钟）
+  - `POST /auth/dashboard-login`、`POST /auth/dashboard-logout`、`GET /auth/dashboard-status` 端点
+  - API 路由（`/v1/*`）不受影响，Electron（localhost）自动跳过
+  - 简单防暴力：同 IP 5 次/60s 限制
+  - HTTPS 自动检测：反代 `X-Forwarded-Proto: https` 时 cookie 加 `Secure` flag
+  - 远程 session 禁止清空 `proxy_api_key`（防止误操作导致登录门失效）
+  - Header 显示条件性退出按钮
 - 账号封禁检测：上游返回非 Cloudflare 的 403 时自动标记为 `banned` 状态
   - Dashboard 卡片/表格显示玫红色 `Banned`/`已封禁` 状态徽章
   - 状态筛选下拉新增 `Banned` 选项
