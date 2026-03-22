@@ -15,6 +15,12 @@
   - 后台额度刷新周期性重试 banned 账号，成功即自动解封
 - 上游 401 token 吊销（"token has been invalidated"）自动标记过期并切换下一个账号
   - 之前 401 直接透传给客户端，不标记也不重试
+- Usage Stats 页面（`#/usage-stats`）：累计 token 用量汇总 + 时间趋势图
+  - 后台每 5 分钟记录用量快照，保留 7 天历史
+  - `GET /admin/usage-stats/summary` 实时累计汇总
+  - `GET /admin/usage-stats/history?granularity=hourly|daily&hours=N` 时间序列增量
+  - 纯 SVG 折线图（input/output tokens + 请求数），无外部图表库
+  - 支持按小时/按天粒度，24h/3d/7d 时间范围切换
 - Account Management 页面（`#/account-management`）：批量删除、批量改状态（active/disabled）、导入导出
   - `POST /auth/accounts/batch-delete` 和 `POST /auth/accounts/batch-status` 批量端点
   - 状态摘要条可点击筛选，复用 AccountTable 选择/分页/Shift 多选

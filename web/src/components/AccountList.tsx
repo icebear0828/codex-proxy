@@ -76,6 +76,12 @@ export function AccountList({ accounts, loading, onDelete, onRefresh, refreshing
           >
             {t("manageAccounts")} &rarr;
           </a>
+          <a
+            href="#/usage-stats"
+            class="text-[0.75rem] text-primary hover:text-primary/80 font-medium transition-colors"
+          >
+            {t("usageStats")} &rarr;
+          </a>
           {onExport && onImport && (
             <AccountImportExport onExport={onExport} onImport={onImport} selectedIds={selectedIds} />
           )}

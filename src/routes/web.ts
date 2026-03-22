@@ -8,8 +8,10 @@ import { createHealthRoutes } from "./admin/health.js";
 import { createUpdateRoutes } from "./admin/update.js";
 import { createConnectionRoutes } from "./admin/connection.js";
 import { createSettingsRoutes } from "./admin/settings.js";
+import { createUsageStatsRoutes } from "./admin/usage-stats.js";
+import type { UsageStatsStore } from "../auth/usage-stats.js";
 
-export function createWebRoutes(accountPool: AccountPool): Hono {
+export function createWebRoutes(accountPool: AccountPool, usageStats?: UsageStatsStore): Hono {
   const app = new Hono();
 
   const publicDir = getPublicDir();
@@ -68,6 +70,9 @@ export function createWebRoutes(accountPool: AccountPool): Hono {
   app.route("/", createUpdateRoutes());
   app.route("/", createConnectionRoutes(accountPool));
   app.route("/", createSettingsRoutes());
+  if (usageStats) {
+    app.route("/", createUsageStatsRoutes(accountPool, usageStats));
+  }
 
   return app;
 }

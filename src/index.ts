@@ -25,6 +25,7 @@ import { initTransport } from "./tls/transport.js";
 import { loadStaticModels } from "./models/model-store.js";
 import { startModelRefresh, stopModelRefresh } from "./models/model-fetcher.js";
 import { startQuotaRefresh, stopQuotaRefresh } from "./auth/usage-refresher.js";
+import { UsageStatsStore } from "./auth/usage-stats.js";
 
 export interface ServerHandle {
   close: () => Promise<void>;
@@ -77,7 +78,8 @@ export async function startServer(options?: StartOptions): Promise<ServerHandle>
   const geminiRoutes = createGeminiRoutes(accountPool, cookieJar, proxyPool);
   const responsesRoutes = createResponsesRoutes(accountPool, cookieJar, proxyPool);
   const proxyRoutes = createProxyRoutes(proxyPool, accountPool);
-  const webRoutes = createWebRoutes(accountPool);
+  const usageStats = new UsageStatsStore();
+  const webRoutes = createWebRoutes(accountPool, usageStats);
 
   app.route("/", authRoutes);
   app.route("/", accountRoutes);
@@ -128,7 +130,7 @@ export async function startServer(options?: StartOptions): Promise<ServerHandle>
   startModelRefresh(accountPool, cookieJar, proxyPool);
 
   // Start background quota refresh
-  startQuotaRefresh(accountPool, cookieJar, proxyPool);
+  startQuotaRefresh(accountPool, cookieJar, proxyPool, usageStats);
 
   // Start proxy health check timer (if proxies exist)
   proxyPool.startHealthCheckTimer();

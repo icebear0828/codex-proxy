@@ -16,6 +16,7 @@ import { TestConnection } from "./components/TestConnection";
 import { Footer } from "./components/Footer";
 import { ProxySettings } from "./pages/ProxySettings";
 import { AccountManagement } from "./pages/AccountManagement";
+import { UsageStats } from "./pages/UsageStats";
 import { useAccounts } from "../../shared/hooks/use-accounts";
 import { useProxies } from "../../shared/hooks/use-proxies";
 import { useStatus } from "../../shared/hooks/use-status";
@@ -189,11 +190,12 @@ export function App() {
   const hash = useHash();
   const isProxySettings = hash === "#/proxy-settings";
   const isAccountManagement = hash === "#/account-management";
+  const isUsageStats = hash === "#/usage-stats";
 
   return (
     <I18nProvider>
       <ThemeProvider>
-        {isProxySettings ? <ProxySettingsPage /> : isAccountManagement ? <AccountManagement /> : <Dashboard />}
+        {isProxySettings ? <ProxySettingsPage /> : isAccountManagement ? <AccountManagement /> : isUsageStats ? <UsageStats /> : <Dashboard />}
       </ThemeProvider>
     </I18nProvider>
   );

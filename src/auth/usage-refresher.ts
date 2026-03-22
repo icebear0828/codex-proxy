@@ -21,6 +21,7 @@ import {
 import type { AccountPool } from "./account-pool.js";
 import type { CookieJar } from "../proxy/cookie-jar.js";
 import type { ProxyPool } from "../proxy/proxy-pool.js";
+import type { UsageStatsStore } from "./usage-stats.js";
 
 /** Check if a CodexApiError indicates the account is banned/suspended (non-CF 403). */
 function isBanError(err: unknown): boolean {
@@ -44,6 +45,7 @@ let _refreshTimer: ReturnType<typeof setTimeout> | null = null;
 let _accountPool: AccountPool | null = null;
 let _cookieJar: CookieJar | null = null;
 let _proxyPool: ProxyPool | null = null;
+let _usageStats: UsageStatsStore | null = null;
 
 async function fetchQuotaForAllAccounts(
   pool: AccountPool,
@@ -143,6 +145,15 @@ async function fetchQuotaForAllAccounts(
   }
 
   console.log(`[QuotaRefresh] Done: ${succeeded}/${entries.length} succeeded`);
+
+  // Record usage snapshot for time-series history
+  if (_usageStats) {
+    try {
+      _usageStats.recordSnapshot(pool);
+    } catch (err) {
+      console.warn("[QuotaRefresh] Failed to record usage snapshot:", err instanceof Error ? err.message : err);
+    }
+  }
 }
 
 function scheduleNext(
@@ -167,10 +178,12 @@ export function startQuotaRefresh(
   accountPool: AccountPool,
   cookieJar: CookieJar,
   proxyPool?: ProxyPool,
+  usageStats?: UsageStatsStore,
 ): void {
   _accountPool = accountPool;
   _cookieJar = cookieJar;
   _proxyPool = proxyPool ?? null;
+  _usageStats = usageStats ?? null;
 
   _refreshTimer = setTimeout(async () => {
     try {
