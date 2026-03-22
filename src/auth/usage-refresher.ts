@@ -9,6 +9,7 @@
  */
 
 import { CodexApi } from "../proxy/codex-api.js";
+import { CodexApiError } from "../proxy/codex-types.js";
 import { getConfig } from "../config.js";
 import { jitter } from "../utils/jitter.js";
 import { toQuota } from "./quota-utils.js";
@@ -20,6 +21,16 @@ import {
 import type { AccountPool } from "./account-pool.js";
 import type { CookieJar } from "../proxy/cookie-jar.js";
 import type { ProxyPool } from "../proxy/proxy-pool.js";
+
+/** Check if a CodexApiError indicates the account is banned/suspended (non-CF 403). */
+function isBanError(err: unknown): boolean {
+  if (!(err instanceof CodexApiError)) return false;
+  if (err.status !== 403) return false;
+  // Cloudflare challenge pages contain cf_chl or are HTML — not a ban
+  const body = err.body.toLowerCase();
+  if (body.includes("cf_chl") || body.includes("<!doctype") || body.includes("<html")) return false;
+  return true;
+}
 
 const INITIAL_DELAY_MS = 3_000; // 3s after startup
 
@@ -35,13 +46,13 @@ async function fetchQuotaForAllAccounts(
 ): Promise<void> {
   if (!pool.isAuthenticated()) return;
 
-  const entries = pool.getAllEntries().filter((e) => e.status === "active" || e.status === "rate_limited");
+  const entries = pool.getAllEntries().filter((e) => e.status === "active" || e.status === "rate_limited" || e.status === "banned");
   if (entries.length === 0) return;
 
   const config = getConfig();
   const thresholds = config.quota.warning_thresholds;
 
-  console.log(`[QuotaRefresh] Refreshing quota for ${entries.length} active/rate-limited account(s)`);
+  console.log(`[QuotaRefresh] Refreshing quota for ${entries.length} active/rate-limited/banned account(s)`);
 
   const results = await Promise.allSettled(
     entries.map(async (entry) => {
@@ -49,6 +60,12 @@ async function fetchQuotaForAllAccounts(
       const api = new CodexApi(entry.token, entry.accountId, cookieJar, entry.id, proxyUrl);
       const usage = await api.getUsage();
       const quota = toQuota(usage);
+
+      // Auto-recover banned accounts that respond successfully
+      if (entry.status === "banned") {
+        pool.markStatus(entry.id, "active");
+        console.log(`[QuotaRefresh] Account ${entry.id} (${entry.email ?? "?"}) unbanned — quota fetch succeeded`);
+      }
 
       // Cache quota on the account
       pool.updateCachedQuota(entry.id, quota);
@@ -98,12 +115,21 @@ async function fetchQuotaForAllAccounts(
   );
 
   let succeeded = 0;
-  for (const r of results) {
+  for (let i = 0; i < results.length; i++) {
+    const r = results[i];
     if (r.status === "fulfilled") {
       succeeded++;
     } else {
+      const entry = entries[i];
       const msg = r.reason instanceof Error ? r.reason.message : String(r.reason);
-      console.warn(`[QuotaRefresh] Account quota fetch failed: ${msg}`);
+
+      // Detect banned accounts (non-CF 403)
+      if (isBanError(r.reason)) {
+        pool.markStatus(entry.id, "banned");
+        console.warn(`[QuotaRefresh] Account ${entry.id} (${entry.email ?? "?"}) banned — 403 from upstream`);
+      } else {
+        console.warn(`[QuotaRefresh] Account ${entry.id} quota fetch failed: ${msg}`);
+      }
     }
   }
 

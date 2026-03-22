@@ -7,7 +7,8 @@ export type AccountStatus =
   | "expired"
   | "rate_limited"
   | "refreshing"
-  | "disabled";
+  | "disabled"
+  | "banned";
 
 export interface AccountUsage {
   request_count: number;

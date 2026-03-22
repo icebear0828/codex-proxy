@@ -6,6 +6,14 @@
 
 ## [Unreleased]
 
+### Added
+
+- 账号封禁检测：上游返回非 Cloudflare 的 403 时自动标记为 `banned` 状态
+  - Dashboard 卡片/表格显示玫红色 `Banned`/`已封禁` 状态徽章
+  - 状态筛选下拉新增 `Banned` 选项
+  - 被封账号自动跳过（`acquire()` 仅选 active），请求时自动切换到其他账号
+  - 后台额度刷新周期性重试 banned 账号，成功即自动解封
+
 ### Fixed
 
 - Responses SSE 新事件（`response.output_item.added` with `item.type=message`、`response.content_part.added/done`）未被识别，导致 `[CodexEvents] Unknown event` 日志刷屏

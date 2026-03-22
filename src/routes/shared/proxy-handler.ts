@@ -80,6 +80,14 @@ function extractRetryAfterSec(body: string): number | undefined {
   return undefined;
 }
 
+/** Check if a CodexApiError indicates the account is banned/suspended (non-CF 403). */
+function isBanError(err: CodexApiError): boolean {
+  if (err.status !== 403) return false;
+  const body = err.body.toLowerCase();
+  if (body.includes("cf_chl") || body.includes("<!doctype") || body.includes("<html")) return false;
+  return true;
+}
+
 /** Check if a CodexApiError indicates the model is not supported on the account's plan. */
 function isModelNotSupportedError(err: CodexApiError): boolean {
   // Only 4xx client errors (exclude 429 rate-limit)
@@ -309,6 +317,29 @@ export async function handleProxyRequest(
 
           c.status(429);
           return c.json(fmt.format429(err.message));
+        }
+        if (isBanError(err)) {
+          accountPool.markStatus(activeEntryId, "banned");
+          const failedEmail = accountPool.getEntry(activeEntryId)?.email ?? "?";
+          console.warn(
+            `[${fmt.tag}] Account ${activeEntryId} (${failedEmail}) | 403 banned, trying different account...`,
+          );
+
+          const retry = accountPool.acquire({
+            model: req.codexRequest.model,
+            excludeIds: triedEntryIds,
+          });
+          if (retry) {
+            activeEntryId = retry.entryId;
+            triedEntryIds.push(retry.entryId);
+            const retryProxyUrl = proxyPool?.resolveProxyUrl(retry.entryId);
+            codexApi = new CodexApi(retry.token, retry.accountId, cookieJar, retry.entryId, retryProxyUrl);
+            console.log(`[${fmt.tag}] 403 ban fallback → account ${retry.entryId}`);
+            continue;
+          }
+
+          c.status(403);
+          return c.json(fmt.formatError(403, err.message));
         }
         accountPool.release(activeEntryId);
         const code = toErrorStatus(err.status);

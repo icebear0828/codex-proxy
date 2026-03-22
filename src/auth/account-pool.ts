@@ -325,8 +325,8 @@ export class AccountPool {
   markQuotaExhausted(entryId: string, resetAtUnix: number | null): void {
     const entry = this.accounts.get(entryId);
     if (!entry) return;
-    // Don't override disabled or expired states
-    if (entry.status === "disabled" || entry.status === "expired") return;
+    // Don't override disabled, expired, or banned states
+    if (entry.status === "disabled" || entry.status === "expired" || entry.status === "banned") return;
 
     const until = resetAtUnix
       ? new Date(resetAtUnix * 1000).toISOString()
@@ -506,9 +506,10 @@ export class AccountPool {
     rate_limited: number;
     refreshing: number;
     disabled: number;
+    banned: number;
   } {
     const now = new Date();
-    let active = 0, expired = 0, rate_limited = 0, refreshing = 0, disabled = 0;
+    let active = 0, expired = 0, rate_limited = 0, refreshing = 0, disabled = 0, banned = 0;
     for (const entry of this.accounts.values()) {
       this.refreshStatus(entry, now);
       switch (entry.status) {
@@ -517,6 +518,7 @@ export class AccountPool {
         case "rate_limited": rate_limited++; break;
         case "refreshing": refreshing++; break;
         case "disabled": disabled++; break;
+        case "banned": banned++; break;
       }
     }
     return {
@@ -526,6 +528,7 @@ export class AccountPool {
       rate_limited,
       refreshing,
       disabled,
+      banned,
     };
   }
 

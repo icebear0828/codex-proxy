@@ -33,6 +33,10 @@ const statusStyles: Record<string, [string, string]> = {
     "bg-slate-100 text-slate-500 border-slate-200 dark:bg-slate-800/30 dark:text-slate-400 dark:border-slate-700/30",
     "disabled",
   ],
+  banned: [
+    "bg-rose-100 text-rose-700 border-rose-300 dark:bg-rose-900/30 dark:text-rose-400 dark:border-rose-800/40",
+    "banned",
+  ],
 };
 
 interface AccountCardProps {
