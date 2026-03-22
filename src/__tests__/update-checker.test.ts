@@ -68,7 +68,6 @@ describe("update-checker writes to data/, not config/", () => {
       ok: true,
       status: 200,
       body: APPCAST_XML,
-      headers: {},
     });
 
     // Dynamic import to get fresh module state
@@ -97,7 +96,6 @@ describe("update-checker writes to data/, not config/", () => {
       ok: true,
       status: 200,
       body: APPCAST_XML,
-      headers: {},
     });
 
     const { checkForUpdate } = await import("../update-checker.js");
@@ -115,7 +113,6 @@ describe("update-checker writes to data/, not config/", () => {
       ok: true,
       status: 200,
       body: APPCAST_XML,
-      headers: {},
     });
 
     const { checkForUpdate } = await import("../update-checker.js");
