@@ -193,14 +193,10 @@ export function App() {
   return (
     <I18nProvider>
       <ThemeProvider>
-        {isProxySettings ? <ProxySettingsPage /> : isAccountManagement ? <AccountManagementPage /> : <Dashboard />}
+        {isProxySettings ? <ProxySettingsPage /> : isAccountManagement ? <AccountManagement /> : <Dashboard />}
       </ThemeProvider>
     </I18nProvider>
   );
-}
-
-function AccountManagementPage() {
-  return <AccountManagement />;
 }
 
 function ProxySettingsPage() {

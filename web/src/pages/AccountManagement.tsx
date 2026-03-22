@@ -18,58 +18,81 @@ const statusOrder: Array<{ key: string; label: TranslationKey }> = [
 
 export function AccountManagement() {
   const t = useT();
-  const accounts = useAccounts();
+  const { list, loading: listLoading, batchDelete, batchSetStatus, exportAccounts, importAccounts } = useAccounts();
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [statusFilter, setStatusFilter] = useState("all");
-  const [message, setMessage] = useState<string | null>(null);
+  const [message, setMessage] = useState<{ text: string; error?: boolean } | null>(null);
+  const [busy, setBusy] = useState(false);
 
-  // Map Account[] → AssignmentAccount[] for AccountTable
   const tableAccounts: AssignmentAccount[] = useMemo(
     () =>
-      accounts.list.map((a) => ({
+      list.map((a) => ({
         id: a.id,
         email: a.email || a.id.slice(0, 8),
         status: a.status,
         proxyId: a.proxyId || "global",
         proxyName: "",
       })),
-    [accounts.list],
+    [list],
   );
 
-  // Status summary counts
   const statusCounts = useMemo(() => {
     const counts: Record<string, number> = {};
-    for (const a of accounts.list) {
+    for (const a of list) {
       counts[a.status] = (counts[a.status] || 0) + 1;
     }
     return counts;
-  }, [accounts.list]);
+  }, [list]);
 
-  const showMessage = useCallback((msg: string) => {
-    setMessage(msg);
+  const showMessage = useCallback((text: string, error = false) => {
+    setMessage({ text, error });
     setTimeout(() => setMessage(null), 3000);
   }, []);
 
   const handleBatchDelete = useCallback(async () => {
-    const ids = [...selectedIds];
-    const result = await accounts.batchDelete(ids);
-    setSelectedIds(new Set());
-    showMessage(`${t("deleteSuccess")}: ${result.deleted}`);
-  }, [selectedIds, accounts, t, showMessage]);
+    setBusy(true);
+    try {
+      const err = await batchDelete([...selectedIds]);
+      if (err) {
+        showMessage(err, true);
+      } else {
+        setSelectedIds(new Set());
+        showMessage(t("deleteSuccess"));
+      }
+    } finally {
+      setBusy(false);
+    }
+  }, [selectedIds, batchDelete, t, showMessage]);
 
   const handleSetActive = useCallback(async () => {
-    const ids = [...selectedIds];
-    const result = await accounts.batchSetStatus(ids, "active");
-    setSelectedIds(new Set());
-    showMessage(`${t("statusChangeSuccess")}: ${result.updated}`);
-  }, [selectedIds, accounts, t, showMessage]);
+    setBusy(true);
+    try {
+      const err = await batchSetStatus([...selectedIds], "active");
+      if (err) {
+        showMessage(err, true);
+      } else {
+        setSelectedIds(new Set());
+        showMessage(t("statusChangeSuccess"));
+      }
+    } finally {
+      setBusy(false);
+    }
+  }, [selectedIds, batchSetStatus, t, showMessage]);
 
   const handleSetDisabled = useCallback(async () => {
-    const ids = [...selectedIds];
-    const result = await accounts.batchSetStatus(ids, "disabled");
-    setSelectedIds(new Set());
-    showMessage(`${t("statusChangeSuccess")}: ${result.updated}`);
-  }, [selectedIds, accounts, t, showMessage]);
+    setBusy(true);
+    try {
+      const err = await batchSetStatus([...selectedIds], "disabled");
+      if (err) {
+        showMessage(err, true);
+      } else {
+        setSelectedIds(new Set());
+        showMessage(t("statusChangeSuccess"));
+      }
+    } finally {
+      setBusy(false);
+    }
+  }, [selectedIds, batchSetStatus, t, showMessage]);
 
   const handleStatusChipClick = useCallback((status: string) => {
     setStatusFilter((prev) => (prev === status ? "all" : status));
@@ -84,15 +107,15 @@ export function AccountManagement() {
             href="#/"
             class="text-sm text-slate-500 dark:text-text-dim hover:text-primary transition-colors"
           >
-            &larr; Dashboard
+            &larr; {t("backToDashboard")}
           </a>
           <h1 class="text-base font-semibold text-slate-800 dark:text-text-main">
             {t("accountManagement")}
           </h1>
           <div class="flex-1" />
           <AccountImportExport
-            onExport={accounts.exportAccounts}
-            onImport={accounts.importAccounts}
+            onExport={exportAccounts}
+            onImport={importAccounts}
             selectedIds={selectedIds}
           />
         </div>
@@ -121,19 +144,23 @@ export function AccountManagement() {
             );
           })}
           <span class="px-3 py-1 text-xs text-slate-400 dark:text-text-dim">
-            {accounts.list.length} {t("totalItems")}
+            {list.length} {t("totalItems")}
           </span>
         </div>
 
         {/* Message toast */}
         {message && (
-          <div class="mb-4 px-4 py-2 rounded-lg bg-primary/10 text-primary text-sm font-medium">
-            {message}
+          <div class={`mb-4 px-4 py-2 rounded-lg text-sm font-medium ${
+            message.error
+              ? "bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400"
+              : "bg-primary/10 text-primary"
+          }`}>
+            {message.text}
           </div>
         )}
 
         {/* Table */}
-        {accounts.loading ? (
+        {listLoading ? (
           <div class="text-center py-12 text-slate-400 dark:text-text-dim">Loading...</div>
         ) : (
           <AccountTable
@@ -149,6 +176,7 @@ export function AccountManagement() {
       {/* Bulk actions bar */}
       <AccountBulkActions
         selectedCount={selectedIds.size}
+        loading={busy}
         onBatchDelete={handleBatchDelete}
         onSetActive={handleSetActive}
         onSetDisabled={handleSetDisabled}

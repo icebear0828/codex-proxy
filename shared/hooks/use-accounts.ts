@@ -217,32 +217,40 @@ export function useAccounts() {
     return result;
   }, [loadAccounts]);
 
-  const batchDelete = useCallback(async (ids: string[]): Promise<{
-    deleted: number;
-    notFound: string[];
-  }> => {
-    const resp = await fetch("/auth/accounts/batch-delete", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ ids }),
-    });
-    const result = await resp.json();
-    if (resp.ok) await loadAccounts();
-    return result;
+  const batchDelete = useCallback(async (ids: string[]): Promise<string | null> => {
+    try {
+      const resp = await fetch("/auth/accounts/batch-delete", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ids }),
+      });
+      if (!resp.ok) {
+        const data = await resp.json();
+        return data.error || "Batch delete failed";
+      }
+      await loadAccounts();
+      return null;
+    } catch (err) {
+      return "networkError" + (err instanceof Error ? err.message : "");
+    }
   }, [loadAccounts]);
 
-  const batchSetStatus = useCallback(async (ids: string[], status: "active" | "disabled"): Promise<{
-    updated: number;
-    notFound: string[];
-  }> => {
-    const resp = await fetch("/auth/accounts/batch-status", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ ids, status }),
-    });
-    const result = await resp.json();
-    if (resp.ok) await loadAccounts();
-    return result;
+  const batchSetStatus = useCallback(async (ids: string[], status: "active" | "disabled"): Promise<string | null> => {
+    try {
+      const resp = await fetch("/auth/accounts/batch-status", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ids, status }),
+      });
+      if (!resp.ok) {
+        const data = await resp.json();
+        return data.error || "Batch status change failed";
+      }
+      await loadAccounts();
+      return null;
+    } catch (err) {
+      return "networkError" + (err instanceof Error ? err.message : "");
+    }
   }, [loadAccounts]);
 
   return {

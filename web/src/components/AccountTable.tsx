@@ -235,7 +235,7 @@ export function AccountTable({
                       <option value="global">{t("globalDefault")}</option>
                       <option value="direct">{t("directNoProxy")}</option>
                       <option value="auto">{t("autoRoundRobin")}</option>
-                      {proxies!.map((p) => (
+                      {proxies.map((p) => (
                         <option key={p.id} value={p.id}>
                           {p.name}
                           {p.health?.exitIp ? ` (${p.health.exitIp})` : ""}
