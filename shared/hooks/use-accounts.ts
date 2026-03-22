@@ -217,6 +217,34 @@ export function useAccounts() {
     return result;
   }, [loadAccounts]);
 
+  const batchDelete = useCallback(async (ids: string[]): Promise<{
+    deleted: number;
+    notFound: string[];
+  }> => {
+    const resp = await fetch("/auth/accounts/batch-delete", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ids }),
+    });
+    const result = await resp.json();
+    if (resp.ok) await loadAccounts();
+    return result;
+  }, [loadAccounts]);
+
+  const batchSetStatus = useCallback(async (ids: string[], status: "active" | "disabled"): Promise<{
+    updated: number;
+    notFound: string[];
+  }> => {
+    const resp = await fetch("/auth/accounts/batch-status", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ids, status }),
+    });
+    const result = await resp.json();
+    if (resp.ok) await loadAccounts();
+    return result;
+  }, [loadAccounts]);
+
   return {
     list,
     loading,
@@ -232,5 +260,7 @@ export function useAccounts() {
     deleteAccount,
     exportAccounts,
     importAccounts,
+    batchDelete,
+    batchSetStatus,
   };
 }

@@ -187,7 +187,7 @@ describe("account-pool plan-based routing", () => {
     expect(second).toBeNull();
   });
 
-  it("all unfetched plans still get 503 when model is genuinely plan-locked", () => {
+  it("unfetched plans are included even when model appears plan-locked", () => {
     // Model supports team only, no plans have been fetched, but only free accounts exist
     mockGetModelPlanTypes.mockReturnValue(["team"]);
     mockIsPlanFetched.mockReturnValue(false); // no plans fetched yet

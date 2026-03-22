@@ -15,6 +15,7 @@ import { RotationSettings } from "./components/RotationSettings";
 import { TestConnection } from "./components/TestConnection";
 import { Footer } from "./components/Footer";
 import { ProxySettings } from "./pages/ProxySettings";
+import { AccountManagement } from "./pages/AccountManagement";
 import { useAccounts } from "../../shared/hooks/use-accounts";
 import { useProxies } from "../../shared/hooks/use-proxies";
 import { useStatus } from "../../shared/hooks/use-status";
@@ -187,14 +188,19 @@ function useHash(): string {
 export function App() {
   const hash = useHash();
   const isProxySettings = hash === "#/proxy-settings";
+  const isAccountManagement = hash === "#/account-management";
 
   return (
     <I18nProvider>
       <ThemeProvider>
-        {isProxySettings ? <ProxySettingsPage /> : <Dashboard />}
+        {isProxySettings ? <ProxySettingsPage /> : isAccountManagement ? <AccountManagementPage /> : <Dashboard />}
       </ThemeProvider>
     </I18nProvider>
   );
+}
+
+function AccountManagementPage() {
+  return <AccountManagement />;
 }
 
 function ProxySettingsPage() {

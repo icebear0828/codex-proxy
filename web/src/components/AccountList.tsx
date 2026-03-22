@@ -70,6 +70,12 @@ export function AccountList({ accounts, loading, onDelete, onRefresh, refreshing
               {t("updatedAt")} {updatedAtText}
             </span>
           )}
+          <a
+            href="#/account-management"
+            class="text-[0.75rem] text-primary hover:text-primary/80 font-medium transition-colors"
+          >
+            {t("manageAccounts")} &rarr;
+          </a>
           {onExport && onImport && (
             <AccountImportExport onExport={onExport} onImport={onImport} selectedIds={selectedIds} />
           )}

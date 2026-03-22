@@ -381,6 +381,7 @@ export class AccountPool {
   }
 
   markStatus(entryId: string, status: AccountEntry["status"]): void {
+    this.acquireLocks.delete(entryId);
     const entry = this.accounts.get(entryId);
     if (!entry) return;
     entry.status = status;

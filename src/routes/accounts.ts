@@ -28,6 +28,15 @@ import type { ProxyPool } from "../proxy/proxy-pool.js";
 import { toQuota } from "../auth/quota-utils.js";
 import { clearWarnings, getActiveWarnings, getWarningsLastUpdated } from "../auth/quota-warnings.js";
 
+const BatchIdsSchema = z.object({
+  ids: z.array(z.string()).min(1),
+});
+
+const BatchStatusSchema = z.object({
+  ids: z.array(z.string()).min(1),
+  status: z.enum(["active", "disabled"]),
+});
+
 const BulkImportSchema = z.object({
   accounts: z.array(z.object({
     token: z.string().min(1),
@@ -111,6 +120,72 @@ export function createAccountRoutes(
     }
 
     return c.json({ success: true, added, updated, failed, errors });
+  });
+
+  // Batch delete accounts
+  app.post("/auth/accounts/batch-delete", async (c) => {
+    let body: unknown;
+    try {
+      body = await c.req.json();
+    } catch {
+      c.status(400);
+      return c.json({ error: "Malformed JSON request body" });
+    }
+
+    const parsed = BatchIdsSchema.safeParse(body);
+    if (!parsed.success) {
+      c.status(400);
+      return c.json({ error: "Invalid request", details: parsed.error.issues });
+    }
+
+    let deleted = 0;
+    const notFound: string[] = [];
+
+    for (const id of parsed.data.ids) {
+      scheduler.clearOne(id);
+      const removed = pool.removeAccount(id);
+      if (removed) {
+        cookieJar?.clear(id);
+        clearWarnings(id);
+        deleted++;
+      } else {
+        notFound.push(id);
+      }
+    }
+
+    return c.json({ success: true, deleted, notFound });
+  });
+
+  // Batch change account status
+  app.post("/auth/accounts/batch-status", async (c) => {
+    let body: unknown;
+    try {
+      body = await c.req.json();
+    } catch {
+      c.status(400);
+      return c.json({ error: "Malformed JSON request body" });
+    }
+
+    const parsed = BatchStatusSchema.safeParse(body);
+    if (!parsed.success) {
+      c.status(400);
+      return c.json({ error: "Invalid request", details: parsed.error.issues });
+    }
+
+    let updated = 0;
+    const notFound: string[] = [];
+
+    for (const id of parsed.data.ids) {
+      const entry = pool.getEntry(id);
+      if (entry) {
+        pool.markStatus(id, parsed.data.status);
+        updated++;
+      } else {
+        notFound.push(id);
+      }
+    }
+
+    return c.json({ success: true, updated, notFound });
   });
 
   // List all accounts
