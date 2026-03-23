@@ -184,19 +184,22 @@ curl http://localhost:8080/v1/chat/completions \
 ## 🌟 核心功能 (Features)
 
 ### 1. 🔌 全协议兼容 (Multi-Protocol API)
-- 完全兼容 `/v1/chat/completions`（OpenAI）、`/v1/messages`（Anthropic）和 Gemini 格式
+- 完全兼容 `/v1/chat/completions`（OpenAI）、`/v1/messages`（Anthropic）、Gemini 格式及 `/v1/responses`（Codex 直通）
 - 支持 SSE 流式输出，可直接对接所有 OpenAI SDK 和客户端
-- 自动完成 Chat Completions ↔ Codex Responses API 双向协议转换
+- 自动完成 Chat Completions / Anthropic / Gemini ↔ Codex Responses API 双向协议转换
 - **Structured Outputs** — 支持 `response_format`（OpenAI `json_object` / `json_schema`）和 Gemini `responseMimeType`，强制 JSON 结构化输出无需提示词
+- **Function Calling** — 原生 `function_call` / `tool_calls` 支持（所有协议）
 
 ### 2. 🔐 账号管理与智能轮换 (Auth & Multi-Account)
 - **OAuth PKCE 登录** — 浏览器一键授权，无需手动复制 Token
-- **多账号轮换** — 支持 `least_used`（最少使用优先）和 `round_robin`（轮询）两种调度策略
+- **多账号轮换** — 支持 `least_used`（最少使用优先）、`round_robin`（轮询）和 `sticky`（粘性）三种调度策略
+- **Plan Routing** — 不同 plan（free/plus/team/business）的账号自动路由到各自支持的模型
 - **Token 自动续期** — JWT 到期前自动刷新，指数退避重试（5 次），临时失败 10 分钟恢复调度
-- **配额实时监控** — 控制面板展示各账号剩余用量，限流窗口滚动时自动重置计数器
+- **配额自动刷新** — 后台每 5 分钟定时拉取各账号额度，达到阈值（默认 80%/90%）时弹出预警横幅；额度耗尽自动标记跳过，到期自动恢复
+- **封禁检测** — 上游 403 自动标记 banned；401 token 吊销自动标记过期并切换下一个账号
 - **关键数据即时持久化** — 新增/刷新 Token 立即写盘，不丢失
-- **稳定连接** — 自动对齐 Codex Desktop 请求特征，Cookie 持久化减少重复验证
-- **Web 控制面板** — 账号管理、用量监控、状态总览，中英双语
+- **Relay 中转站** — 支持接入第三方 API 中转站（API Key + baseUrl），自动按 `format` 决定直通或翻译
+- **Web 控制面板** — 账号管理、用量统计、批量操作、状态总览，中英双语；支持 Dashboard 登录门（远程访问需密码）
 
 ### 3. 🌐 代理池 (Proxy Pool)
 - **Per-Account 代理路由** — 为不同账号配置不同的上游代理，实现 IP 多样化和风险隔离
@@ -208,48 +211,51 @@ curl http://localhost:8080/v1/chat/completions \
 ## 🏗️ 技术架构 (Architecture)
 
 ```
-                            Codex Proxy
-┌─────────────────────────────────────────────────────┐
-│                                                     │
-│  Client (Cursor / Continue / SDK)                   │
-│       │                                             │
-│  POST /v1/chat/completions                          │
-│  POST /v1/messages (Anthropic)                      │
-│       │                                             │
-│       ▼                                             │
-│  ┌──────────┐    ┌───────────────┐    ┌──────────┐  │
-│  │  Routes   │──▶│  Translation  │──▶│  Proxy   │  │
-│  │  (Hono)  │   │ OpenAI→Codex  │   │ curl TLS │  │
-│  └──────────┘   └───────────────┘   └────┬─────┘  │
-│       ▲                                   │        │
-│       │          ┌───────────────┐        │        │
-│       └──────────│  Translation  │◀───────┘        │
-│                  │ Codex→OpenAI  │  SSE stream     │
-│                  └───────────────┘                  │
-│                                                     │
-│  ┌──────────┐  ┌───────────────┐  ┌─────────────┐  │
-│  │   Auth   │  │  Fingerprint  │  │   Session   │  │
-│  │ OAuth/JWT│  │  Headers/UA   │  │   Manager   │  │
-│  └──────────┘  └───────────────┘  └─────────────┘  │
-│                                                     │
-│  ┌──────────────────────────────────────────────┐   │
-│  │  Auto-Maintenance (update-checker + scripts) │   │
-│  └──────────────────────────────────────────────┘   │
-│                                                     │
-└─────────────────────────────────────────────────────┘
-                         │
-                    curl subprocess
-                    (Chrome TLS)
-                         │
-                         ▼
-                    chatgpt.com
-              /backend-api/codex/responses
+                                Codex Proxy
+┌──────────────────────────────────────────────────────────┐
+│                                                          │
+│  Client (Cursor / Claude Code / Continue / SDK / ...)    │
+│       │                                                  │
+│  POST /v1/chat/completions (OpenAI)                      │
+│  POST /v1/messages         (Anthropic)                   │
+│  POST /v1/responses        (Codex 直通)                  │
+│  POST /gemini/*            (Gemini)                      │
+│       │                                                  │
+│       ▼                                                  │
+│  ┌──────────┐    ┌───────────────┐    ┌──────────────┐   │
+│  │  Routes   │──▶│  Translation  │──▶│    Proxy     │   │
+│  │  (Hono)  │   │ Multi→Codex   │   │ curl TLS/FFI │   │
+│  └──────────┘   └───────────────┘   └──────┬───────┘   │
+│       ▲                                     │           │
+│       │          ┌───────────────┐          │           │
+│       └──────────│  Translation  │◀─────────┘           │
+│                  │ Codex→Multi   │  SSE stream          │
+│                  └───────────────┘                       │
+│                                                          │
+│  ┌──────────┐  ┌───────────────┐  ┌──────────────────┐  │
+│  │   Auth   │  │  Fingerprint  │  │   Model Store    │  │
+│  │ OAuth/JWT│  │Chrome TLS/UA  │  │ Static + Dynamic │  │
+│  │  Relay   │  │   Cookie      │  │  Plan Routing    │  │
+│  └──────────┘  └───────────────┘  └──────────────────┘  │
+│                                                          │
+└──────────────────────────────────────────────────────────┘
+                          │
+                  curl-impersonate / FFI
+                    (Chrome TLS 指纹)
+                          │
+                   ┌──────┴──────┐
+                   ▼             ▼
+              chatgpt.com   Relay 中转站
+         /backend-api/codex  (第三方 API)
 ```
 
 ## 📦 可用模型 (Available Models)
 
 | 模型 ID | 别名 | 推理等级 | 说明 |
 |---------|------|---------|------|
+| `gpt-5.4` | — | low / medium / high / xhigh | 最新旗舰模型 |
+| `gpt-5.4-mini` | — | low / medium / high / xhigh | 5.4 轻量版 |
+| `gpt-5.3-codex` | — | low / medium / high / xhigh | 5.3 编程优化模型 |
 | `gpt-5.2-codex` | `codex` | low / medium / high / xhigh | 前沿 agentic 编程模型（默认） |
 | `gpt-5.2` | — | low / medium / high / xhigh | 专业工作 + 长时间代理 |
 | `gpt-5.1-codex-max` | — | low / medium / high / xhigh | 扩展上下文 / 深度推理 |
@@ -265,7 +271,7 @@ curl http://localhost:8080/v1/chat/completions \
 > **模型名后缀**：在任意模型名后追加 `-fast` 启用 Fast 模式，追加 `-high`/`-low` 等切换推理等级。
 > 例如：`codex-fast`、`gpt-5.2-codex-high-fast`。
 >
-> **注意**：`gpt-5.4`、`gpt-5.3-codex` 系列已从 free 账号移除，plus 及以上账号仍可使用。
+> **Plan Routing**：不同 plan（free/plus/team/business）的账号自动路由到各自支持的模型，无需手动配置。
 > 模型列表由后端动态获取，会自动同步最新可用模型。
 
 ## 🔗 客户端接入 (Client Setup)
@@ -415,26 +421,50 @@ server:
 
 ## 📡 API 端点一览 (API Endpoints)
 
+<details>
+<summary>点击展开完整端点列表</summary>
+
+**协议端点**
+
 | 端点 | 方法 | 说明 |
 |------|------|------|
 | `/v1/chat/completions` | POST | 聊天补全 — OpenAI 格式（核心端点） |
+| `/v1/responses` | POST | Codex Responses API 直通 |
 | `/v1/messages` | POST | 聊天补全 — Anthropic 格式 |
 | `/v1/models` | GET | 可用模型列表 |
+
+**账号与认证**
+
+| 端点 | 方法 | 说明 |
+|------|------|------|
+| `/auth/login` | GET | OAuth 登录入口 |
+| `/auth/accounts` | GET | 账号列表（`?quota=true` / `?quota=fresh`） |
+| `/auth/accounts/relay` | POST | 添加 Relay 中转站账号 |
+| `/auth/accounts/batch-delete` | POST | 批量删除账号 |
+| `/auth/accounts/batch-status` | POST | 批量修改账号状态 |
+
+**管理接口**
+
+| 端点 | 方法 | 说明 |
+|------|------|------|
+| `/admin/rotation-settings` | GET/POST | 轮换策略配置 |
+| `/admin/quota-settings` | GET/POST | 额度刷新与预警配置 |
+| `/admin/refresh-models` | POST | 手动刷新模型列表 |
+| `/admin/usage-stats/summary` | GET | 用量统计汇总 |
+| `/admin/usage-stats/history` | GET | 用量时间序列 |
 | `/health` | GET | 健康检查 |
-| `/auth/accounts` | GET | 账号列表（`?quota=true` 含配额） |
-| `/auth/accounts/login` | GET | OAuth 登录入口 |
-| `/debug/fingerprint` | GET | 调试：查看当前伪装头信息 |
-| `/api/proxies` | GET | 代理池列表（含分配信息） |
-| `/api/proxies` | POST | 添加代理（HTTP/HTTPS/SOCKS5） |
-| `/api/proxies/:id` | PUT | 更新代理配置 |
-| `/api/proxies/:id` | DELETE | 删除代理 |
-| `/api/proxies/:id/check` | POST | 单个代理健康检查 |
-| `/api/proxies/:id/enable` | POST | 启用代理 |
-| `/api/proxies/:id/disable` | POST | 禁用代理 |
+
+**代理池**
+
+| 端点 | 方法 | 说明 |
+|------|------|------|
+| `/api/proxies` | GET/POST | 代理池列表 / 添加代理 |
+| `/api/proxies/:id` | PUT/DELETE | 更新 / 删除代理 |
+| `/api/proxies/:id/check` | POST | 健康检查单个代理 |
 | `/api/proxies/check-all` | POST | 全部代理健康检查 |
 | `/api/proxies/assign` | POST | 为账号分配代理 |
-| `/api/proxies/assign/:accountId` | DELETE | 取消账号代理分配 |
-| `/api/proxies/settings` | PUT | 更新代理池全局设置 |
+
+</details>
 
 ## 🔧 命令 (Commands)
 
@@ -482,6 +512,21 @@ server:
 - tool / function 消息兼容（所有协议）
 - 模型响应中自动过滤 Codex Desktop 指令
 <!-- CHANGELOG:END -->
+
+## 💬 联系与支持 (Contact & Support)
+
+<div align="center">
+
+**觉得有帮助？请作者喝杯咖啡**
+
+<img src="./.github/assets/donate.png" width="240" alt="微信赞赏码">
+
+<br>
+
+[![X (Twitter)](https://img.shields.io/badge/Follow-@IceBearMiner-000?style=flat-square&logo=x&logoColor=white)](https://x.com/IceBearMiner)
+[![GitHub Issues](https://img.shields.io/github/issues/icebear0828/codex-proxy?style=flat-square)](https://github.com/icebear0828/codex-proxy/issues)
+
+</div>
 
 ## ⭐ Star History
 

@@ -100,16 +100,21 @@ curl http://localhost:8080/v1/chat/completions \
 ## 🌟 Features
 
 ### 1. 🔌 Full Protocol Compatibility
-- Compatible with `/v1/chat/completions` (OpenAI), `/v1/messages` (Anthropic), and Gemini formats
+- Compatible with `/v1/chat/completions` (OpenAI), `/v1/messages` (Anthropic), Gemini format, and `/v1/responses` (Codex passthrough)
 - SSE streaming output, works with all OpenAI SDKs and clients
-- Automatic bidirectional translation between Chat Completions and Codex Responses API
+- Automatic bidirectional translation between Chat Completions / Anthropic / Gemini and Codex Responses API
 - **Structured Outputs** — supports `response_format` (OpenAI `json_object` / `json_schema`) and Gemini `responseMimeType` for enforcing JSON output without prompt engineering
+- **Function Calling** — native `function_call` / `tool_calls` support across all protocols
 
 ### 2. 🔐 Account Management & Smart Rotation
 - **OAuth PKCE login** — one-click browser auth, no manual token copying
-- **Multi-account rotation** — `least_used` and `round_robin` scheduling strategies
+- **Multi-account rotation** — `least_used`, `round_robin`, and `sticky` scheduling strategies
+- **Plan Routing** — accounts on different plans (free/plus/team/business) auto-route to their supported models
 - **Auto token refresh** — JWT renewed automatically before expiry
-- **Real-time quota monitoring** — dashboard shows remaining usage per account
+- **Quota auto-refresh** — background polling every 5 min with configurable warning thresholds (80%/90%); exhausted accounts auto-skip
+- **Ban detection** — upstream 403 auto-marks as banned; 401 token invalidation auto-expires and switches to next account
+- **Relay accounts** — connect third-party API relays (API Key + baseUrl) with auto format detection
+- **Web dashboard** — account management, usage stats, batch operations, dashboard login gate for remote access
 
 ### 3. 🌐 Proxy Pool
 - **Per-account proxy routing** — assign different upstream proxies to different accounts for IP diversity and risk isolation
@@ -133,43 +138,51 @@ curl http://localhost:8080/v1/chat/completions \
 ## 🏗️ Architecture
 
 ```
-                            Codex Proxy
-┌─────────────────────────────────────────────────────┐
-│                                                     │
-│  Client (Cursor / Continue / SDK)                   │
-│       │                                             │
-│  POST /v1/chat/completions                          │
-│       │                                             │
-│       ▼                                             │
-│  ┌──────────┐    ┌───────────────┐    ┌──────────┐  │
-│  │  Routes   │──▶│  Translation  │──▶│  Proxy   │  │
-│  │  (Hono)  │   │ OpenAI→Codex  │   │ curl TLS │  │
-│  └──────────┘   └───────────────┘   └────┬─────┘  │
-│       ▲                                   │        │
-│       │          ┌───────────────┐        │        │
-│       └──────────│  Translation  │◀───────┘        │
-│                  │ Codex→OpenAI  │  SSE stream     │
-│                  └───────────────┘                  │
-│                                                     │
-│  ┌──────────┐  ┌───────────────┐  ┌─────────────┐  │
-│  │   Auth   │  │  Fingerprint  │  │   Session   │  │
-│  │ OAuth/JWT│  │  Headers/UA   │  │   Manager   │  │
-│  └──────────┘  └───────────────┘  └─────────────┘  │
-│                                                     │
-└─────────────────────────────────────────────────────┘
-                         │
-                    curl subprocess
-                    (Chrome TLS)
-                         │
-                         ▼
-                    chatgpt.com
-              /backend-api/codex/responses
+                                Codex Proxy
+┌──────────────────────────────────────────────────────────┐
+│                                                          │
+│  Client (Cursor / Claude Code / Continue / SDK / ...)    │
+│       │                                                  │
+│  POST /v1/chat/completions (OpenAI)                      │
+│  POST /v1/messages         (Anthropic)                   │
+│  POST /v1/responses        (Codex passthrough)           │
+│  POST /gemini/*            (Gemini)                      │
+│       │                                                  │
+│       ▼                                                  │
+│  ┌──────────┐    ┌───────────────┐    ┌──────────────┐   │
+│  │  Routes   │──▶│  Translation  │──▶│    Proxy     │   │
+│  │  (Hono)  │   │ Multi→Codex   │   │ curl TLS/FFI │   │
+│  └──────────┘   └───────────────┘   └──────┬───────┘   │
+│       ▲                                     │           │
+│       │          ┌───────────────┐          │           │
+│       └──────────│  Translation  │◀─────────┘           │
+│                  │ Codex→Multi   │  SSE stream          │
+│                  └───────────────┘                       │
+│                                                          │
+│  ┌──────────┐  ┌───────────────┐  ┌──────────────────┐  │
+│  │   Auth   │  │  Fingerprint  │  │   Model Store    │  │
+│  │ OAuth/JWT│  │Chrome TLS/UA  │  │ Static + Dynamic │  │
+│  │  Relay   │  │   Cookie      │  │  Plan Routing    │  │
+│  └──────────┘  └───────────────┘  └──────────────────┘  │
+│                                                          │
+└──────────────────────────────────────────────────────────┘
+                          │
+                  curl-impersonate / FFI
+                   (Chrome TLS fingerprint)
+                          │
+                   ┌──────┴──────┐
+                   ▼             ▼
+              chatgpt.com   Relay providers
+         /backend-api/codex  (3rd-party API)
 ```
 
 ## 📦 Available Models
 
 | Model ID | Alias | Reasoning Efforts | Description |
 |----------|-------|-------------------|-------------|
+| `gpt-5.4` | — | low / medium / high / xhigh | Latest flagship model |
+| `gpt-5.4-mini` | — | low / medium / high / xhigh | 5.4 lightweight version |
+| `gpt-5.3-codex` | — | low / medium / high / xhigh | 5.3 coding-optimized model |
 | `gpt-5.2-codex` | `codex` | low / medium / high / xhigh | Frontier agentic coding model (default) |
 | `gpt-5.2` | — | low / medium / high / xhigh | Professional work & long-running agents |
 | `gpt-5.1-codex-max` | — | low / medium / high / xhigh | Extended context / deepest reasoning |
@@ -185,7 +198,7 @@ curl http://localhost:8080/v1/chat/completions \
 > **Model name suffixes**: Append `-fast` to any model name to enable Fast mode, or `-high`/`-low` etc. to change reasoning effort.
 > Examples: `codex-fast`, `gpt-5.2-codex-high-fast`.
 >
-> **Note**: `gpt-5.4` and `gpt-5.3-codex` families have been removed for free accounts. Plus and above accounts retain access.
+> **Plan Routing**: Accounts on different plans (free/plus/team/business) are automatically routed to their supported models.
 > Models are dynamically fetched from the backend and will automatically sync the latest available catalog.
 
 ## 🔗 Client Setup
@@ -303,25 +316,50 @@ All configuration is in `config/default.yaml`:
 
 ## 📡 API Endpoints
 
+<details>
+<summary>Click to expand full endpoint list</summary>
+
+**Protocol Endpoints**
+
 | Endpoint | Method | Description |
 |----------|--------|-------------|
-| `/v1/chat/completions` | POST | Chat completions (main endpoint) |
+| `/v1/chat/completions` | POST | Chat completions — OpenAI format |
+| `/v1/responses` | POST | Codex Responses API passthrough |
+| `/v1/messages` | POST | Chat completions — Anthropic format |
 | `/v1/models` | GET | List available models |
-| `/health` | GET | Health check |
-| `/auth/accounts` | GET | Account list and quota |
+
+**Auth & Accounts**
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
 | `/auth/login` | GET | OAuth login entry |
-| `/debug/fingerprint` | GET | Debug: view current impersonation headers |
-| `/api/proxies` | GET | Proxy pool list (with assignments) |
-| `/api/proxies` | POST | Add proxy (HTTP/HTTPS/SOCKS5) |
-| `/api/proxies/:id` | PUT | Update proxy config |
-| `/api/proxies/:id` | DELETE | Remove proxy |
+| `/auth/accounts` | GET | Account list (`?quota=true` / `?quota=fresh`) |
+| `/auth/accounts/relay` | POST | Add relay account |
+| `/auth/accounts/batch-delete` | POST | Batch delete accounts |
+| `/auth/accounts/batch-status` | POST | Batch update account status |
+
+**Admin**
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/admin/rotation-settings` | GET/POST | Rotation strategy config |
+| `/admin/quota-settings` | GET/POST | Quota refresh & warning config |
+| `/admin/refresh-models` | POST | Trigger manual model list refresh |
+| `/admin/usage-stats/summary` | GET | Usage stats summary |
+| `/admin/usage-stats/history` | GET | Usage time series |
+| `/health` | GET | Health check |
+
+**Proxy Pool**
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/api/proxies` | GET/POST | List / add proxies |
+| `/api/proxies/:id` | PUT/DELETE | Update / remove proxy |
 | `/api/proxies/:id/check` | POST | Health check single proxy |
-| `/api/proxies/:id/enable` | POST | Enable proxy |
-| `/api/proxies/:id/disable` | POST | Disable proxy |
 | `/api/proxies/check-all` | POST | Health check all proxies |
 | `/api/proxies/assign` | POST | Assign proxy to account |
-| `/api/proxies/assign/:accountId` | DELETE | Unassign proxy from account |
-| `/api/proxies/settings` | PUT | Update proxy pool settings |
+
+</details>
 
 ## 🔧 Commands
 
@@ -342,6 +380,21 @@ All configuration is in `config/default.yaml`:
 - The Codex API is **stream-only**. When `stream: false` is set, the proxy streams internally and returns the assembled response as a single JSON object.
 - This project relies on Codex Desktop's public API. Upstream version updates may cause breaking changes.
 - Deploy on **Linux / macOS** for full TLS impersonation. On Windows, curl-impersonate is not available and the proxy falls back to system curl.
+
+## 💬 Contact & Support
+
+<div align="center">
+
+**Find this useful? Buy me a coffee!**
+
+<img src="./.github/assets/donate.png" width="240" alt="WeChat Donate">
+
+<br>
+
+[![X (Twitter)](https://img.shields.io/badge/Follow-@IceBearMiner-000?style=flat-square&logo=x&logoColor=white)](https://x.com/IceBearMiner)
+[![GitHub Issues](https://img.shields.io/github/issues/icebear0828/codex-proxy?style=flat-square)](https://github.com/icebear0828/codex-proxy/issues)
+
+</div>
 
 ## 📄 License
 
