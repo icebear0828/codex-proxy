@@ -293,10 +293,6 @@ export function getResolvedProfile(): string {
 }
 
 /**
- * Get the detected proxy URL (or null if no proxy).
- * Used by LibcurlFfiTransport which needs the URL directly (not CLI args).
- */
-/**
  * Whether the resolved curl binary supports --compressed.
  * Always true for curl-impersonate; probed at startup for system curl.
  */
@@ -305,6 +301,10 @@ export function supportsCompressed(): boolean {
   return _supportsCompressed;
 }
 
+/**
+ * Get the detected proxy URL (or null if no proxy).
+ * Used by LibcurlFfiTransport which needs the URL directly (not CLI args).
+ */
 export function getProxyUrl(): string | null {
   return _proxyUrl ?? null;
 }
@@ -332,6 +332,7 @@ export function getCurlDiagnostics(): {
 export function resetCurlBinaryCache(): void {
   _resolved = null;
   _isImpersonate = false;
+  _supportsCompressed = true;
   _tlsArgs = null;
   _resolvedProfile = "chrome136";
 }
