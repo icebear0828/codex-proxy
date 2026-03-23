@@ -13,6 +13,7 @@
 import { existsSync } from "fs";
 import { execFileSync } from "child_process";
 import { createConnection } from "net";
+import { lookup } from "dns/promises";
 import { resolve } from "path";
 import { getConfig } from "../config.js";
 import { getBinDir } from "../paths.js";
@@ -239,7 +240,17 @@ async function detectLocalProxy(): Promise<string | null> {
   for (const host of PROXY_HOSTS) {
     for (const { port, proto } of PROXY_PORTS) {
       if (await probePort(host, port)) {
-        const url = `${proto}://${host}:${port}`;
+        // Resolve hostname to IP to avoid DNS issues in curl subprocess
+        // (e.g. host.docker.internal resolves via /etc/hosts in Node but
+        // curl-impersonate may not be able to resolve it)
+        let resolvedHost = host;
+        if (!/^\d+\.\d+\.\d+\.\d+$/.test(host)) {
+          try {
+            const { address } = await lookup(host);
+            resolvedHost = address;
+          } catch { /* use original hostname as fallback */ }
+        }
+        const url = `${proto}://${resolvedHost}:${port}`;
         console.log(`[Proxy] Auto-detected local proxy: ${url}`);
         return url;
       }

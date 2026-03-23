@@ -6,6 +6,8 @@ import { getConfig } from "../config.js";
 import {
   startOAuthFlow,
   consumeSession,
+  peekSession,
+  deleteSession,
   exchangeCode,
   requestDeviceCode,
   pollDeviceToken,
@@ -80,9 +82,9 @@ export function createAuthRoutes(
       return c.json({ error: "URL must contain code and state parameters" }, 400);
     }
 
-    const session = consumeSession(state);
+    const session = peekSession(state);
     if (!session) {
-      // Session already consumed by callback server — treat as success
+      // Session already completed by callback server — treat as success
       if (isSessionCompleted(state)) {
         return c.json({ success: true });
       }
@@ -91,13 +93,15 @@ export function createAuthRoutes(
 
     try {
       const tokens = await exchangeCode(code, session.codeVerifier, session.redirectUri);
+      deleteSession(state);
+      markSessionCompleted(state);
       const entryId = pool.addAccount(tokens.access_token, tokens.refresh_token);
       scheduler.scheduleOne(entryId, tokens.access_token);
-      markSessionCompleted(state);
 
       console.log(`[Auth] OAuth via code-relay — account ${entryId} added`);
       return c.json({ success: true });
     } catch (err) {
+      // Session stays in map — user can retry
       const msg = err instanceof Error ? err.message : String(err);
       console.error("[Auth] Code relay token exchange failed:", msg);
       return c.json({ error: `Token exchange failed: ${msg}` }, 500);
@@ -120,9 +124,9 @@ export function createAuthRoutes(
       return c.html(errorPage("Missing code or state parameter"), 400);
     }
 
-    const session = consumeSession(state);
+    const session = peekSession(state);
     if (!session) {
-      // Session already consumed by callback server — redirect home
+      // Session already completed by callback server — redirect home
       if (isSessionCompleted(state)) {
         const config = getConfig();
         const host = c.req.header("host") || `localhost:${config.server.port}`;
@@ -133,9 +137,10 @@ export function createAuthRoutes(
 
     try {
       const tokens = await exchangeCode(code, session.codeVerifier, session.redirectUri);
+      deleteSession(state);
+      markSessionCompleted(state);
       const entryId = pool.addAccount(tokens.access_token, tokens.refresh_token);
       scheduler.scheduleOne(entryId, tokens.access_token);
-      markSessionCompleted(state);
 
       console.log(`[Auth] OAuth login completed — account ${entryId} added`);
 
@@ -143,6 +148,7 @@ export function createAuthRoutes(
       const returnUrl = `http://${session.returnHost}/`;
       return c.redirect(returnUrl);
     } catch (err) {
+      // Session stays in map — user can retry
       const msg = err instanceof Error ? err.message : String(err);
       console.error("[Auth] Token exchange failed:", msg);
       return c.html(errorPage(`Token exchange failed: ${msg}`), 500);

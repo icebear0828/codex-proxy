@@ -230,6 +230,7 @@ export function createOAuthSession(
 /**
  * Retrieve and consume a pending session by state.
  * Returns null if not found or expired.
+ * @deprecated Use peekSession + deleteSession for atomic exchange.
  */
 export function consumeSession(
   state: string,
@@ -245,6 +246,33 @@ export function consumeSession(
   }
 
   return session;
+}
+
+/**
+ * Look up a pending session without removing it.
+ * Returns null if not found or expired.
+ * Use deleteSession() after successful token exchange.
+ */
+export function peekSession(
+  state: string,
+): PendingSession | null {
+  const session = pendingSessions.get(state);
+  if (!session) return null;
+
+  // Check expiry — clean up if expired
+  if (Date.now() - session.createdAt > SESSION_TTL_MS) {
+    pendingSessions.delete(state);
+    return null;
+  }
+
+  return session;
+}
+
+/**
+ * Delete a pending session after successful token exchange.
+ */
+export function deleteSession(state: string): void {
+  pendingSessions.delete(state);
 }
 
 // ── Temporary callback server ──────────────────────────────────────
@@ -300,8 +328,14 @@ export function startCallbackServer(
       return;
     }
 
-    const session = consumeSession(state);
+    const session = peekSession(state);
     if (!session) {
+      if (isSessionCompleted(state)) {
+        res.writeHead(200, { "Content-Type": "text/html" });
+        res.end(callbackResultHtml(true));
+        scheduleClose();
+        return;
+      }
       res.writeHead(400, { "Content-Type": "text/html" });
       res.end(callbackResultHtml(false, "Invalid or expired session. Please try again."));
       scheduleClose();
@@ -310,11 +344,14 @@ export function startCallbackServer(
 
     try {
       const tokens = await exchangeCode(code, session.codeVerifier, session.redirectUri);
+      deleteSession(state);
+      markSessionCompleted(state);
       onAccount(tokens.access_token, tokens.refresh_token);
       console.log(`[OAuth] Callback server on port ${port} — login successful`);
       res.writeHead(200, { "Content-Type": "text/html" });
       res.end(callbackResultHtml(true));
     } catch (err) {
+      // Session stays in map — user can retry
       const msg = err instanceof Error ? err.message : String(err);
       console.error(`[OAuth] Callback server token exchange failed: ${msg}`);
       res.writeHead(200, { "Content-Type": "text/html" });

@@ -31,6 +31,8 @@ export function isProxyNetworkError(error: unknown): boolean {
     msg.includes("schannel") ||
     msg.includes("connection reset by peer") ||
     msg.includes("socket hang up") ||
+    msg.includes("could not resolve proxy") ||   // proxy hostname resolution failure
+    msg.includes("curl exited with code 5") ||   // proxy resolution failure
     msg.includes("curl exited with code 35") ||  // TLS handshake failure
     msg.includes("curl exited with code 56")     // network receive error
   );

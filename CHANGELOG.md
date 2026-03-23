@@ -8,6 +8,12 @@
 
 ### Fixed
 
+- 代理自动检测使用 `host.docker.internal` 主机名导致 curl 无法解析（#114）
+  - 探测成功后通过 DNS lookup 解析为 IP 地址，避免 curl subprocess DNS 解析失败
+- OAuth 登录失败后重试报 "Invalid or expired session"（#154）
+  - Session 改为 peek → exchange 成功 → delete 生命周期，exchange 失败时 session 保留可重试
+- `withDirectFallback` 未捕获 curl exit code 5（代理解析失败），不会 fallback 直连
+  - `isProxyNetworkError` 新增 `could not resolve proxy` 和 `curl exited with code 5` 匹配
 - curl error 61：fingerprint 的 `Accept-Encoding: br, zstd` 覆盖了 `--compressed` 自动协商，系统 curl 不支持 br/zstd 时解压失败
   - curl-cli-transport 统一跳过 `Accept-Encoding` header，由 `--compressed` 按 curl 实际能力协商
 - 系统 curl 不支持 `--compressed` 时启动报错
