@@ -8,6 +8,8 @@
 
 ### Fixed
 
+- Anthropic `/v1/messages` 截图场景 400 报错：`tool_result.content` 不支持 image block
+  - Schema 放行 image block；翻译层将图片提取为紧随 `function_call_output` 的 user message（`input_image`）
 - 代理自动检测使用 `host.docker.internal` 主机名导致 curl 无法解析（#114）
   - 探测成功后通过 DNS lookup 解析为 IP 地址，避免 curl subprocess DNS 解析失败
 - OAuth 登录失败后重试报 "Invalid or expired session"（#154）

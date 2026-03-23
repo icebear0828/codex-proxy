@@ -26,10 +26,15 @@ const AnthropicToolUseContentSchema = z.object({
   input: z.record(z.unknown()),
 });
 
+const AnthropicToolResultContentBlockSchema = z.discriminatedUnion("type", [
+  AnthropicTextContentSchema,
+  AnthropicImageContentSchema,
+]);
+
 const AnthropicToolResultContentSchema = z.object({
   type: z.literal("tool_result"),
   tool_use_id: z.string(),
-  content: z.union([z.string(), z.array(AnthropicTextContentSchema)]).optional(),
+  content: z.union([z.string(), z.array(AnthropicToolResultContentBlockSchema)]).optional(),
   is_error: z.boolean().optional(),
 });
 
