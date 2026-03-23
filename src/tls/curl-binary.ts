@@ -69,6 +69,7 @@ const CHROME_TLS_ARGS: string[] = [
 
 let _resolved: string | null = null;
 let _isImpersonate = false;
+let _supportsCompressed = true;
 let _tlsArgs: string[] | null = null;
 let _resolvedProfile = "chrome136";
 
@@ -100,6 +101,18 @@ export function resolveCurlBinary(): string {
   // Fallback to system curl
   _resolved = "curl";
   _isImpersonate = false;
+
+  // Probe --compressed support (some minimal curl builds lack libz)
+  try {
+    execFileSync("curl", ["--compressed", "-s", "-o", "/dev/null", "data:,"], {
+      timeout: 3000,
+      stdio: "pipe",
+    });
+  } catch {
+    _supportsCompressed = false;
+    console.warn("[TLS] System curl lacks --compressed support. Consider running \"npm run setup\" to install curl-impersonate.");
+  }
+
   console.warn(
     `[TLS] curl-impersonate not found at ${binPath}. ` +
     `Falling back to system curl. Run "npm/pnpm/bun run setup" to install curl-impersonate.`,
@@ -283,6 +296,15 @@ export function getResolvedProfile(): string {
  * Get the detected proxy URL (or null if no proxy).
  * Used by LibcurlFfiTransport which needs the URL directly (not CLI args).
  */
+/**
+ * Whether the resolved curl binary supports --compressed.
+ * Always true for curl-impersonate; probed at startup for system curl.
+ */
+export function supportsCompressed(): boolean {
+  resolveCurlBinary(); // ensure detection has run
+  return _supportsCompressed;
+}
+
 export function getProxyUrl(): string | null {
   return _proxyUrl ?? null;
 }

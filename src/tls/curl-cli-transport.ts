@@ -8,7 +8,7 @@
  */
 
 import { spawn, execFile } from "child_process";
-import { resolveCurlBinary, getChromeTlsArgs, getProxyArgs, isImpersonate as curlIsImpersonate } from "./curl-binary.js";
+import { resolveCurlBinary, getChromeTlsArgs, getProxyArgs, isImpersonate as curlIsImpersonate, supportsCompressed } from "./curl-binary.js";
 import type { TlsTransport, TlsTransportResponse } from "./transport.js";
 
 const STATUS_SEPARATOR = "\n__CURL_HTTP_STATUS__";
@@ -40,7 +40,7 @@ export class CurlCliTransport implements TlsTransport {
         ...getChromeTlsArgs(),
         ...resolveProxyArgs(proxyUrl),
         "-s", "-S",
-        "--compressed",
+        ...(supportsCompressed() ? ["--compressed"] : []),
         "-N",            // no output buffering (SSE)
         "-i",            // include response headers in stdout
         "-X", "POST",
@@ -190,7 +190,7 @@ export class CurlCliTransport implements TlsTransport {
       ...getChromeTlsArgs(),
       ...resolveProxyArgs(proxyUrl),
       "-s", "-S",
-      "--compressed",
+      ...(supportsCompressed() ? ["--compressed"] : []),
       "--max-time", String(timeoutSec),
     ];
 
@@ -217,7 +217,7 @@ export class CurlCliTransport implements TlsTransport {
       ...getChromeTlsArgs(),
       ...resolveProxyArgs(proxyUrl),
       "-s", "-S",
-      "--compressed",
+      ...(supportsCompressed() ? ["--compressed"] : []),
       "--max-time", String(timeoutSec),
       "-X", "POST",
     ];

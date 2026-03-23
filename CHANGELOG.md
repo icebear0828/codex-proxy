@@ -10,6 +10,8 @@
 
 - curl error 61：fingerprint 的 `Accept-Encoding: br, zstd` 覆盖了 `--compressed` 自动协商，系统 curl 不支持 br/zstd 时解压失败
   - curl-cli-transport 统一跳过 `Accept-Encoding` header，由 `--compressed` 按 curl 实际能力协商
+- 系统 curl 不支持 `--compressed` 时启动报错
+  - 启动时探测支持情况，不支持则跳过该 flag 并提示安装 curl-impersonate
 - 模型列表启动时不更新：token 刷新与 model fetch 存在竞态，初始 fetch 跳过后直接等 1 小时
   - model-fetcher 改为 fast-retry（10s 间隔，最多 12 次），账号就绪后立即拉取
   - `config/models.yaml` 补回 gpt-5.4/5.4-mini/5.3-codex（3/18 后端已恢复）
