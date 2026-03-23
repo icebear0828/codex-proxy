@@ -1,0 +1,83 @@
+name: Docker Image Test
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+    branches: [master]
+  workflow_dispatch:
+
+jobs:
+  test-docker:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build Docker image
+        run: docker build -t codex-proxy-test .
+
+      - name: Test default port (8080)
+        run: |
+          docker run -d -p 8080:8080 --name test-container codex-proxy-test
+
+          echo "Waiting for container to become healthy..."
+          for i in {1..30}; do
+            STATUS=$(docker inspect --format='{{.State.Health.Status}}' test-container)
+            if [ "$STATUS" = "healthy" ]; then
+              echo "Container is healthy!"
+              break
+            fi
+            if [ "$STATUS" = "unhealthy" ]; then
+              echo "Container became unhealthy!"
+              docker logs test-container
+              exit 1
+            fi
+            sleep 1
+          done
+
+          if [ "$STATUS" != "healthy" ]; then
+            echo "Timeout waiting for container to become healthy."
+            docker logs test-container
+            exit 1
+          fi
+
+          curl -f http://localhost:8080/health
+
+          docker stop test-container
+          docker rm test-container
+
+      - name: Test custom port (8090)
+        run: |
+          mkdir -p custom-config
+          cp config/default.yaml custom-config/default.yaml
+          sed -i 's/port: 8080/port: 8090/' custom-config/default.yaml
+
+          docker run -d -p 8090:8090 --name test-container-custom \
+            -v $(pwd)/custom-config/default.yaml:/app/config/default.yaml \
+            codex-proxy-test
+
+          echo "Waiting for container to become healthy..."
+          for i in {1..30}; do
+            STATUS=$(docker inspect --format='{{.State.Health.Status}}' test-container-custom)
+            if [ "$STATUS" = "healthy" ]; then
+              echo "Container is healthy!"
+              break
+            fi
+            if [ "$STATUS" = "unhealthy" ]; then
+              echo "Container became unhealthy!"
+              docker logs test-container-custom
+              exit 1
+            fi
+            sleep 1
+          done
+
+          if [ "$STATUS" != "healthy" ]; then
+            echo "Timeout waiting for container to become healthy."
+            docker logs test-container-custom
+            exit 1
+          fi
+
+          curl -f http://localhost:8090/health
+
+          docker stop test-container-custom
+          docker rm test-container-custom
