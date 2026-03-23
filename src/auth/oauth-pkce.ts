@@ -344,9 +344,9 @@ export function startCallbackServer(
 
     try {
       const tokens = await exchangeCode(code, session.codeVerifier, session.redirectUri);
+      onAccount(tokens.access_token, tokens.refresh_token);
       deleteSession(state);
       markSessionCompleted(state);
-      onAccount(tokens.access_token, tokens.refresh_token);
       console.log(`[OAuth] Callback server on port ${port} — login successful`);
       res.writeHead(200, { "Content-Type": "text/html" });
       res.end(callbackResultHtml(true));

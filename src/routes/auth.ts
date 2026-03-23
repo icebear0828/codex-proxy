@@ -93,10 +93,10 @@ export function createAuthRoutes(
 
     try {
       const tokens = await exchangeCode(code, session.codeVerifier, session.redirectUri);
-      deleteSession(state);
-      markSessionCompleted(state);
       const entryId = pool.addAccount(tokens.access_token, tokens.refresh_token);
       scheduler.scheduleOne(entryId, tokens.access_token);
+      deleteSession(state);
+      markSessionCompleted(state);
 
       console.log(`[Auth] OAuth via code-relay — account ${entryId} added`);
       return c.json({ success: true });
@@ -137,10 +137,10 @@ export function createAuthRoutes(
 
     try {
       const tokens = await exchangeCode(code, session.codeVerifier, session.redirectUri);
-      deleteSession(state);
-      markSessionCompleted(state);
       const entryId = pool.addAccount(tokens.access_token, tokens.refresh_token);
       scheduler.scheduleOne(entryId, tokens.access_token);
+      deleteSession(state);
+      markSessionCompleted(state);
 
       console.log(`[Auth] OAuth login completed — account ${entryId} added`);
 
