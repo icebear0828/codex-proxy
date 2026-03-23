@@ -14,6 +14,14 @@ import type { TlsTransport, TlsTransportResponse } from "./transport.js";
 const STATUS_SEPARATOR = "\n__CURL_HTTP_STATUS__";
 const HEADER_TIMEOUT_MS = 30_000;
 
+/** Push header args to curl, skipping Accept-Encoding so --compressed can auto-negotiate. */
+export function pushHeaderArgs(args: string[], headers: Record<string, string>): void {
+  for (const [key, value] of Object.entries(headers)) {
+    if (key.toLowerCase() === "accept-encoding") continue;
+    args.push("-H", `${key}: ${value}`);
+  }
+}
+
 export class CurlCliTransport implements TlsTransport {
   /**
    * Streaming POST — spawns curl with -i to capture headers + stream body.
@@ -43,9 +51,7 @@ export class CurlCliTransport implements TlsTransport {
         args.push("--max-time", String(timeoutSec));
       }
 
-      for (const [key, value] of Object.entries(headers)) {
-        args.push("-H", `${key}: ${value}`);
-      }
+      pushHeaderArgs(args, headers);
       // Suppress curl's auto Expect: 100-continue (Chromium never sends it)
       args.push("-H", "Expect:");
       args.push(url);
@@ -188,9 +194,7 @@ export class CurlCliTransport implements TlsTransport {
       "--max-time", String(timeoutSec),
     ];
 
-    for (const [key, value] of Object.entries(headers)) {
-      args.push("-H", `${key}: ${value}`);
-    }
+    pushHeaderArgs(args, headers);
     args.push("-H", "Expect:");
     args.push("-w", STATUS_SEPARATOR + "%{http_code}");
     args.push(url);
@@ -218,9 +222,7 @@ export class CurlCliTransport implements TlsTransport {
       "-X", "POST",
     ];
 
-    for (const [key, value] of Object.entries(headers)) {
-      args.push("-H", `${key}: ${value}`);
-    }
+    pushHeaderArgs(args, headers);
     args.push("-H", "Expect:");
     args.push("-d", body);
     args.push("-w", STATUS_SEPARATOR + "%{http_code}");

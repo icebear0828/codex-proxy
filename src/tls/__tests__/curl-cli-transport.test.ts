@@ -7,7 +7,7 @@ vi.mock("../curl-binary.js", () => ({
   isImpersonate: () => true,
 }));
 
-import { formatSpawnError } from "../curl-cli-transport.js";
+import { formatSpawnError, pushHeaderArgs } from "../curl-cli-transport.js";
 
 describe("formatSpawnError", () => {
   it("returns architecture mismatch hint for errno -86 (EBADARCH)", () => {
@@ -30,5 +30,26 @@ describe("formatSpawnError", () => {
     const msg = formatSpawnError(err);
     expect(msg).toBe("curl spawn error: spawn ENOENT");
     expect(msg).not.toContain("architecture");
+  });
+});
+
+describe("pushHeaderArgs", () => {
+  it("strips Accept-Encoding so --compressed auto-negotiates", () => {
+    const args: string[] = [];
+    pushHeaderArgs(args, {
+      Authorization: "Bearer tok",
+      "Accept-Encoding": "gzip, deflate, br, zstd",
+      "User-Agent": "test/1.0",
+    });
+    expect(args).toEqual([
+      "-H", "Authorization: Bearer tok",
+      "-H", "User-Agent: test/1.0",
+    ]);
+  });
+
+  it("strips accept-encoding case-insensitively", () => {
+    const args: string[] = [];
+    pushHeaderArgs(args, { "accept-encoding": "gzip" });
+    expect(args).toEqual([]);
   });
 });
