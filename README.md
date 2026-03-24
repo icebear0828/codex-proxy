@@ -30,11 +30,7 @@
 
   <a href="https://x.com/IceBearMiner"><img src="https://img.shields.io/badge/Follow-@IceBearMiner-000?style=flat-square&logo=x&logoColor=white" alt="X"></a>
   <a href="https://github.com/icebear0828/codex-proxy/issues"><img src="https://img.shields.io/github/issues/icebear0828/codex-proxy?style=flat-square" alt="Issues"></a>
-
-  <br><br>
-
-  <strong>觉得有帮助？请作者喝杯咖啡</strong><br><br>
-  <img src="./.github/assets/donate.png" width="220" alt="微信赞赏码">
+  <a href="#-赞赏"><img src="https://img.shields.io/badge/赞赏-微信-07C160?style=flat-square&logo=wechat&logoColor=white" alt="赞赏"></a>
 
 </div>
 
@@ -436,6 +432,13 @@ server:
 
 <!-- CHANGELOG:START -->
 <!-- CHANGELOG:END -->
+
+## ☕ 赞赏
+
+<div align="center">
+  <p>觉得有帮助？请作者喝杯咖啡</p>
+  <img src="./.github/assets/donate.png" width="200" alt="微信赞赏码">
+</div>
 
 ## ⭐ Star History
 

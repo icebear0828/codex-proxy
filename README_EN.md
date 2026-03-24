@@ -30,11 +30,7 @@
 
   <a href="https://x.com/IceBearMiner"><img src="https://img.shields.io/badge/Follow-@IceBearMiner-000?style=flat-square&logo=x&logoColor=white" alt="X"></a>
   <a href="https://github.com/icebear0828/codex-proxy/issues"><img src="https://img.shields.io/github/issues/icebear0828/codex-proxy?style=flat-square" alt="Issues"></a>
-
-  <br><br>
-
-  <strong>Find this useful? Buy me a coffee!</strong><br><br>
-  <img src="./.github/assets/donate.png" width="220" alt="WeChat Donate">
+  <a href="#-donate"><img src="https://img.shields.io/badge/Donate-WeChat-07C160?style=flat-square&logo=wechat&logoColor=white" alt="Donate"></a>
 
 </div>
 
@@ -381,6 +377,13 @@ All configuration in `config/default.yaml`:
 - Codex API is **stream-only**. `stream: false` causes the proxy to stream internally and return assembled JSON.
 - This project relies on Codex Desktop's public API. Upstream updates are auto-detected and fingerprints auto-synced.
 - On Windows, curl-impersonate is unavailable. Falls back to system curl — use Docker or WSL for full TLS impersonation.
+
+## ☕ Donate
+
+<div align="center">
+  <p>Find this useful? Buy me a coffee!</p>
+  <img src="./.github/assets/donate.png" width="200" alt="WeChat Donate">
+</div>
 
 ## 📄 License
 
