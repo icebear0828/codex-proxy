@@ -38,7 +38,7 @@ jobs:
             if (count >= MAX_VERSIONS) break;
 
             const titleLine = section.split("\n")[0];
-            let sectionItems = [];
+            const sectionItems = [];
 
             for (const cat of CATEGORIES) {
               const re = new RegExp(`### ${cat}\\n([\\s\\S]*?)(?=\\n### |\\n## |$)`);
@@ -57,6 +57,7 @@ jobs:
               }
               if (items.length === 0) continue;
 
+              sectionItems.push(`**${cat}**`);
               const shown = items.slice(0, MAX_ITEMS_PER_CATEGORY);
               sectionItems.push(...shown);
               if (items.length > MAX_ITEMS_PER_CATEGORY) {

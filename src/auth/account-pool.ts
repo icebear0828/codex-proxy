@@ -266,8 +266,7 @@ export class AccountPool {
           return existing.id;
         }
       } else if (existing.token === token) {
-        // Same token without accountId — update in place
-        this.persistNow();
+        // Same token without accountId — already exists, skip
         return existing.id;
       }
     }
