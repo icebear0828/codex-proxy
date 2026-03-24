@@ -22,10 +22,13 @@ const IS_WIN = process.platform === "win32";
 const BINARY_NAME = IS_WIN ? "curl-impersonate.exe" : "curl-impersonate";
 
 /**
- * Chrome 136 TLS profile parameters.
- * Extracted from curl_chrome136 wrapper (lexiforest/curl-impersonate v1.4.4).
+ * Chrome 136 TLS profile parameters (fallback when --impersonate is unavailable).
+ * Extracted from curl_chrome136 wrapper (lexiforest/curl-impersonate).
  * These control TLS fingerprint, HTTP/2 framing, and protocol negotiation.
  * HTTP-level headers are NOT included — our fingerprint manager handles those.
+ *
+ * Preferred path: --impersonate chrome142 (v1.5.1+), which handles all of
+ * this automatically. This constant is only used as a manual fallback.
  */
 const CHROME_TLS_ARGS: string[] = [
   // ── TLS cipher suites (exact Chrome 136 order) ──
@@ -72,7 +75,10 @@ let _resolved: string | null = null;
 let _isImpersonate = false;
 let _supportsCompressed = true;
 let _tlsArgs: string[] | null = null;
-let _resolvedProfile = "chrome136";
+let _resolvedProfile = "chrome142";
+let _http11Fallback = false;
+let _http11FallbackUntil = 0; // epoch ms — fallback expires after this time
+const HTTP11_FALLBACK_TTL_MS = 10 * 60 * 1000; // 10 minutes
 
 /**
  * Resolve the curl binary path. Result is cached after first call.
@@ -126,7 +132,7 @@ export function resolveCurlBinary(): string {
  * Only these versions are valid --impersonate targets.
  * Sorted ascending — update when curl-impersonate adds new profiles.
  */
-const KNOWN_CHROME_PROFILES = [99, 100, 101, 104, 107, 110, 116, 119, 120, 123, 124, 131, 136];
+const KNOWN_CHROME_PROFILES = [99, 100, 101, 104, 107, 110, 116, 119, 120, 123, 124, 131, 133, 136, 142, 144];
 
 /**
  * Map a configured profile to the nearest known-supported version.
@@ -163,7 +169,7 @@ function detectImpersonateSupport(binary: string): string[] {
       timeout: 5000,
     });
     if (helpOutput.includes("--impersonate")) {
-      const configured = getConfig().tls.impersonate_profile ?? "chrome136";
+      const configured = getConfig().tls.impersonate_profile ?? "chrome142";
       const profile = resolveProfile(configured);
       _resolvedProfile = profile;
       console.log(`[TLS] Using --impersonate ${profile}`);
@@ -189,9 +195,14 @@ export function getChromeTlsArgs(): string[] {
     _tlsArgs = detectImpersonateSupport(_resolved!);
   }
   const args = [..._tlsArgs];
-  // Force HTTP/1.1 when configured (for proxies that don't support HTTP/2)
+  // Force HTTP/1.1 when configured or auto-detected as necessary
   const config = getConfig();
-  if (config.tls.force_http11) {
+  // Auto-expire H2 fallback after TTL
+  if (_http11Fallback && Date.now() >= _http11FallbackUntil) {
+    _http11Fallback = false;
+    console.log("[TLS] HTTP/1.1 fallback expired, retrying HTTP/2");
+  }
+  if (config.tls.force_http11 || _http11Fallback) {
     args.push("--http1.1");
   }
   return args;
@@ -338,6 +349,36 @@ export function getCurlDiagnostics(): {
 }
 
 /**
+ * Check if a curl error indicates HTTP/2 incompatibility and enable fallback.
+ * Called by transport layer when curl fails. Returns true if fallback was activated.
+ *
+ * Fallback is temporary (TTL-based) — after expiry, H2 is retried automatically.
+ * Exit code 16 is curl's dedicated HTTP/2 error and triggers unconditionally.
+ * Other exit codes require H2-related keywords in stderr to avoid false positives.
+ */
+export function checkHttp2Fallback(stderr: string, exitCode: number | null): boolean {
+  if (_http11Fallback && Date.now() < _http11FallbackUntil) return false; // active fallback
+  if (exitCode === 0) return false;
+
+  const h2Patterns = /ALPN|HTTP\/2|nghttp2|h2 error|GOAWAY/i;
+  // Exit 16 = dedicated HTTP/2 framing error — always trigger
+  const isH2 = exitCode === 16 || h2Patterns.test(stderr);
+  if (!isH2) return false;
+
+  _http11Fallback = true;
+  _http11FallbackUntil = Date.now() + HTTP11_FALLBACK_TTL_MS;
+  console.warn("[TLS] HTTP/2 failure detected, falling back to HTTP/1.1 for 10 minutes");
+  return true;
+}
+
+/**
+ * Whether HTTP/1.1 fallback is currently active.
+ */
+export function isHttp11Fallback(): boolean {
+  return _http11Fallback;
+}
+
+/**
  * Reset the cached binary path (useful for testing).
  */
 export function resetCurlBinaryCache(): void {
@@ -345,5 +386,7 @@ export function resetCurlBinaryCache(): void {
   _isImpersonate = false;
   _supportsCompressed = true;
   _tlsArgs = null;
-  _resolvedProfile = "chrome136";
+  _resolvedProfile = "chrome142";
+  _http11Fallback = false;
+  _http11FallbackUntil = 0;
 }

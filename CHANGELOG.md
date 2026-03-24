@@ -8,6 +8,18 @@
 
 ### Changed
 
+- TLS 指纹对齐：curl-impersonate 升级支持 chrome144 profile（v1.5.1），`KNOWN_CHROME_PROFILES` 新增 133/136/142/144
+- 默认协议从 HTTP/1.1 改为 HTTP/2，匹配真实 Codex Desktop 行为
+- 指纹版本同步至 v26.318.11754（build 1100）
+
+### Added
+
+- HTTP/2 自动降级：curl 因 H2 错误失败时自动切换 HTTP/1.1（TTL 10 分钟后重试 H2）
+  - exit code 16（H2 专属）无条件触发；其他 exit code 需 stderr 含 H2 关键词
+  - `force_http11` 配置仍可手动强制 HTTP/1.1
+
+### Fixed
+
 - 配置 overlay 机制：Dashboard 设置写入 `data/local.yaml`（gitignored），不再修改 `config/default.yaml`
   - `git pull` 不会覆盖用户自定义设置（proxy_api_key、rotation_strategy、quota 等）
   - `config/default.yaml` 的 `proxy_api_key` 默认值改为 `null`（自动生成）

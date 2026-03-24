@@ -3,8 +3,8 @@ api:
   timeout_seconds: 60
 client:
   originator: Codex Desktop
-  app_version: 26.311.21342
-  build_number: "993"
+  app_version: 26.318.11754
+  build_number: "1100"
   platform: darwin
   arch: arm64
   chromium_version: "144"
@@ -35,10 +35,14 @@ tls:
   curl_binary: auto
   impersonate_profile: chrome144
   proxy_url: null
-  force_http11: true
+  force_http11: false
 quota:
   refresh_interval_minutes: 5
   warning_thresholds:
-    primary: [80, 90]
-    secondary: [80, 90]
+    primary:
+      - 80
+      - 90
+    secondary:
+      - 80
+      - 90
   skip_exhausted: true

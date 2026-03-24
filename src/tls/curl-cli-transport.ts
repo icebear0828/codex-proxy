@@ -8,7 +8,7 @@
  */
 
 import { spawn, execFile } from "child_process";
-import { resolveCurlBinary, getChromeTlsArgs, getProxyArgs, isImpersonate as curlIsImpersonate, supportsCompressed } from "./curl-binary.js";
+import { resolveCurlBinary, getChromeTlsArgs, getProxyArgs, isImpersonate as curlIsImpersonate, supportsCompressed, checkHttp2Fallback } from "./curl-binary.js";
 import type { TlsTransport, TlsTransportResponse } from "./transport.js";
 
 const STATUS_SEPARATOR = "\n__CURL_HTTP_STATUS__";
@@ -156,6 +156,7 @@ export class CurlCliTransport implements TlsTransport {
           signal.removeEventListener("abort", onAbort);
         }
         if (!headersParsed) {
+          checkHttp2Fallback(stderrBuf, code);
           reject(new Error(`curl exited with code ${code}: ${stderrBuf}`));
         } else if (code !== 0 && code !== null) {
           // curl died mid-stream (e.g. connection reset, SIGPIPE) — signal error to reader
@@ -263,11 +264,13 @@ function execCurl(args: string[]): Promise<{ status: number; body: string }> {
       { maxBuffer: 2 * 1024 * 1024 },
       (err, stdout, stderr) => {
         if (err) {
-          const castErr = err as Error & { errno?: number };
+          const castErr = err as Error & { errno?: number; code?: string };
           // Check for EBADARCH first (architecture mismatch)
           if (castErr.errno === -86 || err.message.includes("-86")) {
             reject(new Error(formatSpawnError(castErr)));
           } else {
+            const exitCode = typeof castErr.code === "string" ? parseInt(castErr.code, 10) : null;
+            checkHttp2Fallback(stderr, Number.isNaN(exitCode) ? null : exitCode);
             reject(new Error(`curl failed: ${err.message} ${stderr}`));
           }
           return;
