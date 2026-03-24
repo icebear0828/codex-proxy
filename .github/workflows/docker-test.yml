@@ -1,0 +1,92 @@
+name: Docker Build and Test
+
+on:
+  push:
+    branches: [ master ]
+  pull_request:
+    branches: [ master ]
+  workflow_dispatch:
+
+jobs:
+  docker-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build Docker image
+        run: docker build -t codex-proxy-test .
+
+      - name: Test Docker container (default port 8080)
+        run: |
+          docker run -d -p 8080:8080 --name test-container codex-proxy-test
+
+          # Wait for healthcheck to pass (up to 30s)
+          echo "Waiting for container healthcheck..."
+          for i in {1..15}; do
+            HEALTH=$(docker inspect --format='{{json .State.Health.Status}}' test-container)
+            if [ "$HEALTH" = "\"healthy\"" ]; then
+              echo "Container is healthy!"
+              break
+            fi
+            if [ "$HEALTH" = "\"unhealthy\"" ]; then
+              echo "Container is unhealthy!"
+              docker logs test-container
+              exit 1
+            fi
+            sleep 2
+          done
+
+          if [ "$HEALTH" != "\"healthy\"" ]; then
+            echo "Healthcheck timed out!"
+            docker logs test-container
+            exit 1
+          fi
+
+          # Verify curl to health endpoint
+          curl -f http://localhost:8080/health
+          echo "Default port test passed!"
+
+      - name: Cleanup default container
+        if: always()
+        run: |
+          docker rm -f test-container || true
+
+      - name: Test Docker container (custom port 8090)
+        run: |
+          # Create a custom config by modifying the existing one
+          mkdir -p custom-config
+          cp config/default.yaml custom-config/default.yaml
+          sed -i 's/port: 8080/port: 8090/' custom-config/default.yaml
+
+          docker run -d -p 8090:8090 --name test-container-custom -v $(pwd)/custom-config/default.yaml:/app/config/default.yaml codex-proxy-test
+
+          # Wait for healthcheck to pass (up to 30s)
+          echo "Waiting for custom container healthcheck..."
+          for i in {1..15}; do
+            HEALTH=$(docker inspect --format='{{json .State.Health.Status}}' test-container-custom)
+            if [ "$HEALTH" = "\"healthy\"" ]; then
+              echo "Container is healthy!"
+              break
+            fi
+            if [ "$HEALTH" = "\"unhealthy\"" ]; then
+              echo "Container is unhealthy!"
+              docker logs test-container-custom
+              exit 1
+            fi
+            sleep 2
+          done
+
+          if [ "$HEALTH" != "\"healthy\"" ]; then
+            echo "Healthcheck timed out!"
+            docker logs test-container-custom
+            exit 1
+          fi
+
+          # Verify curl to health endpoint
+          curl -f http://localhost:8090/health
+          echo "Custom port test passed!"
+
+      - name: Cleanup custom container
+        if: always()
+        run: |
+          docker rm -f test-container-custom || true
