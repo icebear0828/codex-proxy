@@ -251,13 +251,10 @@ export class AccountPool {
     const userId = profile?.chatgpt_user_id ?? null;
 
     // Deduplicate by accountId + userId (team members share accountId but have distinct userId)
-    if (accountId) {
-      for (const existing of this.accounts.values()) {
-        if (
-          existing.accountId === accountId &&
-          existing.userId === userId
-        ) {
-          // Update the existing entry's token
+    // Fallback: if accountId is missing, deduplicate by token to prevent unbounded growth
+    for (const existing of this.accounts.values()) {
+      if (accountId) {
+        if (existing.accountId === accountId && existing.userId === userId) {
           existing.token = token;
           if (refreshToken !== undefined) {
             existing.refreshToken = refreshToken ?? null;
@@ -265,9 +262,13 @@ export class AccountPool {
           existing.email = profile?.email ?? existing.email;
           existing.planType = profile?.chatgpt_plan_type ?? existing.planType;
           existing.status = isTokenExpired(token) ? "expired" : "active";
-          this.persistNow(); // Critical data — persist immediately
+          this.persistNow();
           return existing.id;
         }
+      } else if (existing.token === token) {
+        // Same token without accountId — update in place
+        this.persistNow();
+        return existing.id;
       }
     }
 

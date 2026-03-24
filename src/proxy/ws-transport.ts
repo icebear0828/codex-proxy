@@ -19,6 +19,9 @@ import type { CodexInputItem } from "./codex-api.js";
 /** Cached ws module — loaded once on first use. */
 let _WS: typeof import("ws").default | undefined;
 
+/** Cached proxy agents keyed by URL — avoids creating a new TCP connection per request. */
+const _agentCache = new Map<string, InstanceType<typeof import("https-proxy-agent").HttpsProxyAgent>>();
+
 /** Lazily load the `ws` package. */
 async function getWS(): Promise<typeof import("ws").default> {
   if (!_WS) {
@@ -66,11 +69,16 @@ export async function createWebSocketResponse(
 ): Promise<Response> {
   const WS = await getWS();
 
-  // Lazy-import proxy agent only when needed
+  // Lazy-import proxy agent only when needed; cache by URL to reuse connections
   const wsOpts: ConstructorParameters<typeof WS>[2] = { headers };
   if (proxyUrl) {
-    const { HttpsProxyAgent } = await import("https-proxy-agent");
-    wsOpts.agent = new HttpsProxyAgent(proxyUrl);
+    let agent = _agentCache.get(proxyUrl);
+    if (!agent) {
+      const { HttpsProxyAgent } = await import("https-proxy-agent");
+      agent = new HttpsProxyAgent(proxyUrl);
+      _agentCache.set(proxyUrl, agent);
+    }
+    wsOpts.agent = agent;
   }
 
   return new Promise<Response>((resolve, reject) => {

@@ -23,8 +23,10 @@ jobs:
           const changelog = fs.readFileSync("CHANGELOG.md", "utf-8").replace(/\r\n/g, "\n");
           const readme = fs.readFileSync("README.md", "utf-8").replace(/\r\n/g, "\n");
 
-          const MAX_VERSIONS = 3;
-          const MAX_ITEMS = 5;
+          // Only show Unreleased + latest released version
+          const MAX_VERSIONS = 2;
+          const MAX_ITEMS_PER_CATEGORY = 5;
+          const CATEGORIES = ["Added", "Changed", "Fixed"];
 
           // Split into version sections by "## " headings
           const sections = changelog.split(/(?=^## )/m).filter(s => s.startsWith("## "));
@@ -35,38 +37,45 @@ jobs:
           for (const section of sections) {
             if (count >= MAX_VERSIONS) break;
 
-            // Extract version title line (first line)
             const titleLine = section.split("\n")[0];
+            let sectionItems = [];
 
-            // Extract "### Added" block
-            const addedMatch = section.match(/### Added\n([\s\S]*?)(?=\n### |\n## |$)/);
-            if (!addedMatch) continue; // skip versions without Added
+            for (const cat of CATEGORIES) {
+              const re = new RegExp(`### ${cat}\\n([\\s\\S]*?)(?=\\n### |\\n## |$)`);
+              const match = section.match(re);
+              if (!match) continue;
 
-            // Parse items (lines starting with "- ")
-            const items = addedMatch[1].trim().split("\n").filter(l => l.startsWith("- "));
-            if (items.length === 0) continue;
+              // Collect top-level items (start with "- "), include sub-items (start with "  ")
+              const lines = match[1].trim().split("\n");
+              const items = [];
+              for (const line of lines) {
+                if (line.startsWith("- ")) {
+                  items.push(line);
+                } else if (line.startsWith("  ") && items.length > 0) {
+                  items[items.length - 1] += "\n" + line;
+                }
+              }
+              if (items.length === 0) continue;
 
-            // Demote "## " to "### " for README context
+              const shown = items.slice(0, MAX_ITEMS_PER_CATEGORY);
+              sectionItems.push(...shown);
+              if (items.length > MAX_ITEMS_PER_CATEGORY) {
+                sectionItems.push(`- ...（[查看全部](./CHANGELOG.md)）`);
+              }
+            }
+
+            if (sectionItems.length === 0) continue;
+
             const demotedTitle = titleLine.replace(/^## /, "### ");
             output.push(demotedTitle);
             output.push("");
-
-            const shown = items.slice(0, MAX_ITEMS);
-            // Shorten each item to first sentence (up to first Chinese period or newline)
-            for (const item of shown) {
-              output.push(item);
-            }
-
-            if (items.length > MAX_ITEMS) {
-              output.push(`- ...（[查看全部更新](./CHANGELOG.md)）`);
-            }
-
+            output.push(...sectionItems);
             output.push("");
             count++;
           }
 
           if (output.length === 0) {
-            console.log("No Added sections found in CHANGELOG.md");
+            console.log("No changelog sections found");
             process.exit(0);
           }
 
