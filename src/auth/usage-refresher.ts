@@ -83,7 +83,7 @@ async function fetchQuotaForAllAccounts(
       const windowSec = usage.rate_limit.primary_window?.limit_window_seconds ?? null;
       pool.syncRateLimitWindow(entry.id, resetAt, windowSec);
 
-      // Mark exhausted if limit reached (primary or secondary)
+      // Mark exhausted if limit reached, or recover if no longer exhausted
       if (config.quota.skip_exhausted) {
         const primaryExhausted = quota.rate_limit.limit_reached;
         const secondaryExhausted = quota.secondary_rate_limit?.limit_reached ?? false;
@@ -93,6 +93,10 @@ async function fetchQuotaForAllAccounts(
             : quota.secondary_rate_limit?.reset_at ?? null;
           pool.markQuotaExhausted(entry.id, exhaustResetAt);
           console.log(`[QuotaRefresh] Account ${entry.id} (${entry.email ?? "?"}) quota exhausted — marked rate_limited`);
+        } else if (entry.status === "rate_limited") {
+          // Quota no longer exhausted — recover to active and clear rate_limit_until
+          pool.clearRateLimit(entry.id);
+          console.log(`[QuotaRefresh] Account ${entry.id} (${entry.email ?? "?"}) quota recovered — marked active`);
         }
       }
 

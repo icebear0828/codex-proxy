@@ -14,6 +14,8 @@
 
 ### Fixed
 
+- 额度恢复后账号仍显示"已限速"（#162）
+  - usage-refresher 发现 `limit_reached: false` 时主动调用 `clearRateLimit()` 恢复 active 并清除 `rate_limit_until`
 - Anthropic `/v1/messages` 截图场景 400 报错：`tool_result.content` 不支持 image block
   - Schema 放行 image block；翻译层将图片提取为紧随 `function_call_output` 的 user message（`input_image`）
 - 代理自动检测使用 `host.docker.internal` 主机名导致 curl 无法解析（#114）

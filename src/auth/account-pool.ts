@@ -388,6 +388,16 @@ export class AccountPool {
     this.schedulePersist();
   }
 
+  /** Clear rate_limited status and rate_limit_until (quota refresher confirms recovery). */
+  clearRateLimit(entryId: string): void {
+    const entry = this.accounts.get(entryId);
+    if (!entry) return;
+    entry.status = "active";
+    entry.usage.rate_limit_until = null;
+    this.acquireLocks.delete(entryId);
+    this.schedulePersist();
+  }
+
   resetUsage(entryId: string): boolean {
     const entry = this.accounts.get(entryId);
     if (!entry) return false;
