@@ -1,8 +1,6 @@
 import { Hono } from "hono";
-import { resolve } from "path";
 import { getConnInfo } from "@hono/node-server/conninfo";
-import { getConfig, reloadAllConfigs, ROTATION_STRATEGIES } from "../../config.js";
-import { getConfigDir } from "../../paths.js";
+import { getConfig, getLocalConfigPath, reloadAllConfigs, ROTATION_STRATEGIES } from "../../config.js";
 import { mutateYaml } from "../../utils/yaml-mutate.js";
 import { isLocalhostRequest } from "../../utils/is-localhost.js";
 
@@ -38,8 +36,7 @@ export function createSettingsRoutes(): Hono {
       return c.json({ error: `rotation_strategy must be one of: ${ROTATION_STRATEGIES.join(", ")}` });
     }
 
-    const configPath = resolve(getConfigDir(), "default.yaml");
-    mutateYaml(configPath, (data) => {
+    mutateYaml(getLocalConfigPath(), (data) => {
       if (!data.auth) data.auth = {};
       (data.auth as Record<string, unknown>).rotation_strategy = body.rotation_strategy;
     });
@@ -84,10 +81,9 @@ export function createSettingsRoutes(): Hono {
       }
     }
 
-    const configPath = resolve(getConfigDir(), "default.yaml");
-    mutateYaml(configPath, (data) => {
-      const server = data.server as Record<string, unknown>;
-      server.proxy_api_key = newKey;
+    mutateYaml(getLocalConfigPath(), (data) => {
+      if (!data.server) data.server = {};
+      (data.server as Record<string, unknown>).proxy_api_key = newKey;
     });
     reloadAllConfigs();
 
@@ -143,8 +139,7 @@ export function createSettingsRoutes(): Hono {
       }
     }
 
-    const configPath = resolve(getConfigDir(), "default.yaml");
-    mutateYaml(configPath, (data) => {
+    mutateYaml(getLocalConfigPath(), (data) => {
       if (!data.quota) data.quota = {};
       const quota = data.quota as Record<string, unknown>;
       if (body.refresh_interval_minutes !== undefined) {

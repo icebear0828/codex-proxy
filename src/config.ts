@@ -1,10 +1,10 @@
-import { readFileSync } from "fs";
+import { readFileSync, existsSync } from "fs";
 import { resolve } from "path";
 import yaml from "js-yaml";
 import { z } from "zod";
 import { loadStaticModels } from "./models/model-store.js";
 import { triggerImmediateRefresh } from "./models/model-fetcher.js";
-import { getConfigDir } from "./paths.js";
+import { getConfigDir, getDataDir } from "./paths.js";
 
 export const ROTATION_STRATEGIES = ["least_used", "round_robin", "sticky"] as const;
 
@@ -81,6 +81,51 @@ function loadYaml(filePath: string): unknown {
   return yaml.load(content);
 }
 
+/** Deep merge source into target. Source values win. Arrays are replaced, not merged. */
+function deepMerge(
+  target: Record<string, unknown>,
+  source: Record<string, unknown>,
+): Record<string, unknown> {
+  for (const key of Object.keys(source)) {
+    const sv = source[key];
+    const tv = target[key];
+    if (
+      sv !== null && typeof sv === "object" && !Array.isArray(sv) &&
+      tv !== null && typeof tv === "object" && !Array.isArray(tv)
+    ) {
+      target[key] = deepMerge(
+        tv as Record<string, unknown>,
+        sv as Record<string, unknown>,
+      );
+    } else {
+      target[key] = sv;
+    }
+  }
+  return target;
+}
+
+/** Load default.yaml and merge data/local.yaml overlay (if exists). */
+function loadMergedConfig(configDir?: string): Record<string, unknown> {
+  const dir = configDir ?? getConfigDir();
+  const raw = loadYaml(resolve(dir, "default.yaml")) as Record<string, unknown>;
+  // When a custom configDir is provided (tests), look for local.yaml alongside it;
+  // otherwise use the standard data directory.
+  const dataDir = configDir ? resolve(configDir, "..", "data") : getDataDir();
+  const localPath = resolve(dataDir, "local.yaml");
+  if (existsSync(localPath)) {
+    try {
+      const local = loadYaml(localPath) as Record<string, unknown> | null;
+      if (local && typeof local === "object") {
+        deepMerge(raw, local);
+        console.log("[Config] Merged local overrides from data/local.yaml");
+      }
+    } catch (err) {
+      console.warn(`[Config] Failed to load data/local.yaml: ${err instanceof Error ? err.message : err}`);
+    }
+  }
+  return raw;
+}
+
 function applyEnvOverrides(raw: Record<string, unknown>): Record<string, unknown> {
   const jwtEnv = process.env.CODEX_JWT_TOKEN?.trim();
   if (jwtEnv && jwtEnv.startsWith("eyJ")) {
@@ -113,8 +158,7 @@ let _fingerprint: FingerprintConfig | null = null;
 
 export function loadConfig(configDir?: string): AppConfig {
   if (_config) return _config;
-  const dir = configDir ?? getConfigDir();
-  const raw = loadYaml(resolve(dir, "default.yaml")) as Record<string, unknown>;
+  const raw = loadMergedConfig(configDir);
   applyEnvOverrides(raw);
   _config = ConfigSchema.parse(raw);
   return _config;
@@ -138,6 +182,11 @@ export function getFingerprint(): FingerprintConfig {
   return _fingerprint;
 }
 
+/** Path to the local overlay config file (data/local.yaml). */
+export function getLocalConfigPath(): string {
+  return resolve(getDataDir(), "local.yaml");
+}
+
 export function mutateClientConfig(patch: Partial<AppConfig["client"]>): void {
   if (!_config) throw new Error("Config not loaded");
   Object.assign(_config.client, patch);
@@ -146,8 +195,7 @@ export function mutateClientConfig(patch: Partial<AppConfig["client"]>): void {
 /** Reload config from disk (hot-reload after full-update).
  *  P1-5: Load to temp first, then swap atomically to avoid null window. */
 export function reloadConfig(configDir?: string): AppConfig {
-  const dir = configDir ?? getConfigDir();
-  const raw = loadYaml(resolve(dir, "default.yaml")) as Record<string, unknown>;
+  const raw = loadMergedConfig(configDir);
   applyEnvOverrides(raw);
   const fresh = ConfigSchema.parse(raw);
   _config = fresh;

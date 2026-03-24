@@ -21,6 +21,7 @@ const mockConfig = {
 vi.mock("../../config.js", () => ({
   getConfig: vi.fn(() => mockConfig),
   reloadAllConfigs: vi.fn(),
+  getLocalConfigPath: vi.fn(() => "/tmp/test/local.yaml"),
   ROTATION_STRATEGIES: ["least_used", "round_robin", "sticky"],
 }));
 

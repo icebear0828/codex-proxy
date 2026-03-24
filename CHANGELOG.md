@@ -6,6 +6,12 @@
 
 ## [Unreleased]
 
+### Changed
+
+- 配置 overlay 机制：Dashboard 设置写入 `data/local.yaml`（gitignored），不再修改 `config/default.yaml`
+  - `git pull` 不会覆盖用户自定义设置（proxy_api_key、rotation_strategy、quota 等）
+  - `config/default.yaml` 的 `proxy_api_key` 默认值改为 `null`（自动生成）
+
 ### Fixed
 
 - Anthropic `/v1/messages` 截图场景 400 报错：`tool_result.content` 不支持 image block
