@@ -1,0 +1,90 @@
+name: Docker Smoke Test
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build Docker image
+        run: docker build -t codex-proxy-test .
+
+      - name: Test default port (8080)
+        run: |
+          docker run -d --name proxy-default -p 8080:8080 codex-proxy-test
+
+          echo "Waiting for container to become healthy..."
+          for i in {1..30}; do
+            STATUS=$(docker inspect --format='{{.State.Health.Status}}' proxy-default)
+            if [ "$STATUS" = "healthy" ]; then
+              echo "Container is healthy!"
+              break
+            fi
+            if [ "$STATUS" = "unhealthy" ]; then
+              echo "Container is unhealthy!"
+              docker logs proxy-default
+              exit 1
+            fi
+            sleep 1
+          done
+
+          if [ "$(docker inspect --format='{{.State.Health.Status}}' proxy-default)" != "healthy" ]; then
+            echo "Container failed to become healthy within 30s"
+            docker logs proxy-default
+            exit 1
+          fi
+
+          STATUS_CODE=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:8080/health)
+          if [ "$STATUS_CODE" != "200" ]; then
+            echo "Expected 200 from /health, got $STATUS_CODE"
+            docker logs proxy-default
+            exit 1
+          fi
+
+          docker rm -f proxy-default
+
+      - name: Test custom port (8090)
+        run: |
+          mkdir -p custom-config
+          cp config/default.yaml custom-config/
+          sed -i 's/port: 8080/port: 8090/' custom-config/default.yaml
+
+          docker run -d --name proxy-custom \
+            -p 8090:8090 \
+            -v $(pwd)/custom-config/default.yaml:/app/config/default.yaml \
+            codex-proxy-test
+
+          echo "Waiting for container to become healthy..."
+          for i in {1..30}; do
+            STATUS=$(docker inspect --format='{{.State.Health.Status}}' proxy-custom)
+            if [ "$STATUS" = "healthy" ]; then
+              echo "Container is healthy!"
+              break
+            fi
+            if [ "$STATUS" = "unhealthy" ]; then
+              echo "Container is unhealthy!"
+              docker logs proxy-custom
+              exit 1
+            fi
+            sleep 1
+          done
+
+          if [ "$(docker inspect --format='{{.State.Health.Status}}' proxy-custom)" != "healthy" ]; then
+            echo "Container failed to become healthy within 30s"
+            docker logs proxy-custom
+            exit 1
+          fi
+
+          STATUS_CODE=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:8090/health)
+          if [ "$STATUS_CODE" != "200" ]; then
+            echo "Expected 200 from /health on port 8090, got $STATUS_CODE"
+            docker logs proxy-custom
+            exit 1
+          fi
+
+          docker rm -f proxy-custom
