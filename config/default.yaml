@@ -1,6 +1,6 @@
 api:
   base_url: https://chatgpt.com/backend-api
-  timeout_seconds: 60
+  timeout_seconds: 600
 client:
   originator: Codex Desktop
   app_version: 26.318.11754
