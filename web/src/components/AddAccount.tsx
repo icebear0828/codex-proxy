@@ -45,7 +45,7 @@ export function AddAccount({ visible, onSubmitRelay, onAddByRefreshToken, addInf
         <p class="text-sm text-primary">{t(addInfo as TranslationKey)}</p>
       )}
       {addError && (
-        <p class="text-sm text-red-500">{addError}</p>
+        <p class="text-sm text-red-500">{t(addError as TranslationKey)}</p>
       )}
       {visible && (
         <section class="bg-white dark:bg-card-dark border border-gray-200 dark:border-border-dark rounded-xl p-5 shadow-sm transition-colors space-y-4">
