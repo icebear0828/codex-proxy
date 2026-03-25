@@ -114,6 +114,35 @@ describe("account import/export", () => {
     }
   });
 
+  it("GET /auth/accounts/export?format=minimal returns only refreshToken + label", async () => {
+    const id1 = pool.addAccount("tokenAAAA1234567890");
+    // Manually set refreshToken and label
+    const entry = pool.getEntry(id1);
+    if (entry) {
+      entry.refreshToken = "rt_test_abc";
+    }
+    pool.setLabel(id1, "My Team");
+
+    // Add another account without refreshToken
+    const id2 = pool.addAccount("tokenBBBB1234567890");
+    const entry2 = pool.getEntry(id2);
+    if (entry2) {
+      entry2.refreshToken = null;
+    }
+
+    const res = await app.request("/auth/accounts/export?format=minimal");
+    expect(res.status).toBe(200);
+    const data = await res.json() as { accounts: Array<Record<string, unknown>> };
+    // Only accounts with refreshToken are included
+    expect(data.accounts).toHaveLength(1);
+    expect(data.accounts[0].refreshToken).toBe("rt_test_abc");
+    expect(data.accounts[0].label).toBe("My Team");
+    // Should NOT contain token, id, email, etc.
+    expect(data.accounts[0]).not.toHaveProperty("token");
+    expect(data.accounts[0]).not.toHaveProperty("id");
+    expect(data.accounts[0]).not.toHaveProperty("email");
+  });
+
   it("GET /auth/accounts/export?ids= filters server-side", async () => {
     const id1 = pool.addAccount("tokenAAAA1234567890");
     pool.addAccount("tokenBBBB1234567890");

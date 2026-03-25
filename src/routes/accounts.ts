@@ -78,6 +78,7 @@ export function createAccountRoutes(
 
   // Export accounts (with tokens) for backup/migration
   // ?ids=id1,id2 for selective export; omit for all
+  // ?format=minimal for refreshToken + label only (portable migration)
   app.get("/auth/accounts/export", (c) => {
     let entries = pool.getAllEntries();
     const idsParam = c.req.query("ids");
@@ -85,6 +86,18 @@ export function createAccountRoutes(
       const idSet = new Set(idsParam.split(",").filter(Boolean));
       entries = entries.filter((e) => idSet.has(e.id));
     }
+
+    if (c.req.query("format") === "minimal") {
+      const minimal = entries
+        .filter((e) => e.refreshToken)
+        .map((e) => {
+          const item: { refreshToken: string; label?: string } = { refreshToken: e.refreshToken! };
+          if (e.label) item.label = e.label;
+          return item;
+        });
+      return c.json({ accounts: minimal });
+    }
+
     return c.json({ accounts: entries });
   });
 

@@ -13,7 +13,7 @@ interface AccountListProps {
   lastUpdated: Date | null;
   proxies?: ProxyEntry[];
   onProxyChange?: (accountId: string, proxyId: string) => void;
-  onExport?: (selectedIds?: string[]) => Promise<void>;
+  onExport?: (selectedIds?: string[], format?: "full" | "minimal") => Promise<void>;
   onImport?: (file: File) => Promise<{ success: boolean; added: number; updated: number; failed: number; errors: string[] }>;
   onToggleStatus?: (id: string, currentStatus: string) => Promise<string | null>;
   onUpdateLabel?: (id: string, label: string | null) => Promise<string | null>;

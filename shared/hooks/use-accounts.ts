@@ -162,18 +162,20 @@ export function useAccounts() {
     setList((prev) => prev.map((a) => a.id === accountId ? { ...a, ...patch } : a));
   }, []);
 
-  const exportAccounts = useCallback(async (selectedIds?: string[]) => {
-    const params = selectedIds && selectedIds.length > 0
-      ? `?ids=${selectedIds.join(",")}`
-      : "";
-    const resp = await fetch(`/auth/accounts/export${params}`);
+  const exportAccounts = useCallback(async (selectedIds?: string[], format?: "full" | "minimal") => {
+    const params = new URLSearchParams();
+    if (selectedIds && selectedIds.length > 0) params.set("ids", selectedIds.join(","));
+    if (format === "minimal") params.set("format", "minimal");
+    const qs = params.toString() ? `?${params.toString()}` : "";
+    const resp = await fetch(`/auth/accounts/export${qs}`);
     const data = await resp.json() as { accounts: Array<{ id: string }> };
     const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
     const date = new Date().toISOString().slice(0, 10);
-    a.download = `accounts-export-${date}.json`;
+    const suffix = format === "minimal" ? "-minimal" : "";
+    a.download = `accounts-export${suffix}-${date}.json`;
     a.style.display = "none";
     document.body.appendChild(a);
     a.click();
