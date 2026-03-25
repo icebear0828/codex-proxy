@@ -128,8 +128,9 @@ export function createAccountRoutes(
         token = entry.token;
       } else {
         // Refresh-token-only — exchange for access token
+        // refine() guarantees refreshToken is truthy when token is absent
         try {
-          const tokens = await refreshAccessToken(rt!, globalProxyUrl);
+          const tokens = await refreshAccessToken(rt as string, globalProxyUrl);
           const validation = validateManualToken(tokens.access_token);
           if (!validation.valid) {
             failed++;
