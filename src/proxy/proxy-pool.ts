@@ -218,10 +218,16 @@ export class ProxyPool {
 
     // Specific proxy ID
     const proxy = this.proxies.get(assignment);
-    if (!proxy || proxy.status !== "active") {
-      // Proxy deleted or unreachable/disabled — fall back to global
+    if (!proxy) {
+      // Proxy deleted — fall back to global
       return undefined;
     }
+    if (proxy.status === "disabled") {
+      // Manually disabled — fall back to global
+      return undefined;
+    }
+    // Use the assigned proxy even if health check marked it "unreachable" —
+    // the user explicitly chose this proxy, don't silently swap it out.
     return proxy.url;
   }
 
