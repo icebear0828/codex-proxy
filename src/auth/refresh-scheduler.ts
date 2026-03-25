@@ -126,12 +126,17 @@ export class RefreshScheduler {
     }
   }
 
-  /** Cancel all timers. */
+  /** Cancel all timers and drain the semaphore queue. */
   destroy(): void {
     for (const timer of this.timers.values()) {
       clearTimeout(timer);
     }
     this.timers.clear();
+    // Unblock any waiters so their promises resolve (doRefresh will
+    // bail out via getEntry returning null or scheduler being dead).
+    for (const resolve of this._queue) resolve();
+    this._queue.length = 0;
+    this._running = 0;
   }
 
   // ── Internal ────────────────────────────────────────────────────
