@@ -1,0 +1,73 @@
+name: Docker Smoke Test
+
+on:
+  push:
+    branches: [ master ]
+  pull_request:
+    branches: [ master ]
+
+jobs:
+  smoke-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build Docker image
+        run: docker build -t codex-proxy-test .
+
+      - name: Test default port (8080)
+        run: |
+          docker run -d --name test-8080 -p 8080:8080 codex-proxy-test
+
+          # Wait for healthcheck (up to 30s)
+          echo "Waiting for container to become healthy..."
+          for i in {1..30}; do
+            HEALTH_STATUS=$(docker inspect --format='{{.State.Health.Status}}' test-8080)
+            if [ "$HEALTH_STATUS" = "healthy" ]; then
+              echo "Container is healthy!"
+              break
+            fi
+            if [ "$HEALTH_STATUS" = "unhealthy" ]; then
+              echo "Container became unhealthy!"
+              docker logs test-8080
+              exit 1
+            fi
+            sleep 1
+          done
+
+          # Verify endpoint
+          curl -f http://localhost:8080/health || (docker logs test-8080 && exit 1)
+
+          docker stop test-8080
+          docker rm test-8080
+
+      - name: Test custom port (8090)
+        run: |
+          # Create a custom config
+          mkdir -p custom-config
+          cp config/default.yaml custom-config/default.yaml
+          sed -i 's/port: 8080/port: 8090/g' custom-config/default.yaml
+
+          docker run -d --name test-8090 -p 8090:8090 -v ${{ github.workspace }}/custom-config/default.yaml:/app/config/default.yaml codex-proxy-test
+
+          # Wait for healthcheck (up to 30s)
+          echo "Waiting for container to become healthy..."
+          for i in {1..30}; do
+            HEALTH_STATUS=$(docker inspect --format='{{.State.Health.Status}}' test-8090)
+            if [ "$HEALTH_STATUS" = "healthy" ]; then
+              echo "Container is healthy!"
+              break
+            fi
+            if [ "$HEALTH_STATUS" = "unhealthy" ]; then
+              echo "Container became unhealthy!"
+              docker logs test-8090
+              exit 1
+            fi
+            sleep 1
+          done
+
+          # Verify endpoint
+          curl -f http://localhost:8090/health || (docker logs test-8090 && exit 1)
+
+          docker stop test-8090
+          docker rm test-8090
