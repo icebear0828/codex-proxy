@@ -14,6 +14,7 @@
 
 ### Fixed
 
+- Electron 模式下 `data/local.yaml` 中的 `server.host` 配置不生效——Electron 硬编码 `127.0.0.1` 覆盖了用户配置，现在 `local.yaml` 显式设置的 host 优先于启动参数（#175）
 - Dashboard 清空上游代理后 reload 被环境变量 `HTTPS_PROXY` 覆盖回来——`local.yaml` 显式设置的 `proxy_url` 现在优先于环境变量
 - Release 资产命名统一：`artifactName` 模板强制 `Codex-Proxy-{version}-{os}-{arch}.{ext}`，消除 `Codex.Proxy` vs `Codex-Proxy` 重复，x64 DMG 现在明确标注架构（`mac-x64`）
 - macOS x64 构建前清理旧资产，避免 release 页面出现重复文件

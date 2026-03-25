@@ -1,6 +1,6 @@
 import { Hono } from "hono";
 import { serve } from "@hono/node-server";
-import { loadConfig, loadFingerprint, getConfig } from "./config.js";
+import { loadConfig, loadFingerprint, getConfig, hasLocalOverride } from "./config.js";
 import { AccountPool } from "./auth/account-pool.js";
 import { RefreshScheduler } from "./auth/refresh-scheduler.js";
 
@@ -98,8 +98,11 @@ export async function startServer(options?: StartOptions): Promise<ServerHandle>
   app.route("/", webRoutes);
 
   // Start server
+  // User's explicit local.yaml host wins over programmatic options (e.g. Electron's 127.0.0.1 default)
   const port = options?.port ?? config.server.port;
-  const host = options?.host ?? config.server.host;
+  const host = hasLocalOverride("server", "host")
+    ? config.server.host
+    : (options?.host ?? config.server.host);
 
   const poolSummary = accountPool.getPoolSummary();
   const displayHost = (host === "0.0.0.0" || host === "::") ? "localhost" : host;

@@ -180,11 +180,13 @@ function applyEnvOverrides(
 
 let _config: AppConfig | null = null;
 let _fingerprint: FingerprintConfig | null = null;
+let _localOverrides: Record<string, unknown> | null = null;
 
 export function loadConfig(configDir?: string): AppConfig {
   if (_config) return _config;
   const { raw, local } = loadMergedConfig(configDir);
   applyEnvOverrides(raw, local);
+  _localOverrides = local;
   _config = ConfigSchema.parse(raw);
   return _config;
 }
@@ -212,6 +214,19 @@ export function getLocalConfigPath(): string {
   return resolve(getDataDir(), "local.yaml");
 }
 
+/**
+ * Check whether a config key was explicitly set in data/local.yaml.
+ * Usage: hasLocalOverride("server", "host") → true if local.yaml contains server.host
+ */
+export function hasLocalOverride(...path: string[]): boolean {
+  let obj: unknown = _localOverrides;
+  for (const key of path) {
+    if (obj === null || obj === undefined || typeof obj !== "object") return false;
+    obj = (obj as Record<string, unknown>)[key];
+  }
+  return obj !== undefined;
+}
+
 export function mutateClientConfig(patch: Partial<AppConfig["client"]>): void {
   if (!_config) throw new Error("Config not loaded");
   Object.assign(_config.client, patch);
@@ -222,6 +237,7 @@ export function mutateClientConfig(patch: Partial<AppConfig["client"]>): void {
 export function reloadConfig(configDir?: string): AppConfig {
   const { raw, local } = loadMergedConfig(configDir);
   applyEnvOverrides(raw, local);
+  _localOverrides = local;
   const fresh = ConfigSchema.parse(raw);
   _config = fresh;
   return _config;
