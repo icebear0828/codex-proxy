@@ -121,6 +121,7 @@ function Dashboard() {
           <AddAccount
             visible={accounts.addVisible}
             onSubmitRelay={accounts.submitRelay}
+            onAddByRefreshToken={accounts.addByRefreshToken}
             addInfo={accounts.addInfo}
             addError={accounts.addError}
           />

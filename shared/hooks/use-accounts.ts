@@ -139,6 +139,31 @@ export function useAccounts() {
     [loadAccounts]
   );
 
+  const addByRefreshToken = useCallback(async (refreshToken: string): Promise<string | null> => {
+    setAddInfo("");
+    setAddError("");
+    try {
+      const resp = await fetch("/auth/accounts", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ refreshToken }),
+      });
+      const data = await resp.json();
+      if (!resp.ok) {
+        const msg = data.error || "Failed to add account";
+        setAddError(msg);
+        return msg;
+      }
+      setAddInfo("accountAdded");
+      await loadAccounts();
+      return null;
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      setAddError(msg);
+      return msg;
+    }
+  }, [loadAccounts]);
+
   const deleteAccount = useCallback(
     async (id: string) => {
       try {
@@ -290,6 +315,7 @@ export function useAccounts() {
     patchLocal,
     startAdd,
     submitRelay,
+    addByRefreshToken,
     deleteAccount,
     exportAccounts,
     importAccounts,

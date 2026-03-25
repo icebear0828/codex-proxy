@@ -339,24 +339,48 @@ export function createAccountRoutes(
     return c.json({ accounts: enriched });
   });
 
-  // Add account
+  // Add account (token or refreshToken)
   app.post("/auth/accounts", async (c) => {
-    const body = await c.req.json<{ token: string }>();
+    const body = await c.req.json<{ token?: string; refreshToken?: string }>();
     const token = body.token?.trim();
+    const rt = body.refreshToken?.trim();
 
-    if (!token) {
+    if (!token && !rt) {
       c.status(400);
-      return c.json({ error: "Token is required" });
+      return c.json({ error: "Either token or refreshToken is required" });
     }
 
-    const validation = validateManualToken(token);
-    if (!validation.valid) {
-      c.status(400);
-      return c.json({ error: validation.error });
+    let finalToken: string;
+    let finalRt: string | null = rt ?? null;
+
+    if (token) {
+      const validation = validateManualToken(token);
+      if (!validation.valid) {
+        c.status(400);
+        return c.json({ error: validation.error });
+      }
+      finalToken = token;
+    } else {
+      // Refresh-token-only — exchange for access token
+      const config = getConfig();
+      const proxyUrl = config.tls?.proxy_url ?? null;
+      try {
+        const tokens = await refreshAccessToken(finalRt as string, proxyUrl);
+        const validation = validateManualToken(tokens.access_token);
+        if (!validation.valid) {
+          c.status(400);
+          return c.json({ error: `Refresh succeeded but token invalid: ${validation.error}` });
+        }
+        finalToken = tokens.access_token;
+        finalRt = tokens.refresh_token ?? finalRt;
+      } catch (err) {
+        c.status(502);
+        return c.json({ error: `Refresh token exchange failed: ${err instanceof Error ? err.message : String(err)}` });
+      }
     }
 
-    const entryId = pool.addAccount(token);
-    scheduler.scheduleOne(entryId, token);
+    const entryId = pool.addAccount(finalToken, finalRt);
+    scheduler.scheduleOne(entryId, finalToken);
 
     const accounts = pool.getAccounts();
     const added = accounts.find((a) => a.id === entryId);
