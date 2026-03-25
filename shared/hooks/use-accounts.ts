@@ -253,6 +253,11 @@ export function useAccounts() {
     }
   }, [loadAccounts]);
 
+  const toggleStatus = useCallback(async (id: string, currentStatus: string): Promise<string | null> => {
+    const newStatus = currentStatus === "disabled" ? "active" : "disabled";
+    return batchSetStatus([id], newStatus);
+  }, [batchSetStatus]);
+
   return {
     list,
     loading,
@@ -270,5 +275,6 @@ export function useAccounts() {
     importAccounts,
     batchDelete,
     batchSetStatus,
+    toggleStatus,
   };
 }

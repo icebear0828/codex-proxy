@@ -262,6 +262,9 @@ export const translations = {
     collapse: "Collapse",
     refreshAllQuota: "Refresh All Quota",
     refreshQuota: "Refresh Quota",
+    claudeCodeCustom: "Custom",
+    enableAccount: "Enable account",
+    disableAccount: "Disable account",
   },
   zh: {
     serverOnline: "\u670d\u52a1\u8fd0\u884c\u4e2d",
@@ -529,6 +532,9 @@ export const translations = {
     collapse: "收起",
     refreshAllQuota: "刷新全部配额",
     refreshQuota: "刷新配额",
+    claudeCodeCustom: "自定义",
+    enableAccount: "启用账号",
+    disableAccount: "禁用账号",
   },
 } as const;
 

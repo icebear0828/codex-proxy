@@ -42,6 +42,7 @@ interface AccountTableProps {
   filterGroup?: string | null;
   statusFilter: string;
   onStatusFilterChange: (status: string) => void;
+  onToggleStatus?: (id: string, currentStatus: string) => Promise<string | null>;
 }
 
 export function AccountTable({
@@ -53,6 +54,7 @@ export function AccountTable({
   filterGroup = null,
   statusFilter,
   onStatusFilterChange,
+  onToggleStatus,
 }: AccountTableProps) {
   const t = useT();
   const showProxy = !!proxies;
@@ -183,6 +185,7 @@ export function AccountTable({
           </label>
           <span class="flex-1 min-w-0">Email</span>
           <span class="w-20 text-center hidden sm:block">{t("statusFilter")}</span>
+          {onToggleStatus && <span class="w-12 text-center hidden sm:block" />}
           {showProxy && <span class="w-40 text-center hidden md:block">{t("proxyAssignment")}</span>}
         </div>
 
@@ -225,6 +228,28 @@ export function AccountTable({
                     {t(statusKey)}
                   </span>
                 </span>
+                {onToggleStatus && (() => {
+                  const isEnabled = acct.status !== "disabled";
+                  const canToggle = acct.status === "active" || acct.status === "disabled" || acct.status === "rate_limited" || acct.status === "refreshing";
+                  return (
+                    <span class="w-12 hidden sm:flex justify-center" onClick={(e) => e.stopPropagation()}>
+                      <button
+                        onClick={() => { if (canToggle) onToggleStatus(acct.id, acct.status); }}
+                        disabled={!canToggle}
+                        title={canToggle ? (isEnabled ? t("disableAccount") : t("enableAccount")) : undefined}
+                        class={`relative inline-flex h-4 w-7 shrink-0 rounded-full border-2 border-transparent transition-colors duration-200 focus:outline-none ${
+                          !canToggle ? "opacity-40 cursor-not-allowed" : "cursor-pointer"
+                        } ${isEnabled ? "bg-primary" : "bg-slate-300 dark:bg-slate-600"}`}
+                      >
+                        <span
+                          class={`pointer-events-none inline-block h-3 w-3 rounded-full bg-white shadow transform transition-transform duration-200 ${
+                            isEnabled ? "translate-x-3" : "translate-x-0"
+                          }`}
+                        />
+                      </button>
+                    </span>
+                  );
+                })()}
                 {showProxy && (
                   <span class="w-40 hidden md:block" onClick={(e) => e.stopPropagation()}>
                     <select

@@ -221,7 +221,29 @@ export ANTHROPIC_API_KEY=your-api-key
 claude
 ```
 
-> 控制面板的 **Anthropic SDK Setup** 卡片可一键复制环境变量。
+> 控制面板的 **Anthropic SDK Setup** 卡片可一键复制环境变量（含 Opus / Sonnet / Haiku 层级模型配置）。
+>
+> 推荐模型：Opus → `gpt-5.4`，Sonnet → `gpt-5.4-mini`，Haiku → `gpt-5.3-codex`。
+
+### Codex CLI
+
+`~/.codex/config.toml`:
+```toml
+[model_providers.proxy_codex]
+name = "Codex Proxy"
+base_url = "http://localhost:8080/v1"
+wire_api = "responses"
+env_key = "PROXY_API_KEY"
+
+[profiles.default]
+model = "gpt-5.4"
+model_provider = "proxy_codex"
+```
+
+```bash
+export PROXY_API_KEY=your-api-key
+codex
+```
 
 ### Claude for VSCode / JetBrains
 

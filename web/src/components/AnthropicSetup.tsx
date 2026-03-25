@@ -1,4 +1,4 @@
-import { useMemo, useCallback } from "preact/hooks";
+import { useState, useMemo, useCallback, useEffect } from "preact/hooks";
 import { useT } from "../../../shared/i18n/context";
 import { CopyButton } from "./CopyButton";
 
@@ -9,34 +9,71 @@ interface AnthropicSetupProps {
   serviceTier: string | null;
 }
 
+const PRESETS: Array<{ label: string; value: string }> = [
+  { label: "gpt-5.4 (Opus)", value: "gpt-5.4" },
+  { label: "gpt-5.4-mini (Sonnet)", value: "gpt-5.4-mini" },
+  { label: "gpt-5.3-codex (Haiku)", value: "gpt-5.3-codex" },
+];
+
 export function AnthropicSetup({ apiKey, selectedModel, reasoningEffort, serviceTier }: AnthropicSetupProps) {
   const t = useT();
-
   const origin = typeof window !== "undefined" ? window.location.origin : "http://localhost:8080";
 
-  // Build compound model name with suffixes
-  const displayModel = useMemo(() => {
+  const [opusModel, setOpusModel] = useState("gpt-5.4");
+  const [sonnetModel, setSonnetModel] = useState("gpt-5.4-mini");
+  const [haikuModel, setHaikuModel] = useState("gpt-5.3-codex");
+
+  // Custom model from ApiConfig
+  const customModel = useMemo(() => {
     let name = selectedModel;
     if (reasoningEffort && reasoningEffort !== "medium") name += `-${reasoningEffort}`;
     if (serviceTier === "fast") name += "-fast";
     return name;
   }, [selectedModel, reasoningEffort, serviceTier]);
 
-  const envLines = useMemo(() => ({
-    ANTHROPIC_BASE_URL: origin,
-    ANTHROPIC_API_KEY: apiKey,
-    ANTHROPIC_MODEL: displayModel,
-  }), [origin, apiKey, displayModel]);
+  // Fetch all models for dropdowns
+  const [allModels, setAllModels] = useState<string[]>([]);
+  useEffect(() => {
+    fetch("/v1/models")
+      .then((r) => r.json())
+      .then((data) => setAllModels(data.data?.map((m: { id: string }) => m.id) ?? []))
+      .catch(() => {});
+  }, []);
 
-  const allEnvText = useMemo(
-    () => Object.entries(envLines).map(([k, v]) => `${k}=${v}`).join("\n"),
-    [envLines],
+  const presetValues = new Set(PRESETS.map((p) => p.value));
+  const extraModels = allModels.filter((id) => !presetValues.has(id));
+
+  const envText = useMemo(() => [
+    `ANTHROPIC_BASE_URL=${origin}`,
+    `ANTHROPIC_API_KEY=${apiKey}`,
+    `ANTHROPIC_DEFAULT_OPUS_MODEL=${opusModel}`,
+    `ANTHROPIC_DEFAULT_SONNET_MODEL=${sonnetModel}`,
+    `ANTHROPIC_DEFAULT_HAIKU_MODEL=${haikuModel}`,
+    `ANTHROPIC_MODEL=${customModel}`,
+  ].join("\n"), [origin, apiKey, opusModel, sonnetModel, haikuModel, customModel]);
+
+  const getEnvText = useCallback(() => envText, [envText]);
+
+  const inputCls = "w-full pl-3 pr-10 py-2 bg-slate-100 dark:bg-bg-dark border border-gray-200 dark:border-border-dark rounded-lg text-[0.78rem] font-mono text-slate-500 dark:text-text-dim outline-none cursor-default select-all";
+  const selectCls = "w-full pl-3 pr-2 py-2 bg-slate-100 dark:bg-bg-dark border border-gray-200 dark:border-border-dark rounded-lg text-[0.78rem] font-mono text-slate-500 dark:text-text-dim outline-none focus:ring-1 focus:ring-primary cursor-pointer";
+
+  const modelDropdown = (value: string, onChange: (v: string) => void) => (
+    <select class={selectCls} value={value} onChange={(e) => onChange((e.target as HTMLSelectElement).value)}>
+      {PRESETS.map((p) => <option key={p.value} value={p.value}>{p.label}</option>)}
+      {extraModels.length > 0 && <option disabled>───</option>}
+      {extraModels.map((id) => <option key={id} value={id}>{id}</option>)}
+      {!presetValues.has(value) && !extraModels.includes(value) && <option value={value}>{value}</option>}
+    </select>
   );
 
-  const getAllEnv = useCallback(() => allEnvText, [allEnvText]);
-  const getBaseUrl = useCallback(() => envLines.ANTHROPIC_BASE_URL, [envLines]);
-  const getApiKey = useCallback(() => envLines.ANTHROPIC_API_KEY, [envLines]);
-  const getModel = useCallback(() => envLines.ANTHROPIC_MODEL, [envLines]);
+  const rows: Array<{ label: string; node: preact.VNode }> = [
+    { label: "ANTHROPIC_BASE_URL", node: <div class="relative flex items-center"><input class={inputCls} type="text" value={origin} readOnly /><CopyButton getText={() => origin} class="absolute right-2" /></div> },
+    { label: "ANTHROPIC_API_KEY", node: <div class="relative flex items-center"><input class={inputCls} type="text" value={apiKey} readOnly /><CopyButton getText={() => apiKey} class="absolute right-2" /></div> },
+    { label: "ANTHROPIC_DEFAULT_OPUS_MODEL", node: modelDropdown(opusModel, setOpusModel) },
+    { label: "ANTHROPIC_DEFAULT_SONNET_MODEL", node: modelDropdown(sonnetModel, setSonnetModel) },
+    { label: "ANTHROPIC_DEFAULT_HAIKU_MODEL", node: modelDropdown(haikuModel, setHaikuModel) },
+    { label: "ANTHROPIC_MODEL", node: <div class="relative flex items-center"><input class={inputCls} type="text" value={customModel} readOnly /><CopyButton getText={() => customModel} class="absolute right-2" /></div> },
+  ];
 
   return (
     <section class="bg-white dark:bg-card-dark border border-gray-200 dark:border-border-dark rounded-xl p-5 shadow-sm transition-colors">
@@ -49,30 +86,17 @@ export function AnthropicSetup({ apiKey, selectedModel, reasoningEffort, service
         </div>
       </div>
 
-      {/* Env vars */}
       <div class="space-y-3">
-        {(["ANTHROPIC_BASE_URL", "ANTHROPIC_API_KEY", "ANTHROPIC_MODEL"] as const).map((key) => {
-          const getter = key === "ANTHROPIC_BASE_URL" ? getBaseUrl : key === "ANTHROPIC_API_KEY" ? getApiKey : getModel;
-          return (
-            <div key={key} class="flex items-center gap-3">
-              <label class="text-xs font-mono font-semibold text-slate-600 dark:text-text-dim w-44 shrink-0">{key}</label>
-              <div class="relative flex items-center flex-1">
-                <input
-                  class="w-full pl-3 pr-10 py-2 bg-slate-100 dark:bg-bg-dark border border-gray-200 dark:border-border-dark rounded-lg text-[0.78rem] font-mono text-slate-500 dark:text-text-dim outline-none cursor-default select-all"
-                  type="text"
-                  value={envLines[key]}
-                  readOnly
-                />
-                <CopyButton getText={getter} class="absolute right-2" />
-              </div>
-            </div>
-          );
-        })}
+        {rows.map((r) => (
+          <div key={r.label} class="flex items-center gap-3">
+            <label class="text-[0.68rem] font-mono font-semibold text-slate-600 dark:text-text-dim w-64 shrink-0 truncate">{r.label}</label>
+            <div class="flex-1">{r.node}</div>
+          </div>
+        ))}
       </div>
 
-      {/* Copy all button */}
       <div class="mt-5 flex items-center gap-3">
-        <CopyButton getText={getAllEnv} variant="label" />
+        <CopyButton getText={getEnvText} variant="label" />
         <span class="text-xs text-slate-400 dark:text-text-dim">{t("anthropicCopyAllHint")}</span>
       </div>
     </section>

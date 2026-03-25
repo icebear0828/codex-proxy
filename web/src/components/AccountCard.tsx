@@ -48,9 +48,10 @@ interface AccountCardProps {
   selected?: boolean;
   onToggleSelect?: (id: string) => void;
   onRefreshQuota?: (id: string) => Promise<void>;
+  onToggleStatus?: (id: string, currentStatus: string) => Promise<string | null>;
 }
 
-export function AccountCard({ account, index, onDelete, proxies, onProxyChange, selected, onToggleSelect, onRefreshQuota }: AccountCardProps) {
+export function AccountCard({ account, index, onDelete, proxies, onProxyChange, selected, onToggleSelect, onRefreshQuota, onToggleStatus }: AccountCardProps) {
   const t = useT();
   const { lang } = useI18n();
   const email = account.email || "Unknown";
@@ -122,6 +123,21 @@ export function AccountCard({ account, index, onDelete, proxies, onProxyChange, 
     onToggleSelect?.(account.id);
   }, [account.id, onToggleSelect]);
 
+  const [statusToggling, setStatusToggling] = useState(false);
+  const isEnabled = account.status !== "disabled";
+  const canToggle = account.status === "active" || account.status === "disabled" || account.status === "rate_limited" || account.status === "refreshing";
+
+  const handleStatusToggle = useCallback(async () => {
+    if (!onToggleStatus || !canToggle) return;
+    setStatusToggling(true);
+    try {
+      const err = await onToggleStatus(account.id, account.status);
+      if (err) console.error(err);
+    } finally {
+      setStatusToggling(false);
+    }
+  }, [account.id, account.status, canToggle, onToggleStatus]);
+
   return (
     <div class={`bg-white dark:bg-card-dark border rounded-xl p-4 shadow-sm hover:shadow-md transition-all ${selected ? "border-primary ring-1 ring-primary/30" : "border-gray-200 dark:border-border-dark hover:border-primary/30 dark:hover:border-primary/50"}`}>
       {/* Header */}
@@ -151,6 +167,22 @@ export function AccountCard({ account, index, onDelete, proxies, onProxyChange, 
           </div>
         </div>
         <div class="flex items-center gap-2">
+          {onToggleStatus && (
+            <button
+              onClick={handleStatusToggle}
+              disabled={!canToggle || statusToggling}
+              title={canToggle ? (isEnabled ? t("disableAccount") : t("enableAccount")) : undefined}
+              class={`relative inline-flex h-5 w-9 shrink-0 rounded-full border-2 border-transparent transition-colors duration-200 focus:outline-none ${
+                !canToggle ? "opacity-40 cursor-not-allowed" : "cursor-pointer"
+              } ${isEnabled ? "bg-primary" : "bg-slate-300 dark:bg-slate-600"}`}
+            >
+              <span
+                class={`pointer-events-none inline-block h-4 w-4 rounded-full bg-white shadow transform transition-transform duration-200 ${
+                  isEnabled ? "translate-x-4" : "translate-x-0"
+                }`}
+              />
+            </button>
+          )}
           <span class={`px-2.5 py-1 rounded-full ${statusCls} text-xs font-medium border`}>
             {t(statusKey as TranslationKey)}
           </span>

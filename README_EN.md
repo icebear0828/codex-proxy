@@ -197,7 +197,29 @@ export ANTHROPIC_API_KEY=your-api-key
 claude
 ```
 
-> Copy env vars from the **Anthropic SDK Setup** card in the dashboard.
+> Copy env vars from the **Anthropic SDK Setup** card in the dashboard (includes Opus / Sonnet / Haiku tier model config).
+>
+> Recommended models: Opus → `gpt-5.4`, Sonnet → `gpt-5.4-mini`, Haiku → `gpt-5.3-codex`.
+
+### Codex CLI
+
+`~/.codex/config.toml`:
+```toml
+[model_providers.proxy_codex]
+name = "Codex Proxy"
+base_url = "http://localhost:8080/v1"
+wire_api = "responses"
+env_key = "PROXY_API_KEY"
+
+[profiles.default]
+model = "gpt-5.4"
+model_provider = "proxy_codex"
+```
+
+```bash
+export PROXY_API_KEY=your-api-key
+codex
+```
 
 ### Claude for VSCode / JetBrains
 

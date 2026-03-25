@@ -18,7 +18,7 @@ const statusOrder: Array<{ key: string; label: TranslationKey }> = [
 
 export function AccountManagement() {
   const t = useT();
-  const { list, loading: listLoading, batchDelete, batchSetStatus, exportAccounts, importAccounts } = useAccounts();
+  const { list, loading: listLoading, batchDelete, batchSetStatus, toggleStatus, exportAccounts, importAccounts } = useAccounts();
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [statusFilter, setStatusFilter] = useState("all");
   const [message, setMessage] = useState<{ text: string; error?: boolean } | null>(null);
@@ -169,6 +169,7 @@ export function AccountManagement() {
             onSelectionChange={setSelectedIds}
             statusFilter={statusFilter}
             onStatusFilterChange={setStatusFilter}
+            onToggleStatus={toggleStatus}
           />
         )}
       </main>

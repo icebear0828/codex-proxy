@@ -8,6 +8,9 @@
 
 ### Added
 
+- Claude Code Setup 卡片：Dashboard 按 Opus/Sonnet/Haiku/自定义 层级一键复制环境变量（推荐模型 gpt-5.4 / gpt-5.4-mini / gpt-5.3-codex）
+- 账号启用/禁用 toggle：AccountCard 和 AccountTable 新增 per-account 开关，无需批量操作即可快速切换账号状态
+- Codex CLI 配置说明：README 新增 `~/.codex/config.toml` 配置示例
 - Token 刷新并发控制（`auth.refresh_concurrency`，默认 2）：多账号同时到期时限制并发数，避免上游限流
 - Dashboard 基础设置新增「刷新并发数」配置项
 - README 添加局域网访问说明（`0.0.0.0` 配置 + Electron 路径）
