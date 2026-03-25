@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import { execFileSync } from "child_process";
 import { resolve } from "path";
 
-const SETUP_SCRIPT = resolve(__dirname, "../../../scripts/setup-curl.ts");
+const SETUP_SCRIPT = resolve(__dirname, "../../../scripts/infra/setup-curl.ts");
 
 describe("setup-curl --arch flag", () => {
   it("uses --arch override in platform line", () => {

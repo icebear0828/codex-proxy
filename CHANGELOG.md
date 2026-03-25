@@ -15,6 +15,7 @@
 ### Changed
 
 - 提取 `src/proxy/error-classification.ts`：`isBanError`/`isTokenInvalidError`/`isModelNotSupportedError`/`extractRetryAfterSec` 从 proxy-handler 和 usage-refresher 中去重，19 个新测试
+- `scripts/` 按用途分类到 `infra/`、`build/`、`poc/`、`manual-test/` 子目录
 
 ### Fixed
 

@@ -14,14 +14,13 @@ tmp/
 .claude/settings.local.json
 
 # Maintenance scripts (private)
-scripts/extract-fingerprint.ts
-scripts/full-update.ts
-scripts/apply-update.ts
-scripts/check-update.ts
-scripts/types.ts
-scripts/test-*.ts
-tests/
+scripts/build/full-update.ts
+scripts/build/apply-update.ts
+scripts/build/check-update.ts
+scripts/build/types.ts
+scripts/manual-test/
 scripts/cron-update.sh
+tests/
 config/extraction-patterns.yaml
 
 # Design / internal files

@@ -126,7 +126,7 @@ function triggerFullUpdate(): void {
   console.log("[UpdateChecker] Triggering full-update pipeline...");
 
   const child = fork(
-    resolve(process.cwd(), "scripts/full-update.ts"),
+    resolve(process.cwd(), "scripts/build/full-update.ts"),
     ["--force"],
     {
       execArgv: ["--import", "tsx"],

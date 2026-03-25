@@ -20,14 +20,14 @@
     "build:web": "cd web && npx vite build",
     "build": "npm run build:web && tsc",
     "start": "node dist/index.js",
-    "check-update": "tsx scripts/check-update.ts",
-    "check-update:watch": "tsx scripts/check-update.ts --watch",
-    "extract": "tsx scripts/extract-fingerprint.ts",
-    "apply-update": "tsx scripts/apply-update.ts",
-    "apply-update:dry": "tsx scripts/apply-update.ts --dry-run",
-    "setup": "tsx scripts/setup-curl.ts",
-    "update": "tsx scripts/full-update.ts",
-    "postinstall": "tsx scripts/setup-curl.ts"
+    "check-update": "tsx scripts/build/check-update.ts",
+    "check-update:watch": "tsx scripts/build/check-update.ts --watch",
+    "extract": "tsx scripts/build/extract-fingerprint.ts",
+    "apply-update": "tsx scripts/build/apply-update.ts",
+    "apply-update:dry": "tsx scripts/build/apply-update.ts --dry-run",
+    "setup": "tsx scripts/infra/setup-curl.ts",
+    "update": "tsx scripts/build/full-update.ts",
+    "postinstall": "tsx scripts/infra/setup-curl.ts"
   },
   "dependencies": {
     "@hono/node-server": "^1.0.0",
