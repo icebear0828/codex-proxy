@@ -17,6 +17,7 @@ export function GeneralSettings() {
   const [draftReasoningEffort, setDraftReasoningEffort] = useState<string | null>(null);
   const [draftRefreshEnabled, setDraftRefreshEnabled] = useState<boolean | null>(null);
   const [draftRefreshMargin, setDraftRefreshMargin] = useState<string | null>(null);
+  const [draftRefreshConcurrency, setDraftRefreshConcurrency] = useState<string | null>(null);
   const [collapsed, setCollapsed] = useState(true);
 
   const currentPort = gs.data?.port ?? 8080;
@@ -28,6 +29,7 @@ export function GeneralSettings() {
   const currentReasoningEffort = gs.data?.default_reasoning_effort ?? "medium";
   const currentRefreshEnabled = gs.data?.refresh_enabled ?? true;
   const currentRefreshMargin = gs.data?.refresh_margin_seconds ?? 300;
+  const currentRefreshConcurrency = gs.data?.refresh_concurrency ?? 2;
 
   const displayPort = draftPort ?? String(currentPort);
   const displayProxyUrl = draftProxyUrl ?? currentProxyUrl;
@@ -38,6 +40,7 @@ export function GeneralSettings() {
   const displayReasoningEffort = draftReasoningEffort ?? currentReasoningEffort;
   const displayRefreshEnabled = draftRefreshEnabled ?? currentRefreshEnabled;
   const displayRefreshMargin = draftRefreshMargin ?? String(currentRefreshMargin);
+  const displayRefreshConcurrency = draftRefreshConcurrency ?? String(currentRefreshConcurrency);
 
   const isDirty =
     draftPort !== null ||
@@ -48,7 +51,8 @@ export function GeneralSettings() {
     draftDefaultModel !== null ||
     draftReasoningEffort !== null ||
     draftRefreshEnabled !== null ||
-    draftRefreshMargin !== null;
+    draftRefreshMargin !== null ||
+    draftRefreshConcurrency !== null;
 
   const handleSave = useCallback(async () => {
     const patch: Record<string, unknown> = {};
@@ -93,6 +97,12 @@ export function GeneralSettings() {
       patch.refresh_margin_seconds = val;
     }
 
+    if (draftRefreshConcurrency !== null) {
+      const val = parseInt(draftRefreshConcurrency, 10);
+      if (isNaN(val) || val < 1) return;
+      patch.refresh_concurrency = val;
+    }
+
     await gs.save(patch);
     setDraftPort(null);
     setDraftProxyUrl(null);
@@ -103,7 +113,8 @@ export function GeneralSettings() {
     setDraftReasoningEffort(null);
     setDraftRefreshEnabled(null);
     setDraftRefreshMargin(null);
-  }, [draftPort, draftProxyUrl, draftForceHttp11, draftInjectContext, draftSuppressDirectives, draftDefaultModel, draftReasoningEffort, draftRefreshEnabled, draftRefreshMargin, gs]);
+    setDraftRefreshConcurrency(null);
+  }, [draftPort, draftProxyUrl, draftForceHttp11, draftInjectContext, draftSuppressDirectives, draftDefaultModel, draftReasoningEffort, draftRefreshEnabled, draftRefreshMargin, draftRefreshConcurrency, gs]);
 
   const inputCls =
     "w-full px-3 py-2 bg-white dark:bg-bg-dark border border-gray-200 dark:border-border-dark rounded-lg text-[0.78rem] font-mono text-slate-700 dark:text-text-main outline-none focus:ring-1 focus:ring-primary";
@@ -282,6 +293,21 @@ export function GeneralSettings() {
               class={`${inputCls} max-w-[160px]`}
               value={displayRefreshMargin}
               onInput={(e) => setDraftRefreshMargin((e.target as HTMLInputElement).value)}
+            />
+          </div>
+
+          {/* Refresh Concurrency */}
+          <div class="space-y-1.5">
+            <label class="text-xs font-semibold text-slate-700 dark:text-text-main">
+              {t("generalSettingsRefreshConcurrency")}
+            </label>
+            <p class="text-xs text-slate-400 dark:text-text-dim">{t("generalSettingsRefreshConcurrencyHint")}</p>
+            <input
+              type="number"
+              min="1"
+              class={`${inputCls} max-w-[160px]`}
+              value={displayRefreshConcurrency}
+              onInput={(e) => setDraftRefreshConcurrency((e.target as HTMLInputElement).value)}
             />
           </div>
 

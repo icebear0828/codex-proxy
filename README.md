@@ -354,6 +354,25 @@ for await (const chunk of stream) {
 | `quota` | `refresh_interval_minutes`, `warning_thresholds`, `skip_exhausted` | 额度刷新与预警 |
 | `session` | `ttl_minutes`, `cleanup_interval_minutes` | Dashboard session 管理 |
 
+### 局域网访问
+
+默认监听 `127.0.0.1`（仅本机）。如需局域网内其他设备访问，在 `data/local.yaml` 中添加：
+
+```yaml
+server:
+  host: "0.0.0.0"
+```
+
+Electron 桌面版的 `data/local.yaml` 路径：
+
+| 系统 | 路径 |
+|------|------|
+| macOS | `~/Library/Application Support/Codex Proxy/data/local.yaml` |
+| Windows | `%APPDATA%/Codex Proxy/data/local.yaml` |
+| Linux | `~/.config/Codex Proxy/data/local.yaml` |
+
+> ⚠️ 绑定 `0.0.0.0` 会将服务暴露到局域网，务必在 Dashboard → 密钥设置中配置强密钥。
+
 ### TLS 配置
 
 ```yaml

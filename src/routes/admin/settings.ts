@@ -104,6 +104,7 @@ export function createSettingsRoutes(): Hono {
       default_reasoning_effort: config.model.default_reasoning_effort,
       refresh_enabled: config.auth.refresh_enabled,
       refresh_margin_seconds: config.auth.refresh_margin_seconds,
+      refresh_concurrency: config.auth.refresh_concurrency,
     });
   });
 
@@ -130,6 +131,7 @@ export function createSettingsRoutes(): Hono {
       default_reasoning_effort?: string;
       refresh_enabled?: boolean;
       refresh_margin_seconds?: number;
+      refresh_concurrency?: number;
     };
 
     // --- validation ---
@@ -161,6 +163,13 @@ export function createSettingsRoutes(): Hono {
       if (!Number.isInteger(body.refresh_margin_seconds) || body.refresh_margin_seconds < 0) {
         c.status(400);
         return c.json({ error: "refresh_margin_seconds must be an integer >= 0" });
+      }
+    }
+
+    if (body.refresh_concurrency !== undefined) {
+      if (!Number.isInteger(body.refresh_concurrency) || body.refresh_concurrency < 1) {
+        c.status(400);
+        return c.json({ error: "refresh_concurrency must be an integer >= 1" });
       }
     }
 
@@ -204,6 +213,10 @@ export function createSettingsRoutes(): Hono {
         if (!data.auth) data.auth = {};
         (data.auth as Record<string, unknown>).refresh_margin_seconds = body.refresh_margin_seconds;
       }
+      if (body.refresh_concurrency !== undefined) {
+        if (!data.auth) data.auth = {};
+        (data.auth as Record<string, unknown>).refresh_concurrency = body.refresh_concurrency;
+      }
     });
     reloadAllConfigs();
 
@@ -222,6 +235,7 @@ export function createSettingsRoutes(): Hono {
       default_reasoning_effort: updated.model.default_reasoning_effort,
       refresh_enabled: updated.auth.refresh_enabled,
       refresh_margin_seconds: updated.auth.refresh_margin_seconds,
+      refresh_concurrency: updated.auth.refresh_concurrency,
       restart_required: restartRequired,
     });
   });

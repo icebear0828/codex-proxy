@@ -6,6 +6,12 @@
 
 ## [Unreleased]
 
+### Added
+
+- Token 刷新并发控制（`auth.refresh_concurrency`，默认 2）：多账号同时到期时限制并发数，避免上游限流
+- Dashboard 基础设置新增「刷新并发数」配置项
+- README 添加局域网访问说明（`0.0.0.0` 配置 + Electron 路径）
+
 ### Fixed
 
 - Release 资产命名统一：`artifactName` 模板强制 `Codex-Proxy-{version}-{os}-{arch}.{ext}`，消除 `Codex.Proxy` vs `Codex-Proxy` 重复，x64 DMG 现在明确标注架构（`mac-x64`）

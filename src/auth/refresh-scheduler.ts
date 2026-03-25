@@ -31,6 +31,11 @@ export class RefreshScheduler {
   private pool: AccountPool;
   private proxyPool: ProxyPool | null = null;
 
+  /** Semaphore: number of refresh requests currently in flight. */
+  private _running = 0;
+  /** Queue of pending refresh callbacks waiting for a slot. */
+  private _queue: Array<() => void> = [];
+
   constructor(pool: AccountPool) {
     this.pool = pool;
     this.scheduleAll();
@@ -131,7 +136,34 @@ export class RefreshScheduler {
 
   // ── Internal ────────────────────────────────────────────────────
 
+  /** Acquire a semaphore slot, waiting if at capacity. */
+  private async acquireSlot(): Promise<void> {
+    const limit = getConfig().auth.refresh_concurrency;
+    if (this._running < limit) {
+      this._running++;
+      return;
+    }
+    await new Promise<void>((resolve) => this._queue.push(resolve));
+    this._running++;
+  }
+
+  /** Release a semaphore slot, unblocking the next waiter. */
+  private releaseSlot(): void {
+    this._running--;
+    const next = this._queue.shift();
+    if (next) next();
+  }
+
   private async doRefresh(entryId: string): Promise<void> {
+    await this.acquireSlot();
+    try {
+      await this._doRefreshInner(entryId);
+    } finally {
+      this.releaseSlot();
+    }
+  }
+
+  private async _doRefreshInner(entryId: string): Promise<void> {
     const entry = this.pool.getEntry(entryId);
     if (!entry) return;
 
