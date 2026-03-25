@@ -1,6 +1,6 @@
 {
   "name": "@codex-proxy/electron",
-  "version": "1.0.92",
+  "version": "1.0.93",
   "description": "Codex Proxy desktop app (Electron shell)",
   "private": true,
   "main": "dist-electron/main.cjs",
