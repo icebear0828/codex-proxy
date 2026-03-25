@@ -10,6 +10,7 @@ export interface GeneralSettingsData {
   default_reasoning_effort: string;
   refresh_enabled: boolean;
   refresh_margin_seconds: number;
+  refresh_concurrency: number;
 }
 
 interface GeneralSettingsSaveResponse extends GeneralSettingsData {
@@ -65,6 +66,7 @@ export function useGeneralSettings(apiKey: string | null) {
         default_reasoning_effort: result.default_reasoning_effort,
         refresh_enabled: result.refresh_enabled,
         refresh_margin_seconds: result.refresh_margin_seconds,
+        refresh_concurrency: result.refresh_concurrency,
       });
       setRestartRequired(result.restart_required);
       setSaved(true);

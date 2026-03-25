@@ -108,7 +108,10 @@ function deepMerge(
 }
 
 /** Load default.yaml and merge data/local.yaml overlay (if exists). */
-function loadMergedConfig(configDir?: string): Record<string, unknown> {
+function loadMergedConfig(configDir?: string): {
+  raw: Record<string, unknown>;
+  local: Record<string, unknown> | null;
+} {
   const dir = configDir ?? getConfigDir();
   const raw = loadYaml(resolve(dir, "default.yaml")) as Record<string, unknown>;
   // When a custom configDir is provided (tests), look for local.yaml alongside it;
@@ -124,21 +127,26 @@ function loadMergedConfig(configDir?: string): Record<string, unknown> {
       console.warn(`[Config] Failed to create data/local.yaml: ${err instanceof Error ? err.message : err}`);
     }
   }
+  let local: Record<string, unknown> | null = null;
   if (existsSync(localPath)) {
     try {
-      const local = loadYaml(localPath) as Record<string, unknown> | null;
-      if (local && typeof local === "object") {
-        deepMerge(raw, local);
+      const loaded = loadYaml(localPath) as Record<string, unknown> | null;
+      if (loaded && typeof loaded === "object") {
+        local = loaded;
+        deepMerge(raw, loaded);
         console.log("[Config] Merged local overrides from data/local.yaml");
       }
     } catch (err) {
       console.warn(`[Config] Failed to load data/local.yaml: ${err instanceof Error ? err.message : err}`);
     }
   }
-  return raw;
+  return { raw, local };
 }
 
-function applyEnvOverrides(raw: Record<string, unknown>): Record<string, unknown> {
+function applyEnvOverrides(
+  raw: Record<string, unknown>,
+  localOverrides: Record<string, unknown> | null,
+): Record<string, unknown> {
   const jwtEnv = process.env.CODEX_JWT_TOKEN?.trim();
   if (jwtEnv && jwtEnv.startsWith("eyJ")) {
     (raw.auth as Record<string, unknown>).jwt_token = jwtEnv;
@@ -157,10 +165,15 @@ function applyEnvOverrides(raw: Record<string, unknown>): Record<string, unknown
       (raw.server as Record<string, unknown>).port = parsed;
     }
   }
-  const proxyEnv = process.env.HTTPS_PROXY || process.env.https_proxy;
-  if (proxyEnv) {
-    if (!raw.tls) raw.tls = {};
-    (raw.tls as Record<string, unknown>).proxy_url = proxyEnv;
+  // Only apply HTTPS_PROXY env if user hasn't explicitly set proxy_url in local.yaml
+  const localTls = localOverrides?.tls as Record<string, unknown> | undefined;
+  const localHasProxyUrl = localTls !== undefined && "proxy_url" in localTls;
+  if (!localHasProxyUrl) {
+    const proxyEnv = process.env.HTTPS_PROXY || process.env.https_proxy;
+    if (proxyEnv) {
+      if (!raw.tls) raw.tls = {};
+      (raw.tls as Record<string, unknown>).proxy_url = proxyEnv;
+    }
   }
   return raw;
 }
@@ -170,8 +183,8 @@ let _fingerprint: FingerprintConfig | null = null;
 
 export function loadConfig(configDir?: string): AppConfig {
   if (_config) return _config;
-  const raw = loadMergedConfig(configDir);
-  applyEnvOverrides(raw);
+  const { raw, local } = loadMergedConfig(configDir);
+  applyEnvOverrides(raw, local);
   _config = ConfigSchema.parse(raw);
   return _config;
 }
@@ -207,8 +220,8 @@ export function mutateClientConfig(patch: Partial<AppConfig["client"]>): void {
 /** Reload config from disk (hot-reload after full-update).
  *  P1-5: Load to temp first, then swap atomically to avoid null window. */
 export function reloadConfig(configDir?: string): AppConfig {
-  const raw = loadMergedConfig(configDir);
-  applyEnvOverrides(raw);
+  const { raw, local } = loadMergedConfig(configDir);
+  applyEnvOverrides(raw, local);
   const fresh = ConfigSchema.parse(raw);
   _config = fresh;
   return _config;
