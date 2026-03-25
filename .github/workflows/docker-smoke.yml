@@ -1,0 +1,77 @@
+name: Docker Smoke Test
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+    branches: [master]
+  workflow_dispatch:
+
+jobs:
+  smoke-test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Build Docker image
+        run: docker build -t codex-proxy-test .
+
+      - name: Test Default Port (8080)
+        run: |
+          # Run container
+          docker run -d --name test-default -p 8080:8080 codex-proxy-test
+
+          # Wait for healthcheck to pass (up to 30s)
+          echo "Waiting for container to become healthy..."
+          for i in {1..30}; do
+            HEALTH_STATUS=$(docker inspect --format='{{json .State.Health.Status}}' test-default | tr -d '"')
+            if [ "$HEALTH_STATUS" = "healthy" ]; then
+              echo "Container is healthy!"
+              break
+            fi
+            if [ "$HEALTH_STATUS" = "unhealthy" ]; then
+              echo "Container became unhealthy!"
+              docker logs test-default
+              exit 1
+            fi
+            sleep 1
+          done
+
+          # Final verification with curl
+          curl -f http://localhost:8080/health
+
+          # Cleanup
+          docker rm -f test-default
+
+      - name: Test Custom Port (8090)
+        run: |
+          # Create a custom config to override port by replacing 8080 with 8090 in default config
+          mkdir -p config-override
+          cp config/default.yaml config-override/default.yaml
+          sed -i 's/port: 8080/port: 8090/' config-override/default.yaml
+
+          # Run container with custom config mapped
+          docker run -d --name test-custom -p 8090:8090 -v ${{ github.workspace }}/config-override/default.yaml:/app/config/default.yaml codex-proxy-test
+
+          # Wait for healthcheck to pass (up to 30s)
+          echo "Waiting for custom container to become healthy..."
+          for i in {1..30}; do
+            HEALTH_STATUS=$(docker inspect --format='{{json .State.Health.Status}}' test-custom | tr -d '"')
+            if [ "$HEALTH_STATUS" = "healthy" ]; then
+              echo "Container is healthy!"
+              break
+            fi
+            if [ "$HEALTH_STATUS" = "unhealthy" ]; then
+              echo "Container became unhealthy!"
+              docker logs test-custom
+              exit 1
+            fi
+            sleep 1
+          done
+
+          # Final verification with curl on custom port
+          curl -f http://localhost:8090/health
+
+          # Cleanup
+          docker rm -f test-custom
