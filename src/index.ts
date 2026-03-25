@@ -1,6 +1,7 @@
 import { Hono } from "hono";
 import { serve } from "@hono/node-server";
 import { loadConfig, loadFingerprint, getConfig, hasLocalOverride } from "./config.js";
+import { initContext } from "./context.js";
 import { AccountPool } from "./auth/account-pool.js";
 import { RefreshScheduler } from "./auth/refresh-scheduler.js";
 
@@ -48,7 +49,8 @@ export async function startServer(options?: StartOptions): Promise<ServerHandle>
   // Load configuration
   console.log("[Init] Loading configuration...");
   const config = loadConfig();
-  loadFingerprint();
+  const fingerprint = loadFingerprint();
+  initContext(config, fingerprint);
 
   // Load static model catalog (before transport/auth init)
   loadStaticModels();
