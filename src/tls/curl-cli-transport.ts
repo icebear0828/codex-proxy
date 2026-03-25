@@ -10,9 +10,18 @@
 import { spawn, execFile } from "child_process";
 import { resolveCurlBinary, getChromeTlsArgs, getProxyArgs, isImpersonate as curlIsImpersonate, supportsCompressed, checkHttp2Fallback } from "./curl-binary.js";
 import type { TlsTransport, TlsTransportResponse } from "./transport.js";
+import { getConfig } from "../config.js";
 
 const STATUS_SEPARATOR = "\n__CURL_HTTP_STATUS__";
-const HEADER_TIMEOUT_MS = 30_000;
+const DEFAULT_HEADER_TIMEOUT_MS = 30_000;
+
+function getHeaderTimeoutMs(): number {
+  try {
+    return getConfig().api.timeout_seconds * 1000;
+  } catch {
+    return DEFAULT_HEADER_TIMEOUT_MS;
+  }
+}
 
 /** Push header args to curl, skipping Accept-Encoding so --compressed can auto-negotiate. */
 export function pushHeaderArgs(args: string[], headers: Record<string, string>): void {
@@ -85,9 +94,9 @@ export class CurlCliTransport implements TlsTransport {
       const headerTimer = setTimeout(() => {
         if (!headersParsed) {
           child.kill("SIGTERM");
-          reject(new Error(`curl header parse timeout after ${HEADER_TIMEOUT_MS}ms`));
+          reject(new Error(`curl header parse timeout after ${getHeaderTimeoutMs()}ms`));
         }
-      }, HEADER_TIMEOUT_MS);
+      }, getHeaderTimeoutMs());
       if (headerTimer.unref) headerTimer.unref();
 
       const bodyStream = new ReadableStream<Uint8Array>({

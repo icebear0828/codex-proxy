@@ -12,9 +12,9 @@ import { resolve } from "path";
 import { existsSync } from "fs";
 import type { IKoffiLib, IKoffiCType, IKoffiRegisteredCallback, KoffiFunction } from "koffi";
 import type { TlsTransport, TlsTransportResponse } from "./transport.js";
+import { getConfig } from "../config.js";
 import { getProxyUrl, getResolvedProfile, checkHttp2Fallback, isHttp11Fallback } from "./curl-binary.js";
 import { getBinDir } from "../paths.js";
-import { getConfig } from "../config.js";
 
 // ── libcurl constants ──────────────────────────────────────────────
 
@@ -35,7 +35,15 @@ const CURL_HTTP_VERSION_1_1 = 2;
 const CURL_HTTP_VERSION_2_0 = 3;
 const CURLINFO_RESPONSE_CODE = 0x200002;
 const CURLM_OK = 0;
-const HEADER_TIMEOUT_MS = 30_000;
+const DEFAULT_HEADER_TIMEOUT_MS = 30_000;
+
+function getHeaderTimeoutMs(): number {
+  try {
+    return getConfig().api.timeout_seconds * 1000;
+  } catch {
+    return DEFAULT_HEADER_TIMEOUT_MS;
+  }
+}
 
 // ── Branded opaque handle types ──────────────────────────────────
 
@@ -364,10 +372,10 @@ export class LibcurlFfiTransport implements TlsTransport {
         if (!headersParsed) {
           aborted = true;
           if (!resolved) {
-            reject(new Error(`curl header parse timeout after ${HEADER_TIMEOUT_MS}ms`));
+            reject(new Error(`curl header parse timeout after ${getHeaderTimeoutMs()}ms`));
           }
         }
-      }, HEADER_TIMEOUT_MS);
+      }, getHeaderTimeoutMs());
       if (headerTimer.unref) headerTimer.unref();
 
       pollLoop().finally(() => clearTimeout(headerTimer));
