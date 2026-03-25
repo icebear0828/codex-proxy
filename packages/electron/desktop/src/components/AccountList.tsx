@@ -1,3 +1,4 @@
+import { useState, useCallback } from "preact/hooks";
 import { useI18n, useT } from "@shared/i18n/context";
 import { AccountCard } from "./AccountCard";
 import type { Account, ProxyEntry } from "@shared/types";
@@ -11,11 +12,30 @@ interface AccountListProps {
   lastUpdated: Date | null;
   proxies?: ProxyEntry[];
   onProxyChange?: (accountId: string, proxyId: string) => void;
+  onAddByRefreshToken?: (refreshToken: string) => Promise<string | null>;
 }
 
-export function AccountList({ accounts, loading, onDelete, onRefresh, refreshing, lastUpdated, proxies, onProxyChange }: AccountListProps) {
+export function AccountList({ accounts, loading, onDelete, onRefresh, refreshing, lastUpdated, proxies, onProxyChange, onAddByRefreshToken }: AccountListProps) {
   const t = useT();
   const { lang } = useI18n();
+  const [rtInput, setRtInput] = useState("");
+  const [rtSubmitting, setRtSubmitting] = useState(false);
+  const [rtResult, setRtResult] = useState<{ ok: boolean; msg: string } | null>(null);
+
+  const handleRtSubmit = useCallback(async () => {
+    const trimmed = rtInput.trim();
+    if (!trimmed || !onAddByRefreshToken) return;
+    setRtSubmitting(true);
+    setRtResult(null);
+    const err = await onAddByRefreshToken(trimmed);
+    setRtSubmitting(false);
+    if (err) {
+      setRtResult({ ok: false, msg: err });
+    } else {
+      setRtResult({ ok: true, msg: t("accountAdded") });
+      setRtInput("");
+    }
+  }, [rtInput, onAddByRefreshToken, t]);
 
   const updatedAtText = lastUpdated
     ? lastUpdated.toLocaleTimeString(lang === "zh" ? "zh-CN" : "en-US", { hour: "2-digit", minute: "2-digit", second: "2-digit" })
@@ -52,6 +72,32 @@ export function AccountList({ accounts, loading, onDelete, onRefresh, refreshing
           </button>
         </div>
       </div>
+      {/* RT quick-add */}
+      {onAddByRefreshToken && (
+        <div class="flex items-center gap-2">
+          <input
+            type="text"
+            value={rtInput}
+            onInput={(e) => { setRtInput((e.target as HTMLInputElement).value); setRtResult(null); }}
+            onKeyDown={(e) => { if (e.key === "Enter") handleRtSubmit(); }}
+            placeholder={t("pasteRefreshToken")}
+            class="flex-1 px-3 py-2 text-sm font-mono border border-gray-200 dark:border-border-dark rounded-lg bg-white dark:bg-bg-dark text-slate-700 dark:text-text-main focus:outline-none focus:ring-1 focus:ring-amber-500 focus:border-amber-500"
+          />
+          <button
+            onClick={handleRtSubmit}
+            disabled={rtSubmitting || !rtInput.trim()}
+            class="px-3 py-2 text-xs font-medium rounded-lg bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800/30 text-amber-700 dark:text-amber-400 hover:bg-amber-100 dark:hover:bg-amber-900/30 transition-colors disabled:opacity-40 whitespace-nowrap"
+          >
+            {rtSubmitting ? t("addingByRt") : t("addByRt")}
+          </button>
+          {rtResult && (
+            <span class={`text-xs whitespace-nowrap ${rtResult.ok ? "text-primary" : "text-red-500"}`}>
+              {rtResult.msg}
+            </span>
+          )}
+        </div>
+      )}
+
       <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
         {loading ? (
           <div class="md:col-span-2 text-center py-8 text-slate-400 dark:text-text-dim text-sm bg-white dark:bg-card-dark border border-gray-200 dark:border-border-dark rounded-xl transition-colors">

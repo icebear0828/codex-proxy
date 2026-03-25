@@ -138,6 +138,7 @@ function Dashboard() {
             onImport={accounts.importAccounts}
             onToggleStatus={accounts.toggleStatus}
             onUpdateLabel={accounts.updateLabel}
+            onAddByRefreshToken={accounts.addByRefreshToken}
           />
           <ProxyPool proxies={proxies} />
           <ApiConfig

@@ -61,6 +61,7 @@ function Dashboard() {
             lastUpdated={accounts.lastUpdated}
             proxies={proxies.proxies}
             onProxyChange={handleProxyChange}
+            onAddByRefreshToken={accounts.addByRefreshToken}
           />
           <ProxyPool proxies={proxies} />
           <ApiConfig
