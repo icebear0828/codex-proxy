@@ -52,6 +52,11 @@ vi.mock("../../models/model-store.js", () => ({
   isPlanFetched: vi.fn(() => true),
 }));
 
+vi.mock("../../auth/oauth-pkce.js", () => ({
+  startOAuthFlow: vi.fn(),
+  refreshAccessToken: vi.fn(),
+}));
+
 import { Hono } from "hono";
 import { AccountPool } from "../../auth/account-pool.js";
 import { createAccountRoutes } from "../../routes/accounts.js";

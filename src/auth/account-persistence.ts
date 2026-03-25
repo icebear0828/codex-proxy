@@ -93,6 +93,7 @@ function migrateFromLegacy(): AccountEntry[] {
       email: data.userInfo?.email ?? null,
       accountId: accountId,
       userId: extractUserProfile(data.token)?.chatgpt_user_id ?? null,
+      label: null,
       planType: data.userInfo?.planType ?? null,
       proxyApiKey: data.proxyApiKey ?? "codex-proxy-" + randomBytes(24).toString("hex"),
       status: isTokenExpired(data.token) ? "expired" : "active",
@@ -182,6 +183,11 @@ function loadPersisted(): { entries: AccountEntry[]; needsPersist: boolean } {
         entry.usage.window_output_tokens = 0;
         entry.usage.window_counters_reset_at = null;
         entry.usage.limit_window_seconds = null;
+        needsPersist = true;
+      }
+      // Backfill label field
+      if ((entry as unknown as Record<string, unknown>).label === undefined) {
+        entry.label = null;
         needsPersist = true;
       }
       // Backfill cachedQuota fields

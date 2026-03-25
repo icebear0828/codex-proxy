@@ -39,6 +39,8 @@ export interface AccountEntry {
   accountId: string | null;
   /** Per-user unique ID (chatgpt_user_id). Team members share accountId but have distinct userId. */
   userId: string | null;
+  /** User-editable label for disambiguation (e.g. "Team Alpha", "Personal"). */
+  label: string | null;
   planType: string | null;
   proxyApiKey: string;
   status: AccountStatus;
@@ -56,6 +58,7 @@ export interface AccountInfo {
   email: string | null;
   accountId: string | null;
   userId: string | null;
+  label: string | null;
   planType: string | null;
   status: AccountStatus;
   usage: AccountUsage;

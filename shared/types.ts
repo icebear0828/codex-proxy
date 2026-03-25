@@ -22,6 +22,7 @@ export interface QuotaWarning {
 export interface Account {
   id: string;
   email: string;
+  label?: string;
   status: string;
   planType?: string;
   usage?: {

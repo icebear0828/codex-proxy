@@ -78,7 +78,7 @@ export function AccountTable({
   // By search
   if (search) {
     const lower = search.toLowerCase();
-    filtered = filtered.filter((a) => a.email.toLowerCase().includes(lower));
+    filtered = filtered.filter((a) => a.email.toLowerCase().includes(lower) || (a.label && a.label.toLowerCase().includes(lower)));
   }
 
   const totalCount = filtered.length;
@@ -221,7 +221,7 @@ export function AccountTable({
                   />
                 </label>
                 <span class="flex-1 min-w-0 text-sm font-medium truncate text-slate-700 dark:text-text-main">
-                  {acct.email}
+                  {acct.label ? `${acct.label} (${acct.email})` : acct.email}
                 </span>
                 <span class="w-20 hidden sm:flex justify-center">
                   <span class={`px-2 py-0.5 rounded-full text-[0.65rem] font-medium border ${statusCls}`}>

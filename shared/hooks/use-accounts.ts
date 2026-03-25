@@ -258,6 +258,24 @@ export function useAccounts() {
     return batchSetStatus([id], newStatus);
   }, [batchSetStatus]);
 
+  const updateLabel = useCallback(async (id: string, label: string | null): Promise<string | null> => {
+    try {
+      const resp = await fetch(`/auth/accounts/${encodeURIComponent(id)}/label`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ label }),
+      });
+      if (!resp.ok) {
+        const data = await resp.json();
+        return data.error || "Failed to update label";
+      }
+      patchLocal(id, { label: label ?? undefined });
+      return null;
+    } catch (err) {
+      return "networkError" + (err instanceof Error ? err.message : "");
+    }
+  }, [patchLocal]);
+
   return {
     list,
     loading,
@@ -276,5 +294,6 @@ export function useAccounts() {
     batchDelete,
     batchSetStatus,
     toggleStatus,
+    updateLabel,
   };
 }

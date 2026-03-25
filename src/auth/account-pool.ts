@@ -279,6 +279,7 @@ export class AccountPool {
       email: profile?.email ?? null,
       accountId,
       userId,
+      label: null,
       planType: profile?.chatgpt_plan_type ?? null,
       proxyApiKey: "codex-proxy-" + randomBytes(24).toString("hex"),
       status: isTokenExpired(token) ? "expired" : "active",
@@ -378,6 +379,15 @@ export class AccountPool {
     entry.userId = profile?.chatgpt_user_id ?? entry.userId;
     entry.status = "active";
     this.persistNow(); // Critical data — persist immediately
+  }
+
+  /** Set a user-editable label for an account. Returns false if not found. */
+  setLabel(entryId: string, label: string | null): boolean {
+    const entry = this.accounts.get(entryId);
+    if (!entry) return false;
+    entry.label = label;
+    this.schedulePersist();
+    return true;
   }
 
   markStatus(entryId: string, status: AccountEntry["status"]): void {
@@ -597,6 +607,7 @@ export class AccountPool {
       email: entry.email,
       accountId: entry.accountId,
       userId: entry.userId,
+      label: entry.label,
       planType: entry.planType,
       status: entry.status,
       usage: { ...entry.usage },

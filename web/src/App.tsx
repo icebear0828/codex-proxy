@@ -136,6 +136,7 @@ function Dashboard() {
             onExport={accounts.exportAccounts}
             onImport={accounts.importAccounts}
             onToggleStatus={accounts.toggleStatus}
+            onUpdateLabel={accounts.updateLabel}
           />
           <ProxyPool proxies={proxies} />
           <ApiConfig

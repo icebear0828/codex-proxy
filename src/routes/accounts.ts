@@ -18,7 +18,7 @@ import { z } from "zod";
 import type { AccountPool } from "../auth/account-pool.js";
 import type { RefreshScheduler } from "../auth/refresh-scheduler.js";
 import { validateManualToken } from "../auth/chatgpt-oauth.js";
-import { startOAuthFlow } from "../auth/oauth-pkce.js";
+import { startOAuthFlow, refreshAccessToken } from "../auth/oauth-pkce.js";
 import { getConfig } from "../config.js";
 import { CodexApi } from "../proxy/codex-api.js";
 import type { CodexUsageResponse } from "../proxy/codex-api.js";
@@ -37,11 +37,21 @@ const BatchStatusSchema = z.object({
   status: z.enum(["active", "disabled"]),
 });
 
+const LabelSchema = z.object({
+  label: z.string().max(64).nullable(),
+});
+
+const BulkImportEntrySchema = z.object({
+  token: z.string().min(1).optional(),
+  refreshToken: z.string().min(1).nullable().optional(),
+  label: z.string().max(64).optional(),
+}).refine(
+  (d) => Boolean(d.token) || Boolean(d.refreshToken),
+  { message: "Either token or refreshToken is required" },
+);
+
 const BulkImportSchema = z.object({
-  accounts: z.array(z.object({
-    token: z.string().min(1),
-    refreshToken: z.string().nullable().optional(),
-  })).min(1),
+  accounts: z.array(BulkImportEntrySchema).min(1),
 });
 
 export function createAccountRoutes(
@@ -100,16 +110,48 @@ export function createAccountRoutes(
     const errors: string[] = [];
     const existingIds = new Set(pool.getAccounts().map((a) => a.id));
 
+    const config = getConfig();
+    const globalProxyUrl = config.tls?.proxy_url ?? null;
+
     for (const entry of parsed.data.accounts) {
-      const validation = validateManualToken(entry.token);
-      if (!validation.valid) {
-        failed++;
-        errors.push(validation.error ?? "Invalid token");
-        continue;
+      let token: string;
+      let rt: string | null = entry.refreshToken ?? null;
+
+      if (entry.token) {
+        // Token provided — validate directly
+        const validation = validateManualToken(entry.token);
+        if (!validation.valid) {
+          failed++;
+          errors.push(validation.error ?? "Invalid token");
+          continue;
+        }
+        token = entry.token;
+      } else {
+        // Refresh-token-only — exchange for access token
+        try {
+          const tokens = await refreshAccessToken(rt!, globalProxyUrl);
+          const validation = validateManualToken(tokens.access_token);
+          if (!validation.valid) {
+            failed++;
+            errors.push(`Refresh token exchange succeeded but token invalid: ${validation.error}`);
+            continue;
+          }
+          token = tokens.access_token;
+          // Prefer the new refresh token if returned
+          rt = tokens.refresh_token ?? rt;
+        } catch (err) {
+          failed++;
+          errors.push(`Refresh token exchange failed: ${err instanceof Error ? err.message : String(err)}`);
+          continue;
+        }
       }
 
-      const entryId = pool.addAccount(entry.token, entry.refreshToken ?? null);
-      scheduler.scheduleOne(entryId, entry.token);
+      const entryId = pool.addAccount(token, rt);
+      scheduler.scheduleOne(entryId, token);
+
+      if (entry.label) {
+        pool.setLabel(entryId, entry.label);
+      }
 
       if (existingIds.has(entryId)) {
         updated++;
@@ -186,6 +228,32 @@ export function createAccountRoutes(
     }
 
     return c.json({ success: true, updated, notFound });
+  });
+
+  // Update account label
+  app.patch("/auth/accounts/:id/label", async (c) => {
+    const id = c.req.param("id");
+    let body: unknown;
+    try {
+      body = await c.req.json();
+    } catch {
+      c.status(400);
+      return c.json({ error: "Malformed JSON request body" });
+    }
+
+    const parsed = LabelSchema.safeParse(body);
+    if (!parsed.success) {
+      c.status(400);
+      return c.json({ error: "Invalid request", details: parsed.error.issues });
+    }
+
+    const ok = pool.setLabel(id, parsed.data.label);
+    if (!ok) {
+      c.status(404);
+      return c.json({ error: "Account not found" });
+    }
+
+    return c.json({ success: true });
   });
 
   // List all accounts

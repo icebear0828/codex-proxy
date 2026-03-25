@@ -4,6 +4,7 @@ import type { ProxyEntry } from "../types";
 export interface AssignmentAccount {
   id: string;
   email: string;
+  label?: string;
   status: string;
   proxyId: string;
   proxyName: string;

@@ -13,6 +13,10 @@
 
 ### Added
 
+- 账号标签（label）：支持为每个账号设置自定义标签（如 "Team Alpha"、"个人"），解决同一邮箱加入多个 team 无法区分的问题。AccountCard 有标签时显示标签为主标题，hover 显示编辑按钮
+- Refresh-token-only 导入：批量导入现在支持只传 `refreshToken`（无需有效 JWT），后端自动用 RT 换取 AT 后添加账号
+- 导入模板下载：AccountImportExport 工具栏新增模板下载按钮，包含 token-only、RT-only、label 等示例格式
+- 导入支持 label 字段：批量导入时可为每条记录指定 label
 - Claude Code Setup 卡片：Dashboard 按 Opus/Sonnet/Haiku/自定义 层级一键复制环境变量（推荐模型 gpt-5.4 / gpt-5.4-mini / gpt-5.3-codex）
 - 账号启用/禁用 toggle：AccountCard 和 AccountTable 新增 per-account 开关，无需批量操作即可快速切换账号状态
 - Codex CLI 配置说明：README 新增 `~/.codex/config.toml` 配置示例
