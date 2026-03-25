@@ -13,7 +13,7 @@ import { resolve } from "path";
 const ROOT = resolve(import.meta.dirname, "..", "..", "..");
 const PKG = resolve(import.meta.dirname, "..");
 
-const DIRS = ["config", "public", "public-desktop", "bin"];
+const DIRS = ["config", "public", "bin"];
 const isClean = process.argv.includes("--clean");
 
 for (const dir of DIRS) {

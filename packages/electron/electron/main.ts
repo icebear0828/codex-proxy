@@ -128,7 +128,6 @@ app.on("ready", async () => {
       dataDir,
       binDir,
       publicDir: resolve(distRoot, "public"),
-      desktopPublicDir: resolve(distRoot, "public-desktop"),
     });
 
     // 4. Start the proxy server (try configured port first, fall back to random if occupied)

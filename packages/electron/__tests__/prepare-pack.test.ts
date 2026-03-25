@@ -16,7 +16,7 @@ const ROOT_DIR = resolve(PKG_DIR, "..", "..");
 const SCRIPT = resolve(PKG_DIR, "electron", "prepare-pack.mjs");
 
 // Directories that prepare-pack copies from root into packages/electron/
-const DIRS = ["config", "public", "public-desktop", "bin"];
+const DIRS = ["config", "public", "bin"];
 
 describe("prepare-pack.mjs", () => {
   // Clean up any leftover copies before/after each test

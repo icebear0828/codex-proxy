@@ -12,13 +12,12 @@ artifactName: "Codex-Proxy-${version}-${os}-${arch}.${ext}"
 directories:
   output: release
 
-# Pre-pack script copies config/, public/, public-desktop/, bin/ from
-# monorepo root into this directory. Paths here are relative to projectDir.
+# Pre-pack script copies config/, public/, bin/ from monorepo root into
+# this directory. Paths here are relative to projectDir.
 files:
   - dist-electron/**/*
   - config/**/*
   - public/**/*
-  - public-desktop/**/*
   - electron/assets/**/*
   - package.json
   - "!node_modules"
@@ -29,7 +28,6 @@ files:
 asarUnpack:
   - "config/**/*"
   - "public/**/*"
-  - "public-desktop/**/*"
   - "node_modules/koffi/**"
   - "**/*.node"
 

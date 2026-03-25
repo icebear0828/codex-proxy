@@ -13,7 +13,6 @@ interface PathConfig {
   dataDir: string;
   binDir: string;
   publicDir: string;
-  desktopPublicDir?: string;
 }
 
 let _paths: PathConfig | null = null;
@@ -49,11 +48,6 @@ export function getBinDir(): string {
 /** Directory for static web assets (Vite build output). */
 export function getPublicDir(): string {
   return _paths?.publicDir ?? resolve(process.cwd(), "public");
-}
-
-/** Directory for desktop-specific static assets (desktop Vite build output). */
-export function getDesktopPublicDir(): string {
-  return _paths?.desktopPublicDir ?? resolve(process.cwd(), "public-desktop");
 }
 
 /** Whether running in embedded mode (Electron). */

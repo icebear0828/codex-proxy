@@ -6,6 +6,12 @@
 
 ## [Unreleased]
 
+### Removed
+
+- 删除废弃的 `packages/electron/desktop/` UI（Electron 已直接加载 web/ UI），消除 18 个重复组件
+- 删除 `public-desktop/` 构建产物目录及 `/desktop` 路由
+- 删除 `web/src/` 中 6 个未被引用的死文件（hooks/utils/i18n/theme，~443 LOC）
+
 ### Fixed
 
 - 导入/导出按钮图标反了——导入改为下箭头、导出改为上箭头（#191）

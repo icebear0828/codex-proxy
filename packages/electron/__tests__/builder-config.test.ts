@@ -62,13 +62,12 @@ describe("electron-builder.yml", () => {
     expect(hasDistElectron).toBe(true);
   });
 
-  it("files list includes config, public, public-desktop globs", () => {
+  it("files list includes config and public globs", () => {
     // After prepare-pack copies root dirs into packages/electron/,
     // electron-builder picks them up via simple glob patterns
     const globs = config.files.filter((f): f is string => typeof f === "string");
     expect(globs).toContain("config/**/*");
     expect(globs).toContain("public/**/*");
-    expect(globs).toContain("public-desktop/**/*");
   });
 
   it("root source directories for prepare-pack actually exist", () => {
@@ -100,7 +99,6 @@ describe("electron-builder.yml", () => {
     const unpacked = config.asarUnpack;
     expect(unpacked).toContain("config/**/*");
     expect(unpacked).toContain("public/**/*");
-    expect(unpacked).toContain("public-desktop/**/*");
   });
 
   it("electronVersion matches installed version", () => {
