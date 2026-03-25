@@ -6,6 +6,11 @@
 
 ## [Unreleased]
 
+### Changed
+
+- AccountList 头部重做：标题行 + 导航标签 + 操作工具栏三层分离，按钮带文字标签，分页信息更清晰（`10 / 908` + 展开全部）
+- 暗色主题修复：图表 SVG 线条颜色改用 CSS 变量（dark mode 下更亮）、代码块 light mode 背景修正、Toggle 开关 thumb 对比度提升
+
 ### Added
 
 - Claude Code Setup 卡片：Dashboard 按 Opus/Sonnet/Haiku/自定义 层级一键复制环境变量（推荐模型 gpt-5.4 / gpt-5.4-mini / gpt-5.3-codex）

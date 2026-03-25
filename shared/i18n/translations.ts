@@ -265,6 +265,10 @@ export const translations = {
     claudeCodeCustom: "Custom",
     enableAccount: "Enable account",
     disableAccount: "Disable account",
+    overview: "Overview",
+    expandAll: "Expand All",
+    refreshList: "Refresh",
+    quotaShort: "Quota",
   },
   zh: {
     serverOnline: "\u670d\u52a1\u8fd0\u884c\u4e2d",
@@ -535,6 +539,10 @@ export const translations = {
     claudeCodeCustom: "自定义",
     enableAccount: "启用账号",
     disableAccount: "禁用账号",
+    overview: "概览",
+    expandAll: "展开全部",
+    refreshList: "刷新",
+    quotaShort: "配额",
   },
 } as const;
 

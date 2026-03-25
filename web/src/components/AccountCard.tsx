@@ -177,7 +177,7 @@ export function AccountCard({ account, index, onDelete, proxies, onProxyChange, 
               } ${isEnabled ? "bg-primary" : "bg-slate-300 dark:bg-slate-600"}`}
             >
               <span
-                class={`pointer-events-none inline-block h-4 w-4 rounded-full bg-white shadow transform transition-transform duration-200 ${
+                class={`pointer-events-none inline-block h-4 w-4 rounded-full bg-white dark:bg-slate-200 shadow transform transition-transform duration-200 ${
                   isEnabled ? "translate-x-4" : "translate-x-0"
                 }`}
               />

@@ -141,14 +141,14 @@ export function UsageChart({ data, height = 260 }: UsageChartProps) {
           <polyline
             points={inputPoints}
             fill="none"
-            stroke="#3b82f6"
+            stroke="var(--chart-blue)"
             stroke-width="2"
             stroke-linejoin="round"
           />
           <polyline
             points={outputPoints}
             fill="none"
-            stroke="#10b981"
+            stroke="var(--chart-green)"
             stroke-width="2"
             stroke-linejoin="round"
           />
@@ -210,7 +210,7 @@ export function UsageChart({ data, height = 260 }: UsageChartProps) {
           <polyline
             points={requestPoints}
             fill="none"
-            stroke="#f59e0b"
+            stroke="var(--chart-amber)"
             stroke-width="2"
             stroke-linejoin="round"
           />

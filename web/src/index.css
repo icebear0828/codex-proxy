@@ -5,12 +5,18 @@
 :root {
   --primary: 16 162 53;
   --primary-hover: 14 140 46;
+  --chart-blue: #3b82f6;
+  --chart-green: #10b981;
+  --chart-amber: #f59e0b;
   color-scheme: light;
 }
 
 .dark {
   --primary: 16 163 127;
   --primary-hover: 14 140 108;
+  --chart-blue: #60a5fa;
+  --chart-green: #34d399;
+  --chart-amber: #fbbf24;
   color-scheme: dark;
 }
 

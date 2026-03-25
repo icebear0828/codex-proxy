@@ -217,7 +217,7 @@ export function CodeExamples({ baseUrl, apiKey, model, reasoningEffort, serviceT
             </div>
           </div>
           {/* Code Block */}
-          <div class="relative group rounded-lg overflow-hidden bg-[#0d1117] text-slate-300 font-mono text-xs border border-slate-800 dark:border-border-dark">
+          <div class="relative group rounded-lg overflow-hidden bg-slate-50 dark:bg-[#0d1117] text-slate-800 dark:text-slate-300 font-mono text-xs border border-slate-200 dark:border-border-dark">
             <div class="absolute right-2 top-2 z-10 opacity-0 group-hover:opacity-100 transition-opacity">
               <CopyButton getText={getCode} variant="label" />
             </div>

@@ -72,105 +72,121 @@ export function AccountList({ accounts, loading, onDelete, onRefresh, refreshing
     ? lastUpdated.toLocaleTimeString(lang === "zh" ? "zh-CN" : "en-US", { hour: "2-digit", minute: "2-digit", second: "2-digit" })
     : null;
 
+  const activeCount = accounts.filter((a) => a.status === "active").length;
+
   return (
     <section class="flex flex-col gap-4">
-      <div class="flex items-center justify-between">
+      {/* Row 1: Title + stats */}
+      <div class="flex items-start justify-between">
         <div class="flex flex-col gap-1">
           <h2 class="text-[0.95rem] font-bold tracking-tight">{t("connectedAccounts")}</h2>
           <p class="text-slate-500 dark:text-text-dim text-[0.8rem]">{t("connectedAccountsDesc")}</p>
         </div>
-        <div class="flex items-center gap-2 shrink-0">
+        <div class="flex flex-col items-end gap-1 shrink-0">
+          <span class="text-[0.82rem] font-semibold">
+            <span class="text-primary">{activeCount}</span>
+            <span class="text-slate-400 dark:text-text-dim"> / {accounts.length}</span>
+          </span>
           {updatedAtText && (
-            <span class="text-[0.75rem] text-slate-400 dark:text-text-dim hidden sm:inline">
+            <span class="text-[0.7rem] text-slate-400 dark:text-text-dim">
               {t("updatedAt")} {updatedAtText}
             </span>
           )}
-          <a
-            href="#/account-management"
-            class="text-[0.75rem] text-primary hover:text-primary/80 font-medium transition-colors"
-          >
-            {t("manageAccounts")} &rarr;
-          </a>
-          <a
-            href="#/usage-stats"
-            class="text-[0.75rem] text-primary hover:text-primary/80 font-medium transition-colors"
-          >
-            {t("usageStats")} &rarr;
-          </a>
-          {onExport && onImport && (
-            <AccountImportExport onExport={onExport} onImport={onImport} selectedIds={selectedIds} />
-          )}
-          {accounts.length > 0 && (
-            <button
-              onClick={toggleSelectAll}
-              title={selectedIds.size === accounts.length ? t("deselectAll") : t("selectAll")}
-              class="p-1.5 text-slate-400 dark:text-text-dim hover:text-primary transition-colors rounded-md hover:bg-primary/10"
-            >
-              <svg class="size-[18px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-                {selectedIds.size === accounts.length ? (
-                  <path stroke-linecap="round" stroke-linejoin="round" d="M9 12.75 11.25 15 15 9.75M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" />
-                ) : (
-                  <path stroke-linecap="round" stroke-linejoin="round" d="M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" />
-                )}
-              </svg>
-            </button>
-          )}
-          <button
-            onClick={onRefresh}
-            disabled={refreshing}
-            title={t("refresh")}
-            class="p-1.5 text-slate-400 dark:text-text-dim hover:text-primary transition-colors rounded-md hover:bg-primary/10 disabled:opacity-40 disabled:cursor-not-allowed"
-          >
-            <svg
-              class={`size-[18px] ${refreshing ? "animate-spin" : ""}`}
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="1.5"
-            >
-              <path stroke-linecap="round" stroke-linejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0 3.181 3.183a8.25 8.25 0 0 0 13.803-3.7M4.031 9.865a8.25 8.25 0 0 1 13.803-3.7l3.181 3.182m0-4.991v4.99" />
-            </svg>
-          </button>
-          {/* Refresh all quota */}
-          <button
-            onClick={refreshAllQuota}
-            disabled={quotaRefreshing}
-            title={t("refreshAllQuota")}
-            class="p-1.5 text-slate-400 dark:text-text-dim hover:text-amber-500 transition-colors rounded-md hover:bg-amber-50 dark:hover:bg-amber-900/20 disabled:opacity-40 disabled:cursor-not-allowed"
-          >
-            <svg
-              class={`size-[18px] ${quotaRefreshing ? "animate-spin" : ""}`}
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="1.5"
-            >
-              <path stroke-linecap="round" stroke-linejoin="round" d="M3.75 3v11.25A2.25 2.25 0 0 0 6 16.5h2.25M3.75 3h-1.5m1.5 0h16.5m0 0h1.5m-1.5 0v11.25A2.25 2.25 0 0 1 18 16.5h-2.25m-7.5 0h7.5m-7.5 0-1 3m8.5-3 1 3m0 0 .5 1.5m-.5-1.5h-9.5m0 0-.5 1.5" />
-            </svg>
-          </button>
-          {/* Pagination controls in header */}
-          {!loading && accounts.length > PAGE_SIZE && (
-            <>
-              {visibleCount < accounts.length ? (
-                <>
-                  <button
-                    onClick={() => setVisibleCount(accounts.length)}
-                    class="text-[0.7rem] px-2 py-1 text-slate-400 dark:text-text-dim hover:text-primary border border-gray-200 dark:border-border-dark rounded transition-colors"
-                  >
-                    {t("showAll")} ({accounts.length})
-                  </button>
-                </>
-              ) : (
-                <button
-                  onClick={() => setVisibleCount(PAGE_SIZE)}
-                  class="text-[0.7rem] px-2 py-1 text-slate-400 dark:text-text-dim hover:text-primary border border-gray-200 dark:border-border-dark rounded transition-colors"
-                >
-                  {t("collapse")}
-                </button>
-              )}
-            </>
-          )}
         </div>
+      </div>
+
+      {/* Row 2: Navigation tabs */}
+      <div class="flex items-center gap-1.5">
+        <span class="px-3 py-1.5 rounded-lg text-xs font-medium bg-primary/10 text-primary dark:bg-primary/20">
+          {t("overview")}
+        </span>
+        <a
+          href="#/account-management"
+          class="px-3 py-1.5 rounded-lg text-xs font-medium text-slate-500 dark:text-text-dim hover:bg-slate-100 dark:hover:bg-border-dark transition-colors"
+        >
+          {t("manageAccounts")}
+        </a>
+        <a
+          href="#/proxy-settings"
+          class="px-3 py-1.5 rounded-lg text-xs font-medium text-slate-500 dark:text-text-dim hover:bg-slate-100 dark:hover:bg-border-dark transition-colors"
+        >
+          {t("proxySettings")}
+        </a>
+        <a
+          href="#/usage-stats"
+          class="px-3 py-1.5 rounded-lg text-xs font-medium text-slate-500 dark:text-text-dim hover:bg-slate-100 dark:hover:bg-border-dark transition-colors"
+        >
+          {t("usageStats")}
+        </a>
+      </div>
+
+      {/* Row 3: Action toolbar */}
+      <div class="flex items-center gap-1.5 flex-wrap">
+        {/* Refresh list */}
+        <button
+          onClick={onRefresh}
+          disabled={refreshing}
+          class="flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium text-slate-600 dark:text-text-dim hover:text-primary hover:bg-slate-100 dark:hover:bg-border-dark rounded-lg transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+        >
+          <svg class={`size-3.5 ${refreshing ? "animate-spin" : ""}`} viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0 3.181 3.183a8.25 8.25 0 0 0 13.803-3.7M4.031 9.865a8.25 8.25 0 0 1 13.803-3.7l3.181 3.182m0-4.991v4.99" />
+          </svg>
+          <span class="hidden sm:inline">{t("refreshList")}</span>
+        </button>
+        {/* Refresh all quota */}
+        <button
+          onClick={refreshAllQuota}
+          disabled={quotaRefreshing}
+          class="flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium text-slate-600 dark:text-text-dim hover:text-amber-500 hover:bg-amber-50 dark:hover:bg-amber-900/20 rounded-lg transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+        >
+          <svg class={`size-3.5 ${quotaRefreshing ? "animate-spin" : ""}`} viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M3.75 3v11.25A2.25 2.25 0 0 0 6 16.5h2.25M3.75 3h-1.5m1.5 0h16.5m0 0h1.5m-1.5 0v11.25A2.25 2.25 0 0 1 18 16.5h-2.25m-7.5 0h7.5m-7.5 0-1 3m8.5-3 1 3m0 0 .5 1.5m-.5-1.5h-9.5m0 0-.5 1.5" />
+          </svg>
+          <span class="hidden sm:inline">{t("quotaShort")}</span>
+        </button>
+        {/* Import / Export */}
+        {onExport && onImport && (
+          <AccountImportExport onExport={onExport} onImport={onImport} selectedIds={selectedIds} />
+        )}
+        {/* Select all */}
+        {accounts.length > 0 && (
+          <button
+            onClick={toggleSelectAll}
+            class="flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium text-slate-600 dark:text-text-dim hover:text-primary hover:bg-slate-100 dark:hover:bg-border-dark rounded-lg transition-colors"
+          >
+            <svg class="size-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+              {selectedIds.size === accounts.length ? (
+                <path stroke-linecap="round" stroke-linejoin="round" d="M9 12.75 11.25 15 15 9.75M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" />
+              ) : (
+                <path stroke-linecap="round" stroke-linejoin="round" d="M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" />
+              )}
+            </svg>
+            <span class="hidden sm:inline">{selectedIds.size === accounts.length ? t("deselectAll") : t("selectAll")}</span>
+          </button>
+        )}
+        {/* Pagination — right side */}
+        {!loading && accounts.length > PAGE_SIZE && (
+          <div class="flex items-center gap-2 ml-auto pl-3 border-l border-gray-200 dark:border-border-dark">
+            <span class="text-xs text-slate-400 dark:text-text-dim tabular-nums">
+              {Math.min(visibleCount, accounts.length)} / {accounts.length}
+            </span>
+            {visibleCount < accounts.length ? (
+              <button
+                onClick={() => setVisibleCount(accounts.length)}
+                class="px-2.5 py-1 text-xs font-medium text-primary hover:bg-primary/10 rounded-lg transition-colors"
+              >
+                {t("expandAll")}
+              </button>
+            ) : (
+              <button
+                onClick={() => setVisibleCount(PAGE_SIZE)}
+                class="px-2.5 py-1 text-xs font-medium text-slate-500 dark:text-text-dim hover:bg-slate-100 dark:hover:bg-border-dark rounded-lg transition-colors"
+              >
+                {t("collapse")}
+              </button>
+            )}
+          </div>
+        )}
       </div>
       {/* Quota warning banners */}
       {warnings.filter((w) => w.level === "critical").length > 0 && (

@@ -242,7 +242,7 @@ export function AccountTable({
                         } ${isEnabled ? "bg-primary" : "bg-slate-300 dark:bg-slate-600"}`}
                       >
                         <span
-                          class={`pointer-events-none inline-block h-3 w-3 rounded-full bg-white shadow transform transition-transform duration-200 ${
+                          class={`pointer-events-none inline-block h-3 w-3 rounded-full bg-white dark:bg-slate-200 shadow transform transition-transform duration-200 ${
                             isEnabled ? "translate-x-3" : "translate-x-0"
                           }`}
                         />
