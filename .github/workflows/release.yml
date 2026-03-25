@@ -177,6 +177,27 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Merge x64 entries into latest-mac.yml
+        run: |
+          TAG="${{ inputs.tag || github.ref_name }}"
+          gh release download "$TAG" --pattern "latest-mac.yml" --output /tmp/arm64-mac.yml --clobber 2>/dev/null || exit 0
+          LOCAL_YML="packages/electron/release/latest-mac.yml"
+          [ -f "$LOCAL_YML" ] || exit 0
+          node -e "
+          const fs = require('fs');
+          const yaml = require('js-yaml');
+          const arm64Yml = yaml.load(fs.readFileSync('/tmp/arm64-mac.yml', 'utf8'));
+          const x64Yml = yaml.load(fs.readFileSync('$LOCAL_YML', 'utf8'));
+          const arm64Files = (arm64Yml.files || []).filter(f => f.url.includes('arm64'));
+          const x64Files = (x64Yml.files || []).filter(f => !f.url.includes('arm64'));
+          arm64Yml.files = [...arm64Files, ...x64Files];
+          fs.writeFileSync('/tmp/merged-mac.yml', yaml.dump(arm64Yml, { lineWidth: -1, quotingType: '\"' }));
+          "
+          mv /tmp/merged-mac.yml /tmp/latest-mac.yml
+          gh release upload "$TAG" /tmp/latest-mac.yml --clobber
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
   release:
     needs: [build, build-mac-x64]
     runs-on: ubuntu-latest
