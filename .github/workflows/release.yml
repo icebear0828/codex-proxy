@@ -81,9 +81,9 @@ jobs:
           [ -z "$ASSETS" ] && exit 0
 
           case "${{ matrix.platform }}" in
-            mac) PATTERN="${{ matrix.arch }}" ;;
-            win) PATTERN="(Setup|\.exe|\.nsis|win)" ;;
-            linux) PATTERN="(AppImage|linux)" ;;
+            mac) PATTERN="mac-${{ matrix.arch }}" ;;
+            win) PATTERN="win-" ;;
+            linux) PATTERN="linux-" ;;
           esac
 
           echo "$ASSETS" | grep -iE "$PATTERN" | while read -r name; do
@@ -145,6 +145,19 @@ jobs:
         working-directory: packages/electron
         run: node electron/prepare-pack.mjs
 
+      - name: Clean stale x64 release assets
+        continue-on-error: true
+        run: |
+          TAG="${{ inputs.tag || github.ref_name }}"
+          ASSETS=$(gh release view "$TAG" --json assets -q '.assets[].name' 2>/dev/null || echo "")
+          [ -z "$ASSETS" ] && exit 0
+          echo "$ASSETS" | grep -iE "mac-x64" | while read -r name; do
+            echo "Removing stale asset: $name"
+            gh release delete-asset "$TAG" "$name" -y 2>/dev/null || true
+          done
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
       - name: Pack (mac-x64)
         working-directory: packages/electron
         run: npx electron-builder --config electron-builder.yml --mac --x64 --publish never
@@ -155,7 +168,7 @@ jobs:
           cd packages/electron/release
           for f in *; do
             [ -f "$f" ] || continue
-            # Skip arm64 files and yml manifests (arm64 build already uploaded these)
+            # Only upload x64 files; skip arm64 and yml manifests
             echo "$f" | grep -qi "arm64" && continue
             echo "$f" | grep -qiE "\.yml$" && continue
             echo "Uploading: $f"

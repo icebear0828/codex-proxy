@@ -6,6 +6,11 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- Release 资产命名统一：`artifactName` 模板强制 `Codex-Proxy-{version}-{os}-{arch}.{ext}`，消除 `Codex.Proxy` vs `Codex-Proxy` 重复，x64 DMG 现在明确标注架构（`mac-x64`）
+- macOS x64 构建前清理旧资产，避免 release 页面出现重复文件
+
 ### Changed
 
 - TLS 指纹对齐：curl-impersonate 升级支持 chrome144 profile（v1.5.1），`KNOWN_CHROME_PROFILES` 新增 133/142
