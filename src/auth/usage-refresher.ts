@@ -9,7 +9,6 @@
  */
 
 import { CodexApi } from "../proxy/codex-api.js";
-import { CodexApiError } from "../proxy/codex-types.js";
 import { getConfig } from "../config.js";
 import { jitter } from "../utils/jitter.js";
 import { mapWithConcurrency } from "../utils/concurrency.js";
@@ -24,21 +23,7 @@ import type { CookieJar } from "../proxy/cookie-jar.js";
 import type { ProxyPool } from "../proxy/proxy-pool.js";
 import type { UsageStatsStore } from "./usage-stats.js";
 
-/** Check if a CodexApiError indicates the account is banned/suspended (non-CF 403). */
-function isBanError(err: unknown): boolean {
-  if (!(err instanceof CodexApiError)) return false;
-  if (err.status !== 403) return false;
-  // Cloudflare challenge pages contain cf_chl or are HTML — not a ban
-  const body = err.body.toLowerCase();
-  if (body.includes("cf_chl") || body.includes("<!doctype") || body.includes("<html")) return false;
-  return true;
-}
-
-/** Check if a CodexApiError is a 401 token invalidation. */
-function isTokenInvalidError(err: unknown): boolean {
-  if (!(err instanceof CodexApiError)) return false;
-  return err.status === 401;
-}
+import { isBanError, isTokenInvalidError } from "../proxy/error-classification.js";
 
 const INITIAL_DELAY_MS = 3_000; // 3s after startup
 

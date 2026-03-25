@@ -63,46 +63,12 @@ function toErrorStatus(status: number): StatusCode {
   return (status >= 400 && status < 600 ? status : 502) as StatusCode;
 }
 
-/** Extract the rate-limit reset duration from a 429 error body, if available. */
-function extractRetryAfterSec(body: string): number | undefined {
-  try {
-    const parsed = JSON.parse(body) as Record<string, unknown>;
-    const error = parsed.error as Record<string, unknown> | undefined;
-    if (!error) return undefined;
-    if (typeof error.resets_in_seconds === "number" && error.resets_in_seconds > 0) {
-      return error.resets_in_seconds;
-    }
-    if (typeof error.resets_at === "number" && error.resets_at > 0) {
-      const diff = error.resets_at - Date.now() / 1000;
-      return diff > 0 ? diff : undefined;
-    }
-  } catch { /* use default backoff */ }
-  return undefined;
-}
-
-/** Check if a CodexApiError indicates the account is banned/suspended (non-CF 403). */
-function isBanError(err: CodexApiError): boolean {
-  if (err.status !== 403) return false;
-  const body = err.body.toLowerCase();
-  if (body.includes("cf_chl") || body.includes("<!doctype") || body.includes("<html")) return false;
-  return true;
-}
-
-/** Check if a CodexApiError is a 401 token invalidation (revoked/expired upstream). */
-function isTokenInvalidError(err: CodexApiError): boolean {
-  return err.status === 401;
-}
-
-/** Check if a CodexApiError indicates the model is not supported on the account's plan. */
-function isModelNotSupportedError(err: CodexApiError): boolean {
-  // Only 4xx client errors (exclude 429 rate-limit)
-  if (err.status < 400 || err.status >= 500 || err.status === 429) return false;
-  const lower = err.message.toLowerCase();
-  // Must contain "model" to avoid false positives like "feature not supported"
-  if (!lower.includes("model")) return false;
-  return lower.includes("not supported") || lower.includes("not_supported")
-    || lower.includes("not available") || lower.includes("not_available");
-}
+import {
+  extractRetryAfterSec,
+  isBanError,
+  isTokenInvalidError,
+  isModelNotSupportedError,
+} from "../../proxy/error-classification.js";
 
 export async function handleProxyRequest(
   c: Context,

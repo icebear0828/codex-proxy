@@ -12,6 +12,10 @@
 - 删除 `public-desktop/` 构建产物目录及 `/desktop` 路由
 - 删除 `web/src/` 中 6 个未被引用的死文件（hooks/utils/i18n/theme，~443 LOC）
 
+### Changed
+
+- 提取 `src/proxy/error-classification.ts`：`isBanError`/`isTokenInvalidError`/`isModelNotSupportedError`/`extractRetryAfterSec` 从 proxy-handler 和 usage-refresher 中去重，19 个新测试
+
 ### Fixed
 
 - 导入/导出按钮图标反了——导入改为下箭头、导出改为上箭头（#191）
