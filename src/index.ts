@@ -143,8 +143,8 @@ export async function startServer(options?: StartOptions): Promise<ServerHandle>
   // Start background model refresh (requires auth to be ready)
   startModelRefresh(accountPool, cookieJar, proxyPool);
 
-  // Start background quota refresh
-  startQuotaRefresh(accountPool, cookieJar, proxyPool, usageStats);
+  // Start usage stats snapshot timer (no upstream requests — quota is collected passively)
+  startQuotaRefresh(accountPool, usageStats);
 
   // Start proxy health check timer (if proxies exist)
   proxyPool.startHealthCheckTimer();

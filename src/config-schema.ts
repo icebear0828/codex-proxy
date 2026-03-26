@@ -28,6 +28,7 @@ export const ConfigSchema = z.object({
     refresh_margin_seconds: z.number().min(0).default(300),
     refresh_enabled: z.boolean().default(true),
     refresh_concurrency: z.number().int().min(1).default(2),
+    max_concurrent_per_account: z.number().int().min(1).nullable().default(3),
     rotation_strategy: z.enum(ROTATION_STRATEGIES).default("least_used"),
     rate_limit_backoff_seconds: z.number().min(1).default(60),
     oauth_client_id: z.string().default("app_EMoamEEZ73f0CkXaXp7hrann"),

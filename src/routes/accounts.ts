@@ -42,7 +42,6 @@ export function createAccountRoutes(pool: AccountPool, scheduler: RefreshSchedul
   const querySvc = new AccountQueryService(
     pool,
     proxyPool ? { getAssignment: (id) => proxyPool.getAssignment(id), getAssignmentDisplayName: (id) => proxyPool.getAssignmentDisplayName(id) } : undefined,
-    { fetchUsage: (eid, tok, aid) => new CodexApi(tok, aid, cookieJar, eid, proxyPool?.resolveProxyUrl(eid)).getUsage() },
   );
   const mutationSvc = new AccountMutationService(pool, {
     clearSchedule: (id) => scheduler.clearOne(id),
@@ -96,7 +95,7 @@ export function createAccountRoutes(pool: AccountPool, scheduler: RefreshSchedul
   });
 
   app.get("/auth/accounts", async (c) => {
-    const accounts = c.req.query("quota") === "fresh" ? await querySvc.listFresh() : querySvc.listCached();
+    const accounts = querySvc.listFresh();
     return c.json({ accounts });
   });
 

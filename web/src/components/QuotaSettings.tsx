@@ -12,27 +12,23 @@ export function QuotaSettings() {
   const [draftPrimary, setDraftPrimary] = useState<string | null>(null);
   const [draftSecondary, setDraftSecondary] = useState<string | null>(null);
   const [draftSkip, setDraftSkip] = useState<boolean | null>(null);
-  const [draftConcurrency, setDraftConcurrency] = useState<string | null>(null);
   const [collapsed, setCollapsed] = useState(true);
 
   const currentInterval = qs.data?.refresh_interval_minutes ?? 5;
   const currentPrimary = qs.data?.warning_thresholds.primary ?? [80, 90];
   const currentSecondary = qs.data?.warning_thresholds.secondary ?? [80, 90];
   const currentSkip = qs.data?.skip_exhausted ?? true;
-  const currentConcurrency = qs.data?.concurrency ?? 10;
 
   const displayInterval = draftInterval ?? String(currentInterval);
   const displayPrimary = draftPrimary ?? currentPrimary.join(", ");
   const displaySecondary = draftSecondary ?? currentSecondary.join(", ");
   const displaySkip = draftSkip ?? currentSkip;
-  const displayConcurrency = draftConcurrency ?? String(currentConcurrency);
 
   const isDirty =
     draftInterval !== null ||
     draftPrimary !== null ||
     draftSecondary !== null ||
-    draftSkip !== null ||
-    draftConcurrency !== null;
+    draftSkip !== null;
 
   const parseThresholds = (str: string): number[] | null => {
     if (!str.trim()) return [];
@@ -70,19 +66,12 @@ export function QuotaSettings() {
       patch.skip_exhausted = draftSkip;
     }
 
-    if (draftConcurrency !== null) {
-      const val = parseInt(draftConcurrency, 10);
-      if (isNaN(val) || val < 1) return;
-      patch.concurrency = val;
-    }
-
     await qs.save(patch);
     setDraftInterval(null);
     setDraftPrimary(null);
     setDraftSecondary(null);
     setDraftSkip(null);
-    setDraftConcurrency(null);
-  }, [draftInterval, draftPrimary, draftSecondary, draftSkip, draftConcurrency, qs]);
+  }, [draftInterval, draftPrimary, draftSecondary, draftSkip, qs]);
 
   const inputCls =
     "w-full px-3 py-2 bg-white dark:bg-bg-dark border border-gray-200 dark:border-border-dark rounded-lg text-[0.78rem] font-mono text-slate-700 dark:text-text-main outline-none focus:ring-1 focus:ring-primary";
@@ -122,21 +111,6 @@ export function QuotaSettings() {
               />
               <span class="text-xs text-slate-500 dark:text-text-dim">{t("minutes")}</span>
             </div>
-          </div>
-
-          {/* Concurrency */}
-          <div class="space-y-1.5">
-            <label class="text-xs font-semibold text-slate-700 dark:text-text-main">
-              {t("quotaConcurrency")}
-            </label>
-            <p class="text-xs text-slate-400 dark:text-text-dim">{t("quotaConcurrencyHint")}</p>
-            <input
-              type="number"
-              min="1"
-              class={`${inputCls} max-w-[120px]`}
-              value={displayConcurrency}
-              onInput={(e) => setDraftConcurrency((e.target as HTMLInputElement).value)}
-            />
           </div>
 
           {/* Primary thresholds */}

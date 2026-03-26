@@ -234,9 +234,9 @@ describe("account-routing integration", () => {
     const acquired = pool.acquire()!;
 
     // Manually set the lock timestamp to 6 minutes ago
-    const lifecycle = (pool as unknown as { lifecycle: { acquireLocks: Map<string, number> } }).lifecycle;
+    const lifecycle = (pool as unknown as { lifecycle: { acquireLocks: Map<string, number[]> } }).lifecycle;
     const locks = lifecycle.acquireLocks;
-    locks.set(acquired.entryId, Date.now() - 6 * 60 * 1000);
+    locks.set(acquired.entryId, [Date.now() - 6 * 60 * 1000]);
 
     // acquire again should auto-release the stale lock and return the same account
     const reacquired = pool.acquire();

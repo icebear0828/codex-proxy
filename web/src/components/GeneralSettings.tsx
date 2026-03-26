@@ -18,6 +18,7 @@ export function GeneralSettings() {
   const [draftRefreshEnabled, setDraftRefreshEnabled] = useState<boolean | null>(null);
   const [draftRefreshMargin, setDraftRefreshMargin] = useState<string | null>(null);
   const [draftRefreshConcurrency, setDraftRefreshConcurrency] = useState<string | null>(null);
+  const [draftMaxConcurrent, setDraftMaxConcurrent] = useState<string | null>(null);
   const [draftAutoUpdate, setDraftAutoUpdate] = useState<boolean | null>(null);
   const [collapsed, setCollapsed] = useState(true);
 
@@ -31,6 +32,7 @@ export function GeneralSettings() {
   const currentRefreshEnabled = gs.data?.refresh_enabled ?? true;
   const currentRefreshMargin = gs.data?.refresh_margin_seconds ?? 300;
   const currentRefreshConcurrency = gs.data?.refresh_concurrency ?? 2;
+  const currentMaxConcurrent = gs.data?.max_concurrent_per_account ?? 3;
   const currentAutoUpdate = gs.data?.auto_update ?? true;
 
   const displayPort = draftPort ?? String(currentPort);
@@ -43,6 +45,7 @@ export function GeneralSettings() {
   const displayRefreshEnabled = draftRefreshEnabled ?? currentRefreshEnabled;
   const displayRefreshMargin = draftRefreshMargin ?? String(currentRefreshMargin);
   const displayRefreshConcurrency = draftRefreshConcurrency ?? String(currentRefreshConcurrency);
+  const displayMaxConcurrent = draftMaxConcurrent ?? String(currentMaxConcurrent);
   const displayAutoUpdate = draftAutoUpdate ?? currentAutoUpdate;
 
   const isDirty =
@@ -56,6 +59,7 @@ export function GeneralSettings() {
     draftRefreshEnabled !== null ||
     draftRefreshMargin !== null ||
     draftRefreshConcurrency !== null ||
+    draftMaxConcurrent !== null ||
     draftAutoUpdate !== null;
 
   const handleSave = useCallback(async () => {
@@ -107,6 +111,12 @@ export function GeneralSettings() {
       patch.refresh_concurrency = val;
     }
 
+    if (draftMaxConcurrent !== null) {
+      const val = parseInt(draftMaxConcurrent, 10);
+      if (isNaN(val) || val < 1) return;
+      patch.max_concurrent_per_account = val;
+    }
+
     if (draftAutoUpdate !== null) {
       patch.auto_update = draftAutoUpdate;
     }
@@ -122,8 +132,9 @@ export function GeneralSettings() {
     setDraftRefreshEnabled(null);
     setDraftRefreshMargin(null);
     setDraftRefreshConcurrency(null);
+    setDraftMaxConcurrent(null);
     setDraftAutoUpdate(null);
-  }, [draftPort, draftProxyUrl, draftForceHttp11, draftInjectContext, draftSuppressDirectives, draftDefaultModel, draftReasoningEffort, draftRefreshEnabled, draftRefreshMargin, draftRefreshConcurrency, draftAutoUpdate, gs]);
+  }, [draftPort, draftProxyUrl, draftForceHttp11, draftInjectContext, draftSuppressDirectives, draftDefaultModel, draftReasoningEffort, draftRefreshEnabled, draftRefreshMargin, draftRefreshConcurrency, draftMaxConcurrent, draftAutoUpdate, gs]);
 
   const inputCls =
     "w-full px-3 py-2 bg-white dark:bg-bg-dark border border-gray-200 dark:border-border-dark rounded-lg text-[0.78rem] font-mono text-slate-700 dark:text-text-main outline-none focus:ring-1 focus:ring-primary";
@@ -334,6 +345,21 @@ export function GeneralSettings() {
               class={`${inputCls} max-w-[160px]`}
               value={displayRefreshConcurrency}
               onInput={(e) => setDraftRefreshConcurrency((e.target as HTMLInputElement).value)}
+            />
+          </div>
+
+          {/* Max Concurrent Per Account */}
+          <div class="space-y-1.5">
+            <label class="text-xs font-semibold text-slate-700 dark:text-text-main">
+              {t("generalSettingsMaxConcurrent")}
+            </label>
+            <p class="text-xs text-slate-400 dark:text-text-dim">{t("generalSettingsMaxConcurrentHint")}</p>
+            <input
+              type="number"
+              min="1"
+              class={`${inputCls} max-w-[160px]`}
+              value={displayMaxConcurrent}
+              onInput={(e) => setDraftMaxConcurrent((e.target as HTMLInputElement).value)}
             />
           </div>
 

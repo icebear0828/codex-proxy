@@ -1,7 +1,7 @@
 /**
  * Shared error classification utilities for CodexApiError responses.
  *
- * Used by proxy-handler (request path) and usage-refresher (background quota fetch).
+ * Used by proxy-handler (request path) and account routes (single-account quota).
  *
  * Uses duck-typing ({ status, body, message }) instead of instanceof to stay
  * compatible with vi.mock'd CodexApiError in integration tests.

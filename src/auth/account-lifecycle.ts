@@ -5,6 +5,7 @@
  * Uses AccountRegistry for entry access (no circular dep — one-way reference).
  */
 
+import { getConfig } from "../config.js";
 import { getModelPlanTypes, isPlanFetched } from "../models/model-store.js";
 import { getRotationStrategy } from "./rotation-strategy.js";
 import type { RotationStrategy, RotationState, RotationStrategyName } from "./rotation-strategy.js";
@@ -14,7 +15,8 @@ import type { AccountEntry, AcquiredAccount } from "./types.js";
 const ACQUIRE_LOCK_TTL_MS = 5 * 60 * 1000; // 5 minutes
 
 export class AccountLifecycle {
-  private acquireLocks: Map<string, number> = new Map();
+  /** Per-account active slot timestamps. Each entry = one in-flight request. */
+  private acquireLocks: Map<string, number[]> = new Map();
   private strategy: RotationStrategy;
   private rotationState: RotationState = { roundRobinIndex: 0 };
   private registry: AccountRegistry;
@@ -24,27 +26,58 @@ export class AccountLifecycle {
     this.strategy = getRotationStrategy(strategyName);
   }
 
+  private slotCount(entryId: string): number {
+    return this.acquireLocks.get(entryId)?.length ?? 0;
+  }
+
+  private pushSlot(entryId: string): void {
+    const slots = this.acquireLocks.get(entryId);
+    if (slots) {
+      slots.push(Date.now());
+    } else {
+      this.acquireLocks.set(entryId, [Date.now()]);
+    }
+  }
+
+  private popSlot(entryId: string): void {
+    const slots = this.acquireLocks.get(entryId);
+    if (!slots) return;
+    slots.shift();
+    if (slots.length === 0) this.acquireLocks.delete(entryId);
+  }
+
   acquire(options?: { model?: string; excludeIds?: string[] }): AcquiredAccount | null {
-    const now = new Date();
-    const nowMs = now.getTime();
+    const nowMs = Date.now();
+    const now = new Date(nowMs);
 
     const entries = this.registry.getAllEntries();
     for (const entry of entries) {
       this.registry.refreshStatus(entry, now);
     }
 
-    // Auto-release stale locks
-    for (const [id, lockedAt] of this.acquireLocks) {
-      if (nowMs - lockedAt > ACQUIRE_LOCK_TTL_MS) {
-        console.warn(`[AccountPool] Auto-releasing stale lock for ${id} (locked ${Math.round((nowMs - lockedAt) / 1000)}s ago)`);
+    // Auto-release stale slots (slots are chronological — if oldest is fresh, all are)
+    for (const [id, slots] of this.acquireLocks) {
+      if (nowMs - slots[0] <= ACQUIRE_LOCK_TTL_MS) continue;
+      const fresh = slots.filter((ts) => nowMs - ts <= ACQUIRE_LOCK_TTL_MS);
+      const staleCount = slots.length - fresh.length;
+      console.warn(
+        `[AccountPool] Auto-releasing ${staleCount} stale slot(s) for ${id}`,
+      );
+      if (fresh.length === 0) {
         this.acquireLocks.delete(id);
+      } else {
+        this.acquireLocks.set(id, fresh);
       }
     }
 
-    const excludeSet = new Set(options?.excludeIds ?? []);
+    const maxConcurrent = getConfig().auth.max_concurrent_per_account ?? 3;
+    const excludeSet = options?.excludeIds?.length ? new Set(options.excludeIds) : null;
 
     const available = entries.filter(
-      (a) => a.status === "active" && !this.acquireLocks.has(a.id) && !excludeSet.has(a.id),
+      (a) =>
+        a.status === "active" &&
+        this.slotCount(a.id) < maxConcurrent &&
+        (!excludeSet || !excludeSet.has(a.id)),
     );
 
     if (available.length === 0) return null;
@@ -68,7 +101,7 @@ export class AccountLifecycle {
     }
 
     const selected = this.strategy.select(candidates, this.rotationState);
-    this.acquireLocks.set(selected.id, Date.now());
+    this.pushSlot(selected.id);
     return {
       entryId: selected.id,
       token: selected.token,
@@ -80,20 +113,19 @@ export class AccountLifecycle {
     entryId: string,
     usage?: { input_tokens?: number; output_tokens?: number },
   ): void {
-    this.acquireLocks.delete(entryId);
+    this.popSlot(entryId);
     this.registry.recordUsage(entryId, usage);
   }
 
   releaseWithoutCounting(entryId: string): void {
-    this.acquireLocks.delete(entryId);
+    this.popSlot(entryId);
   }
 
-  /** Clear lock for an entry (called by facade on status mutations). */
+  /** Clear all slots for an entry (called by facade on status mutations). */
   clearLock(entryId: string): void {
     this.acquireLocks.delete(entryId);
   }
 
-  /** Clear all locks (called by facade on clearToken). */
   clearAllLocks(): void {
     this.acquireLocks.clear();
   }
@@ -110,13 +142,14 @@ export class AccountLifecycle {
     accountId: string | null;
   }> {
     const now = new Date();
+    const maxConcurrent = getConfig().auth.max_concurrent_per_account ?? 3;
     const entries = this.registry.getAllEntries();
     for (const entry of entries) {
       this.registry.refreshStatus(entry, now);
     }
 
     const available = entries.filter(
-      (a: AccountEntry) => a.status === "active" && !this.acquireLocks.has(a.id) && a.planType,
+      (a: AccountEntry) => a.status === "active" && this.slotCount(a.id) < maxConcurrent && a.planType,
     );
 
     const byPlan = new Map<string, AccountEntry[]>();
@@ -133,7 +166,7 @@ export class AccountLifecycle {
     const result: Array<{ planType: string; entryId: string; token: string; accountId: string | null }> = [];
     for (const [plan, group] of byPlan) {
       const selected = this.strategy.select(group, this.rotationState);
-      this.acquireLocks.set(selected.id, Date.now());
+      this.pushSlot(selected.id);
       result.push({
         planType: plan,
         entryId: selected.id,

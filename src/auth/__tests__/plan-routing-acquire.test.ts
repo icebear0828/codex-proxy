@@ -38,7 +38,7 @@ function createPool(...specs: AccountSpec[]): { pool: AccountPool; jwts: Map<str
 describe("account-pool plan-based routing", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    setConfigForTesting(createMockConfig());
+    setConfigForTesting(createMockConfig({ auth: { max_concurrent_per_account: 1 } }));
     vi.mocked(getModelPlanTypes).mockReturnValue([]);
     vi.mocked(isPlanFetched).mockReturnValue(true);
   });

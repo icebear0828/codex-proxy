@@ -105,6 +105,7 @@ export function createSettingsRoutes(): Hono {
       refresh_enabled: config.auth.refresh_enabled,
       refresh_margin_seconds: config.auth.refresh_margin_seconds,
       refresh_concurrency: config.auth.refresh_concurrency,
+      max_concurrent_per_account: config.auth.max_concurrent_per_account,
       auto_update: config.update.auto_update,
     });
   });
@@ -133,6 +134,7 @@ export function createSettingsRoutes(): Hono {
       refresh_enabled?: boolean;
       refresh_margin_seconds?: number;
       refresh_concurrency?: number;
+      max_concurrent_per_account?: number | null;
       auto_update?: boolean;
     };
 
@@ -172,6 +174,13 @@ export function createSettingsRoutes(): Hono {
       if (!Number.isInteger(body.refresh_concurrency) || body.refresh_concurrency < 1) {
         c.status(400);
         return c.json({ error: "refresh_concurrency must be an integer >= 1" });
+      }
+    }
+
+    if (body.max_concurrent_per_account !== undefined && body.max_concurrent_per_account !== null) {
+      if (!Number.isInteger(body.max_concurrent_per_account) || body.max_concurrent_per_account < 1) {
+        c.status(400);
+        return c.json({ error: "max_concurrent_per_account must be an integer >= 1 or null" });
       }
     }
 
@@ -219,6 +228,10 @@ export function createSettingsRoutes(): Hono {
         if (!data.auth) data.auth = {};
         (data.auth as Record<string, unknown>).refresh_concurrency = body.refresh_concurrency;
       }
+      if (body.max_concurrent_per_account !== undefined) {
+        if (!data.auth) data.auth = {};
+        (data.auth as Record<string, unknown>).max_concurrent_per_account = body.max_concurrent_per_account;
+      }
       if (body.auto_update !== undefined) {
         if (!data.update) data.update = {};
         (data.update as Record<string, unknown>).auto_update = body.auto_update;
@@ -242,6 +255,7 @@ export function createSettingsRoutes(): Hono {
       refresh_enabled: updated.auth.refresh_enabled,
       refresh_margin_seconds: updated.auth.refresh_margin_seconds,
       refresh_concurrency: updated.auth.refresh_concurrency,
+      max_concurrent_per_account: updated.auth.max_concurrent_per_account,
       auto_update: updated.update.auto_update,
       restart_required: restartRequired,
     });
@@ -255,7 +269,6 @@ export function createSettingsRoutes(): Hono {
       refresh_interval_minutes: config.quota.refresh_interval_minutes,
       warning_thresholds: config.quota.warning_thresholds,
       skip_exhausted: config.quota.skip_exhausted,
-      concurrency: config.quota.concurrency,
     });
   });
 
@@ -276,20 +289,12 @@ export function createSettingsRoutes(): Hono {
       refresh_interval_minutes?: number;
       warning_thresholds?: { primary?: number[]; secondary?: number[] };
       skip_exhausted?: boolean;
-      concurrency?: number;
     };
 
     if (body.refresh_interval_minutes !== undefined) {
       if (!Number.isInteger(body.refresh_interval_minutes) || body.refresh_interval_minutes < 0) {
         c.status(400);
         return c.json({ error: "refresh_interval_minutes must be an integer >= 0" });
-      }
-    }
-
-    if (body.concurrency !== undefined) {
-      if (!Number.isInteger(body.concurrency) || body.concurrency < 1) {
-        c.status(400);
-        return c.json({ error: "concurrency must be an integer >= 1" });
       }
     }
 
@@ -320,9 +325,6 @@ export function createSettingsRoutes(): Hono {
       if (body.skip_exhausted !== undefined) {
         quota.skip_exhausted = body.skip_exhausted;
       }
-      if (body.concurrency !== undefined) {
-        quota.concurrency = body.concurrency;
-      }
     });
     reloadAllConfigs();
 
@@ -332,7 +334,6 @@ export function createSettingsRoutes(): Hono {
       refresh_interval_minutes: updated.quota.refresh_interval_minutes,
       warning_thresholds: updated.quota.warning_thresholds,
       skip_exhausted: updated.quota.skip_exhausted,
-      concurrency: updated.quota.concurrency,
     });
   });
 

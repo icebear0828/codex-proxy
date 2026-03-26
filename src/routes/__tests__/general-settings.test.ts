@@ -17,7 +17,7 @@ const mockConfig = {
     warning_thresholds: { primary: [80, 90], secondary: [80, 90] },
     skip_exhausted: true,
   },
-  auth: { rotation_strategy: "least_used", refresh_enabled: true, refresh_margin_seconds: 300, refresh_concurrency: 2 },
+  auth: { rotation_strategy: "least_used", refresh_enabled: true, refresh_margin_seconds: 300, refresh_concurrency: 2, max_concurrent_per_account: 3 as number | null },
   update: { auto_update: true },
 };
 
@@ -122,6 +122,7 @@ describe("GET /admin/general-settings", () => {
       refresh_enabled: true,
       refresh_margin_seconds: 300,
       refresh_concurrency: 2,
+      max_concurrent_per_account: 3,
       auto_update: true,
     });
   });
@@ -254,6 +255,45 @@ describe("POST /admin/general-settings", () => {
     expect(data.restart_required).toBe(false);
     expect(mutateYaml).toHaveBeenCalledOnce();
     expect(reloadAllConfigs).toHaveBeenCalledOnce();
+  });
+
+  it("accepts valid max_concurrent_per_account", async () => {
+    const app = makeApp();
+    const res = await app.request("/admin/general-settings", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ max_concurrent_per_account: 3 }),
+    });
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(data.success).toBe(true);
+    expect(data.restart_required).toBe(false);
+    expect(mutateYaml).toHaveBeenCalledOnce();
+  });
+
+  it("accepts null max_concurrent_per_account (reset to default)", async () => {
+    const app = makeApp();
+    const res = await app.request("/admin/general-settings", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ max_concurrent_per_account: null }),
+    });
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(data.success).toBe(true);
+  });
+
+  it("rejects invalid max_concurrent_per_account", async () => {
+    const app = makeApp();
+
+    for (const bad of [0, -1, 1.5]) {
+      const res = await app.request("/admin/general-settings", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ max_concurrent_per_account: bad }),
+      });
+      expect(res.status).toBe(400);
+    }
   });
 
   it("requires auth when proxy_api_key is set", async () => {
