@@ -23,6 +23,8 @@
 - `proxy-handler.ts`（353 LOC）拆分为 3 个独立可测试模块：`account-acquisition.ts`（acquire/release + 幂等 guard）、`proxy-error-handler.ts`（4 种错误分类 + 池状态变更）、`response-processor.ts`（流式/非流式响应），26 个新测试
 - `AccountPool`（673 LOC）拆分为 `AccountRegistry`（状态 + CRUD + 查询，423 LOC）+ `AccountLifecycle`（锁 + 轮换，154 LOC），facade 219 LOC 编排。37 个 importer 零改动
 - `model-fetcher.ts` 和 `usage-refresher.ts` 从模块级单例重构为 `ModelFetcher` / `UsageRefresher` class，自由函数 wrapper 保持后向兼容
+- Dashboard 改为 4-tab 布局（概览/管理账号/代理分配/设置），设置面板从首页移至独立 tab，首页保留账号卡片 + 代理池
+- AccountCard 响应式修复：窄屏时操作按钮自动换行不再溢出
 
 ### Fixed
 

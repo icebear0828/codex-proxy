@@ -96,32 +96,7 @@ export function AccountList({ accounts, loading, onDelete, onRefresh, refreshing
         </div>
       </div>
 
-      {/* Row 2: Navigation tabs */}
-      <div class="flex items-center gap-1.5">
-        <span class="px-3 py-1.5 rounded-lg text-xs font-medium bg-primary/10 text-primary dark:bg-primary/20">
-          {t("overview")}
-        </span>
-        <a
-          href="#/account-management"
-          class="px-3 py-1.5 rounded-lg text-xs font-medium text-slate-500 dark:text-text-dim hover:bg-slate-100 dark:hover:bg-border-dark transition-colors"
-        >
-          {t("manageAccounts")}
-        </a>
-        <a
-          href="#/proxy-settings"
-          class="px-3 py-1.5 rounded-lg text-xs font-medium text-slate-500 dark:text-text-dim hover:bg-slate-100 dark:hover:bg-border-dark transition-colors"
-        >
-          {t("proxySettings")}
-        </a>
-        <a
-          href="#/usage-stats"
-          class="px-3 py-1.5 rounded-lg text-xs font-medium text-slate-500 dark:text-text-dim hover:bg-slate-100 dark:hover:bg-border-dark transition-colors"
-        >
-          {t("usageStats")}
-        </a>
-      </div>
-
-      {/* Row 3: Action toolbar */}
+      {/* Action toolbar */}
       <div class="flex items-center gap-1.5 flex-wrap">
         {/* Refresh list */}
         <button

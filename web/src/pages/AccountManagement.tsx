@@ -16,7 +16,7 @@ const statusOrder: Array<{ key: string; label: TranslationKey }> = [
   { key: "banned", label: "banned" },
 ];
 
-export function AccountManagement() {
+export function AccountManagement({ embedded }: { embedded?: boolean } = {}) {
   const t = useT();
   const { list, loading: listLoading, batchDelete, batchSetStatus, toggleStatus, exportAccounts, importAccounts } = useAccounts();
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
@@ -98,31 +98,16 @@ export function AccountManagement() {
     setStatusFilter((prev) => (prev === status ? "all" : status));
   }, []);
 
-  return (
-    <div class="min-h-screen bg-slate-50 dark:bg-bg-dark flex flex-col">
-      {/* Header */}
-      <header class="sticky top-0 z-50 bg-white dark:bg-card-dark border-b border-gray-200 dark:border-border-dark px-4 py-3">
-        <div class="max-w-[1100px] mx-auto flex items-center gap-3">
-          <a
-            href="#/"
-            class="text-sm text-slate-500 dark:text-text-dim hover:text-primary transition-colors"
-          >
-            &larr; {t("backToDashboard")}
-          </a>
-          <h1 class="text-base font-semibold text-slate-800 dark:text-text-main">
-            {t("accountManagement")}
-          </h1>
-          <div class="flex-1" />
-          <AccountImportExport
-            onExport={exportAccounts}
-            onImport={importAccounts}
-            selectedIds={selectedIds}
-          />
-        </div>
-      </header>
-
-      {/* Main content */}
-      <main class="flex-grow px-4 md:px-8 py-6 max-w-[1100px] mx-auto w-full">
+  const content = (
+    <>
+      {/* Import/Export toolbar (always shown) */}
+      <div class="flex items-center justify-end mb-3">
+        <AccountImportExport
+          onExport={exportAccounts}
+          onImport={importAccounts}
+          selectedIds={selectedIds}
+        />
+      </div>
         {/* Status summary chips */}
         <div class="flex flex-wrap gap-2 mb-4">
           {statusOrder.map(({ key, label }) => {
@@ -172,7 +157,6 @@ export function AccountManagement() {
             onToggleStatus={toggleStatus}
           />
         )}
-      </main>
 
       {/* Bulk actions bar */}
       <AccountBulkActions
@@ -182,6 +166,24 @@ export function AccountManagement() {
         onSetActive={handleSetActive}
         onSetDisabled={handleSetDisabled}
       />
+    </>
+  );
+
+  if (embedded) return content;
+
+  return (
+    <div class="min-h-screen bg-slate-50 dark:bg-bg-dark flex flex-col">
+      <header class="sticky top-0 z-50 bg-white dark:bg-card-dark border-b border-gray-200 dark:border-border-dark px-4 py-3">
+        <div class="max-w-[1100px] mx-auto flex items-center gap-3">
+          <a href="#/" class="text-sm text-slate-500 dark:text-text-dim hover:text-primary transition-colors">
+            &larr; {t("backToDashboard")}
+          </a>
+          <h1 class="text-base font-semibold text-slate-800 dark:text-text-main">{t("accountManagement")}</h1>
+        </div>
+      </header>
+      <main class="flex-grow px-4 md:px-8 py-6 max-w-[1100px] mx-auto w-full">
+        {content}
+      </main>
     </div>
   );
 }

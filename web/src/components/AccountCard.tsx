@@ -164,8 +164,8 @@ export function AccountCard({ account, index, onDelete, proxies, onProxyChange, 
   return (
     <div class={`bg-white dark:bg-card-dark border rounded-xl p-4 shadow-sm hover:shadow-md transition-all ${selected ? "border-primary ring-1 ring-primary/30" : "border-gray-200 dark:border-border-dark hover:border-primary/30 dark:hover:border-primary/50"}`}>
       {/* Header */}
-      <div class="flex justify-between items-start mb-4">
-        <div class="flex items-center gap-3">
+      <div class="flex flex-wrap justify-between items-start gap-2 mb-4">
+        <div class="flex items-center gap-3 min-w-0 flex-1">
           {onToggleSelect && (
             <input
               type="checkbox"
@@ -218,7 +218,7 @@ export function AccountCard({ account, index, onDelete, proxies, onProxyChange, 
             </p>
           </div>
         </div>
-        <div class="flex items-center gap-2">
+        <div class="flex items-center gap-2 shrink-0 flex-wrap">
           {onToggleStatus && (
             <button
               onClick={handleStatusToggle}

@@ -7,7 +7,7 @@ import { BulkActions } from "../components/BulkActions";
 import { ImportExport } from "../components/ImportExport";
 import { RuleAssign } from "../components/RuleAssign";
 
-export function ProxySettings() {
+export function ProxySettings({ embedded }: { embedded?: boolean } = {}) {
   const t = useT();
   const data = useProxyAssignments();
   const [selectedGroup, setSelectedGroup] = useState<string | null>(null);
@@ -64,25 +64,39 @@ export function ProxySettings() {
 
   return (
     <div class="flex flex-col flex-grow">
-      {/* Top bar */}
-      <div class="px-4 md:px-8 lg:px-40 py-4 border-b border-gray-200 dark:border-border-dark bg-white dark:bg-card-dark">
-        <div class="flex items-center justify-between max-w-[1200px] mx-auto">
-          <div>
-            <h2 class="text-lg font-bold">{t("proxySettings")}</h2>
-            <p class="text-xs text-slate-500 dark:text-text-dim mt-0.5">
-              {t("proxySettingsDesc")}
-            </p>
+      {/* Top bar — hidden when embedded in tabs */}
+      {!embedded && (
+        <div class="px-4 md:px-8 lg:px-40 py-4 border-b border-gray-200 dark:border-border-dark bg-white dark:bg-card-dark">
+          <div class="flex items-center justify-between max-w-[1200px] mx-auto">
+            <div>
+              <h2 class="text-lg font-bold">{t("proxySettings")}</h2>
+              <p class="text-xs text-slate-500 dark:text-text-dim mt-0.5">
+                {t("proxySettingsDesc")}
+              </p>
+            </div>
+            <ImportExport
+              onExport={data.exportAssignments}
+              onImportPreview={data.importPreview}
+              onApplyImport={data.applyImport}
+            />
           </div>
+        </div>
+      )}
+
+      {/* Import/Export toolbar when embedded */}
+      {embedded && (
+        <div class="flex items-center justify-between mb-3">
+          <p class="text-xs text-slate-500 dark:text-text-dim">{t("proxySettingsDesc")}</p>
           <ImportExport
             onExport={data.exportAssignments}
             onImportPreview={data.importPreview}
             onApplyImport={data.applyImport}
           />
         </div>
-      </div>
+      )}
 
       {/* Main content */}
-      <div class="flex-grow px-4 md:px-8 lg:px-40 py-6">
+      <div class={embedded ? "" : "flex-grow px-4 md:px-8 lg:px-40 py-6"}>
         <div class="flex gap-6 max-w-[1200px] mx-auto">
           {/* Left sidebar — proxy groups */}
           <div class="w-56 shrink-0 hidden lg:block">
