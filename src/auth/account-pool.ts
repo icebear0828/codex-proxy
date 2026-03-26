@@ -114,26 +114,30 @@ export class AccountPool {
   // ── Status mutations (coordinate registry + lifecycle lock clear) ─
 
   markStatus(entryId: string, status: AccountEntry["status"]): void {
-    this.lifecycle.clearLock(entryId);
-    this.registry.markStatus(entryId, status);
+    if (this.registry.markStatus(entryId, status)) {
+      this.lifecycle.clearLock(entryId);
+    }
   }
 
   markRateLimited(
     entryId: string,
     options?: { retryAfterSec?: number; countRequest?: boolean },
   ): void {
-    this.lifecycle.clearLock(entryId);
-    this.registry.markRateLimited(entryId, this.rateLimitBackoffSeconds, options);
+    if (this.registry.markRateLimited(entryId, this.rateLimitBackoffSeconds, options)) {
+      this.lifecycle.clearLock(entryId);
+    }
   }
 
   clearRateLimit(entryId: string): void {
-    this.lifecycle.clearLock(entryId);
-    this.registry.clearRateLimit(entryId);
+    if (this.registry.clearRateLimit(entryId)) {
+      this.lifecycle.clearLock(entryId);
+    }
   }
 
   markQuotaExhausted(entryId: string, resetAtUnix: number | null): void {
-    this.lifecycle.clearLock(entryId);
-    this.registry.markQuotaExhausted(entryId, resetAtUnix);
+    if (this.registry.markQuotaExhausted(entryId, resetAtUnix)) {
+      this.lifecycle.clearLock(entryId);
+    }
   }
 
   // ── Quota / usage ─────────────────────────────────────────────────
@@ -192,6 +196,7 @@ export class AccountPool {
 
   /** @deprecated Use removeAccount() instead. */
   clearToken(): void {
+    this.lifecycle.clearAllLocks();
     this.registry.clearToken();
   }
 

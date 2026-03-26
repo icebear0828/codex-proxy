@@ -28,7 +28,8 @@ export class AccountLifecycle {
     const now = new Date();
     const nowMs = now.getTime();
 
-    for (const entry of this.registry.getAllEntries()) {
+    const entries = this.registry.getAllEntries();
+    for (const entry of entries) {
       this.registry.refreshStatus(entry, now);
     }
 
@@ -42,7 +43,7 @@ export class AccountLifecycle {
 
     const excludeSet = new Set(options?.excludeIds ?? []);
 
-    const available = this.registry.getAllEntries().filter(
+    const available = entries.filter(
       (a) => a.status === "active" && !this.acquireLocks.has(a.id) && !excludeSet.has(a.id),
     );
 
@@ -80,21 +81,7 @@ export class AccountLifecycle {
     usage?: { input_tokens?: number; output_tokens?: number },
   ): void {
     this.acquireLocks.delete(entryId);
-    const entry = this.registry.getEntry(entryId);
-    if (!entry) return;
-
-    entry.usage.request_count++;
-    entry.usage.last_used = new Date().toISOString();
-    if (usage) {
-      entry.usage.input_tokens += usage.input_tokens ?? 0;
-      entry.usage.output_tokens += usage.output_tokens ?? 0;
-    }
-    entry.usage.window_request_count = (entry.usage.window_request_count ?? 0) + 1;
-    if (usage) {
-      entry.usage.window_input_tokens = (entry.usage.window_input_tokens ?? 0) + (usage.input_tokens ?? 0);
-      entry.usage.window_output_tokens = (entry.usage.window_output_tokens ?? 0) + (usage.output_tokens ?? 0);
-    }
-    this.registry.schedulePersist();
+    this.registry.recordUsage(entryId, usage);
   }
 
   releaseWithoutCounting(entryId: string): void {
@@ -104,6 +91,11 @@ export class AccountLifecycle {
   /** Clear lock for an entry (called by facade on status mutations). */
   clearLock(entryId: string): void {
     this.acquireLocks.delete(entryId);
+  }
+
+  /** Clear all locks (called by facade on clearToken). */
+  clearAllLocks(): void {
+    this.acquireLocks.clear();
   }
 
   setRotationStrategy(name: RotationStrategyName): void {
@@ -118,11 +110,12 @@ export class AccountLifecycle {
     accountId: string | null;
   }> {
     const now = new Date();
-    for (const entry of this.registry.getAllEntries()) {
+    const entries = this.registry.getAllEntries();
+    for (const entry of entries) {
       this.registry.refreshStatus(entry, now);
     }
 
-    const available = this.registry.getAllEntries().filter(
+    const available = entries.filter(
       (a: AccountEntry) => a.status === "active" && !this.acquireLocks.has(a.id) && a.planType,
     );
 

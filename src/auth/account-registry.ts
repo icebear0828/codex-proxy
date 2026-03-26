@@ -126,20 +126,23 @@ export class AccountRegistry {
 
   // ── Status mutations ──────────────────────────────────────────────
 
-  markStatus(entryId: string, status: AccountEntry["status"]): void {
+  /** Returns true if the entry was found and mutated. */
+  markStatus(entryId: string, status: AccountEntry["status"]): boolean {
     const entry = this.accounts.get(entryId);
-    if (!entry) return;
+    if (!entry) return false;
     entry.status = status;
     this.schedulePersist();
+    return true;
   }
 
+  /** Returns true if the entry was found and mutated. */
   markRateLimited(
     entryId: string,
     backoffSeconds: number,
     options?: { retryAfterSec?: number; countRequest?: boolean },
-  ): void {
+  ): boolean {
     const entry = this.accounts.get(entryId);
-    if (!entry) return;
+    if (!entry) return false;
 
     const backoff = jitter(options?.retryAfterSec ?? backoffSeconds, 0.2);
     const until = new Date(Date.now() + backoff * 1000);
@@ -154,20 +157,24 @@ export class AccountRegistry {
     }
 
     this.schedulePersist();
+    return true;
   }
 
-  clearRateLimit(entryId: string): void {
+  /** Returns true if the entry was found and mutated. */
+  clearRateLimit(entryId: string): boolean {
     const entry = this.accounts.get(entryId);
-    if (!entry) return;
+    if (!entry) return false;
     entry.status = "active";
     entry.usage.rate_limit_until = null;
     this.schedulePersist();
+    return true;
   }
 
-  markQuotaExhausted(entryId: string, resetAtUnix: number | null): void {
+  /** Returns true if the entry was found and actually changed. */
+  markQuotaExhausted(entryId: string, resetAtUnix: number | null): boolean {
     const entry = this.accounts.get(entryId);
-    if (!entry) return;
-    if (entry.status === "disabled" || entry.status === "expired" || entry.status === "banned") return;
+    if (!entry) return false;
+    if (entry.status === "disabled" || entry.status === "expired" || entry.status === "banned") return false;
 
     const until = resetAtUnix
       ? new Date(resetAtUnix * 1000).toISOString()
@@ -176,12 +183,13 @@ export class AccountRegistry {
     if (entry.status === "rate_limited" && entry.usage.rate_limit_until) {
       const existing = new Date(entry.usage.rate_limit_until).getTime();
       const proposed = new Date(until).getTime();
-      if (proposed <= existing) return;
+      if (proposed <= existing) return false;
     }
 
     entry.status = "rate_limited";
     entry.usage.rate_limit_until = until;
     this.schedulePersist();
+    return true;
   }
 
   // ── Query ─────────────────────────────────────────────────────────
@@ -270,6 +278,25 @@ export class AccountRegistry {
   }
 
   // ── Quota / usage mutations ───────────────────────────────────────
+
+  /** Record request usage on release (called by lifecycle). */
+  recordUsage(entryId: string, usage?: { input_tokens?: number; output_tokens?: number }): void {
+    const entry = this.accounts.get(entryId);
+    if (!entry) return;
+
+    entry.usage.request_count++;
+    entry.usage.last_used = new Date().toISOString();
+    if (usage) {
+      entry.usage.input_tokens += usage.input_tokens ?? 0;
+      entry.usage.output_tokens += usage.output_tokens ?? 0;
+    }
+    entry.usage.window_request_count = (entry.usage.window_request_count ?? 0) + 1;
+    if (usage) {
+      entry.usage.window_input_tokens = (entry.usage.window_input_tokens ?? 0) + (usage.input_tokens ?? 0);
+      entry.usage.window_output_tokens = (entry.usage.window_output_tokens ?? 0) + (usage.output_tokens ?? 0);
+    }
+    this.schedulePersist();
+  }
 
   recordEmptyResponse(entryId: string): void {
     const entry = this.accounts.get(entryId);
