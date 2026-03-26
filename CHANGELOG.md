@@ -22,6 +22,7 @@
 - CookieJar critical cookie 写入从 `writeFileSync`（阻塞 10-50ms）改为 `writeFile`（async 非阻塞）
 - `proxy-handler.ts`（353 LOC）拆分为 3 个独立可测试模块：`account-acquisition.ts`（acquire/release + 幂等 guard）、`proxy-error-handler.ts`（4 种错误分类 + 池状态变更）、`response-processor.ts`（流式/非流式响应），26 个新测试
 - `AccountPool`（673 LOC）拆分为 `AccountRegistry`（状态 + CRUD + 查询，423 LOC）+ `AccountLifecycle`（锁 + 轮换，154 LOC），facade 219 LOC 编排。37 个 importer 零改动
+- `model-fetcher.ts` 和 `usage-refresher.ts` 从模块级单例重构为 `ModelFetcher` / `UsageRefresher` class，自由函数 wrapper 保持后向兼容
 
 ### Fixed
 
