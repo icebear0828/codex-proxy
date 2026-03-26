@@ -53,17 +53,8 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Install web frontend dependencies
-        run: cd web && npm ci
-
-      - name: Install desktop frontend dependencies
-        run: cd packages/electron/desktop && npm ci
-
       - name: Build core (web + tsc)
         run: npm run build
-
-      - name: Build desktop frontend
-        run: cd packages/electron/desktop && npx vite build
 
       - name: Bundle Electron (esbuild)
         working-directory: packages/electron
@@ -125,17 +116,8 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Install web frontend dependencies
-        run: cd web && npm ci
-
-      - name: Install desktop frontend dependencies
-        run: cd packages/electron/desktop && npm ci
-
       - name: Build core (web + tsc)
         run: npm run build
-
-      - name: Build desktop frontend
-        run: cd packages/electron/desktop && npx vite build
 
       - name: Bundle Electron (esbuild)
         working-directory: packages/electron
