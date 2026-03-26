@@ -75,10 +75,10 @@ export function AccountCard({ account, index, onDelete, proxies, onProxyChange, 
     if (err) alert(err);
   }, [account.id, onDelete, t]);
 
-  // Quota — primary window
+  // Quota — primary window (default 0% used = 100% available for accounts without data)
   const q = account.quota;
   const rl = q?.rate_limit;
-  const pct = rl?.used_percent != null ? Math.round(rl.used_percent) : null;
+  const pct = rl?.used_percent != null ? Math.round(rl.used_percent) : (account.status === "active" ? 0 : null);
   const barColor =
     pct == null ? "bg-primary" : pct >= 90 ? "bg-red-500" : pct >= 60 ? "bg-amber-500" : "bg-primary";
   const pctColor =
