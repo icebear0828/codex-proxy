@@ -22,6 +22,7 @@ import { acquireAccount, releaseAccount } from "./account-acquisition.js";
 import { handleCodexApiError, toErrorStatus } from "./proxy-error-handler.js";
 import { streamResponse } from "./response-processor.js";
 import type { UsageInfo } from "../../translation/codex-event-extractor.js";
+import { parseRateLimitHeaders, rateLimitToQuota } from "../../proxy/rate-limit-headers.js";
 
 /** Data prepared by each route after parsing and translating the request. */
 export interface ProxyRequest {
@@ -108,6 +109,18 @@ export async function handleProxyRequest(
         () => codexApi.createResponse(req.codexRequest, abortController.signal),
         { tag: fmt.tag },
       );
+
+      // Extract rate-limit quota from upstream response headers (passive collection)
+      const rl = parseRateLimitHeaders(rawResponse.headers);
+      if (rl) {
+        const entry = accountPool.getEntry(entryId);
+        const quota = rateLimitToQuota(rl, entry?.planType ?? null);
+        accountPool.updateCachedQuota(entryId, quota);
+        if (rl.primary?.reset_at != null) {
+          const windowSec = rl.primary.window_minutes != null ? rl.primary.window_minutes * 60 : null;
+          accountPool.syncRateLimitWindow(entryId, rl.primary.reset_at, windowSec);
+        }
+      }
 
       // ── Streaming path ──
       if (req.isStreaming) {
