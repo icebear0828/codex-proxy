@@ -6,6 +6,14 @@
 
 ## [Unreleased]
 
+### Added
+
+- 自动更新（热更新）功能，默认开启，用户可在 Dashboard 设置中关闭
+  - Git 模式：检测到更新后自动 pull → install → build → 重启
+  - Electron (Win/Linux)：自动下载更新，退出时安装；dock/任务栏显示下载进度条
+  - Electron (macOS)：自动打开 release 页面（平台限制无法自动安装）
+  - 配置项 `update.auto_update`，持久化到 `data/local.yaml`
+
 ### Removed
 
 - 删除废弃的 `packages/electron/desktop/` UI（Electron 已直接加载 web/ UI），消除 18 个重复组件

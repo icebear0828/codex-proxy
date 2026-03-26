@@ -48,3 +48,5 @@ quota:
       - 80
       - 90
   skip_exhausted: true
+update:
+  auto_update: true

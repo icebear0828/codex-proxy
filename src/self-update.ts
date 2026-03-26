@@ -10,6 +10,7 @@ import { existsSync, openSync, readFileSync } from "fs";
 import { resolve } from "path";
 import { promisify } from "util";
 import { getRootDir, isEmbedded } from "./paths.js";
+import { getConfig } from "./config.js";
 
 // ── Restart ─────────────────────────────────────────────────────────
 let _closeHandler: (() => Promise<void>) | null = null;
@@ -395,7 +396,18 @@ async function runCheck(): Promise<void> {
   if (_checking) return;
   _checking = true;
   try {
-    await checkProxySelfUpdate();
+    const result = await checkProxySelfUpdate();
+    if (result.updateAvailable && !_proxyUpdateInProgress && result.mode === "git") {
+      try {
+        const autoUpdate = getConfig().update.auto_update;
+        if (autoUpdate) {
+          console.log(`[SelfUpdate] Auto-updating: ${result.currentCommit ?? "unknown"} → ${result.latestCommit ?? "latest"} (${result.commitsBehind} commits behind)`);
+          await applyProxySelfUpdate();
+        }
+      } catch {
+        // Config may not be loaded yet during early startup; skip auto-apply
+      }
+    }
   } catch (err) {
     console.warn("[SelfUpdate] Periodic check failed:", err instanceof Error ? err.message : err);
   } finally {

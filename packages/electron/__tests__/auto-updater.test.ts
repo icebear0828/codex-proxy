@@ -24,11 +24,17 @@ vi.mock("electron-updater", () => ({
   autoUpdater: mockAutoUpdater,
 }));
 
+const mockDialog = {
+  showMessageBox: vi.fn().mockResolvedValue({ response: 1 }), // "Later" by default
+};
+const mockShell = {
+  openExternal: vi.fn().mockResolvedValue(undefined),
+};
+
 vi.mock("electron", () => ({
   BrowserWindow: class {},
-  dialog: {
-    showMessageBox: vi.fn().mockResolvedValue({ response: 1 }), // "Later" by default
-  },
+  dialog: mockDialog,
+  shell: mockShell,
 }));
 
 vi.mock("../electron/constants.js", () => ({
@@ -68,12 +74,19 @@ describe("auto-updater state machine", () => {
     expect(state.error).toBeNull();
   });
 
-  it("configures autoUpdater on init", () => {
+  it("configures autoUpdater on init (autoUpdate defaults to true)", () => {
     initAutoUpdater(mockOptions);
 
-    expect(mockAutoUpdater.autoDownload).toBe(false);
+    // Non-macOS + autoUpdate=true → autoDownload=true
+    expect(mockAutoUpdater.autoDownload).toBe(true);
     expect(mockAutoUpdater.autoInstallOnAppQuit).toBe(true);
     expect(mockAutoUpdater.allowPrerelease).toBe(false);
+  });
+
+  it("autoDownload=false when autoUpdate is explicitly false", () => {
+    initAutoUpdater({ ...mockOptions, autoUpdate: false });
+
+    expect(mockAutoUpdater.autoDownload).toBe(false);
   });
 
   it("schedules initial check after 30s delay", () => {
@@ -201,5 +214,55 @@ describe("auto-updater state machine", () => {
 
     expect(state1).not.toBe(state2);
     expect(state1).toEqual(state2);
+  });
+
+  it("sets progress bar on window during download", () => {
+    const mockWin = { setProgressBar: vi.fn() };
+    const opts = {
+      ...mockOptions,
+      getMainWindow: vi.fn().mockReturnValue(mockWin),
+    };
+    initAutoUpdater(opts);
+
+    mockAutoUpdater.emit("download-progress", { percent: 50 });
+    expect(mockWin.setProgressBar).toHaveBeenCalledWith(0.5);
+
+    mockAutoUpdater.emit("download-progress", { percent: 100 });
+    expect(mockWin.setProgressBar).toHaveBeenCalledWith(1);
+  });
+
+  it("clears progress bar on update-downloaded", () => {
+    const mockWin = { setProgressBar: vi.fn() };
+    const opts = {
+      ...mockOptions,
+      getMainWindow: vi.fn().mockReturnValue(mockWin),
+    };
+    initAutoUpdater(opts);
+
+    mockAutoUpdater.emit("update-downloaded", { version: "2.0.0" });
+    expect(mockWin.setProgressBar).toHaveBeenCalledWith(-1);
+  });
+
+  it("clears progress bar on error", () => {
+    const mockWin = { setProgressBar: vi.fn() };
+    const opts = {
+      ...mockOptions,
+      getMainWindow: vi.fn().mockReturnValue(mockWin),
+    };
+    initAutoUpdater(opts);
+
+    mockAutoUpdater.emit("error", new Error("fail"));
+    expect(mockWin.setProgressBar).toHaveBeenCalledWith(-1);
+  });
+
+  it("skips download dialog when autoUpdate=true (non-macOS)", () => {
+    initAutoUpdater({ ...mockOptions, autoUpdate: true });
+
+    mockAutoUpdater.emit("update-available", { version: "3.0.0" });
+
+    const state = getAutoUpdateState();
+    expect(state.updateAvailable).toBe(true);
+    // Should NOT show dialog (autoDownload handles it)
+    expect(mockDialog.showMessageBox).not.toHaveBeenCalled();
   });
 });

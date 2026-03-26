@@ -18,6 +18,7 @@ export function GeneralSettings() {
   const [draftRefreshEnabled, setDraftRefreshEnabled] = useState<boolean | null>(null);
   const [draftRefreshMargin, setDraftRefreshMargin] = useState<string | null>(null);
   const [draftRefreshConcurrency, setDraftRefreshConcurrency] = useState<string | null>(null);
+  const [draftAutoUpdate, setDraftAutoUpdate] = useState<boolean | null>(null);
   const [collapsed, setCollapsed] = useState(true);
 
   const currentPort = gs.data?.port ?? 8080;
@@ -30,6 +31,7 @@ export function GeneralSettings() {
   const currentRefreshEnabled = gs.data?.refresh_enabled ?? true;
   const currentRefreshMargin = gs.data?.refresh_margin_seconds ?? 300;
   const currentRefreshConcurrency = gs.data?.refresh_concurrency ?? 2;
+  const currentAutoUpdate = gs.data?.auto_update ?? true;
 
   const displayPort = draftPort ?? String(currentPort);
   const displayProxyUrl = draftProxyUrl ?? currentProxyUrl;
@@ -41,6 +43,7 @@ export function GeneralSettings() {
   const displayRefreshEnabled = draftRefreshEnabled ?? currentRefreshEnabled;
   const displayRefreshMargin = draftRefreshMargin ?? String(currentRefreshMargin);
   const displayRefreshConcurrency = draftRefreshConcurrency ?? String(currentRefreshConcurrency);
+  const displayAutoUpdate = draftAutoUpdate ?? currentAutoUpdate;
 
   const isDirty =
     draftPort !== null ||
@@ -52,7 +55,8 @@ export function GeneralSettings() {
     draftReasoningEffort !== null ||
     draftRefreshEnabled !== null ||
     draftRefreshMargin !== null ||
-    draftRefreshConcurrency !== null;
+    draftRefreshConcurrency !== null ||
+    draftAutoUpdate !== null;
 
   const handleSave = useCallback(async () => {
     const patch: Record<string, unknown> = {};
@@ -103,6 +107,10 @@ export function GeneralSettings() {
       patch.refresh_concurrency = val;
     }
 
+    if (draftAutoUpdate !== null) {
+      patch.auto_update = draftAutoUpdate;
+    }
+
     await gs.save(patch);
     setDraftPort(null);
     setDraftProxyUrl(null);
@@ -114,7 +122,8 @@ export function GeneralSettings() {
     setDraftRefreshEnabled(null);
     setDraftRefreshMargin(null);
     setDraftRefreshConcurrency(null);
-  }, [draftPort, draftProxyUrl, draftForceHttp11, draftInjectContext, draftSuppressDirectives, draftDefaultModel, draftReasoningEffort, draftRefreshEnabled, draftRefreshMargin, draftRefreshConcurrency, gs]);
+    setDraftAutoUpdate(null);
+  }, [draftPort, draftProxyUrl, draftForceHttp11, draftInjectContext, draftSuppressDirectives, draftDefaultModel, draftReasoningEffort, draftRefreshEnabled, draftRefreshMargin, draftRefreshConcurrency, draftAutoUpdate, gs]);
 
   const inputCls =
     "w-full px-3 py-2 bg-white dark:bg-bg-dark border border-gray-200 dark:border-border-dark rounded-lg text-[0.78rem] font-mono text-slate-700 dark:text-text-main outline-none focus:ring-1 focus:ring-primary";
@@ -139,6 +148,23 @@ export function GeneralSettings() {
 
       {!collapsed && (
         <div class="px-5 pb-5 border-t border-slate-100 dark:border-border-dark pt-4 space-y-4">
+          {/* Auto Update */}
+          <div class="space-y-1">
+            <div class="flex items-center gap-2">
+              <input
+                type="checkbox"
+                id="auto-update"
+                checked={displayAutoUpdate}
+                onChange={(e) => setDraftAutoUpdate((e.target as HTMLInputElement).checked)}
+                class="w-4 h-4 rounded border-gray-300 dark:border-border-dark text-primary focus:ring-primary cursor-pointer"
+              />
+              <label for="auto-update" class="text-xs font-semibold text-slate-700 dark:text-text-main cursor-pointer">
+                {t("generalSettingsAutoUpdate")}
+              </label>
+            </div>
+            <p class="text-xs text-slate-400 dark:text-text-dim ml-6">{t("generalSettingsAutoUpdateHint")}</p>
+          </div>
+
           {/* Server Port */}
           <div class="space-y-1.5">
             <label class="text-xs font-semibold text-slate-700 dark:text-text-main">

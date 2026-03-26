@@ -23,6 +23,7 @@ export interface AutoUpdateState {
 interface AutoUpdaterOptions {
   getMainWindow: () => BrowserWindow | null;
   rebuildTrayMenu: () => void;
+  autoUpdate?: boolean;
 }
 
 const state: AutoUpdateState = {
@@ -48,7 +49,10 @@ export function getAutoUpdateState(): AutoUpdateState {
 }
 
 export function initAutoUpdater(options: AutoUpdaterOptions): void {
-  autoUpdater.autoDownload = false;
+  const isAutoUpdate = options.autoUpdate ?? true;
+
+  // Non-macOS with auto-update: download immediately without user interaction
+  autoUpdater.autoDownload = isAutoUpdate && !IS_MAC;
   // macOS: ad-hoc signed zips can't be auto-installed — disable to avoid silent failures
   autoUpdater.autoInstallOnAppQuit = !IS_MAC;
   autoUpdater.allowPrerelease = false;
@@ -65,6 +69,18 @@ export function initAutoUpdater(options: AutoUpdaterOptions): void {
     state.releaseUrl = `https://github.com/${GITHUB_REPO}/releases/tag/v${info.version}`;
     options.rebuildTrayMenu();
 
+    // Auto-update on non-macOS: autoDownload handles it, no dialog needed
+    if (isAutoUpdate && !IS_MAC) return;
+
+    // macOS auto-update: open release page automatically (still needs manual DMG install)
+    if (isAutoUpdate && IS_MAC) {
+      shell.openExternal(state.releaseUrl!).catch((err: unknown) => {
+        console.error("[AutoUpdater] Failed to open release page:", err instanceof Error ? err.message : err);
+      });
+      return;
+    }
+
+    // Manual mode: show dialog
     // Don't re-prompt if user already dismissed this version
     if (info.version === dismissedVersion) return;
 
@@ -107,6 +123,9 @@ export function initAutoUpdater(options: AutoUpdaterOptions): void {
   autoUpdater.on("download-progress", (progress: ProgressInfo) => {
     state.downloading = true;
     const rounded = Math.round(progress.percent);
+    // Update dock/taskbar progress bar
+    const win = options.getMainWindow();
+    if (win) win.setProgressBar(progress.percent / 100);
     // Throttle tray rebuilds to every 10% increment
     if (rounded - state.progress >= 10 || rounded === 100) {
       state.progress = rounded;
@@ -123,6 +142,9 @@ export function initAutoUpdater(options: AutoUpdaterOptions): void {
     options.rebuildTrayMenu();
 
     const win = options.getMainWindow();
+    // Clear dock/taskbar progress bar
+    if (win) win.setProgressBar(-1);
+
     const readyOptions = {
       type: "info" as const,
       title: "Update Ready",
@@ -147,6 +169,9 @@ export function initAutoUpdater(options: AutoUpdaterOptions): void {
     state.error = err.message;
     console.error("[AutoUpdater] Error:", err.message);
     options.rebuildTrayMenu();
+    // Clear dock/taskbar progress bar on error
+    const win = options.getMainWindow();
+    if (win) win.setProgressBar(-1);
   });
 
   // Initial check after delay

@@ -11,13 +11,14 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 const mockConfig = {
   server: { port: 8080, proxy_api_key: null as string | null },
   tls: { proxy_url: null as string | null, force_http11: false },
-  model: { inject_desktop_context: false, suppress_desktop_directives: true },
+  model: { default: "gpt-5.2-codex", default_reasoning_effort: "medium", inject_desktop_context: false, suppress_desktop_directives: true },
   quota: {
     refresh_interval_minutes: 5,
     warning_thresholds: { primary: [80, 90], secondary: [80, 90] },
     skip_exhausted: true,
   },
-  auth: { rotation_strategy: "least_used" },
+  auth: { rotation_strategy: "least_used", refresh_enabled: true, refresh_margin_seconds: 300, refresh_concurrency: 2 },
+  update: { auto_update: true },
 };
 
 vi.mock("../../config.js", () => ({
@@ -102,6 +103,7 @@ describe("GET /admin/general-settings", () => {
     mockConfig.tls.force_http11 = false;
     mockConfig.model.inject_desktop_context = false;
     mockConfig.model.suppress_desktop_directives = true;
+    mockConfig.update.auto_update = true;
   });
 
   it("returns current values", async () => {
@@ -109,12 +111,18 @@ describe("GET /admin/general-settings", () => {
     const res = await app.request("/admin/general-settings");
     expect(res.status).toBe(200);
     const data = await res.json();
-    expect(data).toEqual({
+    expect(data).toMatchObject({
       port: 8080,
       proxy_url: null,
       force_http11: false,
       inject_desktop_context: false,
       suppress_desktop_directives: true,
+      default_model: "gpt-5.2-codex",
+      default_reasoning_effort: "medium",
+      refresh_enabled: true,
+      refresh_margin_seconds: 300,
+      refresh_concurrency: 2,
+      auto_update: true,
     });
   });
 });
@@ -128,6 +136,7 @@ describe("POST /admin/general-settings", () => {
     mockConfig.tls.force_http11 = false;
     mockConfig.model.inject_desktop_context = false;
     mockConfig.model.suppress_desktop_directives = true;
+    mockConfig.update.auto_update = true;
   });
 
   it("changing port sets restart_required: true", async () => {
@@ -228,6 +237,21 @@ describe("POST /admin/general-settings", () => {
     expect(data.success).toBe(true);
     expect(data.restart_required).toBe(false);
     expect(data.suppress_desktop_directives).toBe(true); // mockConfig unchanged
+    expect(mutateYaml).toHaveBeenCalledOnce();
+    expect(reloadAllConfigs).toHaveBeenCalledOnce();
+  });
+
+  it("changing auto_update persists to local.yaml", async () => {
+    const app = makeApp();
+    const res = await app.request("/admin/general-settings", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ auto_update: false }),
+    });
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(data.success).toBe(true);
+    expect(data.restart_required).toBe(false);
     expect(mutateYaml).toHaveBeenCalledOnce();
     expect(reloadAllConfigs).toHaveBeenCalledOnce();
   });

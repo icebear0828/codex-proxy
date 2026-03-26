@@ -119,7 +119,7 @@ app.on("ready", async () => {
 
     // 2. Import the bundled backend server (single ESM file, no node_modules needed)
     const serverUrl = pathToFileURL(resolve(appRoot, "dist-electron", "server.mjs")).href;
-    const { setPaths, startServer } = await import(serverUrl);
+    const { setPaths, startServer, getConfig } = await import(serverUrl);
 
     // 3. Set paths before starting the server
     setPaths({
@@ -147,9 +147,12 @@ app.on("ready", async () => {
 
     // 6. Auto-updater (only in packaged mode)
     if (app.isPackaged) {
+      let autoUpdate = true;
+      try { autoUpdate = getConfig().update.auto_update; } catch { /* use default */ }
       initAutoUpdater({
         getMainWindow: () => mainWindow,
         rebuildTrayMenu,
+        autoUpdate,
       });
     }
   } catch (err) {

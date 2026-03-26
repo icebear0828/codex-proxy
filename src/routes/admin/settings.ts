@@ -105,6 +105,7 @@ export function createSettingsRoutes(): Hono {
       refresh_enabled: config.auth.refresh_enabled,
       refresh_margin_seconds: config.auth.refresh_margin_seconds,
       refresh_concurrency: config.auth.refresh_concurrency,
+      auto_update: config.update.auto_update,
     });
   });
 
@@ -132,6 +133,7 @@ export function createSettingsRoutes(): Hono {
       refresh_enabled?: boolean;
       refresh_margin_seconds?: number;
       refresh_concurrency?: number;
+      auto_update?: boolean;
     };
 
     // --- validation ---
@@ -217,6 +219,10 @@ export function createSettingsRoutes(): Hono {
         if (!data.auth) data.auth = {};
         (data.auth as Record<string, unknown>).refresh_concurrency = body.refresh_concurrency;
       }
+      if (body.auto_update !== undefined) {
+        if (!data.update) data.update = {};
+        (data.update as Record<string, unknown>).auto_update = body.auto_update;
+      }
     });
     reloadAllConfigs();
 
@@ -236,6 +242,7 @@ export function createSettingsRoutes(): Hono {
       refresh_enabled: updated.auth.refresh_enabled,
       refresh_margin_seconds: updated.auth.refresh_margin_seconds,
       refresh_concurrency: updated.auth.refresh_concurrency,
+      auto_update: updated.update.auto_update,
       restart_required: restartRequired,
     });
   });

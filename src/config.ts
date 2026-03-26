@@ -65,6 +65,9 @@ const ConfigSchema = z.object({
     }).default({}),
     skip_exhausted: z.boolean().default(true),
   }).default({}),
+  update: z.object({
+    auto_update: z.boolean().default(true),
+  }).default({}),
 });
 
 export type AppConfig = z.infer<typeof ConfigSchema>;
