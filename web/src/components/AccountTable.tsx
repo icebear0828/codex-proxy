@@ -6,30 +6,43 @@ import type { ProxyEntry } from "../../../shared/types";
 
 const PAGE_SIZE = 50;
 
-const statusStyles: Record<string, [string, TranslationKey]> = {
+/** [badgeClasses, i18nKey, icon, rowBgClass] */
+const statusStyles: Record<string, [string, TranslationKey, string, string]> = {
   active: [
     "bg-green-100 text-green-700 border-green-200 dark:bg-[#11281d] dark:text-primary dark:border-[#1a442e]",
     "active",
+    "●",
+    "",
   ],
   expired: [
     "bg-red-100 text-red-600 border-red-200 dark:bg-red-900/20 dark:text-red-400 dark:border-red-800/30",
     "expired",
+    "⏱",
+    "bg-red-50/40 dark:bg-red-950/10",
   ],
   rate_limited: [
     "bg-amber-100 text-amber-700 border-amber-200 dark:bg-amber-900/20 dark:text-amber-400 dark:border-amber-800/30",
     "rateLimited",
+    "⏳",
+    "",
   ],
   refreshing: [
     "bg-blue-100 text-blue-600 border-blue-200 dark:bg-blue-900/20 dark:text-blue-400 dark:border-blue-800/30",
     "refreshing",
+    "↻",
+    "",
   ],
   disabled: [
     "bg-slate-100 text-slate-500 border-slate-200 dark:bg-slate-800/30 dark:text-slate-400 dark:border-slate-700/30",
     "disabled",
+    "○",
+    "opacity-60",
   ],
   banned: [
     "bg-rose-100 text-rose-700 border-rose-300 dark:bg-rose-900/30 dark:text-rose-400 dark:border-rose-800/40",
     "banned",
+    "⛔",
+    "bg-rose-50/50 dark:bg-rose-950/15",
   ],
 };
 
@@ -184,7 +197,7 @@ export function AccountTable({
             />
           </label>
           <span class="flex-1 min-w-0">Email</span>
-          <span class="w-20 text-center hidden sm:block">{t("statusFilter")}</span>
+          <span class="w-24 text-center hidden sm:block">{t("statusFilter")}</span>
           {onToggleStatus && <span class="w-12 text-center hidden sm:block" />}
           {showProxy && <span class="w-40 text-center hidden md:block">{t("proxyAssignment")}</span>}
         </div>
@@ -197,15 +210,15 @@ export function AccountTable({
         ) : (
           pageAccounts.map((acct, idx) => {
             const isSelected = selectedIds.has(acct.id);
-            const [statusCls, statusKey] = statusStyles[acct.status] || statusStyles.disabled;
+            const [statusCls, statusKey, statusIcon, rowBgCls] = statusStyles[acct.status] || statusStyles.disabled;
 
             return (
               <div
                 key={acct.id}
-                class={`flex items-center gap-3 px-4 py-2.5 border-b border-gray-50 dark:border-border-dark/50 transition-colors cursor-pointer ${
+                class={`flex items-center gap-3 px-4 py-2.5 border-b border-gray-50 dark:border-border-dark/50 transition-colors cursor-pointer ${rowBgCls} ${
                   isSelected
                     ? "bg-primary/5 dark:bg-primary/10"
-                    : "hover:bg-slate-50 dark:hover:bg-border-dark/30"
+                    : rowBgCls ? "" : "hover:bg-slate-50 dark:hover:bg-border-dark/30"
                 }`}
                 onClick={(e) => {
                   if ((e.target as HTMLElement).tagName === "SELECT") return;
@@ -223,9 +236,9 @@ export function AccountTable({
                 <span class="flex-1 min-w-0 text-sm font-medium truncate text-slate-700 dark:text-text-main">
                   {acct.label ? `${acct.label} (${acct.email})` : acct.email}
                 </span>
-                <span class="w-20 hidden sm:flex justify-center">
+                <span class="w-24 hidden sm:flex justify-center">
                   <span class={`px-2 py-0.5 rounded-full text-[0.65rem] font-medium border ${statusCls}`}>
-                    {t(statusKey)}
+                    {statusIcon} {t(statusKey)}
                   </span>
                 </span>
                 {onToggleStatus && (() => {

@@ -12,30 +12,49 @@ const avatarColors = [
   ["bg-red-100 dark:bg-[#3f1a1a]", "text-red-600 dark:text-red-400"],
 ];
 
-const statusStyles: Record<string, [string, string]> = {
+/** [badgeClasses, i18nKey, icon, leftBorderClass, cardBgClass] */
+const statusStyles: Record<string, [string, string, string, string, string]> = {
   active: [
     "bg-green-100 text-green-700 border-green-200 dark:bg-[#11281d] dark:text-primary dark:border-[#1a442e]",
     "active",
+    "●",
+    "border-l-green-500",
+    "",
   ],
   expired: [
     "bg-red-100 text-red-600 border-red-200 dark:bg-red-900/20 dark:text-red-400 dark:border-red-800/30",
     "expired",
+    "⏱",
+    "border-l-red-400",
+    "bg-red-50/40 dark:bg-red-950/10",
   ],
   rate_limited: [
     "bg-amber-100 text-amber-700 border-amber-200 dark:bg-amber-900/20 dark:text-amber-400 dark:border-amber-800/30",
     "rateLimited",
+    "⏳",
+    "border-l-amber-400",
+    "",
   ],
   refreshing: [
     "bg-blue-100 text-blue-600 border-blue-200 dark:bg-blue-900/20 dark:text-blue-400 dark:border-blue-800/30",
     "refreshing",
+    "↻",
+    "border-l-blue-400",
+    "",
   ],
   disabled: [
     "bg-slate-100 text-slate-500 border-slate-200 dark:bg-slate-800/30 dark:text-slate-400 dark:border-slate-700/30",
     "disabled",
+    "○",
+    "border-l-slate-300 dark:border-l-slate-600",
+    "opacity-60",
   ],
   banned: [
     "bg-rose-100 text-rose-700 border-rose-300 dark:bg-rose-900/30 dark:text-rose-400 dark:border-rose-800/40",
     "banned",
+    "⛔",
+    "border-l-rose-500",
+    "bg-rose-50/50 dark:bg-rose-950/15",
   ],
 };
 
@@ -67,7 +86,7 @@ export function AccountCard({ account, index, onDelete, proxies, onProxyChange, 
   const windowSec = account.quota?.rate_limit?.limit_window_seconds;
   const windowDur = windowSec ? formatWindowDuration(windowSec, lang === "zh") : null;
 
-  const [statusCls, statusKey] = statusStyles[account.status] || statusStyles.disabled;
+  const [statusCls, statusKey, statusIcon, borderCls, cardBgCls] = statusStyles[account.status] || statusStyles.disabled;
 
   const handleDelete = useCallback(async () => {
     if (!confirm(t("removeConfirm"))) return;
@@ -162,7 +181,7 @@ export function AccountCard({ account, index, onDelete, proxies, onProxyChange, 
   }, [handleLabelSave]);
 
   return (
-    <div class={`bg-white dark:bg-card-dark border rounded-xl p-4 shadow-sm hover:shadow-md transition-all ${selected ? "border-primary ring-1 ring-primary/30" : "border-gray-200 dark:border-border-dark hover:border-primary/30 dark:hover:border-primary/50"}`}>
+    <div class={`border rounded-xl p-4 shadow-sm hover:shadow-md transition-all border-l-4 ${borderCls} ${cardBgCls || "bg-white dark:bg-card-dark"} ${selected ? "border-primary ring-1 ring-primary/30" : "border-gray-200 dark:border-border-dark hover:border-primary/30 dark:hover:border-primary/50"}`}>
       {/* Header */}
       <div class="flex justify-between items-start mb-4">
         <div class="flex items-center gap-3">
@@ -236,7 +255,7 @@ export function AccountCard({ account, index, onDelete, proxies, onProxyChange, 
             </button>
           )}
           <span class={`px-2.5 py-1 rounded-full ${statusCls} text-xs font-medium border`}>
-            {t(statusKey as TranslationKey)}
+            {statusIcon} {t(statusKey as TranslationKey)}
           </span>
           {onRefreshQuota && (
             <button
