@@ -135,7 +135,7 @@ function Dashboard() {
   const activeTab = TABS.find((t) => t.hash === hash)?.hash ?? "";
 
   return (
-    <>
+    <div class="min-h-screen flex flex-col bg-slate-50 dark:bg-bg-dark">
       <Header
         onAddAccount={accounts.startAdd}
         onCheckUpdate={update.checkForUpdate}
@@ -226,7 +226,7 @@ function Dashboard() {
           updateSteps={update.updateSteps}
         />
       )}
-    </>
+    </div>
   );
 }
 

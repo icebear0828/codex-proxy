@@ -18,7 +18,7 @@ import type { AccountPool } from "./account-pool.js";
 import type { ProxyPool } from "../proxy/proxy-pool.js";
 
 /** Errors that indicate the refresh token itself is invalid (permanent failure). */
-const PERMANENT_ERRORS = ["invalid_grant", "invalid_token", "access_denied", "refresh_token_expired", "account has been deactivated"];
+const PERMANENT_ERRORS = ["invalid_grant", "invalid_token", "access_denied", "refresh_token_expired", "refresh_token_reused", "account has been deactivated"];
 
 const MAX_ATTEMPTS = 5;
 const BASE_DELAY_MS = 5_000;
@@ -201,14 +201,25 @@ export class RefreshScheduler {
 
     for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
       try {
+        const isOneTimeRT = entry.refreshToken.startsWith("oaistb_rt_");
         const tokens = await refreshAccessToken(entry.refreshToken, accountProxyUrl);
-        // Update token and refresh_token (if a new one was issued)
+
+        // oaistb_rt_ tokens are single-use: the old RT is revoked after exchange.
+        // If the server didn't return a new RT, mark the account as unable to refresh.
+        if (isOneTimeRT && !tokens.refresh_token) {
+          console.warn(`[RefreshScheduler] Account ${entryId}: oaistb_rt_ used but no new RT returned — future refresh will fail`);
+          this.pool.updateToken(entryId, tokens.access_token, null);
+          this.scheduleOne(entryId, tokens.access_token);
+          return;
+        }
+
         this.pool.updateToken(
           entryId,
           tokens.access_token,
           tokens.refresh_token,
         );
-        console.log(`[RefreshScheduler] Account ${entryId} refreshed successfully`);
+        const rtType = isOneTimeRT ? " (oaistb_rt_ → rotated)" : "";
+        console.log(`[RefreshScheduler] Account ${entryId} refreshed successfully${rtType}`);
         this.scheduleOne(entryId, tokens.access_token);
         return;
       } catch (err) {

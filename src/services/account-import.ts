@@ -145,10 +145,13 @@ export class AccountImportService {
           kind: "validation",
         };
       }
+      // oaistb_rt_ tokens are single-use — if no new RT returned, the old one is dead
+      const isOneTimeRT = rt?.startsWith("oaistb_rt_");
+      const newRT = tokens.refresh_token ?? (isOneTimeRT ? null : rt);
       return {
         ok: true,
         token: tokens.access_token,
-        rt: tokens.refresh_token ?? rt,
+        rt: newRT,
       };
     } catch (err) {
       return {

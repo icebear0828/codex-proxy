@@ -13,7 +13,7 @@ import type { TlsTransport, TlsTransportResponse } from "./transport.js";
 import { getConfig } from "../config.js";
 
 const STATUS_SEPARATOR = "\n__CURL_HTTP_STATUS__";
-const DEFAULT_HEADER_TIMEOUT_MS = 30_000;
+const DEFAULT_HEADER_TIMEOUT_MS = 120_000;
 
 function getHeaderTimeoutMs(): number {
   try {
