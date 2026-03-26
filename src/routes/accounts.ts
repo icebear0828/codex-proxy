@@ -13,6 +13,7 @@ import { CodexApi } from "../proxy/codex-api.js";
 import type { CookieJar } from "../proxy/cookie-jar.js";
 import type { ProxyPool } from "../proxy/proxy-pool.js";
 import { toQuota } from "../auth/quota-utils.js";
+import { isBanError, isTokenInvalidError } from "../proxy/error-classification.js";
 import { clearWarnings, getActiveWarnings, getWarningsLastUpdated } from "../auth/quota-warnings.js";
 import { AccountImportService } from "../services/account-import.js";
 import { AccountQueryService } from "../services/account-query.js";
@@ -133,6 +134,13 @@ export function createAccountRoutes(pool: AccountPool, scheduler: RefreshSchedul
       const usage = await new CodexApi(entry.token, entry.accountId, cookieJar, id, proxyPool?.resolveProxyUrl(id)).getUsage();
       return c.json({ quota: toQuota(usage), raw: usage });
     } catch (err) {
+      // Auto-mark invalidated/banned accounts
+      if (isTokenInvalidError(err)) {
+        pool.markStatus(id, "expired");
+      } else if (isBanError(err)) {
+        pool.markStatus(id, "banned");
+      }
+
       const detail = err instanceof Error ? err.message : String(err);
       const isCf = detail.includes("403") || detail.includes("cf_chl");
       c.status(502);

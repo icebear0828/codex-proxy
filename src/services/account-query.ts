@@ -7,6 +7,7 @@ import type { AccountPool } from "../auth/account-pool.js";
 import type { AccountEntry, AccountInfo, CodexQuota } from "../auth/types.js";
 import type { CodexUsageResponse } from "../proxy/codex-types.js";
 import { toQuota } from "../auth/quota-utils.js";
+import { isBanError, isTokenInvalidError } from "../proxy/error-classification.js";
 
 export type EnrichedAccountInfo = AccountInfo & {
   proxyId: string;
@@ -66,7 +67,12 @@ export class AccountQueryService {
           const freshAcct =
             this.pool.getAccounts().find((a) => a.id === acct.id) ?? acct;
           return { ...this.enrich(freshAcct), quota };
-        } catch {
+        } catch (err) {
+          if (isTokenInvalidError(err)) {
+            this.pool.markStatus(acct.id, "expired");
+          } else if (isBanError(err)) {
+            this.pool.markStatus(acct.id, "banned");
+          }
           return this.enrich(acct);
         }
       }),
