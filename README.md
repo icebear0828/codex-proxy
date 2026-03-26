@@ -494,12 +494,11 @@ server:
 ### [Unreleased]
 
 **Added**
-- 账号标签（label）：支持为每个账号设置自定义标签（如 "Team Alpha"、"个人"），解决同一邮箱加入多个 team 无法区分的问题。AccountCard 有标签时显示标签为主标题，hover 显示编辑按钮
-- Refresh-token-only 导入：批量导入现在支持只传 `refreshToken`（无需有效 JWT），后端自动用 RT 换取 AT 后添加账号
-- 导入模板下载：AccountImportExport 工具栏新增模板下载按钮，包含 token-only、RT-only、label 等示例格式
-- 导入支持 label 字段：批量导入时可为每条记录指定 label
-- Claude Code Setup 卡片：Dashboard 按 Opus/Sonnet/Haiku/自定义 层级一键复制环境变量（推荐模型 gpt-5.4 / gpt-5.4-mini / gpt-5.3-codex）
-- ...（[查看全部](./CHANGELOG.md)）
+- 自动更新（热更新）功能，默认开启，用户可在 Dashboard 设置中关闭
+  - Git 模式：检测到更新后自动 pull → install → build → 重启
+  - Electron (Win/Linux)：自动下载更新，退出时安装；dock/任务栏显示下载进度条
+  - Electron (macOS)：自动打开 release 页面（平台限制无法自动安装）
+  - 配置项 `update.auto_update`，持久化到 `data/local.yaml`
 **Changed**
 - 提取 `src/proxy/error-classification.ts`：`isBanError`/`isTokenInvalidError`/`isModelNotSupportedError`/`extractRetryAfterSec` 从 proxy-handler 和 usage-refresher 中去重，19 个新测试
 - `scripts/` 按用途分类到 `infra/`、`build/`、`poc/`、`manual-test/` 子目录
