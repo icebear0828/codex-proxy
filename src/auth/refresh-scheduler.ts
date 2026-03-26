@@ -18,7 +18,7 @@ import type { AccountPool } from "./account-pool.js";
 import type { ProxyPool } from "../proxy/proxy-pool.js";
 
 /** Errors that indicate the refresh token itself is invalid (permanent failure). */
-const PERMANENT_ERRORS = ["invalid_grant", "invalid_token", "access_denied"];
+const PERMANENT_ERRORS = ["invalid_grant", "invalid_token", "access_denied", "refresh_token_expired", "account has been deactivated"];
 
 const MAX_ATTEMPTS = 5;
 const BASE_DELAY_MS = 5_000;
@@ -81,6 +81,19 @@ export class RefreshScheduler {
         this.scheduleOne(entry.id, entry.token);
       }
     }
+  }
+
+  /**
+   * Trigger an immediate token refresh for an account whose token was
+   * invalidated server-side (401) before JWT expiry.
+   * No-op if the account has no refresh token.
+   */
+  triggerRefreshNow(entryId: string): void {
+    const entry = this.pool.getEntry(entryId);
+    if (!entry?.refreshToken) return;
+    if (entry.status === "disabled" || entry.status === "banned") return;
+    this.clearOne(entryId);
+    this.doRefresh(entryId);
   }
 
   /** Schedule refresh for a single account. */

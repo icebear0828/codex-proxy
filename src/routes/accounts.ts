@@ -35,16 +35,9 @@ export function createAccountRoutes(pool: AccountPool, scheduler: RefreshSchedul
     validateToken: validateManualToken,
     refreshToken: refreshAccessToken,
     getProxyUrl: () => getConfig().tls?.proxy_url ?? null,
-    warmup: cookieJar
-      ? async (entryId, token, accountId) => {
-          const api = new CodexApi(token, accountId, cookieJar, entryId, proxyPool?.resolveProxyUrl(entryId));
-          const usage = await api.warmup();
-          if (usage) {
-            pool.updateCachedQuota(entryId, toQuota(usage));
-            console.log(`[Import] Warmup OK for ${entryId} — cookies established, quota cached`);
-          }
-        }
-      : undefined,
+    // Warmup disabled: sending GET /codex/usage immediately after RT exchange
+    // triggers OpenAI risk detection and causes account deactivation.
+    warmup: undefined,
   });
   const querySvc = new AccountQueryService(
     pool,
