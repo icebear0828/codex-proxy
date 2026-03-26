@@ -14,11 +14,9 @@ interface CodexLikeError {
 }
 
 function isCodexLike(err: unknown): err is CodexLikeError {
-  return (
-    err instanceof Error &&
-    typeof (err as Record<string, unknown>).status === "number" &&
-    typeof (err as Record<string, unknown>).body === "string"
-  );
+  if (!(err instanceof Error)) return false;
+  const rec = err as unknown as Record<string, unknown>;
+  return typeof rec.status === "number" && typeof rec.body === "string";
 }
 
 /** Extract the rate-limit reset duration from a 429 error body, if available. */
