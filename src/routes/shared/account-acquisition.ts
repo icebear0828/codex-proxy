@@ -6,14 +6,7 @@
 
 import type { AccountPool } from "../../auth/account-pool.js";
 import type { AcquiredAccount } from "../../auth/types.js";
-
-/** Usage info shape passed on release. */
-export interface UsageRecord {
-  input_tokens: number;
-  output_tokens: number;
-  cached_tokens?: number;
-  reasoning_tokens?: number;
-}
+import type { UsageInfo } from "../../translation/codex-event-extractor.js";
 
 /**
  * Acquire an account from the pool for the given model.
@@ -43,7 +36,7 @@ export function acquireAccount(
 export function releaseAccount(
   pool: AccountPool,
   entryId: string,
-  usage?: UsageRecord,
+  usage?: UsageInfo,
   guard?: Set<string>,
 ): void {
   if (guard) {

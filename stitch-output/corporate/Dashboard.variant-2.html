@@ -1,0 +1,500 @@
+<!DOCTYPE html>
+<html class="light" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Codex Proxy | Precision Infrastructure</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&amp;family=JetBrains+Mono:wght@400;500&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+      tailwind.config = {
+        darkMode: "class",
+        theme: {
+          extend: {
+            colors: {
+              "tertiary-fixed": "#d8e2ff",
+              "on-primary-container": "#f6fff3",
+              "surface-container-highest": "#e0e3e5",
+              "primary": "#006b33",
+              "secondary-fixed": "#e1e0ff",
+              "on-background": "#191c1e",
+              "secondary-fixed-dim": "#c0c1ff",
+              "surface-dim": "#d8dadc",
+              "primary-container": "#008743",
+              "secondary-container": "#6063ee",
+              "surface-tint": "#006d35",
+              "error-container": "#ffdad6",
+              "tertiary-fixed-dim": "#adc6ff",
+              "on-secondary": "#ffffff",
+              "on-primary": "#ffffff",
+              "secondary": "#4648d4",
+              "on-surface": "#191c1e",
+              "primary-fixed-dim": "#61de87",
+              "tertiary-container": "#2170e4",
+              "on-surface-variant": "#3e4a3e",
+              "on-primary-fixed-variant": "#005226",
+              "on-secondary-container": "#fffbff",
+              "inverse-primary": "#61de87",
+              "surface-container-high": "#e6e8ea",
+              "surface-variant": "#e0e3e5",
+              "on-primary-fixed": "#00210c",
+              "on-tertiary": "#ffffff",
+              "on-error": "#ffffff",
+              "on-tertiary-fixed-variant": "#004395",
+              "surface-container-low": "#f2f4f6",
+              "surface-container-lowest": "#ffffff",
+              "error": "#ba1a1a",
+              "surface-container": "#eceef0",
+              "on-tertiary-container": "#fefcff",
+              "background": "#f7f9fb",
+              "on-error-container": "#93000a",
+              "on-secondary-fixed": "#07006c",
+              "on-secondary-fixed-variant": "#2f2ebe",
+              "surface-bright": "#f7f9fb",
+              "inverse-on-surface": "#eff1f3",
+              "inverse-surface": "#2d3133",
+              "outline-variant": "#bccabb",
+              "on-tertiary-fixed": "#001a42",
+              "surface": "#f7f9fb",
+              "primary-fixed": "#7efba1",
+              "outline": "#6d7a6d",
+              "tertiary": "#0058be"
+            },
+            fontFamily: {
+              "headline": ["Inter"],
+              "body": ["Inter"],
+              "label": ["Inter"],
+              "mono": ["JetBrains Mono"]
+            },
+            borderRadius: {"DEFAULT": "0.25rem", "lg": "0.5rem", "xl": "0.75rem", "full": "9999px"},
+          },
+        },
+      }
+    </script>
+<style>
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+            vertical-align: middle;
+        }
+        .glass-panel {
+            background: rgba(255, 255, 255, 0.8);
+            backdrop-filter: blur(12px);
+        }
+        .ghost-border {
+            outline: 1px solid rgba(109, 122, 109, 0.15);
+        }
+    </style>
+</head>
+<body class="bg-background text-on-background font-body min-h-screen">
+<main class="max-w-7xl mx-auto px-6 py-12 space-y-12">
+<section class="flex flex-col md:flex-row justify-between items-center gap-6">
+<button class="flex items-center gap-3 bg-surface-container-lowest ghost-border px-8 py-4 rounded-xl hover:bg-surface-container-low transition-all duration-200 shadow-sm">
+<img alt="Google Logo" class="w-6 h-6" src="https://lh3.googleusercontent.com/aida-public/AB6AXuBeDYaf-rsJS0RY7Gc0vwaEk2Zbj_Pym-f8Fcl70E7KlMowp9hllOCfxa63bambooaTPvZ609HI_JuvXuaR3W4ap_4CGVtYX8kdKsrhgtH3hysZbb3GO-d19dXfQ4ZIh_iCeg_OcLNSVTUNxi-ey3sI0dj6KR9pTGdfyw4IZOWpz3XA7Zgc2gxya9_Y4NoHJ2ZJ25TvfJqRUzS9Qd_3eqCIb9WCv6acr_nXTn5JrO2Q90SY3gXSIDvKrAYYfsh1DpxcajUDf9vYGJzV"/>
+<span class="font-semibold text-on-surface">Login with Google OAuth</span>
+</button>
+<div class="flex items-center gap-3 w-full md:w-auto">
+<div class="relative flex-grow md:w-96">
+<input class="w-full bg-surface-container-lowest border-none ghost-border rounded-xl px-5 py-4 focus:ring-2 focus:ring-secondary text-sm font-mono transition-all shadow-sm" placeholder="Enter Relay Code..." type="text"/>
+<span class="absolute right-5 top-1/2 -translate-y-1/2 text-outline material-symbols-outlined">vpn_key</span>
+</div>
+<button class="bg-primary text-on-primary px-8 py-4 rounded-xl font-bold shadow-sm hover:opacity-90 transition-all">Connect</button>
+</div>
+</section>
+<section class="grid grid-cols-1 md:grid-cols-2 gap-8">
+<div class="bg-surface-container-lowest p-8 rounded-2xl shadow-sm border-none relative group transition-all hover:shadow-md">
+<div class="flex justify-between items-start mb-8 pb-6 border-b border-surface-container">
+<div>
+<h3 class="font-headline font-bold text-xl text-on-surface">admin@codex-proxy.io</h3>
+<p class="font-mono text-[10px] text-outline uppercase tracking-widest mt-1">Primary Infrastructure</p>
+</div>
+<div class="flex items-center gap-3">
+<span class="bg-primary-fixed text-on-primary-fixed-variant px-3 py-1.5 rounded-full text-[11px] font-bold font-mono">ACTIVE</span>
+<div class="w-10 h-5 bg-primary-container/20 rounded-full relative cursor-pointer">
+<div class="absolute right-1 top-1 w-3 h-3 bg-primary rounded-full"></div>
+</div>
+</div>
+</div>
+<div class="space-y-6">
+<div class="bg-surface-container-lowest">
+<div class="flex justify-between text-xs font-mono mb-3">
+<span class="text-outline">QUOTA USAGE</span>
+<span class="text-on-surface font-bold">4.2GB / 10GB</span>
+</div>
+<div class="h-2 w-full bg-surface-container-low rounded-full overflow-hidden">
+<div class="h-full bg-primary w-[42%]"></div>
+</div>
+</div>
+<div class="flex justify-between items-end pt-2">
+<div class="space-y-1">
+<p class="text-[10px] font-bold text-outline uppercase tracking-tighter">Total Requests</p>
+<p class="font-mono text-2xl font-medium">1,204,582</p>
+</div>
+<div class="text-right">
+<p class="text-[10px] font-bold text-outline uppercase tracking-tighter">Proxy Label</p>
+<span class="bg-surface-container px-3 py-1.5 rounded text-xs font-mono inline-block mt-1">us-east-cluster-01</span>
+</div>
+</div>
+</div>
+</div>
+<div class="bg-surface-container-lowest p-8 rounded-2xl shadow-sm border-none relative group transition-all hover:shadow-md">
+<div class="flex justify-between items-start mb-8 pb-6 border-b border-surface-container">
+<div>
+<h3 class="font-headline font-bold text-xl text-on-surface">dev-ops@codex-proxy.io</h3>
+<p class="font-mono text-[10px] text-outline uppercase tracking-widest mt-1">Staging Environment</p>
+</div>
+<div class="flex items-center gap-3">
+<span class="bg-amber-100 text-amber-800 px-3 py-1.5 rounded-full text-[11px] font-bold font-mono">RATE_LIMITED</span>
+<div class="w-10 h-5 bg-surface-container-high rounded-full relative cursor-pointer">
+<div class="absolute left-1 top-1 w-3 h-3 bg-outline rounded-full"></div>
+</div>
+</div>
+</div>
+<div class="space-y-6">
+<div>
+<div class="flex justify-between text-xs font-mono mb-3">
+<span class="text-outline">QUOTA USAGE</span>
+<span class="text-on-surface font-bold">9.8GB / 10GB</span>
+</div>
+<div class="h-2 w-full bg-surface-container-low rounded-full overflow-hidden">
+<div class="h-full bg-amber-500 w-[98%]"></div>
+</div>
+</div>
+<div class="flex justify-between items-end pt-2">
+<div class="space-y-1">
+<p class="text-[10px] font-bold text-outline uppercase tracking-tighter">Total Requests</p>
+<p class="font-mono text-2xl font-medium">4,892,110</p>
+</div>
+<div class="text-right">
+<p class="text-[10px] font-bold text-outline uppercase tracking-tighter">Proxy Label</p>
+<span class="bg-surface-container px-3 py-1.5 rounded text-xs font-mono inline-block mt-1">eu-central-fallback</span>
+</div>
+</div>
+</div>
+</div>
+</section>
+<section class="space-y-8">
+<div class="flex justify-between items-end border-b border-surface-container pb-6">
+<div>
+<h2 class="text-4xl font-headline font-black tracking-tighter text-on-surface">Proxy Pool</h2>
+<p class="text-outline text-sm mt-1">Real-time infrastructure health and management.</p>
+</div>
+<button class="flex items-center gap-2 bg-secondary text-on-secondary px-6 py-3 rounded-xl font-semibold text-sm shadow-sm hover:opacity-90 transition-all">
+<span class="material-symbols-outlined text-sm">speed</span> Health Check
+                </button>
+</div>
+<div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
+<div class="lg:col-span-2 bg-surface-container-lowest rounded-2xl overflow-hidden shadow-sm ghost-border">
+<div class="overflow-x-auto">
+<table class="w-full text-left border-collapse">
+<thead class="bg-surface-container-low text-outline text-[11px] font-bold uppercase tracking-widest border-b border-surface-container">
+<tr>
+<th class="px-8 py-5">Status</th>
+<th class="px-8 py-5">Endpoint</th>
+<th class="px-8 py-5">Latency</th>
+<th class="px-8 py-5">Uptime</th>
+<th class="px-8 py-5">Action</th>
+</tr>
+</thead>
+<tbody class="divide-y divide-surface-container">
+<tr class="hover:bg-surface-container-low/30 transition-colors">
+<td class="px-8 py-5"><span class="w-2 h-2 rounded-full bg-primary inline-block mr-2"></span> Healthy</td>
+<td class="px-8 py-5 font-mono text-xs">192.168.1.45:8080</td>
+<td class="px-8 py-5 font-mono text-xs">42ms</td>
+<td class="px-8 py-5 font-mono text-xs">99.9%</td>
+<td class="px-8 py-5"><span class="material-symbols-outlined text-outline cursor-pointer hover:text-error transition-colors">delete</span></td>
+</tr>
+<tr class="hover:bg-surface-container-low/30 transition-colors">
+<td class="px-8 py-5"><span class="w-2 h-2 rounded-full bg-primary inline-block mr-2"></span> Healthy</td>
+<td class="px-8 py-5 font-mono text-xs">45.23.11.102:443</td>
+<td class="px-8 py-5 font-mono text-xs">112ms</td>
+<td class="px-8 py-5 font-mono text-xs">98.4%</td>
+<td class="px-8 py-5"><span class="material-symbols-outlined text-outline cursor-pointer hover:text-error transition-colors">delete</span></td>
+</tr>
+<tr class="bg-surface-container-low/50">
+<td class="px-8 py-5"><span class="w-2 h-2 rounded-full bg-error inline-block mr-2"></span> Failing</td>
+<td class="px-8 py-5 font-mono text-xs">104.1.22.8:80</td>
+<td class="px-8 py-5 font-mono text-xs text-error">Timed Out</td>
+<td class="px-8 py-5 font-mono text-xs">12.0%</td>
+<td class="px-8 py-5"><span class="material-symbols-outlined text-outline cursor-pointer hover:text-error transition-colors">delete</span></td>
+</tr>
+</tbody>
+</table>
+</div>
+</div>
+<div class="bg-surface-container-lowest p-8 rounded-2xl ghost-border flex flex-col justify-between shadow-sm">
+<div class="space-y-6">
+<h4 class="font-headline font-bold text-lg text-on-surface pb-4 border-b border-surface-container">Add New Proxy</h4>
+<div class="space-y-4">
+<div>
+<label class="text-[10px] font-bold text-outline uppercase tracking-widest block mb-2">Host/IP Address</label>
+<input class="w-full bg-surface-container-low border-none rounded-xl px-4 py-3 text-sm font-mono focus:ring-2 focus:ring-primary" placeholder="127.0.0.1" type="text"/>
+</div>
+<div>
+<label class="text-[10px] font-bold text-outline uppercase tracking-widest block mb-2">Port</label>
+<input class="w-full bg-surface-container-low border-none rounded-xl px-4 py-3 text-sm font-mono focus:ring-2 focus:ring-primary" placeholder="8080" type="text"/>
+</div>
+</div>
+</div>
+<div class="pt-8">
+<button class="w-full py-4 bg-primary-container text-on-primary-container rounded-xl font-bold hover:bg-primary transition-colors shadow-sm">Append to Pool</button>
+</div>
+</div>
+</div>
+</section>
+<section class="grid grid-cols-1 lg:grid-cols-2 gap-12">
+<div class="space-y-8">
+<h2 class="text-3xl font-headline font-black tracking-tighter text-on-surface">API Config</h2>
+<div class="bg-surface-container-lowest p-8 rounded-3xl ghost-border space-y-8 shadow-sm">
+<div class="space-y-3 pb-6 border-b border-surface-container">
+<label class="text-[11px] font-bold text-outline uppercase tracking-widest">Model Family</label>
+<select class="w-full bg-surface-container-low border-none rounded-xl px-5 py-3.5 text-sm focus:ring-2 focus:ring-primary">
+<optgroup label="Anthropic">
+<option>Claude 3.5 Sonnet</option>
+<option>Claude 3 Opus</option>
+</optgroup>
+<optgroup label="OpenAI">
+<option>GPT-4o</option>
+<option>GPT-4 Turbo</option>
+</optgroup>
+</select>
+</div>
+<div class="space-y-3 pb-6 border-b border-surface-container">
+<label class="text-[11px] font-bold text-outline uppercase tracking-widest">Base URL</label>
+<div class="flex items-center gap-2">
+<input class="flex-grow bg-surface-container-low border-none rounded-xl px-5 py-3.5 text-xs font-mono text-secondary" readonly="" type="text" value="https://api.codex-proxy.io/v1"/>
+<button class="p-3.5 bg-surface-container-high rounded-xl hover:bg-surface-container-highest transition-colors">
+<span class="material-symbols-outlined text-sm">content_copy</span>
+</button>
+</div>
+</div>
+<div class="space-y-3">
+<label class="text-[11px] font-bold text-outline uppercase tracking-widest">Master API Key</label>
+<div class="flex items-center gap-2">
+<input class="flex-grow bg-surface-container-low border-none rounded-xl px-5 py-3.5 text-xs font-mono" readonly="" type="password" value="sk-codex-9921-3942-8812-xk2"/>
+<button class="p-3.5 bg-surface-container-high rounded-xl hover:bg-surface-container-highest transition-colors">
+<span class="material-symbols-outlined text-sm">content_copy</span>
+</button>
+</div>
+</div>
+</div>
+</div>
+<div class="space-y-8">
+<h2 class="text-3xl font-headline font-black tracking-tighter text-on-surface">SDK Environment</h2>
+<div class="bg-surface-container-lowest p-8 rounded-3xl border border-dashed border-outline-variant shadow-sm">
+<div class="space-y-4 mb-8">
+<div class="flex justify-between items-center bg-surface-container-low/40 p-4 rounded-xl ghost-border hover:bg-surface-container-low transition-colors group">
+<span class="font-mono text-xs text-on-surface">ANTHROPIC_API_KEY=sk-codex-***</span>
+<span class="material-symbols-outlined text-xs text-outline cursor-pointer opacity-0 group-hover:opacity-100 transition-opacity">content_copy</span>
+</div>
+<div class="flex justify-between items-center bg-surface-container-low/40 p-4 rounded-xl ghost-border hover:bg-surface-container-low transition-colors group">
+<span class="font-mono text-xs text-on-surface">ANTHROPIC_BASE_URL=https://api.codex-proxy.io</span>
+<span class="material-symbols-outlined text-xs text-outline cursor-pointer opacity-0 group-hover:opacity-100 transition-opacity">content_copy</span>
+</div>
+<div class="flex justify-between items-center bg-surface-container-low/40 p-4 rounded-xl ghost-border hover:bg-surface-container-low transition-colors group">
+<span class="font-mono text-xs text-on-surface">CODEX_LOG_LEVEL=debug</span>
+<span class="material-symbols-outlined text-xs text-outline cursor-pointer opacity-0 group-hover:opacity-100 transition-opacity">content_copy</span>
+</div>
+<div class="flex justify-between items-center bg-surface-container-low/40 p-4 rounded-xl ghost-border hover:bg-surface-container-low transition-colors group">
+<span class="font-mono text-xs text-on-surface">CODEX_TIMEOUT_MS=30000</span>
+<span class="material-symbols-outlined text-xs text-outline cursor-pointer opacity-0 group-hover:opacity-100 transition-opacity">content_copy</span>
+</div>
+<div class="flex justify-between items-center bg-surface-container-low/40 p-4 rounded-xl ghost-border hover:bg-surface-container-low transition-colors group">
+<span class="font-mono text-xs text-on-surface">CODEX_RETRY_COUNT=3</span>
+<span class="material-symbols-outlined text-xs text-outline cursor-pointer opacity-0 group-hover:opacity-100 transition-opacity">content_copy</span>
+</div>
+<div class="flex justify-between items-center bg-surface-container-low/40 p-4 rounded-xl ghost-border hover:bg-surface-container-low transition-colors group">
+<span class="font-mono text-xs text-on-surface">CODEX_STRICT_HEADERS=true</span>
+<span class="material-symbols-outlined text-xs text-outline cursor-pointer opacity-0 group-hover:opacity-100 transition-opacity">content_copy</span>
+</div>
+</div>
+<button class="w-full py-4 bg-on-background text-background rounded-xl font-bold text-sm hover:opacity-90 transition-all shadow-md">Copy All Env Vars</button>
+</div>
+</div>
+</section>
+<section class="space-y-8">
+<h2 class="text-3xl font-headline font-black tracking-tighter text-on-surface text-center">Implementation Snippets</h2>
+<div class="bg-surface-container-lowest rounded-3xl overflow-hidden shadow-md ghost-border">
+<div class="flex bg-surface-container-low px-8 pt-5 gap-3 border-b border-surface-container">
+<button class="bg-surface-container-lowest px-8 py-4 rounded-t-2xl font-bold text-xs uppercase tracking-widest text-primary border-t-2 border-primary">Anthropic</button>
+<button class="px-8 py-4 rounded-t-2xl font-bold text-xs uppercase tracking-widest text-outline hover:text-on-surface transition-colors">OpenAI</button>
+<button class="px-8 py-4 rounded-t-2xl font-bold text-xs uppercase tracking-widest text-outline hover:text-on-surface transition-colors">Gemini</button>
+</div>
+<div class="p-10">
+<div class="flex gap-6 mb-8 border-b border-surface-container-low pb-4">
+<button class="text-sm font-mono font-bold border-b-2 border-primary pb-3 -mb-4 px-2">Python</button>
+<button class="text-sm font-mono font-bold text-outline hover:text-on-surface pb-3 -mb-4 px-2 transition-colors">Node.js</button>
+<button class="text-sm font-mono font-bold text-outline hover:text-on-surface pb-3 -mb-4 px-2 transition-colors">cURL</button>
+</div>
+<div class="bg-on-surface text-surface-container-lowest p-8 rounded-2xl font-mono text-sm leading-relaxed relative group shadow-inner">
+<button class="absolute right-6 top-6 opacity-0 group-hover:opacity-100 transition-opacity bg-surface-container-highest/20 p-3 rounded-xl backdrop-blur-sm">
+<span class="material-symbols-outlined text-sm">content_copy</span>
+</button>
+<pre><code><span class="text-emerald-400">import</span> anthropic
+client = anthropic.Anthropic(
+    api_key=<span class="text-secondary-fixed-dim">"sk-codex-master-key"</span>,
+    base_url=<span class="text-secondary-fixed-dim">"https://api.codex-proxy.io"</span>
+)
+message = client.messages.create(
+    model=<span class="text-secondary-fixed-dim">"claude-3-5-sonnet-20240620"</span>,
+    max_tokens=1024,
+    messages=[{<span class="text-secondary-fixed-dim">"role"</span>: <span class="text-secondary-fixed-dim">"user"</span>, <span class="text-secondary-fixed-dim">"content"</span>: <span class="text-secondary-fixed-dim">"Hello, Codex!"</span>}]
+)</code></pre>
+</div>
+</div>
+</div>
+</section>
+<section class="space-y-6">
+<h2 class="text-2xl font-headline font-black tracking-tight text-on-surface border-b border-surface-container pb-4">System Settings</h2>
+<details class="group bg-surface-container-lowest rounded-2xl ghost-border overflow-hidden shadow-sm" open="">
+<summary class="flex items-center justify-between p-8 cursor-pointer hover:bg-surface-container-low transition-colors list-none">
+<div class="flex items-center gap-4">
+<span class="material-symbols-outlined text-primary p-2 bg-primary/10 rounded-lg">settings</span>
+<h3 class="font-bold text-on-surface text-lg">General Configuration</h3>
+</div>
+<span class="material-symbols-outlined transition-transform group-open:rotate-180 text-outline">expand_more</span>
+</summary>
+<div class="px-8 pb-10 pt-8 border-t border-surface-container-low bg-surface-container-lowest/50">
+<div class="grid grid-cols-1 md:grid-cols-3 gap-10">
+<div class="space-y-3">
+<label class="text-[10px] font-bold text-outline uppercase tracking-widest">Proxy Port</label>
+<input class="w-full bg-surface-container-low border-none rounded-xl font-mono text-sm px-4 py-3 focus:ring-2 focus:ring-primary" type="text" value="8080"/>
+</div>
+<div class="space-y-3">
+<label class="text-[10px] font-bold text-outline uppercase tracking-widest">Inference Level</label>
+<select class="w-full bg-surface-container-low border-none rounded-xl text-sm px-4 py-3 focus:ring-2 focus:ring-primary">
+<option>Optimized (Default)</option>
+<option>Strict Raw</option>
+<option>Maximum Performance</option>
+</select>
+</div>
+<div class="flex flex-col justify-end">
+<div class="flex items-center justify-between bg-surface-container-low px-5 rounded-xl h-[48px]">
+<span class="text-xs font-bold text-on-surface">HTTP/1.1 Legacy</span>
+<div class="w-10 h-5 bg-outline/20 rounded-full relative cursor-pointer">
+<div class="absolute left-1 top-1 w-3 h-3 bg-outline rounded-full"></div>
+</div>
+</div>
+</div>
+</div>
+</div>
+</details>
+<details class="group bg-surface-container-lowest rounded-2xl ghost-border overflow-hidden shadow-sm">
+<summary class="flex items-center justify-between p-8 cursor-pointer hover:bg-surface-container-low transition-colors list-none">
+<div class="flex items-center gap-4">
+<span class="material-symbols-outlined text-secondary p-2 bg-secondary/10 rounded-lg">donut_large</span>
+<h3 class="font-bold text-on-surface text-lg">Quota &amp; Thresholds</h3>
+</div>
+<span class="material-symbols-outlined transition-transform group-open:rotate-180 text-outline">expand_more</span>
+</summary>
+<div class="px-8 pb-10 pt-8 border-t border-surface-container-low bg-surface-container-lowest/50 space-y-10">
+<div class="space-y-5 pb-8 border-b border-surface-container-low">
+<div class="flex justify-between items-center">
+<label class="text-[10px] font-bold text-outline uppercase tracking-widest">Alert Threshold</label>
+<span class="font-mono text-xs font-bold text-primary px-3 py-1 bg-primary/10 rounded-full">85%</span>
+</div>
+<input class="w-full h-2 bg-surface-container-low appearance-none rounded-full accent-primary cursor-pointer" type="range"/>
+</div>
+<div class="grid grid-cols-1 md:grid-cols-2 gap-8">
+<div class="flex items-center gap-4 bg-surface-container-low/40 p-4 rounded-xl ghost-border">
+<input checked="" class="rounded-md w-5 h-5 text-primary focus:ring-primary border-none bg-surface-container-low" type="checkbox"/>
+<span class="text-sm font-semibold">Skip exhausted proxies</span>
+</div>
+<div class="flex items-center gap-4 bg-surface-container-low/40 p-4 rounded-xl ghost-border">
+<input class="rounded-md w-5 h-5 text-primary focus:ring-primary border-none bg-surface-container-low" type="checkbox"/>
+<span class="text-sm font-semibold">Strict concurrency locking</span>
+</div>
+</div>
+</div>
+</details>
+<details class="group bg-surface-container-lowest rounded-2xl ghost-border overflow-hidden shadow-sm">
+<summary class="flex items-center justify-between p-8 cursor-pointer hover:bg-surface-container-low transition-colors list-none">
+<div class="flex items-center gap-4">
+<span class="material-symbols-outlined text-orange-600 p-2 bg-orange-600/10 rounded-lg">published_with_changes</span>
+<h3 class="font-bold text-on-surface text-lg">Rotation Policy</h3>
+</div>
+<span class="material-symbols-outlined transition-transform group-open:rotate-180 text-outline">expand_more</span>
+</summary>
+<div class="px-8 pb-10 pt-8 border-t border-surface-container-low bg-surface-container-lowest/50">
+<div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+<label class="flex flex-col gap-4 p-6 bg-surface-container-low/40 rounded-2xl cursor-pointer border-2 border-transparent hover:bg-surface-container-low has-[:checked]:border-primary transition-all">
+<input checked="" class="hidden" name="rotation" type="radio" value="least_used"/>
+<span class="text-sm font-bold">Least Used</span>
+<p class="text-[11px] leading-relaxed text-outline">Prioritize proxies with the lowest total request count for maximum balance.</p>
+</label>
+<label class="flex flex-col gap-4 p-6 bg-surface-container-low/40 rounded-2xl cursor-pointer border-2 border-transparent hover:bg-surface-container-low has-[:checked]:border-primary transition-all">
+<input class="hidden" name="rotation" type="radio" value="round_robin"/>
+<span class="text-sm font-bold">Round Robin</span>
+<p class="text-[11px] leading-relaxed text-outline">Cycle through available proxies in a standard sequential order loop.</p>
+</label>
+<label class="flex flex-col gap-4 p-6 bg-surface-container-low/40 rounded-2xl cursor-pointer border-2 border-transparent hover:bg-surface-container-low has-[:checked]:border-primary transition-all">
+<input class="hidden" name="rotation" type="radio" value="sticky"/>
+<span class="text-sm font-bold">Sticky Sessions</span>
+<p class="text-[11px] leading-relaxed text-outline">Pin a specific user session ID to a fixed proxy endpoint for stateful flows.</p>
+</label>
+</div>
+</div>
+</details>
+<details class="group bg-surface-container-lowest rounded-2xl ghost-border overflow-hidden shadow-sm">
+<summary class="flex items-center justify-between p-8 cursor-pointer hover:bg-surface-container-low transition-colors list-none">
+<div class="flex items-center gap-4">
+<span class="material-symbols-outlined text-error p-2 bg-error/10 rounded-lg">security</span>
+<h3 class="font-bold text-on-surface text-lg">API Security</h3>
+</div>
+<span class="material-symbols-outlined transition-transform group-open:rotate-180 text-outline">expand_more</span>
+</summary>
+<div class="px-8 pb-10 pt-8 border-t border-surface-container-low bg-surface-container-lowest/50">
+<div class="max-w-xl space-y-6">
+<div class="space-y-3">
+<label class="text-[10px] font-bold text-outline uppercase tracking-widest">Update Master API Key</label>
+<input class="w-full bg-surface-container-low border-none rounded-xl px-5 py-4 text-sm focus:ring-2 focus:ring-error" placeholder="••••••••••••••••••••••••••••••••" type="password"/>
+</div>
+<div class="pt-2">
+<button class="bg-error text-on-error px-8 py-3.5 rounded-xl font-bold text-sm hover:opacity-90 shadow-sm transition-all">Save Key Changes</button>
+</div>
+</div>
+</div>
+</details>
+<details class="group bg-surface-container-lowest rounded-2xl ghost-border overflow-hidden shadow-sm">
+<summary class="flex items-center justify-between p-8 cursor-pointer hover:bg-surface-container-low transition-colors list-none">
+<div class="flex items-center gap-4">
+<span class="material-symbols-outlined text-cyan-600 p-2 bg-cyan-600/10 rounded-lg">analytics</span>
+<h3 class="font-bold text-on-surface text-lg">Connection Diagnostic</h3>
+</div>
+<span class="material-symbols-outlined transition-transform group-open:rotate-180 text-outline">expand_more</span>
+</summary>
+<div class="px-8 pb-10 pt-8 border-t border-surface-container-low bg-surface-container-lowest/50 space-y-8">
+<div class="flex items-center justify-between bg-surface-container-low/50 p-6 rounded-2xl border border-surface-container-low">
+<p class="text-sm text-outline">Verify infrastructure connectivity and upstream health.</p>
+<button class="bg-surface-container-high text-on-surface px-8 py-3 rounded-xl font-bold text-sm hover:bg-surface-container-highest transition-all shadow-sm">Run Diagnostic</button>
+</div>
+<div class="space-y-4 font-mono text-xs">
+<div class="flex items-center gap-5 bg-surface-container-low/40 p-4 rounded-xl ghost-border">
+<span class="material-symbols-outlined text-primary text-lg">check_circle</span>
+<span class="text-outline font-medium">Local Proxy Binding (Port 8080)</span>
+<span class="ml-auto text-primary font-bold">PASS</span>
+</div>
+<div class="flex items-center gap-5 bg-surface-container-low/40 p-4 rounded-xl ghost-border">
+<span class="material-symbols-outlined text-primary text-lg">check_circle</span>
+<span class="text-outline font-medium">Upstream DNS Resolution</span>
+<span class="ml-auto text-primary font-bold">PASS</span>
+</div>
+<div class="flex items-center gap-5 bg-surface-container-low/40 p-4 rounded-xl ghost-border border-error/20">
+<span class="material-symbols-outlined text-error text-lg">cancel</span>
+<span class="text-outline font-medium">Legacy Auth Handshake (OAuth 1.0)</span>
+<span class="ml-auto text-error font-bold">FAIL</span>
+</div>
+<div class="flex items-center gap-5 bg-surface-container-low/20 p-4 rounded-xl ghost-border opacity-50 grayscale">
+<span class="material-symbols-outlined text-outline text-lg">fast_forward</span>
+<span class="text-outline font-medium">SSL Verification (Global Pool)</span>
+<span class="ml-auto text-outline font-bold">SKIP</span>
+</div>
+</div>
+</div>
+</details>
+</section>
+</main>
+<footer class="max-w-7xl mx-auto px-6 py-16 border-t border-surface-container text-center">
+<p class="text-[10px] font-bold text-outline uppercase tracking-[0.3em] font-headline">Codex Proxy Laboratory v2.4.1 — Infrastructure Division</p>
+</footer>
+
+</body></html>

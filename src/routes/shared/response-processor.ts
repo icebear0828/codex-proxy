@@ -6,14 +6,9 @@
 
 import type { CodexApi } from "../../proxy/codex-api.js";
 import type { FormatAdapter } from "./proxy-handler.js";
+import type { UsageInfo } from "../../translation/codex-event-extractor.js";
 
-/** Usage info shape. */
-export interface UsageInfo {
-  input_tokens: number;
-  output_tokens: number;
-  cached_tokens?: number;
-  reasoning_tokens?: number;
-}
+export type { UsageInfo };
 
 /** Minimal subset of Hono's StreamingApi that we actually use. */
 export interface StreamWriter {
@@ -63,21 +58,3 @@ export async function streamResponse(
   }
 }
 
-/**
- * Collect a non-streaming response from the Codex upstream.
- *
- * Returns the translated result; throws on error (including EmptyResponseError).
- */
-export async function collectResponse(
-  api: CodexApi,
-  rawResponse: Response,
-  model: string,
-  adapter: FormatAdapter,
-  tupleSchema?: Record<string, unknown> | null,
-): Promise<{
-  response: unknown;
-  usage: UsageInfo;
-  responseId: string | null;
-}> {
-  return adapter.collectTranslator(api, rawResponse, model, tupleSchema);
-}

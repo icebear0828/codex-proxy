@@ -13,31 +13,25 @@ import {
   isModelNotSupportedError,
 } from "../../proxy/error-classification.js";
 import type { CodexApiError } from "../../proxy/codex-types.js";
+import type { StatusCode } from "hono/utils/http-status";
 
 /** Clamp an HTTP status to a valid error StatusCode, defaulting to 502 for non-error codes. */
-export function toErrorStatus(status: number): number {
-  return status >= 400 && status < 600 ? status : 502;
+export function toErrorStatus(status: number): StatusCode {
+  return (status >= 400 && status < 600 ? status : 502) as StatusCode;
 }
 
-export interface ErrorAction {
-  /** 'retry' = acquire new account and re-enter loop. 'respond' = return error to client. */
-  action: "retry" | "respond";
-
-  /** For retry: should the orchestrator release the current account before retrying? */
-  releaseBeforeRetry?: boolean;
-
-  /** For retry: should the orchestrator set modelRetried = true? */
-  markModelRetried?: boolean;
-
-  /** For respond (or retry fallback when no account available): HTTP status code. */
-  status?: number;
-
-  /** For respond (or retry fallback): error message. */
-  message?: string;
-
-  /** For retry fallback: use format429 instead of formatError. */
-  useFormat429?: boolean;
-}
+export type ErrorAction =
+  | { action: "respond"; status: number; message: string }
+  | {
+      action: "retry";
+      releaseBeforeRetry?: boolean;
+      markModelRetried?: boolean;
+      /** Fallback status/message when no retry account is available. */
+      status: number;
+      message: string;
+      /** Use format429 instead of formatError for the fallback response. */
+      useFormat429?: boolean;
+    };
 
 /**
  * Classify a CodexApiError and mutate pool state accordingly.

@@ -5,7 +5,7 @@
  * Delegates to:
  *   - account-acquisition.ts  — acquire / release with idempotent guard
  *   - proxy-error-handler.ts  — CodexApiError classification + pool state mutations
- *   - response-processor.ts   — streaming (SSE) and non-streaming response paths
+ *   - response-processor.ts   — streaming (SSE) response path
  */
 
 import type { Context } from "hono";
@@ -20,8 +20,8 @@ import type { ProxyPool } from "../../proxy/proxy-pool.js";
 import { withRetry } from "../../utils/retry.js";
 import { acquireAccount, releaseAccount } from "./account-acquisition.js";
 import { handleCodexApiError, toErrorStatus } from "./proxy-error-handler.js";
-import { streamResponse, collectResponse } from "./response-processor.js";
-import type { UsageRecord } from "./account-acquisition.js";
+import { streamResponse } from "./response-processor.js";
+import type { UsageInfo } from "../../translation/codex-event-extractor.js";
 
 /** Data prepared by each route after parsing and translating the request. */
 export interface ProxyRequest {
@@ -61,7 +61,6 @@ export interface FormatAdapter {
 
 const MAX_EMPTY_RETRIES = 2;
 
-/** Build a CodexApi for the given account. */
 function buildCodexApi(
   token: string,
   accountId: string | null,
@@ -73,9 +72,6 @@ function buildCodexApi(
   return new CodexApi(token, accountId, cookieJar, entryId, proxyUrl);
 }
 
-/**
- * Core shared handler — from account acquire to release.
- */
 export async function handleProxyRequest(
   c: Context,
   accountPool: AccountPool,
@@ -84,7 +80,6 @@ export async function handleProxyRequest(
   fmt: FormatAdapter,
   proxyPool?: ProxyPool,
 ): Promise<Response> {
-  // 1. Acquire initial account
   const acquired = acquireAccount(accountPool, req.codexRequest.model, undefined, fmt.tag);
   if (!acquired) {
     c.status(fmt.noAccountStatus);
@@ -95,18 +90,18 @@ export async function handleProxyRequest(
   let codexApi = buildCodexApi(acquired.token, acquired.accountId, cookieJar, entryId, proxyPool);
   const triedEntryIds: string[] = [entryId];
   let modelRetried = false;
-  let usageInfo: UsageRecord | undefined;
+  let usageInfo: UsageInfo | undefined;
+  // Idempotent-release guard: prevents double-release across retry branches
+  const released = new Set<string>();
 
   console.log(
     `[${fmt.tag}] Account ${entryId} | Codex request:`,
     JSON.stringify(req.codexRequest).slice(0, 300),
   );
 
-  // AbortController: kill curl when client disconnects
   const abortController = new AbortController();
   c.req.raw.signal.addEventListener("abort", () => abortController.abort(), { once: true });
 
-  // ── Main retry loop ──
   for (;;) {
     try {
       const rawResponse = await withRetry(
@@ -133,7 +128,7 @@ export async function handleProxyRequest(
             );
           } finally {
             abortController.abort();
-            accountPool.release(capturedEntryId, usageInfo);
+            releaseAccount(accountPool, capturedEntryId, usageInfo, released);
           }
         });
       }
@@ -141,28 +136,26 @@ export async function handleProxyRequest(
       // ── Non-streaming path (with empty-response retry) ──
       return await handleNonStreaming(
         c, accountPool, cookieJar, req, fmt, proxyPool,
-        codexApi, rawResponse, entryId, abortController,
+        codexApi, rawResponse, entryId, abortController, released,
       );
     } catch (err) {
       if (!(err instanceof CodexApiError)) {
-        accountPool.release(entryId);
+        releaseAccount(accountPool, entryId, undefined, released);
         throw err;
       }
 
-      // Classify error and mutate pool state
       const decision = handleCodexApiError(
         err, accountPool, entryId, req.codexRequest.model, fmt.tag, modelRetried,
       );
 
       if (decision.action === "respond") {
-        accountPool.release(entryId);
+        releaseAccount(accountPool, entryId, undefined, released);
         c.status(decision.status as StatusCode);
-        return c.json(fmt.formatError(decision.status!, decision.message!));
+        return c.json(fmt.formatError(decision.status, decision.message));
       }
 
-      // retry: release current account if needed, acquire new one
       if (decision.releaseBeforeRetry) {
-        accountPool.release(entryId);
+        releaseAccount(accountPool, entryId, undefined, released);
       }
       if (decision.markModelRetried) {
         modelRetried = true;
@@ -170,13 +163,12 @@ export async function handleProxyRequest(
 
       const retry = acquireAccount(accountPool, req.codexRequest.model, triedEntryIds, fmt.tag);
       if (!retry) {
-        // No fallback account — return error using decision's fallback info
-        const status = (decision.status ?? 502) as StatusCode;
+        const status = decision.status as StatusCode;
         c.status(status);
         if (decision.useFormat429) {
-          return c.json(fmt.format429(decision.message ?? ""));
+          return c.json(fmt.format429(decision.message));
         }
-        return c.json(fmt.formatError(status, decision.message ?? "Unknown error"));
+        return c.json(fmt.formatError(status, decision.message));
       }
 
       entryId = retry.entryId;
@@ -188,11 +180,6 @@ export async function handleProxyRequest(
   }
 }
 
-/**
- * Handle non-streaming response with empty-response retry.
- *
- * Separated to keep the main loop readable. Returns the final Response to send.
- */
 async function handleNonStreaming(
   c: Context,
   accountPool: AccountPool,
@@ -204,6 +191,7 @@ async function handleNonStreaming(
   initialResponse: Response,
   initialEntryId: string,
   abortController: AbortController,
+  released: Set<string>,
 ): Promise<Response> {
   let currentEntryId = initialEntryId;
   let currentApi = initialApi;
@@ -211,10 +199,10 @@ async function handleNonStreaming(
 
   for (let attempt = 1; ; attempt++) {
     try {
-      const result = await collectResponse(
-        currentApi, currentRawResponse, req.model, fmt, req.tupleSchema,
+      const result = await fmt.collectTranslator(
+        currentApi, currentRawResponse, req.model, req.tupleSchema,
       );
-      accountPool.release(currentEntryId, result.usage);
+      releaseAccount(accountPool, currentEntryId, result.usage, released);
       return c.json(result.response);
     } catch (collectErr) {
       if (collectErr instanceof EmptyResponseError && attempt <= MAX_EMPTY_RETRIES) {
@@ -223,7 +211,7 @@ async function handleNonStreaming(
           `[${fmt.tag}] Account ${currentEntryId} (${email}) | Empty response (attempt ${attempt}/${MAX_EMPTY_RETRIES + 1}), switching account...`,
         );
         accountPool.recordEmptyResponse(currentEntryId);
-        accountPool.release(currentEntryId, collectErr.usage);
+        releaseAccount(accountPool, currentEntryId, collectErr.usage, released);
 
         const newAcquired = acquireAccount(accountPool, req.codexRequest.model, undefined, fmt.tag);
         if (!newAcquired) {
@@ -239,9 +227,9 @@ async function handleNonStreaming(
             { tag: fmt.tag },
           );
         } catch (retryErr) {
-          accountPool.release(currentEntryId);
+          releaseAccount(accountPool, currentEntryId, undefined, released);
           if (retryErr instanceof CodexApiError) {
-            const code = toErrorStatus(retryErr.status) as StatusCode;
+            const code = toErrorStatus(retryErr.status);
             c.status(code);
             return c.json(fmt.formatError(code, retryErr.message));
           }
@@ -250,8 +238,7 @@ async function handleNonStreaming(
         continue;
       }
 
-      // Retries exhausted or non-empty error
-      accountPool.release(currentEntryId);
+      releaseAccount(accountPool, currentEntryId, undefined, released);
       if (collectErr instanceof EmptyResponseError) {
         const email = accountPool.getEntry(currentEntryId)?.email ?? "?";
         console.warn(
@@ -264,7 +251,7 @@ async function handleNonStreaming(
       const msg = collectErr instanceof Error ? collectErr.message : "Unknown error";
       const statusMatch = msg.match(/HTTP\/[\d.]+ (\d{3})/);
       const upstreamStatus = statusMatch ? parseInt(statusMatch[1], 10) : 0;
-      const code = toErrorStatus(upstreamStatus) as StatusCode;
+      const code = toErrorStatus(upstreamStatus);
       c.status(code);
       return c.json(fmt.formatError(code, msg));
     }

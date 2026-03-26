@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { streamResponse, collectResponse } from "../response-processor.js";
+import { streamResponse } from "../response-processor.js";
 
 /* ── Helpers ── */
 
@@ -17,8 +17,6 @@ function createMockStream() {
 function createMockAdapter(options?: {
   streamChunks?: string[];
   streamError?: Error;
-  collectResult?: { response: unknown; usage: { input_tokens: number; output_tokens: number }; responseId: string | null };
-  collectError?: Error;
 }) {
   const opts = options ?? {};
   return {
@@ -28,14 +26,6 @@ function createMockAdapter(options?: {
       for (const chunk of opts.streamChunks ?? ["data: chunk1\n\n", "data: chunk2\n\n"]) {
         yield chunk;
       }
-    }),
-    collectTranslator: vi.fn(async () => {
-      if (opts.collectError) throw opts.collectError;
-      return opts.collectResult ?? {
-        response: { id: "resp-1", choices: [] },
-        usage: { input_tokens: 10, output_tokens: 20 },
-        responseId: "resp-1",
-      };
     }),
   };
 }
@@ -109,41 +99,3 @@ describe("streamResponse", () => {
   });
 });
 
-describe("collectResponse", () => {
-  it("returns translated result from adapter", async () => {
-    const expected = {
-      response: { id: "resp-1", choices: [{ text: "hello" }] },
-      usage: { input_tokens: 10, output_tokens: 20 },
-      responseId: "resp-1",
-    };
-    const adapter = createMockAdapter({ collectResult: expected });
-    const api = createMockCodexApi();
-    const rawResponse = new Response("ok");
-
-    const result = await collectResponse(api, rawResponse, "gpt-5.4", adapter as never);
-
-    expect(result).toEqual(expected);
-  });
-
-  it("propagates errors from adapter", async () => {
-    const adapter = createMockAdapter({ collectError: new Error("parse failed") });
-    const api = createMockCodexApi();
-    const rawResponse = new Response("ok");
-
-    await expect(collectResponse(api, rawResponse, "gpt-5.4", adapter as never))
-      .rejects.toThrow("parse failed");
-  });
-
-  it("passes tupleSchema to adapter when provided", async () => {
-    const adapter = createMockAdapter();
-    const api = createMockCodexApi();
-    const rawResponse = new Response("ok");
-    const tupleSchema = { type: "array", prefixItems: [] };
-
-    await collectResponse(api, rawResponse, "gpt-5.4", adapter as never, tupleSchema);
-
-    expect(adapter.collectTranslator).toHaveBeenCalledWith(
-      api, rawResponse, "gpt-5.4", tupleSchema,
-    );
-  });
-});

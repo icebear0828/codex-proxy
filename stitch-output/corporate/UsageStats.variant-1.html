@@ -1,0 +1,320 @@
+<!DOCTYPE html>
+<html class="light" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Codex Proxy - Usage Statistics</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&amp;family=JetBrains+Mono:wght@400;500;700&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    colors: {
+                        "primary-fixed": "#7efba1",
+                        "inverse-primary": "#61de87",
+                        "error-container": "#ffdad6",
+                        "on-error-container": "#93000a",
+                        "on-secondary-fixed-variant": "#2f2ebe",
+                        "surface-container-high": "#e6e8ea",
+                        "on-background": "#191c1e",
+                        "on-surface-variant": "#3e4a3e",
+                        "secondary-container": "#6063ee",
+                        "inverse-on-surface": "#eff1f3",
+                        "on-primary-container": "#f6fff3",
+                        "on-tertiary-fixed-variant": "#881a35",
+                        "outline": "#6d7a6d",
+                        "on-error": "#ffffff",
+                        "primary-fixed-dim": "#61de87",
+                        "surface-container-lowest": "#ffffff",
+                        "surface": "#f7f9fb",
+                        "surface-container": "#eceef0",
+                        "secondary-fixed-dim": "#c0c1ff",
+                        "on-primary-fixed-variant": "#005226",
+                        "tertiary": "#a53149",
+                        "surface-container-highest": "#e0e3e5",
+                        "primary": "#006b33",
+                        "background": "#f7f9fb",
+                        "tertiary-fixed-dim": "#ffb2bb",
+                        "tertiary-container": "#c64961",
+                        "surface-bright": "#f7f9fb",
+                        "on-primary-fixed": "#00210c",
+                        "on-primary": "#ffffff",
+                        "error": "#ba1a1a",
+                        "inverse-surface": "#2d3133",
+                        "secondary-fixed": "#e1e0ff",
+                        "on-tertiary": "#ffffff",
+                        "on-tertiary-container": "#fffbff",
+                        "surface-container-low": "#f2f4f6",
+                        "surface-variant": "#e0e3e5",
+                        "tertiary-fixed": "#ffd9dc",
+                        "on-tertiary-fixed": "#400011",
+                        "on-secondary-container": "#fffbff",
+                        "secondary": "#4648d4",
+                        "surface-tint": "#006d35",
+                        "surface-dim": "#d8dadc",
+                        "outline-variant": "#bccabb",
+                        "on-secondary-fixed": "#07006c",
+                        "on-secondary": "#ffffff",
+                        "primary-container": "#008743",
+                        "on-surface": "#191c1e"
+                    },
+                    fontFamily: {
+                        "headline": ["Inter"],
+                        "body": ["Inter"],
+                        "label": ["Inter"],
+                        "mono": ["JetBrains Mono"]
+                    },
+                    borderRadius: {"DEFAULT": "0.25rem", "lg": "0.5rem", "xl": "0.75rem", "full": "9999px"},
+                },
+            },
+        }
+    </script>
+<style>
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+            vertical-align: middle;
+        }
+        body { font-family: 'Inter', sans-serif; }
+        .mono { font-family: 'JetBrains Mono', monospace; }
+        .chart-gradient-input { fill: url(#inputGradient); }
+        .chart-gradient-output { fill: url(#outputGradient); }
+    </style>
+</head>
+<body class="bg-surface text-on-surface antialiased min-h-screen">
+<main class="p-6 lg:p-10 max-w-[1600px] mx-auto space-y-6">
+<header class="flex flex-col gap-0.5">
+<h1 class="text-2xl font-black tracking-tight text-on-surface font-headline uppercase">Usage Statistics</h1>
+<p class="text-on-surface-variant font-label text-[11px] tracking-widest">SYSTEM OVERVIEW &amp; TOKEN ANALYTICS • REAL-TIME FEED</p>
+</header>
+<section class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+<div class="bg-surface-container-lowest p-4 rounded-xl border border-outline-variant/15 flex flex-col justify-between h-32">
+<span class="text-[0.625rem] font-bold tracking-widest text-outline uppercase font-label">Input Tokens</span>
+<div>
+<div class="flex items-baseline gap-2">
+<span class="text-3xl font-black tracking-tighter mono">42.8M</span>
+<span class="flex items-center text-primary-container text-[10px] font-bold bg-primary-fixed-dim/20 px-1.5 py-0.5 rounded">
+<span class="material-symbols-outlined text-[12px] mr-0.5">trending_up</span>12.5%
+                    </span>
+</div>
+<div class="text-[0.625rem] text-outline font-mono mt-0.5 uppercase">AVG: 1.2M/HR</div>
+</div>
+</div>
+<div class="bg-surface-container-lowest p-4 rounded-xl border border-outline-variant/15 flex flex-col justify-between h-32">
+<span class="text-[0.625rem] font-bold tracking-widest text-outline uppercase font-label">Output Tokens</span>
+<div>
+<div class="flex items-baseline gap-2">
+<span class="text-3xl font-black tracking-tighter mono">156.4M</span>
+<span class="flex items-center text-primary-container text-[10px] font-bold bg-primary-fixed-dim/20 px-1.5 py-0.5 rounded">
+<span class="material-symbols-outlined text-[12px] mr-0.5">trending_up</span>8.2%
+                    </span>
+</div>
+<div class="text-[0.625rem] text-outline font-mono mt-0.5 uppercase">AVG: 4.8M/HR</div>
+</div>
+</div>
+<div class="bg-surface-container-lowest p-4 rounded-xl border border-outline-variant/15 flex flex-col justify-between h-32">
+<span class="text-[0.625rem] font-bold tracking-widest text-outline uppercase font-label">Total Requests</span>
+<div>
+<div class="flex items-baseline gap-2">
+<span class="text-3xl font-black tracking-tighter mono">892,401</span>
+<span class="flex items-center text-error text-[10px] font-bold bg-error-container/30 px-1.5 py-0.5 rounded">
+<span class="material-symbols-outlined text-[12px] mr-0.5">trending_down</span>2.4%
+                    </span>
+</div>
+<div class="text-[0.625rem] text-outline font-mono mt-0.5 uppercase">PEAK: 24.2K/HR</div>
+</div>
+</div>
+<div class="bg-surface-container-lowest p-4 rounded-xl border border-outline-variant/15 flex flex-col justify-between h-32">
+<span class="text-[0.625rem] font-bold tracking-widest text-outline uppercase font-label">Active Accounts</span>
+<div>
+<div class="flex items-baseline gap-2">
+<span class="text-3xl font-black tracking-tighter mono">1,204</span>
+<span class="flex items-center text-secondary text-[10px] font-bold bg-secondary-fixed-dim/30 px-1.5 py-0.5 rounded">
+<span class="material-symbols-outlined text-[12px] mr-0.5">add</span>14
+                    </span>
+</div>
+<div class="text-[0.625rem] text-outline font-mono mt-0.5 uppercase">80.3% CAPACITY</div>
+</div>
+</div>
+</section>
+<section class="space-y-3">
+<div class="flex flex-wrap items-center justify-between gap-4 bg-surface-container-low px-5 py-2.5 rounded-lg border border-outline-variant/10">
+<div class="flex items-center gap-4">
+<span class="text-[0.625rem] font-bold tracking-widest text-outline uppercase font-label">Granularity</span>
+<div class="flex p-0.5 bg-surface-container-high rounded-md">
+<button class="px-3 py-1 text-[11px] font-bold rounded bg-surface-container-lowest text-primary shadow-sm">Hourly</button>
+<button class="px-3 py-1 text-[11px] font-bold text-outline hover:text-on-surface transition-colors">Daily</button>
+</div>
+</div>
+<div class="flex items-center gap-4">
+<span class="text-[0.625rem] font-bold tracking-widest text-outline uppercase font-label">Time Range</span>
+<div class="flex gap-1.5">
+<button class="px-2.5 py-1 text-[11px] font-bold rounded-md border border-outline-variant/20 hover:bg-surface-container-high transition-colors text-outline">24h</button>
+<button class="px-2.5 py-1 text-[11px] font-bold rounded-md bg-primary text-on-primary shadow-md shadow-primary/10">72h</button>
+<button class="px-2.5 py-1 text-[11px] font-bold rounded-md border border-outline-variant/20 hover:bg-surface-container-high transition-colors text-outline">7d</button>
+</div>
+</div>
+</div>
+<div class="bg-surface-container-lowest rounded-xl border border-outline-variant/15 p-6">
+<div class="flex items-center mb-6">
+<div class="flex gap-6">
+<div class="flex items-center gap-2">
+<div class="w-2 h-2 rounded-full bg-primary"></div>
+<span class="text-[0.625rem] font-bold text-on-surface uppercase font-label tracking-wider">Input Tokens</span>
+</div>
+<div class="flex items-center gap-2">
+<div class="w-2 h-2 rounded-full bg-secondary"></div>
+<span class="text-[0.625rem] font-bold text-on-surface uppercase font-label tracking-wider">Output Tokens</span>
+</div>
+<div class="flex items-center gap-2">
+<div class="w-3 h-0.5 bg-tertiary rounded-full"></div>
+<span class="text-[0.625rem] font-bold text-on-surface uppercase font-label tracking-wider">Requests</span>
+</div>
+</div>
+</div>
+<div class="relative w-full h-[320px] px-12">
+<svg class="w-full h-full overflow-visible" viewBox="0 0 1000 320">
+<defs>
+<linearGradient id="inputGradient" x1="0" x2="0" y1="0" y2="1">
+<stop offset="5%" stop-color="#006b33" stop-opacity="0.3"></stop>
+<stop offset="95%" stop-color="#006b33" stop-opacity="0"></stop>
+</linearGradient>
+<linearGradient id="outputGradient" x1="0" x2="0" y1="0" y2="1">
+<stop offset="5%" stop-color="#4648d4" stop-opacity="0.2"></stop>
+<stop offset="95%" stop-color="#4648d4" stop-opacity="0"></stop>
+</linearGradient>
+</defs>
+<line stroke="#bccabb" stroke-opacity="0.1" x1="0" x2="1000" y1="0" y2="0"></line>
+<line stroke="#bccabb" stroke-opacity="0.1" x1="0" x2="1000" y1="80" y2="80"></line>
+<line stroke="#bccabb" stroke-opacity="0.1" x1="0" x2="1000" y1="160" y2="160"></line>
+<line stroke="#bccabb" stroke-opacity="0.1" x1="0" x2="1000" y1="240" y2="240"></line>
+<line stroke="#bccabb" stroke-opacity="0.2" x1="0" x2="1000" y1="320" y2="320"></line>
+<path class="chart-gradient-output" d="M0 320 L0 250 Q 250 220, 500 270 T 1000 150 L 1000 320 Z"></path>
+<path d="M0 250 Q 250 220, 500 270 T 1000 150" fill="none" stroke="#4648d4" stroke-width="2"></path>
+<path class="chart-gradient-input" d="M0 320 L0 280 Q 250 270, 500 290 T 1000 250 L 1000 320 Z"></path>
+<path d="M0 280 Q 250 270, 500 290 T 1000 250" fill="none" stroke="#006b33" stroke-width="2"></path>
+<path d="M0 200 L 150 140 L 300 170 L 450 80 L 600 120 L 750 60 L 1000 100" fill="none" stroke="#a53149" stroke-dasharray="4,3" stroke-width="1.5"></path>
+<circle cx="450" cy="80" fill="#a53149" r="3"></circle>
+<circle cx="750" cy="60" fill="#a53149" r="3"></circle>
+</svg>
+<div class="absolute left-0 top-0 h-full flex flex-col justify-between text-[9px] mono text-outline font-bold py-1">
+<span>200M</span>
+<span>150M</span>
+<span>100M</span>
+<span>50M</span>
+<span>0</span>
+</div>
+<div class="absolute right-0 top-0 h-full flex flex-col justify-between text-[9px] mono text-tertiary font-bold py-1 text-right">
+<span>30.0k</span>
+<span>22.5k</span>
+<span>15.0k</span>
+<span>7.5k</span>
+<span>0</span>
+</div>
+</div>
+<div class="mt-4 flex justify-between px-10 text-[9px] mono text-outline font-bold">
+<span>00:00</span>
+<span>04:00</span>
+<span>08:00</span>
+<span>12:00</span>
+<span>16:00</span>
+<span>20:00</span>
+<span>23:59</span>
+</div>
+</div>
+</section>
+<section class="space-y-3">
+<h2 class="text-sm font-black tracking-tight text-on-surface font-headline uppercase">Granular Telemetry Log</h2>
+<div class="bg-surface-container-lowest rounded-xl border border-outline-variant/15 overflow-hidden">
+<table class="w-full text-left border-collapse">
+<thead class="bg-surface-container-highest">
+<tr>
+<th class="px-5 py-2.5 text-[0.625rem] font-bold text-outline uppercase tracking-widest font-label">Timestamp</th>
+<th class="px-5 py-2.5 text-[0.625rem] font-bold text-outline uppercase tracking-widest font-label text-right">Input Tokens</th>
+<th class="px-5 py-2.5 text-[0.625rem] font-bold text-outline uppercase tracking-widest font-label text-right">Output Tokens</th>
+<th class="px-5 py-2.5 text-[0.625rem] font-bold text-outline uppercase tracking-widest font-label text-right">Requests</th>
+<th class="px-5 py-2.5 text-[0.625rem] font-bold text-outline uppercase tracking-widest font-label text-center">Error Rate</th>
+</tr>
+</thead>
+<tbody class="divide-y divide-outline-variant/10">
+<tr class="hover:bg-surface-container-low transition-colors group">
+<td class="px-5 py-2.5 mono text-[11px] font-bold text-on-surface">2023-10-24 14:00:00</td>
+<td class="px-5 py-2.5 mono text-[11px] text-right text-on-surface-variant">1,402,192</td>
+<td class="px-5 py-2.5 mono text-[11px] text-right text-on-surface-variant">5,829,004</td>
+<td class="px-5 py-2.5 mono text-[11px] text-right text-on-surface-variant">24,201</td>
+<td class="px-5 py-2.5 text-center">
+<span class="px-2 py-0.5 text-[9px] font-black mono rounded bg-primary-fixed-dim/20 text-on-primary-fixed-variant">0.02%</span>
+</td>
+</tr>
+<tr class="hover:bg-surface-container-low transition-colors group">
+<td class="px-5 py-2.5 mono text-[11px] font-bold text-on-surface">2023-10-24 13:00:00</td>
+<td class="px-5 py-2.5 mono text-[11px] text-right text-on-surface-variant">1,120,544</td>
+<td class="px-5 py-2.5 mono text-[11px] text-right text-on-surface-variant">4,201,982</td>
+<td class="px-5 py-2.5 mono text-[11px] text-right text-on-surface-variant">18,550</td>
+<td class="px-5 py-2.5 text-center">
+<span class="px-2 py-0.5 text-[9px] font-black mono rounded bg-error-container/40 text-on-error-container">1.42%</span>
+</td>
+</tr>
+<tr class="hover:bg-surface-container-low transition-colors group">
+<td class="px-5 py-2.5 mono text-[11px] font-bold text-on-surface">2023-10-24 12:00:00</td>
+<td class="px-5 py-2.5 mono text-[11px] text-right text-on-surface-variant">982,001</td>
+<td class="px-5 py-2.5 mono text-[11px] text-right text-on-surface-variant">3,540,112</td>
+<td class="px-5 py-2.5 mono text-[11px] text-right text-on-surface-variant">14,200</td>
+<td class="px-5 py-2.5 text-center">
+<span class="px-2 py-0.5 text-[9px] font-black mono rounded bg-primary-fixed-dim/20 text-on-primary-fixed-variant">0.05%</span>
+</td>
+</tr>
+<tr class="hover:bg-surface-container-low transition-colors group">
+<td class="px-5 py-2.5 mono text-[11px] font-bold text-on-surface">2023-10-24 11:00:00</td>
+<td class="px-5 py-2.5 mono text-[11px] text-right text-on-surface-variant">1,250,883</td>
+<td class="px-5 py-2.5 mono text-[11px] text-right text-on-surface-variant">4,992,041</td>
+<td class="px-5 py-2.5 mono text-[11px] text-right text-on-surface-variant">21,042</td>
+<td class="px-5 py-2.5 text-center">
+<span class="px-2 py-0.5 text-[9px] font-black mono rounded bg-primary-fixed-dim/20 text-on-primary-fixed-variant">0.01%</span>
+</td>
+</tr>
+<tr class="hover:bg-surface-container-low transition-colors group">
+<td class="px-5 py-2.5 mono text-[11px] font-bold text-on-surface">2023-10-24 10:00:00</td>
+<td class="px-5 py-2.5 mono text-[11px] text-right text-on-surface-variant">1,100,242</td>
+<td class="px-5 py-2.5 mono text-[11px] text-right text-on-surface-variant">4,120,559</td>
+<td class="px-5 py-2.5 mono text-[11px] text-right text-on-surface-variant">19,882</td>
+<td class="px-5 py-2.5 text-center">
+<span class="px-2 py-0.5 text-[9px] font-black mono rounded bg-primary-fixed-dim/20 text-on-primary-fixed-variant">0.03%</span>
+</td>
+</tr>
+</tbody>
+</table>
+<div class="px-5 py-3 bg-surface-container-low flex justify-between items-center border-t border-outline-variant/10">
+<span class="text-[9px] font-bold text-outline mono">SHOWING LAST 5 LOG ENTRIES</span>
+<button class="text-[0.625rem] font-black text-primary uppercase tracking-wider hover:underline transition-all">Export Telemetry.csv</button>
+</div>
+</div>
+</section>
+<section class="grid grid-cols-1 lg:grid-cols-3 gap-6 pt-2">
+<div class="lg:col-span-2 bg-primary-container p-6 rounded-xl relative overflow-hidden flex items-center justify-between text-on-primary-container">
+<div class="relative z-10">
+<h3 class="text-lg font-black uppercase mb-1">Automated Quota Warning</h3>
+<p class="text-xs opacity-90 max-w-md">System surge +12% in Token Input. Recommend adjusting regional rate limits.</p>
+</div>
+<button class="relative z-10 bg-on-primary-container text-primary px-5 py-2.5 rounded-lg font-bold text-xs hover:scale-105 transition-transform">Auto-Adjust Rules</button>
+<div class="absolute -right-20 -top-20 w-64 h-64 bg-white/10 rounded-full blur-3xl"></div>
+</div>
+<div class="bg-surface-container-low p-6 rounded-xl border border-outline-variant/15 flex flex-col justify-center gap-3">
+<div class="flex items-center gap-3">
+<div class="p-2 bg-secondary/10 rounded-lg">
+<span class="material-symbols-outlined text-secondary text-xl">analytics</span>
+</div>
+<div>
+<div class="text-[9px] font-black text-outline uppercase">Active Proxies</div>
+<div class="text-lg font-bold mono">4,281 / 5,000</div>
+</div>
+</div>
+<div class="w-full bg-surface-container-highest h-1 rounded-full overflow-hidden">
+<div class="bg-secondary h-full" style="width: 85.6%"></div>
+</div>
+</div>
+</section>
+</main>
+
+</body></html>
