@@ -20,6 +20,7 @@
 - `ModelStore` 从模块级单例重构为 class，自由函数 wrapper 保持后向兼容，新增 `getModelStore()` / `setModelStoreForTesting()`
 - Transport 加入 AppContext，codex-api/codex-usage/codex-models/proxy-pool/curl-fetch 支持可选 transport 注入
 - CookieJar critical cookie 写入从 `writeFileSync`（阻塞 10-50ms）改为 `writeFile`（async 非阻塞）
+- `proxy-handler.ts`（353 LOC）拆分为 3 个独立可测试模块：`account-acquisition.ts`（acquire/release + 幂等 guard）、`proxy-error-handler.ts`（4 种错误分类 + 池状态变更）、`response-processor.ts`（流式/非流式响应），26 个新测试
 
 ### Fixed
 
