@@ -9,16 +9,22 @@
  */
 
 import type { AppConfig, FingerprintConfig } from "./config.js";
+import type { TlsTransport } from "./tls/transport.js";
 
 export interface AppContext {
   readonly config: AppConfig;
   readonly fingerprint: FingerprintConfig;
+  readonly transport?: TlsTransport;
 }
 
 let _context: AppContext | null = null;
 
-export function initContext(config: AppConfig, fingerprint: FingerprintConfig): AppContext {
-  _context = { config, fingerprint };
+export function initContext(
+  config: AppConfig,
+  fingerprint: FingerprintConfig,
+  transport?: TlsTransport,
+): AppContext {
+  _context = { config, fingerprint, transport };
   return _context;
 }
 

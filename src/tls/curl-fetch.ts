@@ -8,7 +8,7 @@
  * Used for non-streaming requests (OAuth, appcast, etc.).
  */
 
-import { getTransport } from "./transport.js";
+import { getTransport, type TlsTransport } from "./transport.js";
 import { buildAnonymousHeaders } from "../fingerprint/manager.js";
 
 export interface CurlFetchResponse {
@@ -20,6 +20,8 @@ export interface CurlFetchResponse {
 export interface CurlFetchOptions {
   /** Proxy override: undefined = global default, null = direct, string = specific. */
   proxyUrl?: string | null;
+  /** Injected transport (skip singleton). */
+  transport?: TlsTransport;
 }
 
 /**
@@ -29,7 +31,7 @@ export async function curlFetchGet(
   url: string,
   options?: CurlFetchOptions,
 ): Promise<CurlFetchResponse> {
-  const transport = getTransport();
+  const transport = options?.transport ?? getTransport();
   const headers = buildAnonymousHeaders();
   // Let --compressed auto-negotiate Accept-Encoding based on curl's actual
   // decompression capabilities, avoiding error 61 on builds lacking br/zstd.
@@ -52,7 +54,7 @@ export async function curlFetchPost(
   body: string,
   options?: CurlFetchOptions,
 ): Promise<CurlFetchResponse> {
-  const transport = getTransport();
+  const transport = options?.transport ?? getTransport();
   const headers = buildAnonymousHeaders();
   // Let --compressed auto-negotiate Accept-Encoding based on curl's actual
   // decompression capabilities, avoiding error 61 on builds lacking br/zstd.

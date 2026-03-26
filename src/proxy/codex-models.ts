@@ -3,7 +3,7 @@
  */
 
 import { getConfig } from "../config.js";
-import { getTransport } from "../tls/transport.js";
+import { getTransport, type TlsTransport } from "../tls/transport.js";
 import type { BackendModelEntry } from "../models/model-store.js";
 
 let _firstModelFetchLogged = false;
@@ -12,9 +12,10 @@ export async function fetchModels(
   headers: Record<string, string>,
   proxyUrl?: string | null,
   apiConfig?: { base_url: string; app_version: string },
+  injectedTransport?: TlsTransport,
 ): Promise<BackendModelEntry[] | null> {
   const config = apiConfig ? undefined : getConfig();
-  const transport = getTransport();
+  const transport = injectedTransport ?? getTransport();
   const baseUrl = apiConfig?.base_url ?? config!.api.base_url;
 
   const clientVersion = apiConfig?.app_version ?? config!.client.app_version;
@@ -80,8 +81,9 @@ export async function probeEndpoint(
   headers: Record<string, string>,
   proxyUrl?: string | null,
   baseUrl?: string,
+  injectedTransport?: TlsTransport,
 ): Promise<Record<string, unknown> | null> {
-  const transport = getTransport();
+  const transport = injectedTransport ?? getTransport();
   const url = `${baseUrl ?? getConfig().api.base_url}${path}`;
 
   headers["Accept"] = "application/json";

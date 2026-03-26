@@ -18,7 +18,7 @@ import {
 } from "fs";
 import { resolve, dirname } from "path";
 import { getDataDir } from "../paths.js";
-import { getTransport } from "../tls/transport.js";
+import { getTransport, type TlsTransport } from "../tls/transport.js";
 
 function getProxiesFile(): string {
   return resolve(getDataDir(), "proxies.json");
@@ -70,8 +70,10 @@ export class ProxyPool {
   private persistTimer: ReturnType<typeof setTimeout> | null = null;
   private healthTimer: ReturnType<typeof setInterval> | null = null;
   private _roundRobinIndex = 0;
+  private injectedTransport: TlsTransport | undefined;
 
-  constructor() {
+  constructor(transport?: TlsTransport) {
+    this.injectedTransport = transport;
     this.load();
   }
 
@@ -255,7 +257,7 @@ export class ProxyPool {
       throw new Error(`Proxy ${id} not found`);
     }
 
-    const transport = getTransport();
+    const transport = this.injectedTransport ?? getTransport();
     const start = Date.now();
 
     try {

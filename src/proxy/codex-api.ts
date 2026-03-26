@@ -10,7 +10,7 @@
  */
 
 import { getConfig } from "../config.js";
-import { getTransport } from "../tls/transport.js";
+import { getTransport, type TlsTransport } from "../tls/transport.js";
 import {
   buildHeaders,
   buildHeadersWithContentType,
@@ -50,6 +50,7 @@ export class CodexApi {
   private entryId: string | null;
   private proxyUrl: string | null | undefined;
   private baseUrl: string | undefined;
+  private transport: TlsTransport | undefined;
 
   constructor(
     token: string,
@@ -58,6 +59,7 @@ export class CodexApi {
     entryId?: string | null,
     proxyUrl?: string | null,
     baseUrl?: string,
+    transport?: TlsTransport,
   ) {
     this.token = token;
     this.accountId = accountId;
@@ -65,10 +67,15 @@ export class CodexApi {
     this.entryId = entryId ?? null;
     this.proxyUrl = proxyUrl;
     this.baseUrl = baseUrl;
+    this.transport = transport;
   }
 
   private resolveBaseUrl(): string {
     return this.baseUrl ?? getConfig().api.base_url;
+  }
+
+  private resolveTransport(): TlsTransport {
+    return this.transport ?? getTransport();
   }
 
   setToken(token: string): void {
@@ -107,7 +114,7 @@ export class CodexApi {
    */
   async warmup(): Promise<CodexUsageResponse | null> {
     const config = getConfig();
-    const transport = getTransport();
+    const transport = this.resolveTransport();
     const url = `${config.api.base_url}/codex/usage`;
     const headers = this.applyHeaders(
       buildHeaders(this.token, this.accountId),
@@ -216,7 +223,7 @@ export class CodexApi {
     request: CodexResponsesRequest,
     signal?: AbortSignal,
   ): Promise<Response> {
-    const transport = getTransport();
+    const transport = this.resolveTransport();
     const baseUrl = this.resolveBaseUrl();
     const url = `${baseUrl}/codex/responses`;
 

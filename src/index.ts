@@ -50,7 +50,6 @@ export async function startServer(options?: StartOptions): Promise<ServerHandle>
   console.log("[Init] Loading configuration...");
   const config = loadConfig();
   const fingerprint = loadFingerprint();
-  initContext(config, fingerprint);
 
   // Load static model catalog (before transport/auth init)
   loadStaticModels();
@@ -59,7 +58,8 @@ export async function startServer(options?: StartOptions): Promise<ServerHandle>
   await initProxy();
 
   // Initialize TLS transport (auto-selects curl CLI or libcurl FFI)
-  await initTransport();
+  const transport = await initTransport();
+  initContext(config, fingerprint, transport);
 
   // Initialize managers
   const accountPool = new AccountPool();

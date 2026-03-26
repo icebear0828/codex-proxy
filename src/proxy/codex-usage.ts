@@ -3,16 +3,17 @@
  */
 
 import { getConfig } from "../config.js";
-import { getTransport } from "../tls/transport.js";
+import { getTransport, type TlsTransport } from "../tls/transport.js";
 import { CodexApiError, type CodexUsageResponse } from "./codex-types.js";
 
 export async function fetchUsage(
   headers: Record<string, string>,
   proxyUrl?: string | null,
   baseUrl?: string,
+  injectedTransport?: TlsTransport,
 ): Promise<CodexUsageResponse> {
   const resolvedBaseUrl = baseUrl ?? getConfig().api.base_url;
-  const transport = getTransport();
+  const transport = injectedTransport ?? getTransport();
   const url = `${resolvedBaseUrl}/codex/usage`;
 
   headers["Accept"] = "application/json";

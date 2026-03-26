@@ -17,6 +17,7 @@ import {
   existsSync,
   mkdirSync,
 } from "fs";
+import { writeFile, rename } from "fs/promises";
 import { resolve, dirname } from "path";
 import { getDataDir } from "../paths.js";
 
@@ -156,7 +157,10 @@ export class CookieJar {
     if (changed) {
       this.cookies.set(accountId, existing);
       if (hasCritical) {
-        this.persistNow(); // Critical cookie — persist immediately
+        // Critical cookie — persist immediately (async, non-blocking)
+        this.persistAsync().catch((err) => {
+          console.warn("[CookieJar] Critical cookie persist failed:", err instanceof Error ? err.message : err);
+        });
       } else {
         this.schedulePersist();
       }
@@ -202,10 +206,42 @@ export class CookieJar {
     if (this.persistTimer) return;
     this.persistTimer = setTimeout(() => {
       this.persistTimer = null;
-      this.persistNow();
+      this.persistAsync().catch((err) => {
+        console.warn("[CookieJar] Scheduled persist failed:", err instanceof Error ? err.message : err);
+      });
     }, 1000);
   }
 
+  /**
+   * Persist cookies to disk asynchronously (non-blocking).
+   * Critical cookies fire-and-forget this; data is already in memory.
+   */
+  async persistAsync(): Promise<void> {
+    if (this.persistTimer) {
+      clearTimeout(this.persistTimer);
+      this.persistTimer = null;
+    }
+    try {
+      const cookieFile = getCookieFile();
+      const dir = dirname(cookieFile);
+      if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
+
+      const data: CookieFileV2 = { _version: 2, accounts: {} };
+      for (const [acct, cookies] of this.cookies) {
+        data.accounts[acct] = {};
+        for (const [k, c] of Object.entries(cookies)) {
+          data.accounts[acct][k] = { value: c.value, expires: c.expires };
+        }
+      }
+      const tmpFile = cookieFile + ".tmp";
+      await writeFile(tmpFile, JSON.stringify(data, null, 2), "utf-8");
+      await rename(tmpFile, cookieFile);
+    } catch (err) {
+      console.warn("[CookieJar] Failed to persist:", err instanceof Error ? err.message : err);
+    }
+  }
+
+  /** Synchronous persist for shutdown (ensures data is flushed before exit). */
   persistNow(): void {
     if (this.persistTimer) {
       clearTimeout(this.persistTimer);
@@ -216,7 +252,6 @@ export class CookieJar {
       const dir = dirname(cookieFile);
       if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
 
-      // Persist v2 format with expiry info
       const data: CookieFileV2 = { _version: 2, accounts: {} };
       for (const [acct, cookies] of this.cookies) {
         data.accounts[acct] = {};
