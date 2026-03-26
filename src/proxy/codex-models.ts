@@ -11,12 +11,13 @@ let _firstModelFetchLogged = false;
 export async function fetchModels(
   headers: Record<string, string>,
   proxyUrl?: string | null,
+  apiConfig?: { base_url: string; app_version: string },
 ): Promise<BackendModelEntry[] | null> {
-  const config = getConfig();
+  const config = apiConfig ? undefined : getConfig();
   const transport = getTransport();
-  const baseUrl = config.api.base_url;
+  const baseUrl = apiConfig?.base_url ?? config!.api.base_url;
 
-  const clientVersion = config.client.app_version;
+  const clientVersion = apiConfig?.app_version ?? config!.client.app_version;
   const endpoints = [
     `${baseUrl}/codex/models?client_version=${clientVersion}`,
     `${baseUrl}/models`,
@@ -78,10 +79,10 @@ export async function probeEndpoint(
   path: string,
   headers: Record<string, string>,
   proxyUrl?: string | null,
+  baseUrl?: string,
 ): Promise<Record<string, unknown> | null> {
-  const config = getConfig();
   const transport = getTransport();
-  const url = `${config.api.base_url}${path}`;
+  const url = `${baseUrl ?? getConfig().api.base_url}${path}`;
 
   headers["Accept"] = "application/json";
   if (!transport.isImpersonate()) {

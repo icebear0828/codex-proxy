@@ -22,7 +22,8 @@ const ALLOWED_EXACT = new Set([
   "/auth/dashboard-status",
 ]);
 /** GET-only paths allowed (HTML shell must load to render login form). */
-const ALLOWED_GET_EXACT = new Set(["/", "/desktop"]);
+const ALLOWED_GET_EXACT = new Set(["/"]);
+
 
 export async function dashboardAuth(c: Context, next: Next): Promise<Response | void> {
   const config = getConfig();

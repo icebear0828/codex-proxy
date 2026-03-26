@@ -4,8 +4,17 @@
  * Based on Codex source: applyDesktopAuthHeaders / buildDesktopUserAgent
  */
 
-import { getConfig, getFingerprint } from "../config.js";
+import { getConfig, getFingerprint, type AppConfig, type FingerprintConfig } from "../config.js";
 import { extractChatGptAccountId } from "../auth/jwt-utils.js";
+import type { AppContext } from "../context.js";
+
+/** Resolve config + fingerprint from optional context or fall back to singletons. */
+function resolve(ctx?: AppContext): { config: AppConfig; fp: FingerprintConfig } {
+  return {
+    config: ctx?.config ?? getConfig(),
+    fp: ctx?.fingerprint ?? getFingerprint(),
+  };
+}
 
 /**
  * Reorder headers according to the fingerprint header_order config.
@@ -32,17 +41,15 @@ function orderHeaders(
 /**
  * Build the dynamic sec-ch-ua value based on chromium_version from config.
  */
-function buildSecChUa(): string {
-  const cv = getConfig().client.chromium_version;
+function buildSecChUa(config: AppConfig): string {
+  const cv = config.client.chromium_version;
   return `"Chromium";v="${cv}", "Not:A-Brand";v="24"`;
 }
 
 /**
  * Build the User-Agent string from config + fingerprint template.
  */
-function buildUserAgent(): string {
-  const config = getConfig();
-  const fp = getFingerprint();
+function buildUserAgent(config: AppConfig, fp: FingerprintConfig): string {
   return fp.user_agent_template
     .replace("{version}", config.client.app_version)
     .replace("{platform}", config.client.platform)
@@ -53,12 +60,11 @@ function buildUserAgent(): string {
  * Build raw headers (unordered) with all fingerprint fields.
  * Does NOT include Authorization, ChatGPT-Account-Id, Content-Type, or Accept.
  */
-function buildRawDefaultHeaders(): Record<string, string> {
-  const fp = getFingerprint();
+function buildRawDefaultHeaders(config: AppConfig, fp: FingerprintConfig): Record<string, string> {
   const raw: Record<string, string> = {};
 
-  raw["User-Agent"] = buildUserAgent();
-  raw["sec-ch-ua"] = buildSecChUa();
+  raw["User-Agent"] = buildUserAgent(config, fp);
+  raw["sec-ch-ua"] = buildSecChUa(config);
 
   // Add static default headers (Accept-Encoding, Accept-Language, sec-fetch-*, etc.)
   if (fp.default_headers) {
@@ -76,18 +82,18 @@ function buildRawDefaultHeaders(): Record<string, string> {
  * but NOT Authorization, Cookie, or ChatGPT-Account-Id.
  * Headers are ordered per fingerprint config.
  */
-export function buildAnonymousHeaders(): Record<string, string> {
-  const fp = getFingerprint();
-  const raw = buildRawDefaultHeaders();
+export function buildAnonymousHeaders(ctx?: AppContext): Record<string, string> {
+  const { config, fp } = resolve(ctx);
+  const raw = buildRawDefaultHeaders(config, fp);
   return orderHeaders(raw, fp.header_order);
 }
 
 export function buildHeaders(
   token: string,
   accountId?: string | null,
+  ctx?: AppContext,
 ): Record<string, string> {
-  const config = getConfig();
-  const fp = getFingerprint();
+  const { config, fp } = resolve(ctx);
   const raw: Record<string, string> = {};
 
   raw["Authorization"] = `Bearer ${token}`;
@@ -98,7 +104,7 @@ export function buildHeaders(
   raw["originator"] = config.client.originator;
 
   // Merge default headers (User-Agent, sec-ch-ua, Accept-Encoding, etc.)
-  const defaults = buildRawDefaultHeaders();
+  const defaults = buildRawDefaultHeaders(config, fp);
   for (const [key, value] of Object.entries(defaults)) {
     raw[key] = value;
   }
@@ -109,9 +115,9 @@ export function buildHeaders(
 export function buildHeadersWithContentType(
   token: string,
   accountId?: string | null,
+  ctx?: AppContext,
 ): Record<string, string> {
-  const fp = getFingerprint();
-  const config = getConfig();
+  const { config, fp } = resolve(ctx);
   const raw: Record<string, string> = {};
 
   raw["Authorization"] = `Bearer ${token}`;
@@ -122,7 +128,7 @@ export function buildHeadersWithContentType(
   raw["originator"] = config.client.originator;
 
   // Merge default headers
-  const defaults = buildRawDefaultHeaders();
+  const defaults = buildRawDefaultHeaders(config, fp);
   for (const [key, value] of Object.entries(defaults)) {
     raw[key] = value;
   }

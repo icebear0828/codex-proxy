@@ -75,12 +75,6 @@ describe("dashboard-auth middleware", () => {
     expect(res.status).toBe(200);
   });
 
-  it("passes through for GET /desktop", async () => {
-    const app = createApp();
-    const res = await app.request("/desktop");
-    expect(res.status).toBe(200);
-  });
-
   it("passes through for /assets/* (static files)", async () => {
     const app = createApp();
     const res = await app.request("/assets/index-abc123.js");

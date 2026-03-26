@@ -49,6 +49,7 @@ export class CodexApi {
   private cookieJar: CookieJar | null;
   private entryId: string | null;
   private proxyUrl: string | null | undefined;
+  private baseUrl: string | undefined;
 
   constructor(
     token: string,
@@ -56,12 +57,18 @@ export class CodexApi {
     cookieJar?: CookieJar | null,
     entryId?: string | null,
     proxyUrl?: string | null,
+    baseUrl?: string,
   ) {
     this.token = token;
     this.accountId = accountId;
     this.cookieJar = cookieJar ?? null;
     this.entryId = entryId ?? null;
     this.proxyUrl = proxyUrl;
+    this.baseUrl = baseUrl;
+  }
+
+  private resolveBaseUrl(): string {
+    return this.baseUrl ?? getConfig().api.base_url;
   }
 
   setToken(token: string): void {
@@ -139,8 +146,7 @@ export class CodexApi {
     request: CodexResponsesRequest,
     signal?: AbortSignal,
   ): Promise<Response> {
-    const config = getConfig();
-    const baseUrl = config.api.base_url;
+    const baseUrl = this.resolveBaseUrl();
     const wsUrl = baseUrl.replace(/^https?:/, "wss:") + "/codex/responses";
 
     const headers = this.applyHeaders(
@@ -175,9 +181,8 @@ export class CodexApi {
     request: CodexResponsesRequest,
     signal?: AbortSignal,
   ): Promise<Response> {
-    const config = getConfig();
     const transport = getTransport();
-    const baseUrl = config.api.base_url;
+    const baseUrl = this.resolveBaseUrl();
     const url = `${baseUrl}/codex/responses`;
 
     const headers = this.applyHeaders(

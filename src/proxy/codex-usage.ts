@@ -9,10 +9,11 @@ import { CodexApiError, type CodexUsageResponse } from "./codex-types.js";
 export async function fetchUsage(
   headers: Record<string, string>,
   proxyUrl?: string | null,
+  baseUrl?: string,
 ): Promise<CodexUsageResponse> {
-  const config = getConfig();
+  const resolvedBaseUrl = baseUrl ?? getConfig().api.base_url;
   const transport = getTransport();
-  const url = `${config.api.base_url}/codex/usage`;
+  const url = `${resolvedBaseUrl}/codex/usage`;
 
   headers["Accept"] = "application/json";
   if (!transport.isImpersonate()) {
