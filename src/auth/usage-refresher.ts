@@ -26,6 +26,7 @@ const INITIAL_DELAY_MS = 3_000;
 
 export class UsageRefresher {
   private refreshTimer: ReturnType<typeof setTimeout> | null = null;
+  private stopped = false;
   private pool: AccountPool;
   private cookieJar: CookieJar;
   private proxyPool: ProxyPool | null;
@@ -44,6 +45,7 @@ export class UsageRefresher {
   }
 
   start(): void {
+    this.stopped = false;
     const config = getConfig();
 
     if (config.quota.refresh_interval_minutes === 0) {
@@ -55,7 +57,7 @@ export class UsageRefresher {
       try {
         await this.refreshAll();
       } finally {
-        this.scheduleNext();
+        if (!this.stopped) this.scheduleNext();
       }
     }, INITIAL_DELAY_MS);
 
@@ -63,6 +65,7 @@ export class UsageRefresher {
   }
 
   stop(): void {
+    this.stopped = true;
     if (this.refreshTimer) {
       clearTimeout(this.refreshTimer);
       this.refreshTimer = null;
@@ -70,7 +73,7 @@ export class UsageRefresher {
     }
   }
 
-  async refreshAll(): Promise<void> {
+  private async refreshAll(): Promise<void> {
     const pool = this.pool;
     const cookieJar = this.cookieJar;
     const proxyPool = this.proxyPool;
@@ -175,13 +178,14 @@ export class UsageRefresher {
   }
 
   private scheduleNext(): void {
+    if (this.stopped) return;
     const config = getConfig();
     const intervalMs = jitter(config.quota.refresh_interval_minutes * 60 * 1000, 0.15);
     this.refreshTimer = setTimeout(async () => {
       try {
         await this.refreshAll();
       } finally {
-        this.scheduleNext();
+        if (!this.stopped) this.scheduleNext();
       }
     }, intervalMs);
   }
@@ -197,6 +201,7 @@ export function startQuotaRefresh(
   proxyPool?: ProxyPool,
   usageStats?: UsageStatsStore,
 ): void {
+  _instance?.stop();
   _instance = new UsageRefresher(accountPool, cookieJar, proxyPool ?? null, usageStats ?? null);
   _instance.start();
 }

@@ -20,6 +20,7 @@ const MAX_RETRIES = 12;
 export class ModelFetcher {
   private refreshTimer: ReturnType<typeof setTimeout> | null = null;
   private hasFetchedOnce = false;
+  private stopped = false;
   private pool: AccountPool;
   private cookieJar: CookieJar;
   private proxyPool: ProxyPool | null;
@@ -31,6 +32,7 @@ export class ModelFetcher {
   }
 
   start(): void {
+    this.stopped = false;
     this.hasFetchedOnce = false;
     this.refreshTimer = setTimeout(() => {
       this.attemptInitialFetch(0);
@@ -39,6 +41,7 @@ export class ModelFetcher {
   }
 
   stop(): void {
+    this.stopped = true;
     if (this.refreshTimer) {
       clearTimeout(this.refreshTimer);
       this.refreshTimer = null;
@@ -103,8 +106,10 @@ export class ModelFetcher {
   }
 
   private attemptInitialFetch(attempt: number): void {
+    if (this.stopped) return;
     this.fetchModelsFromBackend()
       .then((success) => {
+        if (this.stopped) return;
         if (success) {
           this.hasFetchedOnce = true;
           this.scheduleNext();
@@ -119,17 +124,18 @@ export class ModelFetcher {
         }
       })
       .catch(() => {
-        this.scheduleNext();
+        if (!this.stopped) this.scheduleNext();
       });
   }
 
   private scheduleNext(): void {
+    if (this.stopped) return;
     const intervalMs = jitter(REFRESH_INTERVAL_HOURS * 3600 * 1000, 0.15);
     this.refreshTimer = setTimeout(async () => {
       try {
         await this.fetchModelsFromBackend();
       } finally {
-        this.scheduleNext();
+        if (!this.stopped) this.scheduleNext();
       }
     }, intervalMs);
   }
@@ -144,6 +150,7 @@ export function startModelRefresh(
   cookieJar: CookieJar,
   proxyPool?: ProxyPool,
 ): void {
+  _instance?.stop();
   _instance = new ModelFetcher(accountPool, cookieJar, proxyPool ?? null);
   _instance.start();
 }
