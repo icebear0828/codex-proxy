@@ -1,5 +1,6 @@
 /**
- * Tests for UsageStatsStore — snapshot recording, delta computation, aggregation.
+ * Tests for UsageStatsStore — snapshot recording, delta computation, aggregation,
+ * and baseline preservation across account pool resets.
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
@@ -8,15 +9,20 @@ vi.mock("../../paths.js", () => ({
   getDataDir: vi.fn(() => "/tmp/test-data"),
 }));
 
-import { UsageStatsStore, type UsageStatsPersistence, type UsageSnapshot } from "../usage-stats.js";
+import { UsageStatsStore, type UsageStatsPersistence, type UsageSnapshot, type UsageBaseline } from "../usage-stats.js";
 import type { AccountPool } from "../account-pool.js";
 
-function createMockPersistence(initial: UsageSnapshot[] = []): UsageStatsPersistence & { saved: UsageSnapshot[] } {
+function createMockPersistence(
+  initial: UsageSnapshot[] = [],
+  baseline?: UsageBaseline,
+): UsageStatsPersistence & { saved: UsageSnapshot[]; savedBaseline?: UsageBaseline } {
   const store = {
     saved: initial,
-    load: () => ({ version: 1 as const, snapshots: [...initial] }),
-    save: vi.fn((data: { version: 1; snapshots: UsageSnapshot[] }) => {
+    savedBaseline: baseline,
+    load: () => ({ version: 1 as const, snapshots: [...initial], baseline }),
+    save: vi.fn((data: { version: 1; snapshots: UsageSnapshot[]; baseline?: UsageBaseline }) => {
       store.saved = data.snapshots;
+      store.savedBaseline = data.baseline;
     }),
   };
   return store;
@@ -89,7 +95,7 @@ describe("UsageStatsStore", () => {
   });
 
   describe("getSummary", () => {
-    it("returns live totals from pool", () => {
+    it("returns live totals from pool when no baseline", () => {
       const pool = createMockPool([
         { status: "active", input_tokens: 1000, output_tokens: 200, request_count: 5 },
         { status: "disabled", input_tokens: 500, output_tokens: 100, request_count: 3 },
@@ -103,6 +109,154 @@ describe("UsageStatsStore", () => {
         total_accounts: 2,
         active_accounts: 1,
       });
+    });
+
+    it("includes baseline in summary totals", () => {
+      persistence = createMockPersistence([], {
+        input_tokens: 10000,
+        output_tokens: 2000,
+        request_count: 100,
+      });
+      store = new UsageStatsStore(persistence);
+
+      const pool = createMockPool([
+        { status: "active", input_tokens: 500, output_tokens: 50, request_count: 5 },
+      ]);
+
+      const summary = store.getSummary(pool);
+      expect(summary.total_input_tokens).toBe(10500);
+      expect(summary.total_output_tokens).toBe(2050);
+      expect(summary.total_request_count).toBe(105);
+    });
+  });
+
+  describe("baseline — pool reset detection", () => {
+    it("absorbs lost usage into baseline when pool totals drop", () => {
+      const now = Date.now();
+      const snapshots: UsageSnapshot[] = [
+        {
+          timestamp: new Date(now - 3600_000).toISOString(),
+          totals: { input_tokens: 10000, output_tokens: 2000, request_count: 100, active_accounts: 5 },
+        },
+      ];
+
+      persistence = createMockPersistence(snapshots);
+      store = new UsageStatsStore(persistence);
+
+      const pool = createMockPool([
+        { status: "active", input_tokens: 500, output_tokens: 50, request_count: 5 },
+      ]);
+
+      store.recordSnapshot(pool);
+
+      expect(store.currentBaseline).toEqual({
+        input_tokens: 9500,
+        output_tokens: 1950,
+        request_count: 95,
+      });
+
+      const lastSnapshot = persistence.saved[persistence.saved.length - 1];
+      expect(lastSnapshot.totals.input_tokens).toBe(10000);
+      expect(lastSnapshot.totals.output_tokens).toBe(2000);
+      expect(lastSnapshot.totals.request_count).toBe(100);
+    });
+
+    it("accumulates baseline across multiple resets", () => {
+      const now = Date.now();
+
+      const snapshots: UsageSnapshot[] = [
+        {
+          timestamp: new Date(now - 3600_000).toISOString(),
+          totals: { input_tokens: 15000, output_tokens: 3000, request_count: 150, active_accounts: 3 },
+        },
+      ];
+      const existingBaseline: UsageBaseline = {
+        input_tokens: 5000,
+        output_tokens: 1000,
+        request_count: 50,
+      };
+
+      persistence = createMockPersistence(snapshots, existingBaseline);
+      store = new UsageStatsStore(persistence);
+
+      const pool = createMockPool([
+        { status: "active", input_tokens: 200, output_tokens: 20, request_count: 2 },
+      ]);
+
+      store.recordSnapshot(pool);
+
+      expect(store.currentBaseline.input_tokens).toBe(14800);
+      expect(store.currentBaseline.output_tokens).toBe(2980);
+      expect(store.currentBaseline.request_count).toBe(148);
+    });
+
+    it("does not adjust baseline when pool totals increase normally", () => {
+      const now = Date.now();
+      const snapshots: UsageSnapshot[] = [
+        {
+          timestamp: new Date(now - 3600_000).toISOString(),
+          totals: { input_tokens: 1000, output_tokens: 200, request_count: 10, active_accounts: 2 },
+        },
+      ];
+
+      persistence = createMockPersistence(snapshots);
+      store = new UsageStatsStore(persistence);
+
+      const pool = createMockPool([
+        { status: "active", input_tokens: 1500, output_tokens: 300, request_count: 15 },
+      ]);
+
+      store.recordSnapshot(pool);
+
+      expect(store.currentBaseline).toEqual({
+        input_tokens: 0,
+        output_tokens: 0,
+        request_count: 0,
+      });
+    });
+
+    it("persists baseline to disk", () => {
+      const now = Date.now();
+      const snapshots: UsageSnapshot[] = [
+        {
+          timestamp: new Date(now - 3600_000).toISOString(),
+          totals: { input_tokens: 5000, output_tokens: 500, request_count: 50, active_accounts: 1 },
+        },
+      ];
+
+      persistence = createMockPersistence(snapshots);
+      store = new UsageStatsStore(persistence);
+
+      const pool = createMockPool([
+        { status: "active", input_tokens: 100, output_tokens: 10, request_count: 1 },
+      ]);
+
+      store.recordSnapshot(pool);
+
+      expect(persistence.savedBaseline).toEqual({
+        input_tokens: 4900,
+        output_tokens: 490,
+        request_count: 49,
+      });
+    });
+
+    it("loads baseline from persisted data", () => {
+      const baseline: UsageBaseline = {
+        input_tokens: 50000,
+        output_tokens: 10000,
+        request_count: 500,
+      };
+
+      persistence = createMockPersistence([], baseline);
+      store = new UsageStatsStore(persistence);
+
+      expect(store.currentBaseline).toEqual(baseline);
+
+      const pool = createMockPool([
+        { status: "active", input_tokens: 100, output_tokens: 10, request_count: 1 },
+      ]);
+      const summary = store.getSummary(pool);
+      expect(summary.total_input_tokens).toBe(50100);
     });
   });
 
@@ -191,12 +345,8 @@ describe("UsageStatsStore", () => {
       store = new UsageStatsStore(persistence);
 
       const hourly = store.getHistory(2, "hourly");
-      // Two buckets: one before hourStart, one at/after hourStart
       expect(hourly).toHaveLength(2);
-
-      // Previous hour bucket: delta 0→100 = 100
       expect(hourly[0].input_tokens).toBe(100);
-      // Current hour bucket: delta 100→300 + 300→500 = 200 + 200 = 400
       expect(hourly[1].input_tokens).toBe(400);
     });
 
@@ -204,11 +354,11 @@ describe("UsageStatsStore", () => {
       const now = Date.now();
       const snapshots: UsageSnapshot[] = [
         {
-          timestamp: new Date(now - 48 * 3600_000).toISOString(), // 48h ago
+          timestamp: new Date(now - 48 * 3600_000).toISOString(),
           totals: { input_tokens: 100, output_tokens: 10, request_count: 1, active_accounts: 1 },
         },
         {
-          timestamp: new Date(now - 12 * 3600_000).toISOString(), // 12h ago
+          timestamp: new Date(now - 12 * 3600_000).toISOString(),
           totals: { input_tokens: 500, output_tokens: 50, request_count: 5, active_accounts: 1 },
         },
         {
@@ -220,7 +370,6 @@ describe("UsageStatsStore", () => {
       persistence = createMockPersistence(snapshots);
       store = new UsageStatsStore(persistence);
 
-      // Only last 24h → only the last two snapshots qualify → 1 delta
       const raw = store.getHistory(24, "raw");
       expect(raw).toHaveLength(1);
       expect(raw[0].input_tokens).toBe(500);
@@ -232,11 +381,11 @@ describe("UsageStatsStore", () => {
       const now = Date.now();
       const old: UsageSnapshot[] = [
         {
-          timestamp: new Date(now - 8 * 24 * 3600_000).toISOString(), // 8 days ago
+          timestamp: new Date(now - 8 * 24 * 3600_000).toISOString(),
           totals: { input_tokens: 100, output_tokens: 10, request_count: 1, active_accounts: 1 },
         },
         {
-          timestamp: new Date(now - 1 * 3600_000).toISOString(), // 1h ago
+          timestamp: new Date(now - 1 * 3600_000).toISOString(),
           totals: { input_tokens: 500, output_tokens: 50, request_count: 5, active_accounts: 1 },
         },
       ];
@@ -249,7 +398,6 @@ describe("UsageStatsStore", () => {
       ]);
       store.recordSnapshot(pool);
 
-      // Old snapshot pruned, recent + new remain
       expect(store.snapshotCount).toBe(2);
     });
   });

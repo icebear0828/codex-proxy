@@ -56,6 +56,7 @@ const TABS: Array<{ hash: string; label: TranslationKey }> = [
   { hash: "", label: "overview" },
   { hash: "#/accounts", label: "manageAccounts" },
   { hash: "#/proxies", label: "proxySettings" },
+  { hash: "#/usage-stats", label: "usageStats" },
   { hash: "#/settings", label: "settings" },
 ];
 
@@ -110,27 +111,6 @@ function Dashboard() {
   // Redirect legacy routes
   if (hash === "#/account-management") { location.hash = "#/accounts"; return null; }
   if (hash === "#/proxy-settings") { location.hash = "#/proxies"; return null; }
-
-  // Usage stats stays standalone (separate page with its own header)
-  if (hash === "#/usage-stats") {
-    return (
-      <>
-        <Header
-          onAddAccount={accounts.startAdd}
-          onCheckUpdate={update.checkForUpdate}
-          onOpenUpdateModal={() => setShowModal(true)}
-          checking={update.checking}
-          updateStatusMsg={update.msg}
-          updateStatusColor={update.color}
-          version={update.status?.proxy.version ?? null}
-          commit={update.status?.proxy.commit ?? null}
-          hasUpdate={update.hasUpdate}
-          onLogout={onLogout}
-        />
-        <UsageStats />
-      </>
-    );
-  }
 
   const activeTab = TABS.find((t) => t.hash === hash)?.hash ?? "";
 
@@ -191,6 +171,10 @@ function Dashboard() {
               <ProxyPool proxies={proxies} />
               <ProxySettings embedded />
             </div>
+          )}
+
+          {activeTab === "#/usage-stats" && (
+            <UsageStats embedded />
           )}
 
           {activeTab === "#/settings" && (
