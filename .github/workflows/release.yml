@@ -53,6 +53,9 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Install web frontend dependencies
+        run: cd web && npm ci
+
       - name: Build core (web + tsc)
         run: npm run build
 
@@ -115,6 +118,9 @@ jobs:
         run: npx tsx scripts/infra/setup-curl.ts --arch x64
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Install web frontend dependencies
+        run: cd web && npm ci
 
       - name: Build core (web + tsc)
         run: npm run build
