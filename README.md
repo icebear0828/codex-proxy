@@ -494,6 +494,12 @@ server:
 ### [Unreleased]
 
 **Added**
+- E2E 测试：proxy-routes（36 cases）、dashboard-auth（9）、batch-label（11）、admin-general（11）、debug-routes（5）—— 覆盖率从 51% 提升至 ~75%
+- 单元测试：config-loader（16 cases）、config-schema（10）、codex-models（9）
+- account-import service 测试补充 RT rotation/fallback 2 cases
+**Changed**
+- 删除冗余测试文件：`self-update-auto.test.ts`（superset 覆盖）、`account-import-refresh.test.ts`（迁移到 service 层）
+- 重命名 `model-plan-routing.test.ts` → `plan-routing-integration.test.ts` 以区分作用域
 - libcurl FFI 连接复用：macOS/Linux 自动构建 dylib，通过 CURLSH 共享连接缓存 + SSL session，消除每次请求的 TCP/TLS 握手开销（~2.9s → ~100-300ms）
 - setup 脚本自动下载静态库、编译 C wrapper、生成 dylib + cacert.pem
 - 自动更新（热更新）功能，默认开启，用户可在 Dashboard 设置中关闭
@@ -501,17 +507,8 @@ server:
   - Electron (Win/Linux)：自动下载更新，退出时安装；dock/任务栏显示下载进度条
   - Electron (macOS)：自动打开 release 页面（平台限制无法自动安装）
   - 配置项 `update.auto_update`，持久化到 `data/local.yaml`
-**Changed**
-- 提取 `src/proxy/error-classification.ts`：`isBanError`/`isTokenInvalidError`/`isModelNotSupportedError`/`extractRetryAfterSec` 从 proxy-handler 和 usage-refresher 中去重，19 个新测试
-- `scripts/` 按用途分类到 `infra/`、`build/`、`poc/`、`manual-test/` 子目录
-- 新增 `src/context.ts`（AppContext 容器），fingerprint/manager、codex-api、codex-usage、codex-models 支持可选 DI 参数（fallback 到全局单例）
-- `ModelStore` 从模块级单例重构为 class，自由函数 wrapper 保持后向兼容，新增 `getModelStore()` / `setModelStoreForTesting()`
-- Transport 加入 AppContext，codex-api/codex-usage/codex-models/proxy-pool/curl-fetch 支持可选 transport 注入
-- ...（[查看全部](./CHANGELOG.md)）
 **Fixed**
-- 导入/导出按钮图标反了——导入改为下箭头、导出改为上箭头（#191）
-- Windows 桌面端按钮溢出——Electron 最小宽度从 680px 提高到 800px，覆盖 Tailwind md: 断点（#192）
-- `local.yaml` 的 `server.host` 覆盖已有测试验证，Electron 模式下正确生效（#190）
+- 修复 `PUT /api/proxies/settings` 被 `PUT /api/proxies/:id` 路由参数 shadow 的 bug（Hono 按注册顺序匹配）
 
 ### [v0.8.0](https://github.com/icebear0828/codex-proxy/releases/tag/v0.8.0) - 2026-02-24
 
