@@ -1,0 +1,205 @@
+name: Build libcurl-impersonate shared libraries
+
+# Builds dylib/so from the curl-impersonate static .a archives.
+# Uploads pre-built binaries to a pinned GitHub Release so that
+# `npm run setup` can download them without requiring clang on the user's machine.
+
+on:
+  workflow_dispatch:
+    inputs:
+      curl_version:
+        description: "curl-impersonate version tag (e.g. v1.5.1)"
+        required: false
+        type: string
+
+permissions:
+  contents: write
+
+env:
+  CURL_REPO: lexiforest/curl-impersonate
+  # Release tag on THIS repo where pre-built libs are stored
+  LIBS_TAG: curl-libs
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-latest
+            arch: arm64
+            asset_arch: arm64-macos
+            lib_name: libcurl-impersonate.dylib
+            link_libs: "-lz -lc++ -liconv -framework Security -framework SystemConfiguration -framework CoreFoundation -framework CoreServices -licucore"
+            arch_flag: "-arch arm64"
+          - os: macos-13
+            arch: x86_64
+            asset_arch: x86_64-macos
+            lib_name: libcurl-impersonate.dylib
+            link_libs: "-lz -lc++ -liconv -framework Security -framework SystemConfiguration -framework CoreFoundation -framework CoreServices -licucore"
+            arch_flag: "-arch x86_64"
+          - os: ubuntu-latest
+            arch: x86_64
+            asset_arch: x86_64-linux-gnu
+            lib_name: libcurl-impersonate.so
+            link_libs: "-lz -lstdc++ -lpthread -ldl"
+            arch_flag: ""
+          - os: ubuntu-latest
+            arch: aarch64
+            asset_arch: aarch64-linux-gnu
+            lib_name: libcurl-impersonate.so
+            link_libs: "-lz -lstdc++ -lpthread -ldl"
+            arch_flag: ""
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Resolve curl-impersonate version
+        id: version
+        run: |
+          if [ -n "${{ inputs.curl_version }}" ]; then
+            echo "tag=${{ inputs.curl_version }}" >> "$GITHUB_OUTPUT"
+          else
+            TAG=$(curl -s "https://api.github.com/repos/$CURL_REPO/releases/latest" | jq -r .tag_name)
+            echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Install cross-compiler (Linux aarch64)
+        if: matrix.os == 'ubuntu-latest' && matrix.arch == 'aarch64'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gcc-aarch64-linux-gnu g++-aarch64-linux-gnu
+
+      - name: Download static library
+        run: |
+          VERSION="${{ steps.version.outputs.tag }}"
+          ASSET="libcurl-impersonate-${VERSION}.${{ matrix.asset_arch }}.tar.gz"
+          URL="https://github.com/$CURL_REPO/releases/download/${VERSION}/${ASSET}"
+          echo "Downloading $URL"
+          curl -L -o archive.tar.gz "$URL"
+          tar xzf archive.tar.gz
+
+      - name: Build shared library
+        run: |
+          cat > curl_wrapper.c << 'CEOF'
+          #include <stddef.h>
+          #define VIS __attribute__((visibility("default")))
+
+          extern void *curl_easy_init(void);
+          extern void curl_easy_cleanup(void *);
+          extern int curl_easy_setopt(void *, int, ...);
+          extern int curl_easy_getinfo(void *, int, ...);
+          extern int curl_easy_perform(void *);
+          extern int curl_easy_impersonate(void *, const char *, int);
+          extern void *curl_slist_append(void *, const char *);
+          extern void curl_slist_free_all(void *);
+          extern void *curl_multi_init(void);
+          extern int curl_multi_add_handle(void *, void *);
+          extern int curl_multi_remove_handle(void *, void *);
+          extern int curl_multi_perform(void *, int *);
+          extern int curl_multi_poll(void *, void *, int, int, int *);
+          extern int curl_multi_cleanup(void *);
+          extern void *curl_share_init(void);
+          extern int curl_share_setopt(void *, int, ...);
+          extern int curl_share_cleanup(void *);
+          extern int curl_global_init(int);
+          extern void curl_global_cleanup(void);
+
+          VIS void *w_curl_easy_init(void) { return curl_easy_init(); }
+          VIS void w_curl_easy_cleanup(void *h) { curl_easy_cleanup(h); }
+          VIS int w_curl_easy_perform(void *h) { return curl_easy_perform(h); }
+          VIS int w_curl_easy_impersonate(void *h, const char *t, int d) { return curl_easy_impersonate(h, t, d); }
+          VIS void *w_curl_slist_append(void *s, const char *str) { return curl_slist_append(s, str); }
+          VIS void w_curl_slist_free_all(void *s) { curl_slist_free_all(s); }
+          VIS void *w_curl_multi_init(void) { return curl_multi_init(); }
+          VIS int w_curl_multi_add_handle(void *m, void *e) { return curl_multi_add_handle(m, e); }
+          VIS int w_curl_multi_remove_handle(void *m, void *e) { return curl_multi_remove_handle(m, e); }
+          VIS int w_curl_multi_perform(void *m, int *r) { return curl_multi_perform(m, r); }
+          VIS int w_curl_multi_poll(void *m, void *e, int n, int t, int *f) { return curl_multi_poll(m, e, n, t, f); }
+          VIS int w_curl_multi_cleanup(void *m) { return curl_multi_cleanup(m); }
+          VIS void *w_curl_share_init(void) { return curl_share_init(); }
+          VIS int w_curl_share_cleanup(void *s) { return curl_share_cleanup(s); }
+          VIS int w_curl_global_init(int f) { return curl_global_init(f); }
+          VIS void w_curl_global_cleanup(void) { curl_global_cleanup(); }
+
+          VIS int w_curl_easy_setopt_long(void *h, int opt, long val) { return curl_easy_setopt(h, opt, val); }
+          VIS int w_curl_easy_setopt_str(void *h, int opt, const char *val) { return curl_easy_setopt(h, opt, val); }
+          VIS int w_curl_easy_setopt_ptr(void *h, int opt, void *val) { return curl_easy_setopt(h, opt, val); }
+          VIS int w_curl_easy_setopt_cb(void *h, int opt, void *cb) { return curl_easy_setopt(h, opt, cb); }
+          VIS int w_curl_easy_getinfo_long(void *h, int info, int *val) { return curl_easy_getinfo(h, info, val); }
+          VIS int w_curl_share_setopt_long(void *s, int opt, long val) { return curl_share_setopt(s, opt, val); }
+          CEOF
+
+          if [ "${{ matrix.arch }}" = "aarch64" ] && [ "${{ matrix.os }}" = "ubuntu-latest" ]; then
+            CC=aarch64-linux-gnu-gcc
+          else
+            CC=clang
+          fi
+
+          $CC -c ${{ matrix.arch_flag }} -fvisibility=default curl_wrapper.c -o curl_wrapper.o
+          $CC -shared ${{ matrix.arch_flag }} -o "${{ matrix.lib_name }}" curl_wrapper.o \
+            -Wl,-all_load libcurl-impersonate.a \
+            ${{ matrix.link_libs }}
+
+          echo "Built ${{ matrix.lib_name }}:"
+          file "${{ matrix.lib_name }}"
+
+      - name: Verify exports
+        if: matrix.arch != 'aarch64' || matrix.os != 'ubuntu-latest'
+        run: |
+          if [ "${{ matrix.os }}" = "ubuntu-latest" ]; then
+            nm -gD "${{ matrix.lib_name }}" | grep "w_curl" | head -5
+          else
+            nm -gU "${{ matrix.lib_name }}" | grep "w_curl" | head -5
+          fi
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.lib_name }}-${{ matrix.asset_arch }}
+          path: ${{ matrix.lib_name }}
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: libs
+
+      - name: Prepare release assets
+        run: |
+          mkdir -p release
+          for dir in libs/*/; do
+            # Extract arch from artifact name: libcurl-impersonate.dylib-arm64-macos → arm64-macos
+            dirname=$(basename "$dir")
+            lib_file=$(ls "$dir"/)
+            # Rename to include arch: libcurl-impersonate-arm64-macos.dylib
+            ext="${lib_file##*.}"
+            base="${lib_file%.*}"
+            arch="${dirname#*-}"
+            cp "$dir/$lib_file" "release/${base}-${arch}.${ext}"
+          done
+          ls -la release/
+
+      - name: Create or update release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # Create the release tag if it doesn't exist
+          if ! gh release view "$LIBS_TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release create "$LIBS_TAG" \
+              --repo "$GITHUB_REPOSITORY" \
+              --title "Pre-built libcurl-impersonate shared libraries" \
+              --notes "Auto-built shared libraries for FFI transport connection pooling. Downloaded automatically by \`npm run setup\`." \
+              --prerelease
+          fi
+
+          # Upload (clobber existing)
+          gh release upload "$LIBS_TAG" release/* \
+            --repo "$GITHUB_REPOSITORY" \
+            --clobber

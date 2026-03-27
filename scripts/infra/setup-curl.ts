@@ -14,6 +14,8 @@ import { existsSync, mkdirSync, chmodSync, readdirSync, copyFileSync, rmSync, wr
 import { resolve, join } from "path";
 
 const REPO = "lexiforest/curl-impersonate";
+const SELF_REPO = "icebear0828/codex-proxy";
+const LIBS_TAG = "curl-libs";
 const FALLBACK_VERSION = "v1.4.4";
 const BIN_DIR = resolve(process.cwd(), "bin");
 const CACERT_URL = "https://curl.se/ca/cacert.pem";
@@ -308,6 +310,49 @@ VIS int w_curl_share_setopt_long(void *s, int opt, long val) { return curl_share
 `;
 
 /**
+ * Try to download a pre-built shared library from the project's GitHub Releases.
+ * Returns true if successful, false if not available.
+ */
+async function downloadPrebuiltLib(ffiLib: FfiLibInfo): Promise<boolean> {
+  const platform = process.platform;
+  const arch = getTargetArch();
+
+  // Map to the asset naming convention used by build-curl-libs.yml
+  // e.g. libcurl-impersonate-arm64-macos.dylib, libcurl-impersonate-x86_64-linux-gnu.so
+  let assetArch: string;
+  if (platform === "darwin") {
+    assetArch = arch === "arm64" ? "arm64-macos" : "x86_64-macos";
+  } else {
+    assetArch = arch === "arm64" ? "aarch64-linux-gnu" : "x86_64-linux-gnu";
+  }
+
+  const ext = platform === "darwin" ? "dylib" : "so";
+  const assetName = `libcurl-impersonate-${assetArch}.${ext}`;
+  const url = `https://github.com/${SELF_REPO}/releases/download/${LIBS_TAG}/${assetName}`;
+
+  console.log(`[setup] Trying pre-built library: ${assetName}`);
+  try {
+    const resp = await fetch(url, { redirect: "follow" });
+    if (!resp.ok) {
+      console.log(`[setup] Pre-built not available (${resp.status})`);
+      return false;
+    }
+
+    const buffer = Buffer.from(await resp.arrayBuffer());
+    const destPath = resolve(BIN_DIR, ffiLib.destName);
+    if (!existsSync(BIN_DIR)) mkdirSync(BIN_DIR, { recursive: true });
+    writeFileSync(destPath, buffer);
+    chmodSync(destPath, 0o755);
+    console.log(`[setup] Installed pre-built ${ffiLib.destName}`);
+    return true;
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.log(`[setup] Pre-built download failed (${msg})`);
+    return false;
+  }
+}
+
+/**
  * Build a shared library (dylib/so) from the downloaded static .a library.
  * Compiles a C wrapper that re-exports curl_ symbols with default visibility.
  */
@@ -430,38 +475,41 @@ async function main() {
     await downloadCaCert(force);
   }
 
-  // Build FFI shared library (macOS/Linux) from static .a for connection pooling
+  // Install FFI shared library (macOS/Linux) for connection pooling
+  // Strategy: pre-built download → local compile from .a → skip (CLI fallback)
   const ffiLib = getFfiLibInfo(version);
   if (ffiLib) {
     const ffiDest = resolve(BIN_DIR, ffiLib.destName);
-    const shouldBuildFfi = !existsSync(ffiDest) || force;
+    const shouldInstallFfi = !existsSync(ffiDest) || force;
 
-    if (shouldBuildFfi) {
-      console.log(`[setup] Downloading libcurl-impersonate static library...`);
-      try {
-        // Download the static .a archive
-        const ffiUrl = await getDownloadUrl(ffiLib, version);
-        // Download to temp, extract the .a, then build the dylib/so
-        const tmpDir = resolve(BIN_DIR, ".tmp-ffi");
-        if (existsSync(tmpDir)) rmSync(tmpDir, { recursive: true });
-        mkdirSync(tmpDir, { recursive: true });
-        const archivePath = resolve(tmpDir, "archive.tar.gz");
-        execSync(`curl -L -o "${archivePath}" "${ffiUrl}"`, { stdio: "inherit" });
-        execSync(`tar xzf "${archivePath}" -C "${tmpDir}"`, { stdio: "inherit" });
+    if (shouldInstallFfi) {
+      // Step 1: Try pre-built binary from project releases (no clang needed)
+      const gotPrebuilt = await downloadPrebuiltLib(ffiLib);
 
-        // Find the static library (.a)
-        const staticLib = findFile(tmpDir, "libcurl-impersonate.a");
-        if (!staticLib) {
-          const files = listFilesRecursive(tmpDir);
-          throw new Error(`No .a found in archive. Files: ${files.join(", ")}`);
+      if (!gotPrebuilt) {
+        // Step 2: Fallback — download static .a and compile locally
+        console.log(`[setup] Falling back to local build (requires clang)...`);
+        try {
+          const ffiUrl = await getDownloadUrl(ffiLib, version);
+          const tmpDir = resolve(BIN_DIR, ".tmp-ffi");
+          if (existsSync(tmpDir)) rmSync(tmpDir, { recursive: true });
+          mkdirSync(tmpDir, { recursive: true });
+          const archivePath = resolve(tmpDir, "archive.tar.gz");
+          execSync(`curl -L -o "${archivePath}" "${ffiUrl}"`, { stdio: "inherit" });
+          execSync(`tar xzf "${archivePath}" -C "${tmpDir}"`, { stdio: "inherit" });
+
+          const staticLib = findFile(tmpDir, "libcurl-impersonate.a");
+          if (!staticLib) {
+            const files = listFilesRecursive(tmpDir);
+            throw new Error(`No .a found in archive. Files: ${files.join(", ")}`);
+          }
+
+          buildSharedLib(staticLib, ffiDest);
+          rmSync(tmpDir, { recursive: true });
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : String(err);
+          console.warn(`[setup] Warning: could not build FFI library (${msg}). CLI transport will still work.`);
         }
-
-        // Build shared library from static .a + C wrapper
-        buildSharedLib(staticLib, ffiDest);
-        rmSync(tmpDir, { recursive: true });
-      } catch (err) {
-        const msg = err instanceof Error ? err.message : String(err);
-        console.warn(`[setup] Warning: could not build FFI library (${msg}). CLI transport will still work.`);
       }
     } else {
       console.log(`[setup] ${ffiLib.destName} already exists`);
