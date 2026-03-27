@@ -53,7 +53,11 @@ function UsageContent({ t, summary, summaryLoading, granularity, setGranularity,
         {granularityOptions.map(({ value, label }) => (
           <button
             key={value}
-            onClick={() => setGranularity(value)}
+            onClick={() => {
+              setGranularity(value);
+              // Daily with 24h produces a single bucket — auto-switch to 3d
+              if (value === "daily" && hours <= 24) setHours(72);
+            }}
             class={`px-3 py-1 text-xs font-medium rounded-full border transition-colors ${
               granularity === value
                 ? "bg-primary text-white border-primary"
@@ -64,7 +68,9 @@ function UsageContent({ t, summary, summaryLoading, granularity, setGranularity,
           </button>
         ))}
         <div class="w-px h-5 bg-gray-200 dark:bg-border-dark self-center" />
-        {rangeOptions.map(({ hours: h, label }) => (
+        {rangeOptions
+          .filter(({ hours: h }) => !(granularity === "daily" && h <= 24))
+          .map(({ hours: h, label }) => (
           <button
             key={h}
             onClick={() => setHours(h)}
