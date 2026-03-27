@@ -186,7 +186,7 @@ function loadPersisted(): { entries: AccountEntry[]; needsPersist: boolean } {
         needsPersist = true;
       }
       // Backfill window_reset_at (missing causes NaN in refreshStatus)
-      if ((entry.usage as Record<string, unknown>).window_reset_at === undefined) {
+      if (!("window_reset_at" in entry.usage)) {
         entry.usage.window_reset_at = null;
         needsPersist = true;
       }

@@ -199,7 +199,7 @@ export function UpdateModal({
                 </span>
               </div>
             ) : (
-              // electron mode: no code signing on macOS — direct user to download DMG
+              // electron mode: link to GitHub release page for manual download
               release?.url ? (
                 <a
                   href={release.url}
