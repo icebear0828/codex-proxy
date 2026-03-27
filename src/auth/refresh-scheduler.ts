@@ -196,7 +196,7 @@ export class RefreshScheduler {
     console.log(`[RefreshScheduler] Refreshing account ${entryId} (${entry.email ?? "?"})`);
     this.pool.markStatus(entryId, "refreshing");
 
-    const accountProxyUrl = this.proxyPool?.resolveProxyUrl(entryId);
+    const accountProxyUrl = this.proxyPool?.resolveProxyUrl(entryId, true);
     let permanentHits = 0;
 
     for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {

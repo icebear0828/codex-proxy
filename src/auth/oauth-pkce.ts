@@ -10,7 +10,8 @@ import { resolve } from "path";
 import { homedir } from "os";
 import { getConfig } from "../config.js";
 import { curlFetchPost, type CurlFetchResponse } from "../tls/curl-fetch.js";
-import { withDirectFallback, isCloudflareChallengeResponse } from "../tls/direct-fallback.js";
+import { withDirectFallback, isCloudflareChallengeResponse, isProxyNetworkError } from "../tls/direct-fallback.js";
+import { getProxyUrl } from "../tls/curl-binary.js";
 
 export interface PKCEChallenge {
   codeVerifier: string;
@@ -161,12 +162,27 @@ export async function exchangeCode(
 
 /**
  * Refresh an access token using a refresh_token.
+ *
+ * Fallback chain: accountProxy → globalProxy → direct.
+ * Each step is skipped if it duplicates the previous one.
  */
 export async function refreshAccessToken(
   refreshToken: string,
   accountProxyUrl?: string | null,
 ): Promise<TokenResponse> {
   const config = getConfig();
+  const globalProxyUrl = getProxyUrl();
+
+  // Build deduplicated fallback chain: account proxy → global proxy → direct
+  const chain: Array<string | null | undefined> = [accountProxyUrl];
+  // Add global proxy if it differs from account proxy
+  if (globalProxyUrl !== null && globalProxyUrl !== accountProxyUrl) {
+    chain.push(undefined); // undefined = use global default
+  }
+  // Add direct (null) if we have any proxy in the chain
+  if (accountProxyUrl != null || globalProxyUrl !== null) {
+    chain.push(null);
+  }
 
   const body = new URLSearchParams({
     grant_type: "refresh_token",
@@ -174,21 +190,40 @@ export async function refreshAccessToken(
     refresh_token: refreshToken,
   });
 
-  const resp = await withDirectFallback(
-    (fallbackProxyUrl) => curlFetchPost(
+  const doRequest = (proxyUrl: string | null | undefined) =>
+    curlFetchPost(
       config.auth.oauth_token_endpoint,
       "application/x-www-form-urlencoded",
       body.toString(),
-      { proxyUrl: fallbackProxyUrl ?? accountProxyUrl },
-    ),
-    { tag: "OAuth/refresh", shouldFallback: isCfResponse },
-  );
+      { proxyUrl },
+    );
 
-  if (!resp.ok) {
-    throw new Error(`Token refresh failed (${resp.status}): ${resp.body}`);
+  let lastError: unknown;
+  for (let i = 0; i < chain.length; i++) {
+    try {
+      const resp = await doRequest(chain[i]);
+
+      if (isCfResponse(resp) && i < chain.length - 1) {
+        console.warn(`[OAuth/refresh] CF challenge with proxy step ${i}, falling back`);
+        continue;
+      }
+
+      if (!resp.ok) {
+        throw new Error(`Token refresh failed (${resp.status}): ${resp.body}`);
+      }
+
+      return JSON.parse(resp.body) as TokenResponse;
+    } catch (err) {
+      lastError = err;
+      if (isProxyNetworkError(err) && i < chain.length - 1) {
+        console.warn(`[OAuth/refresh] Network error at step ${i}, falling back`);
+        continue;
+      }
+      throw err;
+    }
   }
 
-  return JSON.parse(resp.body) as TokenResponse;
+  throw lastError;
 }
 
 // ── Pending session management ─────────────────────────────────────

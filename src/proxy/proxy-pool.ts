@@ -208,7 +208,7 @@ export class ProxyPool {
    *   null     — direct connection (no proxy)
    *   string   — specific proxy URL
    */
-  resolveProxyUrl(accountId: string): string | null | undefined {
+  resolveProxyUrl(accountId: string, skipUnhealthy = false): string | null | undefined {
     const assignment = this.getAssignment(accountId);
 
     if (assignment === "global") return undefined;
@@ -228,8 +228,10 @@ export class ProxyPool {
       // Manually disabled — fall back to global
       return undefined;
     }
-    // Use the assigned proxy even if health check marked it "unreachable" —
-    // the user explicitly chose this proxy, don't silently swap it out.
+    if (proxy.status === "unreachable" && skipUnhealthy) {
+      // Health-check failed — caller requested skipping unhealthy proxies
+      return undefined;
+    }
     return proxy.url;
   }
 
