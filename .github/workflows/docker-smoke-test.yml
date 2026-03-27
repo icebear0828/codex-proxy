@@ -1,0 +1,91 @@
+name: CI — Docker smoke test (Issue 133)
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+
+jobs:
+  smoke-docker:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build Docker image
+        run: docker build -t codex-proxy-test .
+
+      - name: Start container on default port (8080)
+        run: |
+          docker run -d --name test-container -p 8080:8080 codex-proxy-test
+
+      - name: Wait for healthcheck (8080)
+        run: |
+          echo "Waiting for container to be healthy..."
+          for i in $(seq 1 15); do
+            STATUS=$(docker inspect --format='{{.State.Health.Status}}' test-container 2>/dev/null || echo "starting")
+            echo "Attempt $i: $STATUS"
+            if [ "$STATUS" = "healthy" ]; then
+              echo "Container is healthy!"
+              break
+            fi
+            sleep 2
+          done
+          if [ "$STATUS" != "healthy" ]; then
+            echo "Container failed to become healthy. Logs:"
+            docker logs test-container
+            exit 1
+          fi
+
+      - name: Verify /health returns 200 (8080)
+        run: |
+          STATUS_CODE=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:8080/health)
+          if [ "$STATUS_CODE" -ne 200 ]; then
+            echo "Expected 200, got $STATUS_CODE"
+            exit 1
+          fi
+
+      - name: Cleanup (8080)
+        run: docker rm -f test-container
+
+      - name: Prepare custom config for 8090
+        run: |
+          mkdir -p custom-config
+          cp config/default.yaml custom-config/default.yaml
+          sed -i 's/port: 8080/port: 8090/g' custom-config/default.yaml
+
+      - name: Start container on custom port (8090)
+        run: |
+          docker run -d --name test-container-8090 \
+            -p 8090:8090 \
+            -v $(pwd)/custom-config/default.yaml:/app/config/default.yaml \
+            codex-proxy-test
+
+      - name: Wait for healthcheck (8090)
+        run: |
+          echo "Waiting for container to be healthy..."
+          for i in $(seq 1 15); do
+            STATUS=$(docker inspect --format='{{.State.Health.Status}}' test-container-8090 2>/dev/null || echo "starting")
+            echo "Attempt $i: $STATUS"
+            if [ "$STATUS" = "healthy" ]; then
+              echo "Container is healthy!"
+              break
+            fi
+            sleep 2
+          done
+          if [ "$STATUS" != "healthy" ]; then
+            echo "Container failed to become healthy. Logs:"
+            docker logs test-container-8090
+            exit 1
+          fi
+
+      - name: Verify /health returns 200 (8090)
+        run: |
+          STATUS_CODE=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:8090/health)
+          if [ "$STATUS_CODE" -ne 200 ]; then
+            echo "Expected 200, got $STATUS_CODE"
+            exit 1
+          fi
+
+      - name: Cleanup (8090)
+        if: always()
+        run: docker rm -f test-container-8090 || true

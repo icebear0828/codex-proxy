@@ -1,0 +1,51 @@
+name: CI — Electron smoke test (Issue 134)
+
+on:
+  push:
+    branches: [master]
+    paths:
+      - "packages/electron/**"
+  pull_request:
+    paths:
+      - "packages/electron/**"
+
+jobs:
+  smoke-electron:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Root Install
+        run: npm ci
+
+      - name: Build full project
+        run: npm run build
+
+      - name: Build Electron desktop
+        run: |
+          cd packages/electron
+          npm run build
+
+      - name: Prepare pack
+        run: |
+          cd packages/electron
+          node electron/prepare-pack.mjs
+
+      - name: Package Electron (Linux dir mode)
+        run: |
+          cd packages/electron
+          npx electron-builder --linux --dir
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }} # Needed if electron-builder complains, although --dir usually bypasses
+
+      - name: Install Playwright & Chromium
+        run: npx playwright install --with-deps chromium
+
+      - name: Run Playwright Launch Smoke Test
+        run: |
+          xvfb-run npm test -- packages/electron/__tests__/launch/smoke.test.ts

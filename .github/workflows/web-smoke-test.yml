@@ -1,0 +1,26 @@
+name: CI — Web smoke test (Issue 135)
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+
+jobs:
+  smoke-web:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Root Install
+        run: npm ci
+
+      - name: Build web + backend
+        run: npm run build
+
+      - name: Run Web Smoke Test
+        run: npm test -- src/__tests__/web-smoke.test.ts
