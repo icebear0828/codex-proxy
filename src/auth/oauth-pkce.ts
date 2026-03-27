@@ -179,8 +179,8 @@ export async function refreshAccessToken(
   if (globalProxyUrl !== null && globalProxyUrl !== accountProxyUrl) {
     chain.push(undefined); // undefined = use global default
   }
-  // Add direct (null) if we have any proxy in the chain
-  if (accountProxyUrl != null || globalProxyUrl !== null) {
+  // Add direct (null) as last resort, skip if already the last step
+  if ((accountProxyUrl != null || globalProxyUrl !== null) && chain[chain.length - 1] !== null) {
     chain.push(null);
   }
 

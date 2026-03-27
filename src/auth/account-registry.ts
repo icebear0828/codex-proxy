@@ -112,7 +112,10 @@ export class AccountRegistry {
     entry.planType = profile?.chatgpt_plan_type ?? entry.planType;
     entry.accountId = extractChatGptAccountId(newToken) ?? entry.accountId;
     entry.userId = profile?.chatgpt_user_id ?? entry.userId;
-    entry.status = "active";
+    // Don't reactivate manually disabled or banned accounts
+    if (entry.status !== "disabled" && entry.status !== "banned") {
+      entry.status = "active";
+    }
     this.persistNow();
   }
 
@@ -174,7 +177,7 @@ export class AccountRegistry {
   markQuotaExhausted(entryId: string, resetAtUnix: number | null): boolean {
     const entry = this.accounts.get(entryId);
     if (!entry) return false;
-    if (entry.status === "disabled" || entry.status === "expired" || entry.status === "banned") return false;
+    if (entry.status === "disabled" || entry.status === "expired" || entry.status === "banned" || entry.status === "refreshing") return false;
 
     const until = resetAtUnix
       ? new Date(resetAtUnix * 1000).toISOString()

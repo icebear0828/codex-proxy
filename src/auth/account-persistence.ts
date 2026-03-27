@@ -185,6 +185,11 @@ function loadPersisted(): { entries: AccountEntry[]; needsPersist: boolean } {
         entry.usage.limit_window_seconds = null;
         needsPersist = true;
       }
+      // Backfill window_reset_at (missing causes NaN in refreshStatus)
+      if ((entry.usage as Record<string, unknown>).window_reset_at === undefined) {
+        entry.usage.window_reset_at = null;
+        needsPersist = true;
+      }
       // Backfill label field
       if ((entry as unknown as Record<string, unknown>).label === undefined) {
         entry.label = null;

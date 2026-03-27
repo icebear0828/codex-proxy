@@ -35,6 +35,8 @@ export class RefreshScheduler {
   private _running = 0;
   /** Queue of pending refresh callbacks waiting for a slot. */
   private _queue: Array<() => void> = [];
+  /** Accounts currently being refreshed (prevents concurrent refresh of same account). */
+  private _inFlight: Set<string> = new Set();
 
   constructor(pool: AccountPool) {
     this.pool = pool;
@@ -92,6 +94,7 @@ export class RefreshScheduler {
     const entry = this.pool.getEntry(entryId);
     if (!entry?.refreshToken) return;
     if (entry.status === "disabled" || entry.status === "banned") return;
+    if (this._inFlight.has(entryId)) return; // already refreshing
     this.clearOne(entryId);
     this.doRefresh(entryId);
   }
@@ -150,6 +153,7 @@ export class RefreshScheduler {
     for (const resolve of this._queue) resolve();
     this._queue.length = 0;
     this._running = 0;
+    this._inFlight.clear();
   }
 
   // ── Internal ────────────────────────────────────────────────────
@@ -173,10 +177,21 @@ export class RefreshScheduler {
   }
 
   private async doRefresh(entryId: string): Promise<void> {
+    if (this._inFlight.has(entryId)) return; // prevent concurrent refresh of same account
+    this._inFlight.add(entryId);
     await this.acquireSlot();
     try {
       await this._doRefreshInner(entryId);
+    } catch (err) {
+      // Unexpected error (e.g. JSON parse failure) — recover from "refreshing" state
+      const entry = this.pool.getEntry(entryId);
+      if (entry?.status === "refreshing") {
+        console.error(`[RefreshScheduler] Unexpected error for ${entryId}: ${err instanceof Error ? err.message : err}`);
+        this.pool.markStatus(entryId, "active");
+        this.scheduleRecovery(entryId);
+      }
     } finally {
+      this._inFlight.delete(entryId);
       this.releaseSlot();
     }
   }
