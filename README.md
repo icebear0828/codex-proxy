@@ -494,9 +494,12 @@ server:
 ### [Unreleased]
 
 **Added**
+- Session affinity：同一对话链路由到同一账号，修复 `previous_response_id` 跨账号失效问题
+- `prompt_cache_key`：每个对话链生成唯一 UUID 传递给后端，启用 prompt cache
+- WebSocket 请求新增 `include: ["reasoning.encrypted_content"]`（reasoning 开启时自动设置）
+- 请求级监控日志：affinity hit/miss、payload 大小、usage 统计、大 payload 告警
 - E2E 测试：proxy-routes（36 cases）、dashboard-auth（9）、batch-label（11）、admin-general（11）、debug-routes（5）—— 覆盖率从 51% 提升至 ~75%
-- 单元测试：config-loader（16 cases）、config-schema（10）、codex-models（9）
-- account-import service 测试补充 RT rotation/fallback 2 cases
+- ...（[查看全部](./CHANGELOG.md)）
 **Changed**
 - 删除冗余测试文件：`self-update-auto.test.ts`（superset 覆盖）、`account-import-refresh.test.ts`（迁移到 service 层）
 - 重命名 `model-plan-routing.test.ts` → `plan-routing-integration.test.ts` 以区分作用域
@@ -508,6 +511,7 @@ server:
   - Electron (macOS)：自动打开 release 页面（平台限制无法自动安装）
   - 配置项 `update.auto_update`，持久化到 `data/local.yaml`
 **Fixed**
+- 修复 `service_tier` 在 WebSocket 和 HTTP 两条路径均被丢弃的 bug — 现在正确转发给后端
 - 修复 `PUT /api/proxies/settings` 被 `PUT /api/proxies/:id` 路由参数 shadow 的 bug（Hono 按注册顺序匹配）
 
 ### [v0.8.0](https://github.com/icebear0828/codex-proxy/releases/tag/v0.8.0) - 2026-02-24
