@@ -17,7 +17,7 @@ const mockConfig = {
     warning_thresholds: { primary: [80, 90], secondary: [80, 90] },
     skip_exhausted: true,
   },
-  auth: { rotation_strategy: "least_used", refresh_enabled: true, refresh_margin_seconds: 300, refresh_concurrency: 2, max_concurrent_per_account: 3 as number | null },
+  auth: { rotation_strategy: "least_used", refresh_enabled: true, refresh_margin_seconds: 300, refresh_concurrency: 2, max_concurrent_per_account: 3 as number | null, request_interval_ms: 50 as number | null },
   update: { auto_update: true },
 };
 
@@ -123,6 +123,7 @@ describe("GET /admin/general-settings", () => {
       refresh_margin_seconds: 300,
       refresh_concurrency: 2,
       max_concurrent_per_account: 3,
+      request_interval_ms: 50,
       auto_update: true,
     });
   });
@@ -294,6 +295,38 @@ describe("POST /admin/general-settings", () => {
       });
       expect(res.status).toBe(400);
     }
+  });
+
+  it("accepts valid request_interval_ms", async () => {
+    const app = makeApp();
+    const res = await app.request("/admin/general-settings", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ request_interval_ms: 500 }),
+    });
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(data.success).toBe(true);
+  });
+
+  it("accepts 0 request_interval_ms (disable)", async () => {
+    const app = makeApp();
+    const res = await app.request("/admin/general-settings", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ request_interval_ms: 0 }),
+    });
+    expect(res.status).toBe(200);
+  });
+
+  it("rejects negative request_interval_ms", async () => {
+    const app = makeApp();
+    const res = await app.request("/admin/general-settings", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ request_interval_ms: -1 }),
+    });
+    expect(res.status).toBe(400);
   });
 
   it("requires auth when proxy_api_key is set", async () => {

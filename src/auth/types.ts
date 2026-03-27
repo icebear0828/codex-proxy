@@ -99,6 +99,8 @@ export interface AcquiredAccount {
   entryId: string;
   token: string;
   accountId: string | null;
+  /** Timestamp of the previous slot on this account (null = first request). */
+  prevSlotMs: number | null;
 }
 
 /** Persistence format */

@@ -58,6 +58,30 @@ describe("per-account concurrent request slots", () => {
     });
   });
 
+  describe("prevSlotMs", () => {
+    beforeEach(() => {
+      setConfigForTesting(createMockConfig({ auth: { max_concurrent_per_account: 3 } }));
+    });
+
+    it("returns null for the first acquire on an account", () => {
+      const { pool } = createPool(1);
+      const first = pool.acquire({});
+      expect(first).not.toBeNull();
+      expect(first!.prevSlotMs).toBeNull();
+    });
+
+    it("returns previous slot timestamp for subsequent acquires", () => {
+      const { pool } = createPool(1);
+      const first = pool.acquire({});
+      expect(first!.prevSlotMs).toBeNull();
+
+      const second = pool.acquire({});
+      expect(second).not.toBeNull();
+      expect(second!.prevSlotMs).toBeTypeOf("number");
+      expect(second!.prevSlotMs).toBeGreaterThan(0);
+    });
+  });
+
   describe("max_concurrent_per_account = 3", () => {
     beforeEach(() => {
       setConfigForTesting(createMockConfig({ auth: { max_concurrent_per_account: 3 } }));

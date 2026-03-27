@@ -101,11 +101,14 @@ export class AccountLifecycle {
     }
 
     const selected = this.strategy.select(candidates, this.rotationState);
+    const prevSlots = this.acquireLocks.get(selected.id);
+    const prevSlotMs = prevSlots?.[prevSlots.length - 1] ?? null;
     this.pushSlot(selected.id);
     return {
       entryId: selected.id,
       token: selected.token,
       accountId: selected.accountId,
+      prevSlotMs,
     };
   }
 

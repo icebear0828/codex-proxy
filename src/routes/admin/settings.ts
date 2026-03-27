@@ -106,6 +106,7 @@ export function createSettingsRoutes(): Hono {
       refresh_margin_seconds: config.auth.refresh_margin_seconds,
       refresh_concurrency: config.auth.refresh_concurrency,
       max_concurrent_per_account: config.auth.max_concurrent_per_account,
+      request_interval_ms: config.auth.request_interval_ms,
       auto_update: config.update.auto_update,
     });
   });
@@ -135,6 +136,7 @@ export function createSettingsRoutes(): Hono {
       refresh_margin_seconds?: number;
       refresh_concurrency?: number;
       max_concurrent_per_account?: number | null;
+      request_interval_ms?: number | null;
       auto_update?: boolean;
     };
 
@@ -181,6 +183,13 @@ export function createSettingsRoutes(): Hono {
       if (!Number.isInteger(body.max_concurrent_per_account) || body.max_concurrent_per_account < 1) {
         c.status(400);
         return c.json({ error: "max_concurrent_per_account must be an integer >= 1 or null" });
+      }
+    }
+
+    if (body.request_interval_ms !== undefined && body.request_interval_ms !== null) {
+      if (!Number.isInteger(body.request_interval_ms) || body.request_interval_ms < 0) {
+        c.status(400);
+        return c.json({ error: "request_interval_ms must be an integer >= 0 or null" });
       }
     }
 
@@ -232,6 +241,10 @@ export function createSettingsRoutes(): Hono {
         if (!data.auth) data.auth = {};
         (data.auth as Record<string, unknown>).max_concurrent_per_account = body.max_concurrent_per_account;
       }
+      if (body.request_interval_ms !== undefined) {
+        if (!data.auth) data.auth = {};
+        (data.auth as Record<string, unknown>).request_interval_ms = body.request_interval_ms;
+      }
       if (body.auto_update !== undefined) {
         if (!data.update) data.update = {};
         (data.update as Record<string, unknown>).auto_update = body.auto_update;
@@ -256,6 +269,7 @@ export function createSettingsRoutes(): Hono {
       refresh_margin_seconds: updated.auth.refresh_margin_seconds,
       refresh_concurrency: updated.auth.refresh_concurrency,
       max_concurrent_per_account: updated.auth.max_concurrent_per_account,
+      request_interval_ms: updated.auth.request_interval_ms,
       auto_update: updated.update.auto_update,
       restart_required: restartRequired,
     });

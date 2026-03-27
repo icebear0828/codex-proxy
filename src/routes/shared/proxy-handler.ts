@@ -23,6 +23,8 @@ import { handleCodexApiError, toErrorStatus } from "./proxy-error-handler.js";
 import { streamResponse } from "./response-processor.js";
 import type { UsageInfo } from "../../translation/codex-event-extractor.js";
 import { parseRateLimitHeaders, rateLimitToQuota } from "../../proxy/rate-limit-headers.js";
+import { getConfig } from "../../config.js";
+import { jitterInt } from "../../utils/jitter.js";
 
 /** Data prepared by each route after parsing and translating the request. */
 export interface ProxyRequest {
@@ -61,6 +63,16 @@ export interface FormatAdapter {
 }
 
 const MAX_EMPTY_RETRIES = 2;
+
+/** Sleep if this account had a recent request, to stagger upstream traffic. */
+async function staggerIfNeeded(prevSlotMs: number | null): Promise<void> {
+  const intervalMs = getConfig().auth.request_interval_ms;
+  if (!intervalMs || prevSlotMs == null) return;
+  const elapsed = Date.now() - prevSlotMs;
+  const target = jitterInt(intervalMs, 0.3);
+  const wait = target - elapsed;
+  if (wait > 0) await new Promise((r) => setTimeout(r, wait));
+}
 
 function buildCodexApi(
   token: string,
@@ -102,6 +114,8 @@ export async function handleProxyRequest(
 
   const abortController = new AbortController();
   c.req.raw.signal.addEventListener("abort", () => abortController.abort(), { once: true });
+
+  await staggerIfNeeded(acquired.prevSlotMs);
 
   for (;;) {
     try {
@@ -188,6 +202,7 @@ export async function handleProxyRequest(
       triedEntryIds.push(retry.entryId);
       codexApi = buildCodexApi(retry.token, retry.accountId, cookieJar, retry.entryId, proxyPool);
       console.log(`[${fmt.tag}] Fallback → account ${retry.entryId}`);
+      await staggerIfNeeded(retry.prevSlotMs);
       continue;
     }
   }
