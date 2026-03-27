@@ -111,6 +111,7 @@ export class UsageStatsStore {
   private persistence: UsageStatsPersistence;
   private snapshots: UsageSnapshot[];
   private baseline: UsageBaseline;
+  private _pendingRecovery?: UsageBaseline;
 
   constructor(persistence?: UsageStatsPersistence) {
     this.persistence = persistence ?? createFsUsageStatsPersistence();
@@ -148,8 +149,6 @@ export class UsageStatsStore {
     this.persistence.save({ version: 1, snapshots: this.snapshots, baseline: this.baseline });
     console.log(`[UsageStats] Recovered baseline: ${this.baseline.input_tokens} in / ${this.baseline.output_tokens} out / ${this.baseline.request_count} req`);
   }
-
-  private _pendingRecovery?: UsageBaseline;
 
   /** Sum current live usage from all accounts in the pool. */
   private poolTotals(pool: AccountPool): { input_tokens: number; output_tokens: number; request_count: number; active_accounts: number; total_accounts: number } {
