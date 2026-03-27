@@ -39,22 +39,30 @@ describe("rotation-strategy", () => {
     const strategy = getRotationStrategy("least_used");
     const state: RotationState = { roundRobinIndex: 0 };
 
-    it("selects account with fewest requests", () => {
-      const a = makeEntry("a", { request_count: 5 });
-      const b = makeEntry("b", { request_count: 2 });
-      const c = makeEntry("c", { request_count: 8 });
-      expect(strategy.select([a, b, c], state).id).toBe("b");
+    it("prefers account with earliest window_reset_at (use-before-refresh)", () => {
+      // B resets in 1 day, A resets in 7 days — should pick B even though A has fewer requests
+      const a = makeEntry("a", { request_count: 2, window_reset_at: Date.now() + 7 * 86400_000 });
+      const b = makeEntry("b", { request_count: 8, window_reset_at: Date.now() + 1 * 86400_000 });
+      expect(strategy.select([a, b], state).id).toBe("b");
     });
 
-    it("breaks ties by window_reset_at (sooner wins)", () => {
-      const a = makeEntry("a", { request_count: 3, window_reset_at: 2000 });
-      const b = makeEntry("b", { request_count: 3, window_reset_at: 1000 });
+    it("treats missing window_reset_at as Infinity (picks known reset first)", () => {
+      const a = makeEntry("a", { request_count: 1 }); // no reset info
+      const b = makeEntry("b", { request_count: 5, window_reset_at: Date.now() + 86400_000 });
+      expect(strategy.select([a, b], state).id).toBe("b");
+    });
+
+    it("breaks reset ties by request_count (fewer wins)", () => {
+      const reset = Date.now() + 86400_000;
+      const a = makeEntry("a", { request_count: 5, window_reset_at: reset });
+      const b = makeEntry("b", { request_count: 2, window_reset_at: reset });
       expect(strategy.select([a, b], state).id).toBe("b");
     });
 
     it("breaks further ties by last_used (LRU)", () => {
-      const a = makeEntry("a", { request_count: 3, last_used: "2026-01-02T00:00:00Z" });
-      const b = makeEntry("b", { request_count: 3, last_used: "2026-01-01T00:00:00Z" });
+      const reset = Date.now() + 86400_000;
+      const a = makeEntry("a", { request_count: 3, window_reset_at: reset, last_used: "2026-01-02T00:00:00Z" });
+      const b = makeEntry("b", { request_count: 3, window_reset_at: reset, last_used: "2026-01-01T00:00:00Z" });
       expect(strategy.select([a, b], state).id).toBe("b");
     });
   });

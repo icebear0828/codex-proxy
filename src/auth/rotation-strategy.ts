@@ -18,11 +18,14 @@ export interface RotationStrategy {
 const leastUsed: RotationStrategy = {
   select(candidates) {
     const sorted = [...candidates].sort((a, b) => {
-      const diff = a.usage.request_count - b.usage.request_count;
-      if (diff !== 0) return diff;
+      // Primary: prefer account whose quota resets soonest (use it before it resets)
       const aReset = a.usage.window_reset_at ?? Infinity;
       const bReset = b.usage.window_reset_at ?? Infinity;
       if (aReset !== bReset) return aReset - bReset;
+      // Secondary: fewer requests = more remaining quota
+      const diff = a.usage.request_count - b.usage.request_count;
+      if (diff !== 0) return diff;
+      // Tertiary: LRU
       const aTime = a.usage.last_used ? new Date(a.usage.last_used).getTime() : 0;
       const bTime = b.usage.last_used ? new Date(b.usage.last_used).getTime() : 0;
       return aTime - bTime;
