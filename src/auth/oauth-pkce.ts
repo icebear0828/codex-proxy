@@ -223,7 +223,9 @@ export async function refreshAccessToken(
     }
   }
 
-  throw lastError;
+  // Unreachable — chain always has at least one entry and the last iteration
+  // either returns or throws without continue. Guard for TypeScript.
+  throw lastError ?? new Error("Token refresh failed: no proxy steps executed");
 }
 
 // ── Pending session management ─────────────────────────────────────

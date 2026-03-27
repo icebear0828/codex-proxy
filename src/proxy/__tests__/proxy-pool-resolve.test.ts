@@ -34,6 +34,14 @@ describe("ProxyPool.resolveProxyUrl", () => {
     expect(pool.resolveProxyUrl("account-1")).toBe("http://proxy.local:870");
   });
 
+  it("falls back to global when unreachable and skipUnhealthy is true", () => {
+    pool.assign("account-1", proxyId);
+    const entry = pool.getById(proxyId)!;
+    entry.status = "unreachable";
+
+    expect(pool.resolveProxyUrl("account-1", true)).toBeUndefined();
+  });
+
   it("falls back to global (undefined) when proxy is manually disabled", () => {
     pool.assign("account-1", proxyId);
     pool.disable(proxyId);
