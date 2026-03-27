@@ -128,12 +128,22 @@ export async function createWebSocketResponse(
       },
     });
 
+    // Capture upgrade response headers (contains x-codex-* rate limit data)
+    let upgradeHeaders: Record<string, string | string[]> = {};
+    ws.on("upgrade", (response: { headers: Record<string, string | string[]> }) => {
+      upgradeHeaders = response.headers;
+    });
+
     ws.on("open", () => {
       connected = true;
       ws.send(JSON.stringify(request));
 
-      // Return the Response immediately — events will flow into the stream
+      // Build response headers from WS upgrade headers
       const responseHeaders = new Headers({ "content-type": "text/event-stream" });
+      for (const [key, value] of Object.entries(upgradeHeaders)) {
+        const v = Array.isArray(value) ? value[0] : value;
+        if (v != null) responseHeaders.set(key, v);
+      }
       resolve(new Response(stream, { status: 200, headers: responseHeaders }));
     });
 
