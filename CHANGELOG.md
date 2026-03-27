@@ -8,6 +8,8 @@
 
 ### Added
 
+- libcurl FFI 连接复用：macOS/Linux 自动构建 dylib，通过 CURLSH 共享连接缓存 + SSL session，消除每次请求的 TCP/TLS 握手开销（~2.9s → ~100-300ms）
+- setup 脚本自动下载静态库、编译 C wrapper、生成 dylib + cacert.pem
 - 自动更新（热更新）功能，默认开启，用户可在 Dashboard 设置中关闭
   - Git 模式：检测到更新后自动 pull → install → build → 重启
   - Electron (Win/Linux)：自动下载更新，退出时安装；dock/任务栏显示下载进度条

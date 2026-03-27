@@ -35,6 +35,10 @@ const CURL_HTTP_VERSION_1_1 = 2;
 const CURL_HTTP_VERSION_2_0 = 3;
 const CURLINFO_RESPONSE_CODE = 0x200002;
 const CURLM_OK = 0;
+const CURLOPT_SHARE = 10100;
+const CURLSHOPT_SHARE = 1;
+const CURL_LOCK_DATA_SSL_SESSION = 2;
+const CURL_LOCK_DATA_CONNECT = 5;
 const DEFAULT_HEADER_TIMEOUT_MS = 30_000;
 
 function getHeaderTimeoutMs(): number {
@@ -53,6 +57,8 @@ type CurlHandle = { readonly __brand: "CURL" };
 type CurlMultiHandle = { readonly __brand: "CURLM" };
 /** Opaque C pointer for curl_slist linked list. */
 type SlistHandle = { readonly __brand: "curl_slist" } | null;
+/** Opaque C pointer returned by curl_share_init(). */
+type CurlShareHandle = { readonly __brand: "CURLSH" };
 
 /** koffi module loaded via dynamic import (same shape as `typeof import("koffi")`). */
 type KoffiModule = typeof import("koffi");
@@ -71,6 +77,7 @@ interface CurlBindings {
   curl_easy_setopt_long: KoffiFunction;
   curl_easy_setopt_str: KoffiFunction;
   curl_easy_setopt_ptr: KoffiFunction;
+  curl_easy_setopt_share: KoffiFunction;
   curl_easy_setopt_cb: KoffiFunction;
   curl_easy_setopt_header_cb: KoffiFunction;
   curl_easy_getinfo_long: KoffiFunction;
@@ -84,6 +91,10 @@ interface CurlBindings {
   curl_multi_perform: KoffiFunction;
   curl_multi_poll: KoffiFunction;
   curl_multi_cleanup: KoffiFunction;
+  curl_share_init: KoffiFunction;
+  curl_share_setopt_long: KoffiFunction;
+  curl_share_cleanup: KoffiFunction;
+  shareHandle: CurlShareHandle;
 }
 
 /** Promisify a koffi KoffiFunction.async() call (callback as last arg). */
@@ -142,32 +153,94 @@ async function initBindings(): Promise<CurlBindings> {
   // Define opaque pointer types (referenced by string name in signatures)
   koffi.pointer("CURL", koffi.opaque());
   koffi.pointer("CURLM", koffi.opaque());
+  koffi.pointer("CURLSH", koffi.opaque());
   koffi.pointer("curl_slist", koffi.opaque());
 
   // Callback prototypes
   const writeCallbackType: IKoffiCType = koffi.proto("size_t write_cb(const uint8_t *ptr, size_t size, size_t nmemb, intptr_t userdata)");
   const headerCallbackType: IKoffiCType = koffi.proto("size_t header_cb(const uint8_t *ptr, size_t size, size_t nmemb, intptr_t userdata)");
 
+  // On macOS/Linux, the dylib is built from a static .a with hidden visibility.
+  // A C wrapper provides exported symbols with typed signatures (w_curl_* prefix).
+  // On Windows, the DLL exports original variadic curl_* symbols directly.
+  const useWrapper = process.platform !== "win32";
+
   // Bind functions — use string names for pointer types (not template literals)
-  const curl_global_init = lib.func("int curl_global_init(int flags)");
-  const curl_easy_init = lib.func("CURL *curl_easy_init()");
-  const curl_easy_cleanup = lib.func("void curl_easy_cleanup(CURL *handle)");
-  const curl_easy_setopt_long = lib.func("int curl_easy_setopt(CURL *handle, int option, long value)");
-  const curl_easy_setopt_str = lib.func("int curl_easy_setopt(CURL *handle, int option, const char *value)");
-  const curl_easy_setopt_ptr = lib.func("int curl_easy_setopt(CURL *handle, int option, curl_slist *value)");
-  const curl_easy_setopt_cb = lib.func("int curl_easy_setopt(CURL *handle, int option, write_cb *value)");
-  const curl_easy_setopt_header_cb = lib.func("int curl_easy_setopt(CURL *handle, int option, header_cb *value)");
-  const curl_easy_getinfo_long = lib.func("int curl_easy_getinfo(CURL *handle, int info, _Out_ int *value)");
-  const curl_easy_impersonate = lib.func("int curl_easy_impersonate(CURL *handle, const char *target, int default_headers)");
-  const curl_easy_perform = lib.func("int curl_easy_perform(CURL *handle)");
-  const curl_slist_append = lib.func("curl_slist *curl_slist_append(curl_slist *list, const char *string)");
-  const curl_slist_free_all = lib.func("void curl_slist_free_all(curl_slist *list)");
-  const curl_multi_init = lib.func("CURLM *curl_multi_init()");
-  const curl_multi_add_handle = lib.func("int curl_multi_add_handle(CURLM *multi, CURL *easy)");
-  const curl_multi_remove_handle = lib.func("int curl_multi_remove_handle(CURLM *multi, CURL *easy)");
-  const curl_multi_perform = lib.func("int curl_multi_perform(CURLM *multi, _Out_ int *running_handles)");
-  const curl_multi_poll = lib.func("int curl_multi_poll(CURLM *multi, void *extra_fds, int extra_nfds, int timeout_ms, _Out_ int *numfds)");
-  const curl_multi_cleanup = lib.func("int curl_multi_cleanup(CURLM *multi)");
+  let curl_global_init: KoffiFunction;
+  let curl_easy_init: KoffiFunction;
+  let curl_easy_cleanup: KoffiFunction;
+  let curl_easy_setopt_long: KoffiFunction;
+  let curl_easy_setopt_str: KoffiFunction;
+  let curl_easy_setopt_ptr: KoffiFunction;
+  let curl_easy_setopt_share: KoffiFunction;
+  let curl_easy_setopt_cb: KoffiFunction;
+  let curl_easy_setopt_header_cb: KoffiFunction;
+  let curl_easy_getinfo_long: KoffiFunction;
+  let curl_easy_impersonate: KoffiFunction;
+  let curl_easy_perform: KoffiFunction;
+  let curl_slist_append: KoffiFunction;
+  let curl_slist_free_all: KoffiFunction;
+  let curl_multi_init: KoffiFunction;
+  let curl_multi_add_handle: KoffiFunction;
+  let curl_multi_remove_handle: KoffiFunction;
+  let curl_multi_perform: KoffiFunction;
+  let curl_multi_poll: KoffiFunction;
+  let curl_multi_cleanup: KoffiFunction;
+  let curl_share_init: KoffiFunction;
+  let curl_share_setopt_long: KoffiFunction;
+  let curl_share_cleanup: KoffiFunction;
+
+  if (useWrapper) {
+    // Wrapper functions with typed signatures (non-variadic)
+    curl_global_init = lib.func("int w_curl_global_init(int flags)");
+    curl_easy_init = lib.func("CURL *w_curl_easy_init()");
+    curl_easy_cleanup = lib.func("void w_curl_easy_cleanup(CURL *handle)");
+    curl_easy_setopt_long = lib.func("int w_curl_easy_setopt_long(CURL *handle, int option, long value)");
+    curl_easy_setopt_str = lib.func("int w_curl_easy_setopt_str(CURL *handle, int option, const char *value)");
+    curl_easy_setopt_ptr = lib.func("int w_curl_easy_setopt_ptr(CURL *handle, int option, curl_slist *value)");
+    curl_easy_setopt_share = lib.func("int w_curl_easy_setopt_ptr(CURL *handle, int option, CURLSH *value)");
+    curl_easy_setopt_cb = lib.func("int w_curl_easy_setopt_cb(CURL *handle, int option, write_cb *value)");
+    curl_easy_setopt_header_cb = lib.func("int w_curl_easy_setopt_cb(CURL *handle, int option, header_cb *value)");
+    curl_easy_getinfo_long = lib.func("int w_curl_easy_getinfo_long(CURL *handle, int info, _Out_ int *value)");
+    curl_easy_impersonate = lib.func("int w_curl_easy_impersonate(CURL *handle, const char *target, int default_headers)");
+    curl_easy_perform = lib.func("int w_curl_easy_perform(CURL *handle)");
+    curl_slist_append = lib.func("curl_slist *w_curl_slist_append(curl_slist *list, const char *string)");
+    curl_slist_free_all = lib.func("void w_curl_slist_free_all(curl_slist *list)");
+    curl_multi_init = lib.func("CURLM *w_curl_multi_init()");
+    curl_multi_add_handle = lib.func("int w_curl_multi_add_handle(CURLM *multi, CURL *easy)");
+    curl_multi_remove_handle = lib.func("int w_curl_multi_remove_handle(CURLM *multi, CURL *easy)");
+    curl_multi_perform = lib.func("int w_curl_multi_perform(CURLM *multi, _Out_ int *running_handles)");
+    curl_multi_poll = lib.func("int w_curl_multi_poll(CURLM *multi, void *extra_fds, int extra_nfds, int timeout_ms, _Out_ int *numfds)");
+    curl_multi_cleanup = lib.func("int w_curl_multi_cleanup(CURLM *multi)");
+    curl_share_init = lib.func("CURLSH *w_curl_share_init()");
+    curl_share_setopt_long = lib.func("int w_curl_share_setopt_long(CURLSH *share, int option, long value)");
+    curl_share_cleanup = lib.func("int w_curl_share_cleanup(CURLSH *share)");
+  } else {
+    // Windows: bind original variadic curl_* symbols
+    curl_global_init = lib.func("int curl_global_init(int flags)");
+    curl_easy_init = lib.func("CURL *curl_easy_init()");
+    curl_easy_cleanup = lib.func("void curl_easy_cleanup(CURL *handle)");
+    curl_easy_setopt_long = lib.func("int curl_easy_setopt(CURL *handle, int option, long value)");
+    curl_easy_setopt_str = lib.func("int curl_easy_setopt(CURL *handle, int option, const char *value)");
+    curl_easy_setopt_ptr = lib.func("int curl_easy_setopt(CURL *handle, int option, curl_slist *value)");
+    curl_easy_setopt_share = lib.func("int curl_easy_setopt(CURL *handle, int option, CURLSH *value)");
+    curl_easy_setopt_cb = lib.func("int curl_easy_setopt(CURL *handle, int option, write_cb *value)");
+    curl_easy_setopt_header_cb = lib.func("int curl_easy_setopt(CURL *handle, int option, header_cb *value)");
+    curl_easy_getinfo_long = lib.func("int curl_easy_getinfo(CURL *handle, int info, _Out_ int *value)");
+    curl_easy_impersonate = lib.func("int curl_easy_impersonate(CURL *handle, const char *target, int default_headers)");
+    curl_easy_perform = lib.func("int curl_easy_perform(CURL *handle)");
+    curl_slist_append = lib.func("curl_slist *curl_slist_append(curl_slist *list, const char *string)");
+    curl_slist_free_all = lib.func("void curl_slist_free_all(curl_slist *list)");
+    curl_multi_init = lib.func("CURLM *curl_multi_init()");
+    curl_multi_add_handle = lib.func("int curl_multi_add_handle(CURLM *multi, CURL *easy)");
+    curl_multi_remove_handle = lib.func("int curl_multi_remove_handle(CURLM *multi, CURL *easy)");
+    curl_multi_perform = lib.func("int curl_multi_perform(CURLM *multi, _Out_ int *running_handles)");
+    curl_multi_poll = lib.func("int curl_multi_poll(CURLM *multi, void *extra_fds, int extra_nfds, int timeout_ms, _Out_ int *numfds)");
+    curl_multi_cleanup = lib.func("int curl_multi_cleanup(CURLM *multi)");
+    curl_share_init = lib.func("CURLSH *curl_share_init()");
+    curl_share_setopt_long = lib.func("int curl_share_setopt(CURLSH *share, int option, long value)");
+    curl_share_cleanup = lib.func("int curl_share_cleanup(CURLSH *share)");
+  }
 
   // Global init (CURL_GLOBAL_DEFAULT = 3)
   curl_global_init(3);
@@ -178,6 +251,13 @@ async function initBindings(): Promise<CurlBindings> {
   } else {
     console.warn("[TLS/FFI] No CA bundle at bin/cacert.pem — HTTPS may fail");
   }
+
+  // Create shared handle for connection + SSL session reuse across requests
+  const shareHandle = curl_share_init() as CurlShareHandle;
+  if (!shareHandle) throw new Error("curl_share_init() returned null");
+  curl_share_setopt_long(shareHandle, CURLSHOPT_SHARE, CURL_LOCK_DATA_CONNECT);
+  curl_share_setopt_long(shareHandle, CURLSHOPT_SHARE, CURL_LOCK_DATA_SSL_SESSION);
+  console.log("[TLS/FFI] Connection pool enabled (CURLSH: connect + ssl_session)");
 
   return {
     koffi,
@@ -190,6 +270,7 @@ async function initBindings(): Promise<CurlBindings> {
     curl_easy_setopt_long,
     curl_easy_setopt_str,
     curl_easy_setopt_ptr,
+    curl_easy_setopt_share,
     curl_easy_setopt_cb,
     curl_easy_setopt_header_cb,
     curl_easy_getinfo_long,
@@ -203,6 +284,10 @@ async function initBindings(): Promise<CurlBindings> {
     curl_multi_perform,
     curl_multi_poll,
     curl_multi_cleanup,
+    curl_share_init,
+    curl_share_setopt_long,
+    curl_share_cleanup,
+    shareHandle,
   };
 }
 
@@ -405,6 +490,10 @@ export class LibcurlFfiTransport implements TlsTransport {
     return true;
   }
 
+  destroy(): void {
+    this.b.curl_share_cleanup(this.b.shareHandle);
+  }
+
   private async simpleRequest(
     url: string,
     headers: Record<string, string>,
@@ -473,6 +562,9 @@ export class LibcurlFfiTransport implements TlsTransport {
 
     // Impersonate Chrome — 0 = don't inject default headers (we control them)
     b.curl_easy_impersonate(easy, getResolvedProfile(), 0);
+
+    // Attach shared connection pool for TCP + TLS session reuse
+    b.curl_easy_setopt_share(easy, CURLOPT_SHARE, b.shareHandle);
 
     b.curl_easy_setopt_str(easy, CURLOPT_URL, url);
     b.curl_easy_setopt_long(easy, CURLOPT_NOSIGNAL, 1);

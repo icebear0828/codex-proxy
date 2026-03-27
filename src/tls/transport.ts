@@ -17,6 +17,8 @@ export interface TlsTransportResponse {
 }
 
 export interface TlsTransport {
+  /** Clean up transport resources (connection pools, shared handles). */
+  destroy?(): void;
   /**
    * Streaming POST (for SSE). Returns headers + streaming body.
    * @param proxyUrl  undefined = global default, null = direct (no proxy), string = specific proxy
@@ -114,14 +116,22 @@ export function getTransport(): TlsTransport {
 
 /**
  * Determine if FFI transport should be used in "auto" mode.
- * FFI is preferred on Windows where curl-impersonate CLI is unavailable.
+ * FFI is preferred for connection pooling (TCP + TLS session reuse).
+ * Enabled on Windows (no CLI available) and macOS/Linux (when dylib/so present).
  */
 function shouldUseFfi(): boolean {
-  if (process.platform !== "win32") return false;
+  const binDir = getBinDir();
 
-  // Check if libcurl-impersonate DLL exists (shipped as libcurl.dll)
-  const dllPath = resolve(getBinDir(), "libcurl.dll");
-  return existsSync(dllPath);
+  if (process.platform === "win32") {
+    return existsSync(resolve(binDir, "libcurl.dll"));
+  }
+  if (process.platform === "darwin") {
+    return existsSync(resolve(binDir, "libcurl-impersonate.dylib"));
+  }
+  if (process.platform === "linux") {
+    return existsSync(resolve(binDir, "libcurl-impersonate.so"));
+  }
+  return false;
 }
 
 /** Get transport diagnostic info. */
