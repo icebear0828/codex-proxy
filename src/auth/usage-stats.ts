@@ -117,7 +117,39 @@ export class UsageStatsStore {
     const loaded = this.persistence.load();
     this.snapshots = loaded.snapshots;
     this.baseline = loaded.baseline ?? { input_tokens: 0, output_tokens: 0, request_count: 0 };
+
+    // Recover baseline from last snapshot if it was never persisted.
+    // This handles the case where usage-history.json has correct snapshot
+    // totals but no baseline (pre-PR#221 data or lost on restart).
+    if (!loaded.baseline && this.snapshots.length > 0) {
+      const last = this.snapshots[this.snapshots.length - 1].totals;
+      this._pendingRecovery = {
+        input_tokens: last.input_tokens,
+        output_tokens: last.output_tokens,
+        request_count: last.request_count,
+      };
+    }
   }
+
+  /**
+   * Recover baseline from last snapshot totals minus current live pool.
+   * Must be called once after pool is available (not in constructor,
+   * since pool may not be ready yet).
+   */
+  recoverBaseline(pool: AccountPool): void {
+    if (!this._pendingRecovery) return;
+    const live = this.poolTotals(pool);
+    this.baseline = {
+      input_tokens: Math.max(0, this._pendingRecovery.input_tokens - live.input_tokens),
+      output_tokens: Math.max(0, this._pendingRecovery.output_tokens - live.output_tokens),
+      request_count: Math.max(0, this._pendingRecovery.request_count - live.request_count),
+    };
+    this._pendingRecovery = undefined;
+    this.persistence.save({ version: 1, snapshots: this.snapshots, baseline: this.baseline });
+    console.log(`[UsageStats] Recovered baseline: ${this.baseline.input_tokens} in / ${this.baseline.output_tokens} out / ${this.baseline.request_count} req`);
+  }
+
+  private _pendingRecovery?: UsageBaseline;
 
   /** Sum current live usage from all accounts in the pool. */
   private poolTotals(pool: AccountPool): { input_tokens: number; output_tokens: number; request_count: number; active_accounts: number; total_accounts: number } {

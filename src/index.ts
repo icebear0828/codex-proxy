@@ -86,6 +86,7 @@ export async function startServer(options?: StartOptions): Promise<ServerHandle>
   const responsesRoutes = createResponsesRoutes(accountPool, cookieJar, proxyPool);
   const proxyRoutes = createProxyRoutes(proxyPool, accountPool);
   const usageStats = new UsageStatsStore();
+  usageStats.recoverBaseline(accountPool);
   const webRoutes = createWebRoutes(accountPool, usageStats);
 
   app.route("/", createDashboardAuthRoutes());

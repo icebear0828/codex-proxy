@@ -401,4 +401,61 @@ describe("UsageStatsStore", () => {
       expect(store.snapshotCount).toBe(2);
     });
   });
+
+  describe("recoverBaseline", () => {
+    it("recovers baseline from last snapshot when no baseline was persisted", () => {
+      const snapshots: UsageSnapshot[] = [
+        {
+          timestamp: new Date().toISOString(),
+          totals: { input_tokens: 10_000_000, output_tokens: 2_000_000, request_count: 5000, active_accounts: 15 },
+        },
+      ];
+      // No baseline — simulates pre-PR#221 data
+      persistence = createMockPersistence(snapshots);
+      store = new UsageStatsStore(persistence);
+
+      // Current pool has much less usage (accounts were replaced)
+      const pool = createMockPool([
+        { status: "active", input_tokens: 100_000, output_tokens: 2000, request_count: 50 },
+      ]);
+
+      store.recoverBaseline(pool);
+
+      const summary = store.getSummary(pool);
+      // Should recover the full historical totals
+      expect(summary.total_input_tokens).toBe(10_000_000);
+      expect(summary.total_output_tokens).toBe(2_000_000);
+      expect(summary.total_request_count).toBe(5000);
+
+      // Baseline should have been persisted
+      expect(persistence.save).toHaveBeenCalled();
+      expect(persistence.savedBaseline).toEqual({
+        input_tokens: 9_900_000,
+        output_tokens: 1_998_000,
+        request_count: 4950,
+      });
+    });
+
+    it("does not recover when baseline already exists", () => {
+      const snapshots: UsageSnapshot[] = [
+        {
+          timestamp: new Date().toISOString(),
+          totals: { input_tokens: 10_000_000, output_tokens: 2_000_000, request_count: 5000, active_accounts: 15 },
+        },
+      ];
+      const baseline: UsageBaseline = { input_tokens: 5_000_000, output_tokens: 1_000_000, request_count: 2500 };
+      persistence = createMockPersistence(snapshots, baseline);
+      store = new UsageStatsStore(persistence);
+
+      const pool = createMockPool([
+        { status: "active", input_tokens: 100_000, output_tokens: 2000, request_count: 50 },
+      ]);
+
+      store.recoverBaseline(pool);
+
+      // Baseline should remain unchanged
+      const summary = store.getSummary(pool);
+      expect(summary.total_input_tokens).toBe(5_100_000);
+    });
+  });
 });
