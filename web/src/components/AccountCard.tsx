@@ -303,10 +303,10 @@ export function AccountCard({ account, index, onDelete, proxies, onProxyChange, 
       )}
 
       {/* Quota bars */}
-      {(rl || srl) && (
+      {(rl || srl || account.status === "active") && (
         <div class="pt-3 mt-3 border-t border-slate-100 dark:border-border-dark space-y-3">
           {/* Primary window */}
-          {rl && (
+          {(rl || account.status === "active") && (
             <div>
               <div class="flex justify-between text-[0.78rem] mb-1.5">
                 <span class="text-slate-500 dark:text-text-dim">
@@ -315,7 +315,7 @@ export function AccountCard({ account, index, onDelete, proxies, onProxyChange, 
                     <span class="ml-1 text-slate-400 dark:text-text-dim/70 text-[0.65rem]">({windowDur})</span>
                   )}
                 </span>
-                {rl.limit_reached ? (
+                {rl?.limit_reached ? (
                   <span class="px-2 py-0.5 rounded-full bg-red-100 dark:bg-red-900/20 text-red-600 dark:text-red-400 text-xs font-medium">
                     {t("limitReached")}
                   </span>
