@@ -34,35 +34,65 @@ jobs:
       - name: Build Docker image
         run: docker build -t codex-proxy:smoke .
 
-      - name: Start container
+      - name: Create custom config
         run: |
+          mkdir -p custom-config
+          cat << 'EOF' > custom-config/default.yaml
+          server:
+            port: 8090
+          EOF
+
+      - name: Start containers
+        run: |
+          # Default config container
           docker run -d --name smoke-test \
             -p 18080:8080 \
             -e NODE_ENV=production \
             codex-proxy:smoke
-          echo "Container started"
+          echo "Default container started"
+
+          # Custom config container
+          docker run -d --name smoke-test-custom \
+            -p 18090:8090 \
+            -v $(pwd)/custom-config/default.yaml:/app/config/default.yaml \
+            -e NODE_ENV=production \
+            codex-proxy:smoke
+          echo "Custom container started"
 
       - name: Wait for healthy
         run: |
-          echo "Waiting for container to become healthy..."
-          for i in $(seq 1 30); do
-            STATUS=$(docker inspect --format='{{.State.Health.Status}}' smoke-test 2>/dev/null || echo "starting")
-            echo "  [$i/30] status: $STATUS"
-            if [ "$STATUS" = "healthy" ]; then
-              echo "Container is healthy"
-              exit 0
-            fi
-            sleep 2
-          done
-          echo "::error::Container did not become healthy within 60s"
-          docker logs smoke-test
-          exit 1
+          echo "Waiting for containers to become healthy..."
+          check_health() {
+            local container=$1
+            local timeout=$2
+            for i in $(seq 1 $timeout); do
+              STATUS=$(docker inspect --format='{{.State.Health.Status}}' $container 2>/dev/null || echo "starting")
+              echo "  [$container] [$i/$timeout] status: $STATUS"
+              if [ "$STATUS" = "healthy" ]; then
+                echo "Container $container is healthy"
+                return 0
+              fi
+              sleep 2
+            done
+            echo "::error::Container $container did not become healthy within $((timeout * 2))s"
+            docker logs $container
+            return 1
+          }
 
-      - name: Verify /health endpoint
+          check_health smoke-test 30
+          check_health smoke-test-custom 30
+
+      - name: Verify /health endpoints
         run: |
+          # Default port
           RESPONSE=$(curl -sf http://localhost:18080/health)
-          echo "Response: $RESPONSE"
+          echo "Default response: $RESPONSE"
           echo "$RESPONSE" | jq -e '.status == "ok"'
+
+          # Custom port
+          RESPONSE_CUSTOM=$(curl -sf http://localhost:18090/health)
+          echo "Custom response: $RESPONSE_CUSTOM"
+          echo "$RESPONSE_CUSTOM" | jq -e '.status == "ok"'
 
       - name: Verify /v1/models returns valid JSON
         run: |
@@ -78,5 +108,7 @@ jobs:
       - name: Cleanup
         if: always()
         run: |
-          docker logs smoke-test 2>&1 | tail -30
+          docker logs smoke-test 2>&1 | tail -30 || true
           docker rm -f smoke-test || true
+          docker logs smoke-test-custom 2>&1 | tail -30 || true
+          docker rm -f smoke-test-custom || true
