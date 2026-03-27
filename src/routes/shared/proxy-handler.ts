@@ -25,6 +25,7 @@ import type { UsageInfo } from "../../translation/codex-event-extractor.js";
 import { parseRateLimitHeaders, rateLimitToQuota } from "../../proxy/rate-limit-headers.js";
 import { getConfig } from "../../config.js";
 import { jitterInt } from "../../utils/jitter.js";
+import { getSessionAffinityMap, type SessionAffinityMap } from "../../auth/session-affinity.js";
 
 /** Data prepared by each route after parsing and translating the request. */
 export interface ProxyRequest {
@@ -93,7 +94,13 @@ export async function handleProxyRequest(
   fmt: FormatAdapter,
   proxyPool?: ProxyPool,
 ): Promise<Response> {
-  const acquired = acquireAccount(accountPool, req.codexRequest.model, undefined, fmt.tag);
+  // Session affinity: prefer the account that created the previous response
+  const affinityMap = getSessionAffinityMap();
+  const prevRespId = req.codexRequest.previous_response_id;
+  const preferredEntryId = prevRespId ? affinityMap.lookup(prevRespId) : null;
+
+  // Single acquire call — preferredEntryId is a hint, not a hard requirement
+  const acquired = acquireAccount(accountPool, req.codexRequest.model, undefined, fmt.tag, preferredEntryId ?? undefined);
   if (!acquired) {
     c.status(fmt.noAccountStatus);
     return c.json(fmt.formatNoAccount());
@@ -104,13 +111,25 @@ export async function handleProxyRequest(
   const triedEntryIds: string[] = [entryId];
   let modelRetried = false;
   let usageInfo: UsageInfo | undefined;
+  let capturedResponseId: string | null = null;
   // Idempotent-release guard: prevents double-release across retry branches
   const released = new Set<string>();
 
-  console.log(
-    `[${fmt.tag}] Account ${entryId} | Codex request:`,
-    JSON.stringify(req.codexRequest).slice(0, 300),
-  );
+  {
+    const reqJson = JSON.stringify(req.codexRequest);
+    const inputItems = req.codexRequest.input?.length ?? 0;
+    const instrLen = req.codexRequest.instructions?.length ?? 0;
+    const affinityHit = preferredEntryId && entryId === preferredEntryId;
+    console.log(
+      `[${fmt.tag}] Account ${entryId} | model=${req.model} | input_items=${inputItems} instr=${instrLen}B payload=${reqJson.length}B` +
+      (prevRespId ? ` | affinity=${affinityHit ? "hit" : "miss"}` : ""),
+    );
+    if (reqJson.length > 50_000) {
+      console.warn(
+        `[${fmt.tag}] ⚠ Large payload (${(reqJson.length / 1024).toFixed(1)}KB) — input_items=${inputItems} instr=${instrLen}B`,
+      );
+    }
+  }
 
   const abortController = new AbortController();
   c.req.raw.signal.addEventListener("abort", () => abortController.abort(), { once: true });
@@ -152,9 +171,20 @@ export async function handleProxyRequest(
               s, capturedApi, rawResponse, req.model, fmt,
               (u) => { usageInfo = u; },
               req.tupleSchema,
+              (id) => { capturedResponseId = id; },
             );
           } finally {
             abortController.abort();
+            if (capturedResponseId) {
+              affinityMap.record(capturedResponseId, capturedEntryId);
+            }
+            if (usageInfo) {
+              console.log(
+                `[${fmt.tag}] Account ${capturedEntryId} | Usage: in=${usageInfo.input_tokens} out=${usageInfo.output_tokens}` +
+                (usageInfo.cached_tokens ? ` cached=${usageInfo.cached_tokens}` : "") +
+                (usageInfo.reasoning_tokens ? ` reasoning=${usageInfo.reasoning_tokens}` : ""),
+              );
+            }
             releaseAccount(accountPool, capturedEntryId, usageInfo, released);
           }
         });
@@ -163,7 +193,7 @@ export async function handleProxyRequest(
       // ── Non-streaming path (with empty-response retry) ──
       return await handleNonStreaming(
         c, accountPool, cookieJar, req, fmt, proxyPool,
-        codexApi, rawResponse, entryId, abortController, released,
+        codexApi, rawResponse, entryId, abortController, released, affinityMap,
       );
     } catch (err) {
       if (!(err instanceof CodexApiError)) {
@@ -220,6 +250,7 @@ async function handleNonStreaming(
   initialEntryId: string,
   abortController: AbortController,
   released: Set<string>,
+  affinityMap?: SessionAffinityMap,
 ): Promise<Response> {
   let currentEntryId = initialEntryId;
   let currentApi = initialApi;
@@ -230,6 +261,9 @@ async function handleNonStreaming(
       const result = await fmt.collectTranslator(
         currentApi, currentRawResponse, req.model, req.tupleSchema,
       );
+      if (result.responseId && affinityMap) {
+        affinityMap.record(result.responseId, currentEntryId);
+      }
       releaseAccount(accountPool, currentEntryId, result.usage, released);
       return c.json(result.response);
     } catch (collectErr) {

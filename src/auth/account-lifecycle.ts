@@ -46,7 +46,7 @@ export class AccountLifecycle {
     if (slots.length === 0) this.acquireLocks.delete(entryId);
   }
 
-  acquire(options?: { model?: string; excludeIds?: string[] }): AcquiredAccount | null {
+  acquire(options?: { model?: string; excludeIds?: string[]; preferredEntryId?: string }): AcquiredAccount | null {
     const nowMs = Date.now();
     const now = new Date(nowMs);
 
@@ -100,7 +100,14 @@ export class AccountLifecycle {
       }
     }
 
-    const selected = this.strategy.select(candidates, this.rotationState);
+    // Session affinity: prefer the account that owns the conversation
+    let selected: AccountEntry;
+    if (options?.preferredEntryId) {
+      const preferred = candidates.find((a) => a.id === options.preferredEntryId);
+      selected = preferred ?? this.strategy.select(candidates, this.rotationState);
+    } else {
+      selected = this.strategy.select(candidates, this.rotationState);
+    }
     const prevSlots = this.acquireLocks.get(selected.id);
     const prevSlotMs = prevSlots?.[prevSlots.length - 1] ?? null;
     this.pushSlot(selected.id);

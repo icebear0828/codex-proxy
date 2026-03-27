@@ -28,8 +28,16 @@ describe("acquireAccount", () => {
 
     const result = acquireAccount(pool as never, "gpt-5.4", ["x1"], "OpenAI");
 
-    expect(pool.acquire).toHaveBeenCalledWith({ model: "gpt-5.4", excludeIds: ["x1"] });
+    expect(pool.acquire).toHaveBeenCalledWith({ model: "gpt-5.4", excludeIds: ["x1"], preferredEntryId: undefined });
     expect(result).toEqual({ entryId: "e1", token: "t1", accountId: "a1" });
+  });
+
+  it("passes preferredEntryId for session affinity", () => {
+    pool.acquire.mockReturnValue({ entryId: "e1", token: "t1", accountId: "a1" });
+
+    acquireAccount(pool as never, "gpt-5.4", undefined, "OpenAI", "e1");
+
+    expect(pool.acquire).toHaveBeenCalledWith({ model: "gpt-5.4", excludeIds: undefined, preferredEntryId: "e1" });
   });
 
   it("returns null when pool has no available account", () => {
@@ -45,7 +53,7 @@ describe("acquireAccount", () => {
 
     acquireAccount(pool as never, "gpt-5.4", undefined, "OpenAI");
 
-    expect(pool.acquire).toHaveBeenCalledWith({ model: "gpt-5.4", excludeIds: undefined });
+    expect(pool.acquire).toHaveBeenCalledWith({ model: "gpt-5.4", excludeIds: undefined, preferredEntryId: undefined });
   });
 });
 

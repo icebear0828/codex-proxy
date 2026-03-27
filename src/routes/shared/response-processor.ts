@@ -30,6 +30,7 @@ export async function streamResponse(
   adapter: FormatAdapter,
   onUsage: (u: UsageInfo) => void,
   tupleSchema?: Record<string, unknown> | null,
+  onResponseId?: (id: string) => void,
 ): Promise<void> {
   try {
     for await (const chunk of adapter.streamTranslator(
@@ -37,7 +38,7 @@ export async function streamResponse(
       rawResponse,
       model,
       onUsage,
-      () => {}, // onResponseId — unused at this layer
+      onResponseId ?? (() => {}),
       tupleSchema,
     )) {
       try {

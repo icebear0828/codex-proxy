@@ -17,8 +17,9 @@ export function acquireAccount(
   model: string,
   excludeIds?: string[],
   tag?: string,
+  preferredEntryId?: string,
 ): AcquiredAccount | null {
-  const acquired = pool.acquire({ model, excludeIds });
+  const acquired = pool.acquire({ model, excludeIds, preferredEntryId });
   if (!acquired && tag) {
     console.warn(`[${tag}] No available account for model "${model}"`);
   }

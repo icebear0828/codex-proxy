@@ -1,0 +1,75 @@
+/**
+ * Session affinity — maps Codex response IDs to account entry IDs.
+ *
+ * When a request includes `previous_response_id`, the proxy looks up which
+ * account created that response and routes to the same account. This enables:
+ *   - Server-side conversation history reuse (previous_response_id chain)
+ *   - Prompt cache hits (cache is per-account on the backend)
+ */
+
+interface AffinityEntry {
+  entryId: string;
+  createdAt: number;
+}
+
+const DEFAULT_TTL_MS = 4 * 60 * 60 * 1000; // 4 hours
+const CLEANUP_INTERVAL_MS = 10 * 60 * 1000; // 10 minutes
+
+export class SessionAffinityMap {
+  private map = new Map<string, AffinityEntry>();
+  private ttlMs: number;
+  private cleanupTimer: ReturnType<typeof setInterval> | null = null;
+
+  constructor(ttlMs: number = DEFAULT_TTL_MS) {
+    this.ttlMs = ttlMs;
+    this.cleanupTimer = setInterval(() => this.cleanup(), CLEANUP_INTERVAL_MS);
+  }
+
+  /** Record that a response was created by a specific account. */
+  record(responseId: string, entryId: string): void {
+    this.map.set(responseId, { entryId, createdAt: Date.now() });
+  }
+
+  /** Look up which account created a given response. */
+  lookup(responseId: string): string | null {
+    const entry = this.map.get(responseId);
+    if (!entry) return null;
+    if (Date.now() - entry.createdAt > this.ttlMs) {
+      this.map.delete(responseId);
+      return null;
+    }
+    return entry.entryId;
+  }
+
+  /** Remove expired entries. */
+  private cleanup(): void {
+    const now = Date.now();
+    for (const [key, entry] of this.map) {
+      if (now - entry.createdAt > this.ttlMs) {
+        this.map.delete(key);
+      }
+    }
+  }
+
+  get size(): number {
+    return this.map.size;
+  }
+
+  dispose(): void {
+    if (this.cleanupTimer) {
+      clearInterval(this.cleanupTimer);
+      this.cleanupTimer = null;
+    }
+    this.map.clear();
+  }
+}
+
+/** Singleton instance. */
+let instance: SessionAffinityMap | null = null;
+
+export function getSessionAffinityMap(): SessionAffinityMap {
+  if (!instance) {
+    instance = new SessionAffinityMap();
+  }
+  return instance;
+}
