@@ -210,6 +210,9 @@ export class CodexApi {
     if (request.tools?.length) wsRequest.tools = request.tools;
     if (request.tool_choice) wsRequest.tool_choice = request.tool_choice;
     if (request.text) wsRequest.text = request.text;
+    if (request.service_tier) wsRequest.service_tier = request.service_tier;
+    if (request.prompt_cache_key) wsRequest.prompt_cache_key = request.prompt_cache_key;
+    if (request.include?.length) wsRequest.include = request.include;
 
     return createWebSocketResponse(wsUrl, headers, wsRequest, signal, this.proxyUrl);
   }
@@ -233,7 +236,7 @@ export class CodexApi {
     headers["Accept"] = "text/event-stream";
     headers["OpenAI-Beta"] = "responses_websockets=2026-02-06";
 
-    const { service_tier: _st, previous_response_id: _pid, useWebSocket: _ws, ...bodyFields } = request;
+    const { previous_response_id: _pid, useWebSocket: _ws, ...bodyFields } = request;
     const body = JSON.stringify(bodyFields);
 
     let transportRes;

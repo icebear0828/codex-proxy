@@ -28,6 +28,10 @@ export interface CodexResponsesRequest {
   };
   /** Optional: reference a previous response for multi-turn (WebSocket only). */
   previous_response_id?: string;
+  /** Prompt cache key — stable per-conversation UUID for backend prompt caching. */
+  prompt_cache_key?: string;
+  /** Include additional response data (e.g. "reasoning.encrypted_content"). */
+  include?: string[];
   /** When true, use WebSocket transport (enables previous_response_id and server-side storage). */
   useWebSocket?: boolean;
 }

@@ -8,6 +8,7 @@
  *   - response-processor.ts   — streaming (SSE) response path
  */
 
+import crypto from "crypto";
 import type { Context } from "hono";
 import type { StatusCode } from "hono/utils/http-status";
 import { stream } from "hono/streaming";
@@ -99,6 +100,16 @@ export async function handleProxyRequest(
   const prevRespId = req.codexRequest.previous_response_id;
   const preferredEntryId = prevRespId ? affinityMap.lookup(prevRespId) : null;
 
+  // Conversation ID: inherit from previous response chain, or generate new
+  const conversationId = (prevRespId ? affinityMap.lookupConversationId(prevRespId) : null)
+    ?? crypto.randomUUID();
+  req.codexRequest.prompt_cache_key = conversationId;
+
+  // Set include for reasoning-enabled requests (matches Codex CLI behavior)
+  if (req.codexRequest.reasoning && !req.codexRequest.include?.length) {
+    req.codexRequest.include = ["reasoning.encrypted_content"];
+  }
+
   // Single acquire call — preferredEntryId is a hint, not a hard requirement
   const acquired = acquireAccount(accountPool, req.codexRequest.model, undefined, fmt.tag, preferredEntryId ?? undefined);
   if (!acquired) {
@@ -176,7 +187,7 @@ export async function handleProxyRequest(
           } finally {
             abortController.abort();
             if (capturedResponseId) {
-              affinityMap.record(capturedResponseId, capturedEntryId);
+              affinityMap.record(capturedResponseId, capturedEntryId, conversationId);
             }
             if (usageInfo) {
               console.log(
@@ -193,7 +204,7 @@ export async function handleProxyRequest(
       // ── Non-streaming path (with empty-response retry) ──
       return await handleNonStreaming(
         c, accountPool, cookieJar, req, fmt, proxyPool,
-        codexApi, rawResponse, entryId, abortController, released, affinityMap,
+        codexApi, rawResponse, entryId, abortController, released, affinityMap, conversationId,
       );
     } catch (err) {
       if (!(err instanceof CodexApiError)) {
@@ -251,6 +262,7 @@ async function handleNonStreaming(
   abortController: AbortController,
   released: Set<string>,
   affinityMap?: SessionAffinityMap,
+  conversationId?: string,
 ): Promise<Response> {
   let currentEntryId = initialEntryId;
   let currentApi = initialApi;
@@ -261,8 +273,8 @@ async function handleNonStreaming(
       const result = await fmt.collectTranslator(
         currentApi, currentRawResponse, req.model, req.tupleSchema,
       );
-      if (result.responseId && affinityMap) {
-        affinityMap.record(result.responseId, currentEntryId);
+      if (result.responseId && affinityMap && conversationId) {
+        affinityMap.record(result.responseId, currentEntryId, conversationId);
       }
       releaseAccount(accountPool, currentEntryId, result.usage, released);
       return c.json(result.response);

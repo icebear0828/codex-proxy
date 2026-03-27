@@ -8,12 +8,17 @@
 
 ### Added
 
+- Session affinity：同一对话链路由到同一账号，修复 `previous_response_id` 跨账号失效问题
+- `prompt_cache_key`：每个对话链生成唯一 UUID 传递给后端，启用 prompt cache
+- WebSocket 请求新增 `include: ["reasoning.encrypted_content"]`（reasoning 开启时自动设置）
+- 请求级监控日志：affinity hit/miss、payload 大小、usage 统计、大 payload 告警
 - E2E 测试：proxy-routes（36 cases）、dashboard-auth（9）、batch-label（11）、admin-general（11）、debug-routes（5）—— 覆盖率从 51% 提升至 ~75%
 - 单元测试：config-loader（16 cases）、config-schema（10）、codex-models（9）
 - account-import service 测试补充 RT rotation/fallback 2 cases
 
 ### Fixed
 
+- 修复 `service_tier` 在 WebSocket 和 HTTP 两条路径均被丢弃的 bug — 现在正确转发给后端
 - 修复 `PUT /api/proxies/settings` 被 `PUT /api/proxies/:id` 路由参数 shadow 的 bug（Hono 按注册顺序匹配）
 
 ### Changed

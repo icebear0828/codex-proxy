@@ -9,6 +9,7 @@
 
 interface AffinityEntry {
   entryId: string;
+  conversationId: string;
   createdAt: number;
 }
 
@@ -25,20 +26,31 @@ export class SessionAffinityMap {
     this.cleanupTimer = setInterval(() => this.cleanup(), CLEANUP_INTERVAL_MS);
   }
 
-  /** Record that a response was created by a specific account. */
-  record(responseId: string, entryId: string): void {
-    this.map.set(responseId, { entryId, createdAt: Date.now() });
+  /** Record that a response was created by a specific account in a conversation. */
+  record(responseId: string, entryId: string, conversationId: string): void {
+    this.map.set(responseId, { entryId, conversationId, createdAt: Date.now() });
   }
 
   /** Look up which account created a given response. */
   lookup(responseId: string): string | null {
+    const entry = this.getEntry(responseId);
+    return entry?.entryId ?? null;
+  }
+
+  /** Look up the conversation ID for a given response. */
+  lookupConversationId(responseId: string): string | null {
+    const entry = this.getEntry(responseId);
+    return entry?.conversationId ?? null;
+  }
+
+  private getEntry(responseId: string): AffinityEntry | null {
     const entry = this.map.get(responseId);
     if (!entry) return null;
     if (Date.now() - entry.createdAt > this.ttlMs) {
       this.map.delete(responseId);
       return null;
     }
-    return entry.entryId;
+    return entry;
   }
 
   /** Remove expired entries. */
