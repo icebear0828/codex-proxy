@@ -5,6 +5,10 @@ name: Build libcurl-impersonate shared libraries
 # `npm run setup` can download them without requiring clang on the user's machine.
 
 on:
+  push:
+    branches: [master]
+    paths:
+      - "scripts/infra/setup-curl.ts"
   workflow_dispatch:
     inputs:
       curl_version:
