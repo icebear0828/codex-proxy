@@ -260,25 +260,27 @@ export class AccountRegistry {
     total: number;
     active: number;
     expired: number;
+    quota_exhausted: number;
     rate_limited: number;
     refreshing: number;
     disabled: number;
     banned: number;
   } {
     const now = new Date();
-    let active = 0, expired = 0, rate_limited = 0, refreshing = 0, disabled = 0, banned = 0;
+    let active = 0, expired = 0, quota_exhausted = 0, rate_limited = 0, refreshing = 0, disabled = 0, banned = 0;
     for (const entry of this.accounts.values()) {
       this.refreshStatus(entry, now);
       switch (entry.status) {
         case "active": active++; break;
         case "expired": expired++; break;
+        case "quota_exhausted": quota_exhausted++; break;
         case "rate_limited": rate_limited++; break;
         case "refreshing": refreshing++; break;
         case "disabled": disabled++; break;
         case "banned": banned++; break;
       }
     }
-    return { total: this.accounts.size, active, expired, rate_limited, refreshing, disabled, banned };
+    return { total: this.accounts.size, active, expired, quota_exhausted, rate_limited, refreshing, disabled, banned };
   }
 
   // ── Quota / usage mutations ───────────────────────────────────────

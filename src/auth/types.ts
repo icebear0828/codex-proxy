@@ -5,6 +5,7 @@
 export type AccountStatus =
   | "active"
   | "expired"
+  | "quota_exhausted"
   | "rate_limited"
   | "refreshing"
   | "disabled"

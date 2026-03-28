@@ -125,6 +125,20 @@ describe("handleCodexApiError", () => {
     });
   });
 
+  // ── 402 quota exhausted ──
+
+  describe("402 quota exhausted", () => {
+    it("marks account quota_exhausted and returns retry", () => {
+      const err = new CodexApiError(402, JSON.stringify({ detail: "Payment required" }));
+
+      const result = handleCodexApiError(err, pool as never, entryId, model, tag, false);
+
+      expect(result.action).toBe("retry");
+      expect(result.status).toBe(402);
+      expect(pool.markStatus).toHaveBeenCalledWith(entryId, "quota_exhausted");
+    });
+  });
+
   // ── 403 ban ──
 
   describe("403 ban", () => {

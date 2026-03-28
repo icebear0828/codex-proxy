@@ -86,8 +86,14 @@ export class CodexApiError extends Error {
   ) {
     let detail: string;
     try {
-      const parsed = JSON.parse(body);
-      detail = parsed.detail ?? parsed.error?.message ?? body;
+      const parsed: unknown = JSON.parse(body);
+      if (parsed && typeof parsed === "object") {
+        const obj = parsed as Record<string, unknown>;
+        const raw = obj.detail ?? (obj.error as Record<string, unknown> | undefined)?.message ?? body;
+        detail = typeof raw === "string" ? raw : JSON.stringify(raw);
+      } else {
+        detail = body;
+      }
     } catch {
       detail = body;
     }

@@ -15,6 +15,10 @@ const statusStyles: Record<string, [string, TranslationKey]> = {
     "bg-red-100 text-red-600 border-red-200 dark:bg-red-900/20 dark:text-red-400 dark:border-red-800/30",
     "expired",
   ],
+  quota_exhausted: [
+    "bg-orange-100 text-orange-700 border-orange-200 dark:bg-orange-900/20 dark:text-orange-400 dark:border-orange-800/30",
+    "quotaExhausted",
+  ],
   rate_limited: [
     "bg-amber-100 text-amber-700 border-amber-200 dark:bg-amber-900/20 dark:text-amber-400 dark:border-amber-800/30",
     "rateLimited",
@@ -165,6 +169,7 @@ export function AccountTable({
           <option value="all">{t("allStatuses")}</option>
           <option value="active">{t("active")}</option>
           <option value="expired">{t("expired")}</option>
+          <option value="quota_exhausted">{t("quotaExhausted")}</option>
           <option value="rate_limited">{t("rateLimited")}</option>
           <option value="banned">{t("banned")}</option>
           <option value="disabled">{t("disabled")}</option>
@@ -230,7 +235,7 @@ export function AccountTable({
                 </span>
                 {onToggleStatus && (() => {
                   const isEnabled = acct.status !== "disabled";
-                  const canToggle = acct.status === "active" || acct.status === "disabled" || acct.status === "rate_limited" || acct.status === "refreshing";
+                  const canToggle = acct.status === "active" || acct.status === "disabled" || acct.status === "rate_limited" || acct.status === "refreshing" || acct.status === "quota_exhausted";
                   return (
                     <span class="w-12 hidden sm:flex justify-center" onClick={(e) => e.stopPropagation()}>
                       <button

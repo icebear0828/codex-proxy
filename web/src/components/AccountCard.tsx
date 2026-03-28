@@ -21,6 +21,10 @@ const statusStyles: Record<string, [string, string]> = {
     "bg-red-100 text-red-600 border-red-200 dark:bg-red-900/20 dark:text-red-400 dark:border-red-800/30",
     "expired",
   ],
+  quota_exhausted: [
+    "bg-orange-100 text-orange-700 border-orange-200 dark:bg-orange-900/20 dark:text-orange-400 dark:border-orange-800/30",
+    "quotaExhausted",
+  ],
   rate_limited: [
     "bg-amber-100 text-amber-700 border-amber-200 dark:bg-amber-900/20 dark:text-amber-400 dark:border-amber-800/30",
     "rateLimited",
@@ -130,7 +134,7 @@ export function AccountCard({ account, index, onDelete, proxies, onProxyChange, 
 
   const [statusToggling, setStatusToggling] = useState(false);
   const isEnabled = account.status !== "disabled";
-  const canToggle = account.status === "active" || account.status === "disabled" || account.status === "rate_limited" || account.status === "refreshing";
+  const canToggle = account.status === "active" || account.status === "disabled" || account.status === "rate_limited" || account.status === "refreshing" || account.status === "quota_exhausted";
 
   const handleStatusToggle = useCallback(async () => {
     if (!onToggleStatus || !canToggle) return;

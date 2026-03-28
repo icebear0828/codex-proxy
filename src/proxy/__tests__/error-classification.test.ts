@@ -3,6 +3,7 @@ import { CodexApiError } from "../codex-types.js";
 import {
   extractRetryAfterSec,
   isBanError,
+  isQuotaExhaustedError,
   isTokenInvalidError,
   isModelNotSupportedError,
 } from "../error-classification.js";
@@ -38,6 +39,23 @@ describe("extractRetryAfterSec", () => {
   it("returns undefined for zero resets_in_seconds", () => {
     const body = JSON.stringify({ error: { resets_in_seconds: 0 } });
     expect(extractRetryAfterSec(body)).toBeUndefined();
+  });
+});
+
+describe("isQuotaExhaustedError", () => {
+  it("returns true for 402", () => {
+    const err = new CodexApiError(402, '{"detail": "Payment required"}');
+    expect(isQuotaExhaustedError(err)).toBe(true);
+  });
+
+  it("returns false for non-402", () => {
+    const err = new CodexApiError(429, '{"error": "rate limited"}');
+    expect(isQuotaExhaustedError(err)).toBe(false);
+  });
+
+  it("returns false for non-CodexApiError", () => {
+    expect(isQuotaExhaustedError(new Error("402"))).toBe(false);
+    expect(isQuotaExhaustedError(null)).toBe(false);
   });
 });
 

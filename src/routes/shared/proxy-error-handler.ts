@@ -9,6 +9,7 @@ import type { AccountPool } from "../../auth/account-pool.js";
 import {
   extractRetryAfterSec,
   isBanError,
+  isQuotaExhaustedError,
   isTokenInvalidError,
   isModelNotSupportedError,
 } from "../../proxy/error-classification.js";
@@ -97,7 +98,16 @@ export function handleCodexApiError(
     return { action: "retry", status: 429, message: err.message, useFormat429: true };
   }
 
-  // 3. Ban (non-Cloudflare 403)
+  // 3. Quota exhausted (402 Payment Required)
+  if (isQuotaExhaustedError(err)) {
+    pool.markStatus(entryId, "quota_exhausted");
+    console.warn(
+      `[${tag}] Account ${entryId} (${email}) | 402 quota exhausted, trying different account...`,
+    );
+    return { action: "retry", status: 402, message: err.message };
+  }
+
+  // 4. Ban (non-Cloudflare 403)
   if (isBanError(err)) {
     pool.markStatus(entryId, "banned");
     console.warn(
@@ -106,7 +116,7 @@ export function handleCodexApiError(
     return { action: "retry", status: 403, message: err.message };
   }
 
-  // 4. Token invalidated / account deactivated
+  // 5. Token invalidated / account deactivated
   if (isTokenInvalidError(err)) {
     const isDeactivated = err.message.toLowerCase().includes("deactivated");
     const newStatus = isDeactivated ? "banned" : "expired";
@@ -117,7 +127,7 @@ export function handleCodexApiError(
     return { action: "retry", status: 401, message: err.message };
   }
 
-  // 5. Generic error — return to client
+  // 6. Generic error — return to client
   const status = toErrorStatus(err.status);
   return { action: "respond", status, message: err.message };
 }

@@ -204,6 +204,7 @@ export class AccountPool {
     total: number;
     active: number;
     expired: number;
+    quota_exhausted: number;
     rate_limited: number;
     refreshing: number;
     disabled: number;

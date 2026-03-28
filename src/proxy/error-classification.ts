@@ -36,6 +36,12 @@ export function extractRetryAfterSec(body: string): number | undefined {
   return undefined;
 }
 
+/** Check if a 402 Payment Required indicates the account's quota/subscription is exhausted. */
+export function isQuotaExhaustedError(err: unknown): boolean {
+  if (!isCodexLike(err)) return false;
+  return err.status === 402;
+}
+
 /** Check if an error indicates the account is banned/suspended (non-CF 403). */
 export function isBanError(err: unknown): boolean {
   if (!isCodexLike(err)) return false;
