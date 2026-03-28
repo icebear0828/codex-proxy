@@ -6,6 +6,22 @@
 import type { CodexQuota } from "./types.js";
 import type { CodexUsageResponse } from "../proxy/codex-api.js";
 
+/** True if either primary or secondary rate limit has been reached. */
+export function isAnyLimitReached(quota: CodexQuota | null | undefined): boolean {
+  if (!quota) return false;
+  return quota.rate_limit.limit_reached
+    || (quota.secondary_rate_limit?.limit_reached ?? false);
+}
+
+/** Latest reset_at (Unix seconds) across primary and secondary windows. Returns null if neither has one. */
+export function maxResetAt(quota: CodexQuota | null | undefined): number | null {
+  if (!quota) return null;
+  const primary = quota.rate_limit.reset_at;
+  const secondary = quota.secondary_rate_limit?.reset_at ?? null;
+  if (primary == null && secondary == null) return null;
+  return Math.max(primary ?? 0, secondary ?? 0);
+}
+
 export function toQuota(usage: CodexUsageResponse): CodexQuota {
   const sw = usage.rate_limit.secondary_window;
   return {

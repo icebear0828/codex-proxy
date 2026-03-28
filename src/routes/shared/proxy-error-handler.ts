@@ -15,6 +15,7 @@ import {
 } from "../../proxy/error-classification.js";
 import type { CodexApiError } from "../../proxy/codex-types.js";
 import type { StatusCode } from "hono/utils/http-status";
+import { isAnyLimitReached, maxResetAt } from "../../auth/quota-utils.js";
 
 /** Clamp an HTTP status to a valid error StatusCode, defaulting to 502 for non-error codes. */
 export function toErrorStatus(status: number): StatusCode {
@@ -83,8 +84,8 @@ export function handleCodexApiError(
     // instead of the short default backoff (prevents exhausted accounts from
     // cycling back to "active" after 60s only to get 429'd again)
     const entry = pool.getEntry(entryId);
-    const cachedReset = entry?.cachedQuota?.rate_limit?.reset_at;
-    const effectiveRetry = (entry?.cachedQuota?.rate_limit?.limit_reached && cachedReset)
+    const cachedReset = maxResetAt(entry?.cachedQuota ?? null);
+    const effectiveRetry = (isAnyLimitReached(entry?.cachedQuota ?? null) && cachedReset != null)
       ? Math.max(retryAfterSec ?? 0, cachedReset - Math.floor(Date.now() / 1000))
       : retryAfterSec;
 

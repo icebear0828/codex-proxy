@@ -114,6 +114,23 @@ describe("rotation-strategy", () => {
       expect(strategy.select([a, b], state).id).toBe("b");
     });
 
+    it("deprioritizes accounts with secondary_rate_limit.limit_reached", () => {
+      const secondaryExhausted = makeEntry(
+        "secExhausted",
+        { request_count: 0, window_reset_at: Date.now() + 1 * 86400_000 },
+        {
+          rate_limit: { allowed: true, limit_reached: false, used_percent: 30, reset_at: null, limit_window_seconds: null },
+          secondary_rate_limit: { limit_reached: true, used_percent: 100, reset_at: null, limit_window_seconds: null },
+        },
+      );
+      const healthy = makeEntry(
+        "healthy",
+        { request_count: 5, window_reset_at: Date.now() + 7 * 86400_000 },
+        { rate_limit: { allowed: true, limit_reached: false, used_percent: 30, reset_at: null, limit_window_seconds: null } },
+      );
+      expect(strategy.select([secondaryExhausted, healthy], state).id).toBe("healthy");
+    });
+
     it("treats accounts without cached quota as non-exhausted", () => {
       const noQuota = makeEntry("noQuota", { request_count: 2, window_reset_at: Date.now() + 7 * 86400_000 });
       const exhausted = makeEntry(

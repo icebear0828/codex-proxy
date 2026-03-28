@@ -24,6 +24,7 @@ import { handleCodexApiError, toErrorStatus } from "./proxy-error-handler.js";
 import { streamResponse } from "./response-processor.js";
 import type { UsageInfo } from "../../translation/codex-event-extractor.js";
 import { parseRateLimitHeaders, rateLimitToQuota } from "../../proxy/rate-limit-headers.js";
+import { isAnyLimitReached, maxResetAt } from "../../auth/quota-utils.js";
 import { getConfig } from "../../config.js";
 import { jitterInt } from "../../utils/jitter.js";
 import { getSessionAffinityMap, type SessionAffinityMap } from "../../auth/session-affinity.js";
@@ -171,9 +172,18 @@ export async function handleProxyRequest(
           const windowSec = rl.primary.window_minutes != null ? rl.primary.window_minutes * 60 : null;
           accountPool.syncRateLimitWindow(entryId, rl.primary.reset_at, windowSec);
         }
+        // Also sync secondary window if it resets later than current window
+        if (rl.secondary?.reset_at != null) {
+          const currentResetAt = accountPool.getEntry(entryId)?.usage.window_reset_at ?? null;
+          if (currentResetAt == null || rl.secondary.reset_at > currentResetAt) {
+            const secWindowSec = rl.secondary.window_minutes != null ? rl.secondary.window_minutes * 60 : null;
+            accountPool.syncRateLimitWindow(entryId, rl.secondary.reset_at, secWindowSec);
+          }
+        }
         // Proactively mark exhausted accounts so they don't get re-selected
-        if (quota.rate_limit.limit_reached && rl.primary?.reset_at != null) {
-          const backoffSec = rl.primary.reset_at - Math.floor(Date.now() / 1000);
+        const effectiveResetAt = maxResetAt(quota);
+        if (isAnyLimitReached(quota) && effectiveResetAt != null) {
+          const backoffSec = effectiveResetAt - Math.floor(Date.now() / 1000);
           if (backoffSec > 0) {
             accountPool.markRateLimited(entryId, { retryAfterSec: backoffSec });
           }

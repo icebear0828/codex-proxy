@@ -6,6 +6,13 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- 账号轮转现在同时考虑 primary 和 secondary（周额度等）rate limit，防止 secondary 打满时账号仍被选中
+- `skip_exhausted` 配置项正式接入 `acquire()` 硬过滤逻辑，此前仅存在于配置/UI 层
+- 429 backoff 计算使用 `max(primary.reset_at, secondary.reset_at)`，避免 secondary 满时给过短 backoff
+- 被动 quota 采集增加 secondary window 同步（`syncRateLimitWindow`）
+
 ### Added
 
 - 加强伪装：Rust native transport（reqwest + rustls），TLS 指纹精确匹配真实 Codex Desktop；补齐 `x-openai-internal-codex-residency`、`x-client-request-id`、`x-codex-turn-state` 请求头
