@@ -4,6 +4,7 @@
  */
 
 import type { AccountEntry } from "./types.js";
+import { isAnyLimitReached } from "./quota-utils.js";
 
 export type RotationStrategyName = "least_used" | "round_robin" | "sticky";
 
@@ -18,9 +19,9 @@ export interface RotationStrategy {
 const leastUsed: RotationStrategy = {
   select(candidates) {
     const sorted = [...candidates].sort((a, b) => {
-      // Primary: deprioritize quota-exhausted accounts
-      const aExhausted = a.cachedQuota?.rate_limit?.limit_reached ? 1 : 0;
-      const bExhausted = b.cachedQuota?.rate_limit?.limit_reached ? 1 : 0;
+      // Primary: deprioritize quota-exhausted accounts (primary OR secondary)
+      const aExhausted = isAnyLimitReached(a.cachedQuota) ? 1 : 0;
+      const bExhausted = isAnyLimitReached(b.cachedQuota) ? 1 : 0;
       if (aExhausted !== bExhausted) return aExhausted - bExhausted;
       // Secondary: prefer account whose quota resets soonest (use it before it resets)
       const aReset = a.usage.window_reset_at ?? Infinity;

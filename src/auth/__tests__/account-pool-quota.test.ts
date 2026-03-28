@@ -180,4 +180,62 @@ describe("AccountPool quota methods", () => {
       expect(acquired).toBeNull();
     });
   });
+
+  describe("acquire respects skip_exhausted config", () => {
+    it("skips account with primary limit_reached when skip_exhausted=true", () => {
+      setConfigForTesting(createMockConfig({ quota: { skip_exhausted: true } }));
+      const id1 = pool.addAccount(createValidJwt({ accountId: "se1" }));
+      const id2 = pool.addAccount(createValidJwt({ accountId: "se2" }));
+
+      pool.updateCachedQuota(id1, makeQuota({
+        rate_limit: { allowed: true, limit_reached: true, used_percent: 100, reset_at: Math.floor(Date.now() / 1000) + 7200, limit_window_seconds: 3600 },
+      }));
+
+      const acquired = pool.acquire();
+      expect(acquired).not.toBeNull();
+      expect(acquired!.entryId).toBe(id2);
+      pool.release(acquired!.entryId);
+    });
+
+    it("skips account with secondary limit_reached when skip_exhausted=true", () => {
+      setConfigForTesting(createMockConfig({ quota: { skip_exhausted: true } }));
+      const id1 = pool.addAccount(createValidJwt({ accountId: "se3" }));
+      const id2 = pool.addAccount(createValidJwt({ accountId: "se4" }));
+
+      pool.updateCachedQuota(id1, makeQuota({
+        secondary_rate_limit: { limit_reached: true, used_percent: 100, reset_at: Math.floor(Date.now() / 1000) + 86400, limit_window_seconds: 604800 },
+      }));
+
+      const acquired = pool.acquire();
+      expect(acquired).not.toBeNull();
+      expect(acquired!.entryId).toBe(id2);
+      pool.release(acquired!.entryId);
+    });
+
+    it("does not skip exhausted account when skip_exhausted=false", () => {
+      setConfigForTesting(createMockConfig({ quota: { skip_exhausted: false } }));
+      const id1 = pool.addAccount(createValidJwt({ accountId: "se5" }));
+
+      pool.updateCachedQuota(id1, makeQuota({
+        rate_limit: { allowed: true, limit_reached: true, used_percent: 100, reset_at: Math.floor(Date.now() / 1000) + 7200, limit_window_seconds: 3600 },
+      }));
+
+      const acquired = pool.acquire();
+      expect(acquired).not.toBeNull();
+      expect(acquired!.entryId).toBe(id1);
+      pool.release(acquired!.entryId);
+    });
+
+    it("returns null when all accounts exhausted and skip_exhausted=true", () => {
+      setConfigForTesting(createMockConfig({ quota: { skip_exhausted: true } }));
+      const id1 = pool.addAccount(createValidJwt({ accountId: "se6" }));
+
+      pool.updateCachedQuota(id1, makeQuota({
+        rate_limit: { allowed: true, limit_reached: true, used_percent: 100, reset_at: Math.floor(Date.now() / 1000) + 7200, limit_window_seconds: 3600 },
+      }));
+
+      const acquired = pool.acquire();
+      expect(acquired).toBeNull();
+    });
+  });
 });

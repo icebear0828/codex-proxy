@@ -7,6 +7,7 @@
 
 import { getConfig } from "../config.js";
 import { getModelPlanTypes, isPlanFetched } from "../models/model-store.js";
+import { isAnyLimitReached } from "./quota-utils.js";
 import { getRotationStrategy } from "./rotation-strategy.js";
 import type { RotationStrategy, RotationState, RotationStrategyName } from "./rotation-strategy.js";
 import type { AccountRegistry } from "./account-registry.js";
@@ -70,14 +71,17 @@ export class AccountLifecycle {
       }
     }
 
-    const maxConcurrent = getConfig().auth.max_concurrent_per_account ?? 3;
+    const config = getConfig();
+    const maxConcurrent = config.auth.max_concurrent_per_account ?? 3;
+    const skipExhausted = config.quota?.skip_exhausted ?? true;
     const excludeSet = options?.excludeIds?.length ? new Set(options.excludeIds) : null;
 
     const available = entries.filter(
       (a) =>
         a.status === "active" &&
         this.slotCount(a.id) < maxConcurrent &&
-        (!excludeSet || !excludeSet.has(a.id)),
+        (!excludeSet || !excludeSet.has(a.id)) &&
+        (!skipExhausted || !isAnyLimitReached(a.cachedQuota)),
     );
 
     if (available.length === 0) return null;
