@@ -37,6 +37,9 @@ export interface ImportDeps {
 }
 
 export class AccountImportService {
+  /** Tracks RTs currently being refreshed to prevent concurrent consumption. */
+  private refreshingRTs = new Set<string>();
+
   constructor(
     private pool: AccountPool,
     private scheduler: { scheduleOne(entryId: string, token: string): void },
@@ -133,7 +136,18 @@ export class AccountImportService {
       return { ok: true, token, rt };
     }
 
-    // Refresh-token-only path
+    // Refresh-token-only path — check if this RT already belongs to an existing account
+    const existing = this.pool.getAllEntries().find((a) => a.refreshToken === rt);
+    if (existing) {
+      return { ok: true, token: existing.token, rt: existing.refreshToken };
+    }
+
+    // Prevent concurrent refresh of the same RT (e.g. duplicate entries in import file)
+    if (this.refreshingRTs.has(rt as string)) {
+      return { ok: false, error: "Duplicate RT in import batch (skipped to protect token)", kind: "refresh_failed" };
+    }
+    this.refreshingRTs.add(rt as string);
+
     try {
       const proxyUrl = this.deps.getProxyUrl();
       const tokens = await this.deps.refreshToken(rt as string, proxyUrl);
@@ -159,6 +173,8 @@ export class AccountImportService {
         error: `Refresh token exchange failed: ${err instanceof Error ? err.message : String(err)}`,
         kind: "refresh_failed",
       };
+    } finally {
+      this.refreshingRTs.delete(rt as string);
     }
   }
 }
