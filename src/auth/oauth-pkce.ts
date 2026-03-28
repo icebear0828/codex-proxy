@@ -41,6 +41,8 @@ interface PendingSession {
   returnHost: string;
   source: "login" | "dashboard";
   createdAt: number;
+  /** True while an exchangeCode call is in flight — prevents concurrent exchange of the same code. */
+  exchanging?: boolean;
 }
 
 const isCfResponse = (r: CurlFetchResponse) => isCloudflareChallengeResponse(r.status, r.body);
@@ -322,6 +324,28 @@ export function deleteSession(state: string): void {
   pendingSessions.delete(state);
 }
 
+/**
+ * Atomically acquire a session for code exchange.
+ * Returns the session if available and not already being exchanged.
+ * Returns null if session is missing, expired, or another handler is already exchanging.
+ * This prevents concurrent exchange of the same authorization code.
+ */
+export function tryAcquireSession(state: string): PendingSession | null {
+  const session = peekSession(state);
+  if (!session) return null;
+  if (session.exchanging) return null;
+  session.exchanging = true;
+  return session;
+}
+
+/**
+ * Release the exchange lock so the session can be retried (e.g., after a network error).
+ */
+export function releaseSession(state: string): void {
+  const session = pendingSessions.get(state);
+  if (session) session.exchanging = false;
+}
+
 // ── Temporary callback server ──────────────────────────────────────
 
 /** Track the active callback server so we can close it before starting a new one. */
@@ -375,9 +399,10 @@ export function startCallbackServer(
       return;
     }
 
-    const session = peekSession(state);
+    const session = tryAcquireSession(state);
     if (!session) {
-      if (isSessionCompleted(state)) {
+      if (isSessionCompleted(state) || peekSession(state)?.exchanging) {
+        // Already completed or another handler is exchanging — treat as success
         res.writeHead(200, { "Content-Type": "text/html" });
         res.end(callbackResultHtml(true));
         scheduleClose();
@@ -398,7 +423,8 @@ export function startCallbackServer(
       res.writeHead(200, { "Content-Type": "text/html" });
       res.end(callbackResultHtml(true));
     } catch (err) {
-      // Session stays in map — user can retry
+      // Release lock so user can retry, but session stays in map
+      releaseSession(state);
       const msg = err instanceof Error ? err.message : String(err);
       console.error(`[OAuth] Callback server token exchange failed: ${msg}`);
       res.writeHead(200, { "Content-Type": "text/html" });

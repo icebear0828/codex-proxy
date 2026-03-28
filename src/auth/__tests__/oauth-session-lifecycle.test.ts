@@ -107,4 +107,47 @@ describe("OAuth session lifecycle", () => {
 
     expect(isSessionCompleted(state)).toBe(true);
   });
+
+  it("tryAcquireSession prevents concurrent exchange", async () => {
+    const { createOAuthSession, tryAcquireSession, peekSession } =
+      await import("../oauth-pkce.js");
+    const { state } = createOAuthSession("localhost:8080", "login");
+
+    // First acquire succeeds
+    const session1 = tryAcquireSession(state);
+    expect(session1).not.toBeNull();
+    expect(session1!.exchanging).toBe(true);
+
+    // Second acquire returns null — session is being exchanged
+    const session2 = tryAcquireSession(state);
+    expect(session2).toBeNull();
+
+    // peekSession still returns the session (with exchanging flag)
+    const peeked = peekSession(state);
+    expect(peeked).not.toBeNull();
+    expect(peeked!.exchanging).toBe(true);
+  });
+
+  it("releaseSession allows retry after failed exchange", async () => {
+    const { createOAuthSession, tryAcquireSession, releaseSession } =
+      await import("../oauth-pkce.js");
+    const { state } = createOAuthSession("localhost:8080", "login");
+
+    // Acquire
+    const session1 = tryAcquireSession(state);
+    expect(session1).not.toBeNull();
+
+    // Simulate exchange failure — release the lock
+    releaseSession(state);
+
+    // Retry should succeed
+    const session2 = tryAcquireSession(state);
+    expect(session2).not.toBeNull();
+    expect(session2!.codeVerifier).toBe(session1!.codeVerifier);
+  });
+
+  it("tryAcquireSession returns null for unknown/expired state", async () => {
+    const { tryAcquireSession } = await import("../oauth-pkce.js");
+    expect(tryAcquireSession("nonexistent")).toBeNull();
+  });
 });

@@ -14,6 +14,8 @@ import {
   importCliAuth,
   markSessionCompleted,
   isSessionCompleted,
+  tryAcquireSession,
+  releaseSession,
 } from "../auth/oauth-pkce.js";
 
 export function createAuthRoutes(
@@ -82,10 +84,10 @@ export function createAuthRoutes(
       return c.json({ error: "URL must contain code and state parameters" }, 400);
     }
 
-    const session = peekSession(state);
+    const session = tryAcquireSession(state);
     if (!session) {
-      // Session already completed by callback server — treat as success
-      if (isSessionCompleted(state)) {
+      // Session already completed or another handler is exchanging — treat as success
+      if (isSessionCompleted(state) || peekSession(state)?.exchanging) {
         return c.json({ success: true });
       }
       return c.json({ error: "Invalid or expired session. Please try again." }, 400);
@@ -101,7 +103,8 @@ export function createAuthRoutes(
       console.log(`[Auth] OAuth via code-relay — account ${entryId} added`);
       return c.json({ success: true });
     } catch (err) {
-      // Session stays in map — user can retry
+      // Release lock so user can retry, but session stays in map
+      releaseSession(state);
       const msg = err instanceof Error ? err.message : String(err);
       console.error("[Auth] Code relay token exchange failed:", msg);
       return c.json({ error: `Token exchange failed: ${msg}` }, 500);
@@ -124,10 +127,10 @@ export function createAuthRoutes(
       return c.html(errorPage("Missing code or state parameter"), 400);
     }
 
-    const session = peekSession(state);
+    const session = tryAcquireSession(state);
     if (!session) {
-      // Session already completed by callback server — redirect home
-      if (isSessionCompleted(state)) {
+      // Session already completed or another handler is exchanging — redirect home
+      if (isSessionCompleted(state) || peekSession(state)?.exchanging) {
         const config = getConfig();
         const host = c.req.header("host") || `localhost:${config.server.port}`;
         return c.redirect(`http://${host}/`);
@@ -148,7 +151,8 @@ export function createAuthRoutes(
       const returnUrl = `http://${session.returnHost}/`;
       return c.redirect(returnUrl);
     } catch (err) {
-      // Session stays in map — user can retry
+      // Release lock so user can retry, but session stays in map
+      releaseSession(state);
       const msg = err instanceof Error ? err.message : String(err);
       console.error("[Auth] Token exchange failed:", msg);
       return c.html(errorPage(`Token exchange failed: ${msg}`), 500);
