@@ -62,6 +62,24 @@ jobs:
       - name: Build core (web + tsc)
         run: npm run build
 
+      - name: Setup Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Rust build
+        uses: actions/cache@v4
+        with:
+          path: native/target
+          key: native-${{ runner.os }}-${{ matrix.arch || 'x64' }}-${{ hashFiles('native/Cargo.lock') }}
+          restore-keys: native-${{ runner.os }}-${{ matrix.arch || 'x64' }}-
+
+      - name: Install native addon dependencies
+        working-directory: native
+        run: npm ci
+
+      - name: Build native addon
+        working-directory: native
+        run: npm run build
+
       - name: Bundle Electron (esbuild)
         working-directory: packages/electron
         run: node electron/build.mjs
@@ -130,6 +148,26 @@ jobs:
 
       - name: Build core (web + tsc)
         run: npm run build
+
+      - name: Setup Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-apple-darwin
+
+      - name: Cache Rust build
+        uses: actions/cache@v4
+        with:
+          path: native/target
+          key: native-macos-x64-${{ hashFiles('native/Cargo.lock') }}
+          restore-keys: native-macos-x64-
+
+      - name: Install native addon dependencies
+        working-directory: native
+        run: npm ci
+
+      - name: Build native addon (x64)
+        working-directory: native
+        run: npm run build -- --target x86_64-apple-darwin
 
       - name: Bundle Electron (esbuild)
         working-directory: packages/electron
