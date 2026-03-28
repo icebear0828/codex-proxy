@@ -399,6 +399,14 @@ export class AccountRegistry {
       }
       this.schedulePersist();
     }
+
+    // Clear stale cached quota when its own reset time has passed
+    const quotaReset = entry.cachedQuota?.rate_limit?.reset_at;
+    if (quotaReset != null && nowSec >= quotaReset) {
+      entry.cachedQuota = null;
+      entry.quotaFetchedAt = null;
+      this.schedulePersist();
+    }
   }
 
   toInfo(entry: AccountEntry): AccountInfo {
