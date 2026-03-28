@@ -11,3 +11,6 @@ stitch-*/
 .env
 .env.*
 scripts/poc-*
+native/target/
+native/node_modules/
+native/*.node
