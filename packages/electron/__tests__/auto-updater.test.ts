@@ -74,16 +74,16 @@ describe("auto-updater state machine", () => {
     expect(state.error).toBeNull();
   });
 
-  it("configures autoUpdater on init (autoUpdate defaults to true)", () => {
+  it("configures autoUpdater on init (autoDownload always false)", () => {
     initAutoUpdater(mockOptions);
 
-    // Non-macOS + autoUpdate=true → autoDownload=true
-    expect(mockAutoUpdater.autoDownload).toBe(true);
+    // autoDownload is always false — user must confirm before downloading
+    expect(mockAutoUpdater.autoDownload).toBe(false);
     expect(mockAutoUpdater.autoInstallOnAppQuit).toBe(true);
     expect(mockAutoUpdater.allowPrerelease).toBe(false);
   });
 
-  it("autoDownload=false when autoUpdate is explicitly false", () => {
+  it("autoDownload=false even when autoUpdate is explicitly false", () => {
     initAutoUpdater({ ...mockOptions, autoUpdate: false });
 
     expect(mockAutoUpdater.autoDownload).toBe(false);
@@ -255,14 +255,14 @@ describe("auto-updater state machine", () => {
     expect(mockWin.setProgressBar).toHaveBeenCalledWith(-1);
   });
 
-  it("skips download dialog when autoUpdate=true (non-macOS)", () => {
+  it("shows download dialog when autoUpdate=true (non-macOS)", () => {
     initAutoUpdater({ ...mockOptions, autoUpdate: true });
 
     mockAutoUpdater.emit("update-available", { version: "3.0.0" });
 
     const state = getAutoUpdateState();
     expect(state.updateAvailable).toBe(true);
-    // Should NOT show dialog (autoDownload handles it)
-    expect(mockDialog.showMessageBox).not.toHaveBeenCalled();
+    // Always shows dialog — user must confirm before downloading
+    expect(mockDialog.showMessageBox).toHaveBeenCalledTimes(1);
   });
 });

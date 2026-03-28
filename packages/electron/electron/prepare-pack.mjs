@@ -50,6 +50,7 @@ if (isClean) {
 } else {
   cpSync(nativeSrc, nativeDest, {
     recursive: true,
+    force: true,
     filter: (src) => {
       const rel = src.slice(nativeSrc.length);
       // Skip Rust source, build artifacts, and node_modules

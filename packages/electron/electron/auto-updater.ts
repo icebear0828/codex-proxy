@@ -51,8 +51,9 @@ export function getAutoUpdateState(): AutoUpdateState {
 export function initAutoUpdater(options: AutoUpdaterOptions): void {
   const isAutoUpdate = options.autoUpdate ?? true;
 
-  // Non-macOS with auto-update: download immediately without user interaction
-  autoUpdater.autoDownload = isAutoUpdate && !IS_MAC;
+  // Never auto-download: notify user first, let them choose when to update.
+  // Avoids unexpected bandwidth usage, mid-session restarts, and breakage.
+  autoUpdater.autoDownload = false;
   // macOS: ad-hoc signed zips can't be auto-installed — disable to avoid silent failures
   autoUpdater.autoInstallOnAppQuit = !IS_MAC;
   autoUpdater.allowPrerelease = false;
@@ -69,18 +70,6 @@ export function initAutoUpdater(options: AutoUpdaterOptions): void {
     state.releaseUrl = `https://github.com/${GITHUB_REPO}/releases/tag/v${info.version}`;
     options.rebuildTrayMenu();
 
-    // Auto-update on non-macOS: autoDownload handles it, no dialog needed
-    if (isAutoUpdate && !IS_MAC) return;
-
-    // macOS auto-update: open release page automatically (still needs manual DMG install)
-    if (isAutoUpdate && IS_MAC) {
-      shell.openExternal(state.releaseUrl!).catch((err: unknown) => {
-        console.error("[AutoUpdater] Failed to open release page:", err instanceof Error ? err.message : err);
-      });
-      return;
-    }
-
-    // Manual mode: show dialog
     // Don't re-prompt if user already dismissed this version
     if (info.version === dismissedVersion) return;
 

@@ -47,6 +47,7 @@ jobs:
           cache-dependency-path: |
             package-lock.json
             web/package-lock.json
+            native/package-lock.json
 
       - name: Install all workspace dependencies
         run: npm ci --ignore-scripts
@@ -134,6 +135,7 @@ jobs:
           cache-dependency-path: |
             package-lock.json
             web/package-lock.json
+            native/package-lock.json
 
       - name: Install all workspace dependencies
         run: npm ci --ignore-scripts
@@ -167,7 +169,7 @@ jobs:
 
       - name: Build native addon (x64)
         working-directory: native
-        run: npm run build -- --target x86_64-apple-darwin
+        run: npx napi build --platform --release --target x86_64-apple-darwin
 
       - name: Bundle Electron (esbuild)
         working-directory: packages/electron

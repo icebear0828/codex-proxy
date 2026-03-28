@@ -8,6 +8,7 @@
 import { existsSync } from "fs";
 import { resolve } from "path";
 import { getBinDir } from "../paths.js";
+import { isNativeAvailable } from "./native-transport.js";
 
 export interface TlsTransportResponse {
   status: number;
@@ -83,7 +84,7 @@ export async function initTransport(): Promise<TlsTransport> {
   const setting = config.tls.transport ?? "auto";
 
   // Native transport (Rust reqwest + rustls) — preferred for matching Codex Desktop TLS
-  if (setting === "native" || (setting === "auto" && shouldUseNative())) {
+  if (setting === "native" || (setting === "auto" && isNativeAvailable())) {
     try {
       const { createNativeTransport } = await import("./native-transport.js");
       _transport = await createNativeTransport();
@@ -129,15 +130,6 @@ export async function initTransport(): Promise<TlsTransport> {
 export function getTransport(): TlsTransport {
   if (!_transport) throw new Error("Transport not initialized. Call initTransport() first.");
   return _transport;
-}
-
-/**
- * Determine if native (Rust) transport should be used in "auto" mode.
- * Checks if the napi-rs loader + platform-specific .node file exist.
- */
-function shouldUseNative(): boolean {
-  const nativeDir = resolve(getBinDir(), "..", "native");
-  return existsSync(resolve(nativeDir, "index.js"));
 }
 
 /**
