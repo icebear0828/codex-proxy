@@ -108,6 +108,7 @@ export function createSettingsRoutes(): Hono {
       max_concurrent_per_account: config.auth.max_concurrent_per_account,
       request_interval_ms: config.auth.request_interval_ms,
       auto_update: config.update.auto_update,
+      auto_download: config.update.auto_download,
     });
   });
 
@@ -138,6 +139,7 @@ export function createSettingsRoutes(): Hono {
       max_concurrent_per_account?: number | null;
       request_interval_ms?: number | null;
       auto_update?: boolean;
+      auto_download?: boolean;
     };
 
     // --- validation ---
@@ -249,6 +251,10 @@ export function createSettingsRoutes(): Hono {
         if (!data.update) data.update = {};
         (data.update as Record<string, unknown>).auto_update = body.auto_update;
       }
+      if (body.auto_download !== undefined) {
+        if (!data.update) data.update = {};
+        (data.update as Record<string, unknown>).auto_download = body.auto_download;
+      }
     });
     reloadAllConfigs();
 
@@ -271,6 +277,7 @@ export function createSettingsRoutes(): Hono {
       max_concurrent_per_account: updated.auth.max_concurrent_per_account,
       request_interval_ms: updated.auth.request_interval_ms,
       auto_update: updated.update.auto_update,
+      auto_download: updated.update.auto_download,
       restart_required: restartRequired,
     });
   });

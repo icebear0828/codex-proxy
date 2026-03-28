@@ -12,6 +12,7 @@ export interface GeneralSettingsData {
   refresh_margin_seconds: number;
   refresh_concurrency: number;
   auto_update: boolean;
+  auto_download: boolean;
 }
 
 interface GeneralSettingsSaveResponse extends GeneralSettingsData {
@@ -69,6 +70,7 @@ export function useGeneralSettings(apiKey: string | null) {
         refresh_margin_seconds: result.refresh_margin_seconds,
         refresh_concurrency: result.refresh_concurrency,
         auto_update: result.auto_update,
+        auto_download: result.auto_download,
       });
       setRestartRequired(result.restart_required);
       setSaved(true);

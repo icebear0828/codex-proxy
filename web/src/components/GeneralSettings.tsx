@@ -21,6 +21,7 @@ export function GeneralSettings() {
   const [draftMaxConcurrent, setDraftMaxConcurrent] = useState<string | null>(null);
   const [draftRequestInterval, setDraftRequestInterval] = useState<string | null>(null);
   const [draftAutoUpdate, setDraftAutoUpdate] = useState<boolean | null>(null);
+  const [draftAutoDownload, setDraftAutoDownload] = useState<boolean | null>(null);
   const [collapsed, setCollapsed] = useState(true);
 
   const currentPort = gs.data?.port ?? 8080;
@@ -36,6 +37,7 @@ export function GeneralSettings() {
   const currentMaxConcurrent = gs.data?.max_concurrent_per_account ?? 3;
   const currentRequestInterval = gs.data?.request_interval_ms ?? 50;
   const currentAutoUpdate = gs.data?.auto_update ?? true;
+  const currentAutoDownload = gs.data?.auto_download ?? false;
 
   const displayPort = draftPort ?? String(currentPort);
   const displayProxyUrl = draftProxyUrl ?? currentProxyUrl;
@@ -50,6 +52,7 @@ export function GeneralSettings() {
   const displayMaxConcurrent = draftMaxConcurrent ?? String(currentMaxConcurrent);
   const displayRequestInterval = draftRequestInterval ?? String(currentRequestInterval);
   const displayAutoUpdate = draftAutoUpdate ?? currentAutoUpdate;
+  const displayAutoDownload = draftAutoDownload ?? currentAutoDownload;
 
   const isDirty =
     draftPort !== null ||
@@ -64,7 +67,8 @@ export function GeneralSettings() {
     draftRefreshConcurrency !== null ||
     draftMaxConcurrent !== null ||
     draftRequestInterval !== null ||
-    draftAutoUpdate !== null;
+    draftAutoUpdate !== null ||
+    draftAutoDownload !== null;
 
   const handleSave = useCallback(async () => {
     const patch: Record<string, unknown> = {};
@@ -131,6 +135,10 @@ export function GeneralSettings() {
       patch.auto_update = draftAutoUpdate;
     }
 
+    if (draftAutoDownload !== null) {
+      patch.auto_download = draftAutoDownload;
+    }
+
     await gs.save(patch);
     setDraftPort(null);
     setDraftProxyUrl(null);
@@ -145,7 +153,8 @@ export function GeneralSettings() {
     setDraftMaxConcurrent(null);
     setDraftRequestInterval(null);
     setDraftAutoUpdate(null);
-  }, [draftPort, draftProxyUrl, draftForceHttp11, draftInjectContext, draftSuppressDirectives, draftDefaultModel, draftReasoningEffort, draftRefreshEnabled, draftRefreshMargin, draftRefreshConcurrency, draftMaxConcurrent, draftRequestInterval, draftAutoUpdate, gs]);
+    setDraftAutoDownload(null);
+  }, [draftPort, draftProxyUrl, draftForceHttp11, draftInjectContext, draftSuppressDirectives, draftDefaultModel, draftReasoningEffort, draftRefreshEnabled, draftRefreshMargin, draftRefreshConcurrency, draftMaxConcurrent, draftRequestInterval, draftAutoUpdate, draftAutoDownload, gs]);
 
   const inputCls =
     "w-full px-3 py-2 bg-white dark:bg-bg-dark border border-gray-200 dark:border-border-dark rounded-lg text-[0.78rem] font-mono text-slate-700 dark:text-text-main outline-none focus:ring-1 focus:ring-primary";
@@ -185,6 +194,33 @@ export function GeneralSettings() {
               </label>
             </div>
             <p class="text-xs text-slate-400 dark:text-text-dim ml-6">{t("generalSettingsAutoUpdateHint")}</p>
+          </div>
+
+          {/* Auto Download */}
+          <div class="space-y-1">
+            <div class="flex items-center gap-2">
+              <input
+                type="checkbox"
+                id="auto-download"
+                checked={displayAutoDownload}
+                onChange={(e) => setDraftAutoDownload((e.target as HTMLInputElement).checked)}
+                disabled={!displayAutoUpdate}
+                class={`w-4 h-4 rounded border-gray-300 dark:border-border-dark text-primary focus:ring-primary ${
+                  displayAutoUpdate ? "cursor-pointer" : "cursor-not-allowed opacity-50"
+                }`}
+              />
+              <label
+                for="auto-download"
+                class={`text-xs font-semibold cursor-pointer ${
+                  displayAutoUpdate
+                    ? "text-slate-700 dark:text-text-main"
+                    : "text-slate-400 dark:text-text-dim"
+                }`}
+              >
+                {t("generalSettingsAutoDownload")}
+              </label>
+            </div>
+            <p class="text-xs text-slate-400 dark:text-text-dim ml-6">{t("generalSettingsAutoDownloadHint")}</p>
           </div>
 
           {/* Server Port */}
