@@ -1,0 +1,31 @@
+name: web-smoke-test
+
+on:
+  push:
+    branches: [ master ]
+  pull_request:
+
+jobs:
+  test-web:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install dependencies
+        run: |
+          npm ci
+          cd web && npm ci
+          cd ../packages/electron && npm ci
+          cd ../..
+
+      - name: Build project
+        run: npm run build
+
+      - name: Run web smoke test
+        run: npm test -- src/__tests__/web-smoke.test.ts

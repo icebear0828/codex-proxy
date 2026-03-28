@@ -1,0 +1,100 @@
+name: docker-smoke-test
+
+on:
+  push:
+    branches: [ master ]
+  pull_request:
+
+jobs:
+  test-docker:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Build Docker image
+        run: docker build -t codex-proxy-test .
+
+      - name: Run container on default port 8080
+        run: |
+          docker run -d --name codex-proxy -p 8080:8080 codex-proxy-test
+
+          echo "Waiting for container to become healthy..."
+          for i in {1..30}; do
+            STATUS=$(docker inspect --format='{{json .State.Health.Status}}' codex-proxy)
+            if [ "$STATUS" = "\"healthy\"" ]; then
+              echo "Container is healthy!"
+              break
+            fi
+            if [ "$STATUS" = "\"unhealthy\"" ]; then
+              echo "Container healthcheck failed!"
+              docker logs codex-proxy
+              exit 1
+            fi
+            sleep 1
+          done
+
+          if [ "$STATUS" != "\"healthy\"" ]; then
+            echo "Timeout waiting for container to become healthy."
+            docker logs codex-proxy
+            exit 1
+          fi
+
+      - name: Verify default port /health endpoint
+        run: |
+          RESPONSE=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:8080/health)
+          if [ "$RESPONSE" != "200" ]; then
+            echo "Expected HTTP 200, got $RESPONSE"
+            docker logs codex-proxy
+            exit 1
+          fi
+          echo "/health returned 200 OK"
+
+      - name: Cleanup default container
+        run: docker rm -f codex-proxy
+
+      - name: Prepare custom config
+        run: |
+          mkdir -p config-override
+          cp config/default.yaml config-override/default.yaml
+          sed -i 's/port: 8080/port: 8090/g' config-override/default.yaml
+          cat config-override/default.yaml | grep port
+
+      - name: Run container on custom port 8090
+        run: |
+          docker run -d --name codex-proxy-custom -p 8090:8090 -v ${{ github.workspace }}/config-override/default.yaml:/app/config/default.yaml codex-proxy-test
+
+          echo "Waiting for container to become healthy on custom port..."
+          for i in {1..30}; do
+            STATUS=$(docker inspect --format='{{json .State.Health.Status}}' codex-proxy-custom)
+            if [ "$STATUS" = "\"healthy\"" ]; then
+              echo "Container is healthy!"
+              break
+            fi
+            if [ "$STATUS" = "\"unhealthy\"" ]; then
+              echo "Container healthcheck failed!"
+              docker logs codex-proxy-custom
+              exit 1
+            fi
+            sleep 1
+          done
+
+          if [ "$STATUS" != "\"healthy\"" ]; then
+            echo "Timeout waiting for container to become healthy."
+            docker logs codex-proxy-custom
+            exit 1
+          fi
+
+      - name: Verify custom port /health endpoint
+        run: |
+          RESPONSE=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:8090/health)
+          if [ "$RESPONSE" != "200" ]; then
+            echo "Expected HTTP 200, got $RESPONSE"
+            docker logs codex-proxy-custom
+            exit 1
+          fi
+          echo "/health returned 200 OK"
+
+      - name: Cleanup custom container
+        if: always()
+        run: docker rm -f codex-proxy-custom || true
