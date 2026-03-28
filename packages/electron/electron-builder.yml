@@ -37,6 +37,10 @@ extraResources:
     to: bin/
     filter:
       - "**/*"
+  - from: native/
+    to: native/
+    filter:
+      - "**/*"
 
 win:
   target:

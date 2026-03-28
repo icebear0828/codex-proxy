@@ -95,6 +95,25 @@ describe("electron-builder.yml", () => {
     ).toBe(true);
   });
 
+  it("extraResources native/ maps to correct root directory", () => {
+    const nativeResource = config.extraResources.find(
+      (r) => r.to === "native/" || r.to === "native",
+    );
+    expect(nativeResource).toBeDefined();
+    // native/ is copied from root by prepare-pack before packing
+    const rootNative = resolve(ROOT_DIR, "native");
+    expect(
+      existsSync(rootNative),
+      `Root native/ directory should exist at ${rootNative}`,
+    ).toBe(true);
+  });
+
+  it("root native/ contains required runtime files", () => {
+    const rootNative = resolve(ROOT_DIR, "native");
+    expect(existsSync(resolve(rootNative, "index.js"))).toBe(true);
+    expect(existsSync(resolve(rootNative, "package.json"))).toBe(true);
+  });
+
   it("asarUnpack includes all runtime directories", () => {
     const unpacked = config.asarUnpack;
     expect(unpacked).toContain("config/**/*");

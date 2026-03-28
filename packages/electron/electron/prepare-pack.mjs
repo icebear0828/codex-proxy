@@ -34,3 +34,29 @@ for (const dir of DIRS) {
     console.log(`[prepare-pack] copied ${dir}/ → packages/electron/${dir}/`);
   }
 }
+
+// Native addon — copy only runtime files (index.js, index.d.ts, *.node, package.json),
+// skip Rust source, build artifacts (target/), and node_modules.
+const nativeSrc = resolve(ROOT, "native");
+const nativeDest = resolve(PKG, "native");
+
+if (isClean) {
+  if (existsSync(nativeDest)) {
+    rmSync(nativeDest, { recursive: true });
+    console.log("[prepare-pack] removed native/");
+  }
+} else if (!existsSync(nativeSrc)) {
+  console.warn(`[prepare-pack] skipping native/ (not found at ${nativeSrc})`);
+} else {
+  cpSync(nativeSrc, nativeDest, {
+    recursive: true,
+    filter: (src) => {
+      const rel = src.slice(nativeSrc.length);
+      // Skip Rust source, build artifacts, and node_modules
+      if (/\/(target|node_modules|src)(\/|$)/.test(rel)) return false;
+      if (/\/(Cargo\.(toml|lock)|build\.rs|\.cargo)/.test(rel)) return false;
+      return true;
+    },
+  });
+  console.log("[prepare-pack] copied native/ (runtime only) → packages/electron/native/");
+}
