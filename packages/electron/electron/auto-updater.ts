@@ -24,6 +24,7 @@ interface AutoUpdaterOptions {
   getMainWindow: () => BrowserWindow | null;
   rebuildTrayMenu: () => void;
   autoUpdate?: boolean;
+  autoDownload?: boolean;
 }
 
 const state: AutoUpdateState = {
@@ -50,11 +51,12 @@ export function getAutoUpdateState(): AutoUpdateState {
 
 export function initAutoUpdater(options: AutoUpdaterOptions): void {
   const isAutoUpdate = options.autoUpdate ?? true;
+  const isAutoDownload = (options.autoDownload ?? false) && !IS_MAC;
 
-  // Never auto-download: notify user first, let them choose when to update.
-  // Avoids unexpected bandwidth usage, mid-session restarts, and breakage.
-  autoUpdater.autoDownload = false;
-  // macOS: ad-hoc signed zips can't be auto-installed — disable to avoid silent failures
+  // auto_download: true  → download silently, prompt to restart
+  // auto_download: false → prompt before downloading (default)
+  // macOS always false — ad-hoc signed zips can't be auto-installed
+  autoUpdater.autoDownload = isAutoDownload;
   autoUpdater.autoInstallOnAppQuit = !IS_MAC;
   autoUpdater.allowPrerelease = false;
 
@@ -69,6 +71,9 @@ export function initAutoUpdater(options: AutoUpdaterOptions): void {
     state.version = info.version;
     state.releaseUrl = `https://github.com/${GITHUB_REPO}/releases/tag/v${info.version}`;
     options.rebuildTrayMenu();
+
+    // autoDownload handles it silently — no dialog needed
+    if (isAutoDownload) return;
 
     // Don't re-prompt if user already dismissed this version
     if (info.version === dismissedVersion) return;

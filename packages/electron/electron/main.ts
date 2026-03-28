@@ -148,11 +148,17 @@ app.on("ready", async () => {
     // 6. Auto-updater (only in packaged mode)
     if (app.isPackaged) {
       let autoUpdate = true;
-      try { autoUpdate = getConfig().update.auto_update; } catch { /* use default */ }
+      let autoDownload = false;
+      try {
+        const updateCfg = getConfig().update;
+        autoUpdate = updateCfg.auto_update;
+        autoDownload = updateCfg.auto_download;
+      } catch { /* use defaults */ }
       initAutoUpdater({
         getMainWindow: () => mainWindow,
         rebuildTrayMenu,
         autoUpdate,
+        autoDownload,
       });
     }
   } catch (err) {

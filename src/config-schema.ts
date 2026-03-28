@@ -63,6 +63,7 @@ export const ConfigSchema = z.object({
   }).default({}),
   update: z.object({
     auto_update: z.boolean().default(true),
+    auto_download: z.boolean().default(false),
   }).default({}),
 });
 
