@@ -34,7 +34,7 @@ jobs:
       - name: Build Docker image
         run: docker build -t codex-proxy:smoke .
 
-      - name: Start container
+      - name: Start container (default port 8080)
         run: |
           docker run -d --name smoke-test \
             -p 18080:8080 \
@@ -42,7 +42,7 @@ jobs:
             codex-proxy:smoke
           echo "Container started"
 
-      - name: Wait for healthy
+      - name: Wait for healthy (default port 8080)
         run: |
           echo "Waiting for container to become healthy..."
           for i in $(seq 1 30); do
@@ -50,21 +50,23 @@ jobs:
             echo "  [$i/30] status: $STATUS"
             if [ "$STATUS" = "healthy" ]; then
               echo "Container is healthy"
-              exit 0
+              break
             fi
             sleep 2
+            if [ $i -eq 30 ]; then
+              echo "::error::Container did not become healthy within 60s"
+              docker logs smoke-test
+              exit 1
+            fi
           done
-          echo "::error::Container did not become healthy within 60s"
-          docker logs smoke-test
-          exit 1
 
-      - name: Verify /health endpoint
+      - name: Verify /health endpoint (default port 8080)
         run: |
           RESPONSE=$(curl -sf http://localhost:18080/health)
           echo "Response: $RESPONSE"
           echo "$RESPONSE" | jq -e '.status == "ok"'
 
-      - name: Verify /v1/models returns valid JSON
+      - name: Verify /v1/models returns valid JSON (default port 8080)
         run: |
           # Without auth, should return 401 or model list — either way must be valid JSON
           STATUS=$(curl -s -o /dev/null -w '%{http_code}' http://localhost:18080/v1/models)
@@ -75,8 +77,52 @@ jobs:
             exit 1
           fi
 
+      - name: Create custom config
+        run: |
+          cat <<EOF > custom-config.yaml
+          server:
+            port: 8090
+          EOF
+
+      - name: Start container (custom port 8090)
+        run: |
+          docker run -d --name smoke-test-custom \
+            -p 18090:8090 \
+            -v $(pwd)/custom-config.yaml:/app/config/default.yaml \
+            -e NODE_ENV=production \
+            codex-proxy:smoke
+          echo "Custom container started"
+
+      - name: Wait for healthy (custom port 8090)
+        run: |
+          echo "Waiting for custom container to become healthy..."
+          for i in $(seq 1 30); do
+            STATUS=$(docker inspect --format='{{.State.Health.Status}}' smoke-test-custom 2>/dev/null || echo "starting")
+            echo "  [$i/30] status: $STATUS"
+            if [ "$STATUS" = "healthy" ]; then
+              echo "Custom container is healthy"
+              break
+            fi
+            sleep 2
+            if [ $i -eq 30 ]; then
+              echo "::error::Custom container did not become healthy within 60s"
+              docker logs smoke-test-custom
+              exit 1
+            fi
+          done
+
+      - name: Verify /health endpoint (custom port 8090)
+        run: |
+          RESPONSE=$(curl -sf http://localhost:18090/health)
+          echo "Response: $RESPONSE"
+          echo "$RESPONSE" | jq -e '.status == "ok"'
+
       - name: Cleanup
         if: always()
         run: |
-          docker logs smoke-test 2>&1 | tail -30
+          echo "--- Default container logs ---"
+          docker logs smoke-test 2>&1 | tail -30 || true
+          echo "--- Custom container logs ---"
+          docker logs smoke-test-custom 2>&1 | tail -30 || true
           docker rm -f smoke-test || true
+          docker rm -f smoke-test-custom || true
