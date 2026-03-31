@@ -75,8 +75,50 @@ jobs:
             exit 1
           fi
 
+      - name: Create custom config for custom port test
+        run: |
+          mkdir -p custom-config
+          cp config/default.yaml custom-config/default.yaml
+          sed -i 's/port: 8080/port: 8090/' custom-config/default.yaml
+
+      - name: Start container (custom port)
+        run: |
+          docker run -d --name smoke-test-custom \
+            -p 18090:8090 \
+            -v $(pwd)/custom-config/default.yaml:/app/config/default.yaml \
+            -e NODE_ENV=production \
+            codex-proxy:smoke
+          echo "Container started with custom port"
+
+      - name: Wait for healthy (custom port)
+        run: |
+          echo "Waiting for container to become healthy..."
+          for i in $(seq 1 30); do
+            STATUS=$(docker inspect --format='{{.State.Health.Status}}' smoke-test-custom 2>/dev/null || echo "starting")
+            echo "  [$i/30] status: $STATUS"
+            if [ "$STATUS" = "healthy" ]; then
+              echo "Container is healthy"
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "::error::Container did not become healthy within 60s"
+          docker logs smoke-test-custom
+          exit 1
+
+      - name: Verify /health endpoint (custom port)
+        run: |
+          RESPONSE=$(curl -sf http://localhost:18090/health)
+          echo "Response: $RESPONSE"
+          echo "$RESPONSE" | jq -e '.status == "ok"'
+
       - name: Cleanup
         if: always()
         run: |
-          docker logs smoke-test 2>&1 | tail -30
+          echo "=== Logs for default port container ==="
+          docker logs smoke-test 2>&1 | tail -30 || true
           docker rm -f smoke-test || true
+
+          echo "=== Logs for custom port container ==="
+          docker logs smoke-test-custom 2>&1 | tail -30 || true
+          docker rm -f smoke-test-custom || true
