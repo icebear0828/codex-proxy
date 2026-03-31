@@ -219,6 +219,15 @@ export class AccountPool {
     this.registry.persistNow();
   }
 
+  /**
+   * Read a single account's refresh token directly from disk (accounts.json).
+   * Used by RefreshScheduler to detect cross-process RT updates before refreshing.
+   * Returns null if not found or on read error.
+   */
+  readEntryRTFromDisk(entryId: string): string | null {
+    return this.registry.readEntryRTFromDisk(entryId);
+  }
+
   destroy(): void {
     this.registry.destroy();
   }

@@ -38,6 +38,11 @@ export class RefreshScheduler {
   /** Accounts currently being refreshed (prevents concurrent refresh of same account). */
   private _inFlight: Set<string> = new Set();
 
+  /** Check if an account is currently being refreshed. Used by health-check to avoid racing. */
+  isRefreshing(entryId: string): boolean {
+    return this._inFlight.has(entryId);
+  }
+
   constructor(pool: AccountPool) {
     this.pool = pool;
     this.scheduleAll();
@@ -206,6 +211,19 @@ export class RefreshScheduler {
       );
       this.pool.markStatus(entryId, "expired");
       return;
+    }
+
+    // Cross-process safety: if another process already rotated the RT on disk,
+    // sync from disk instead of consuming the stale in-memory RT.
+    if (this.pool.readEntryRTFromDisk) {
+      const diskRT = this.pool.readEntryRTFromDisk(entryId);
+      if (diskRT && diskRT !== entry.refreshToken) {
+        console.log(`[RefreshScheduler] Account ${entryId}: disk RT differs from memory, syncing`);
+        this.pool.updateToken(entryId, entry.token, diskRT);
+        this.pool.markStatus(entryId, "active");
+        this.scheduleOne(entryId, entry.token);
+        return;
+      }
     }
 
     console.log(`[RefreshScheduler] Refreshing account ${entryId} (${entry.email ?? "?"})`);

@@ -6,7 +6,10 @@
  */
 
 import { randomBytes } from "crypto";
+import { readFileSync } from "fs";
+import { resolve } from "path";
 import { getConfig } from "../config.js";
+import { getDataDir } from "../paths.js";
 import { jitter } from "../utils/jitter.js";
 import {
   decodeJwtPayload,
@@ -118,6 +121,21 @@ export class AccountRegistry {
       entry.status = isTokenExpired(newToken) ? "expired" : "active";
     }
     this.persistNow();
+  }
+
+  /**
+   * Read a single account's RT from the persisted file on disk.
+   * Used to detect cross-process updates before consuming a one-time RT.
+   */
+  readEntryRTFromDisk(entryId: string): string | null {
+    try {
+      const raw = readFileSync(resolve(getDataDir(), "accounts.json"), "utf-8");
+      const data = JSON.parse(raw) as { accounts?: Array<{ id: string; refreshToken?: string | null }> };
+      const entry = data.accounts?.find((a) => a.id === entryId);
+      return entry?.refreshToken ?? null;
+    } catch {
+      return null;
+    }
   }
 
   setLabel(entryId: string, label: string | null): boolean {

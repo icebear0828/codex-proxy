@@ -116,9 +116,12 @@ export class AccountImportService {
       return { ok: false, error: resolved.error, kind: resolved.kind };
     }
 
-    // Single import: verify account is usable and collect quota
+    // Single import: verify account is usable and collect quota.
+    // Skip verification for RT-only imports — calling getUsage() immediately
+    // after RT exchange triggers OpenAI risk detection (same reason warmup is disabled).
+    const wasRtExchange = !token && !!refreshToken;
     let usageData: import("../proxy/codex-api.js").CodexUsageResponse | undefined;
-    if (this.deps.verifyAccount) {
+    if (this.deps.verifyAccount && !wasRtExchange) {
       const accountId = extractChatGptAccountId(resolved.token);
       const proxyUrl = this.deps.getProxyUrl();
       try {
@@ -192,9 +195,8 @@ export class AccountImportService {
           kind: "validation",
         };
       }
-      // oaistb_rt_ tokens are single-use — if no new RT returned, the old one is dead
-      const isOneTimeRT = rt?.startsWith("oaistb_rt_");
-      const newRT = tokens.refresh_token ?? (isOneTimeRT ? null : rt);
+      // All OpenAI RTs are single-use — if server doesn't return a new one, the old one is consumed/dead
+      const newRT = tokens.refresh_token ?? null;
       return {
         ok: true,
         token: tokens.access_token,

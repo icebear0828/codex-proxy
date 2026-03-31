@@ -69,6 +69,11 @@ export async function probeAccount(
     return { id: entryId, email: entry.email, previousStatus: entry.status, result: "skipped", error: "manually disabled" };
   }
 
+  // Skip if scheduler is already refreshing this account — avoid racing for the same one-time RT
+  if (scheduler.isRefreshing?.(entryId)) {
+    return { id: entryId, email: entry.email, previousStatus: entry.status, result: "skipped", error: "refresh already in progress" };
+  }
+
   const previousStatus = entry.status;
   const start = Date.now();
 

@@ -272,6 +272,35 @@ describe("account import/export", () => {
     expect(res.status).toBe(400);
   });
 
+  // ── Single import (importOne) ────────────────────────────
+
+  it("POST /auth/accounts (RT-only) skips verifyAccount to avoid risk detection", async () => {
+    // Mock refreshAccessToken to return a valid token
+    const { refreshAccessToken } = await import("../../auth/oauth-pkce.js");
+    (refreshAccessToken as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+      access_token: "freshToken1234567890",
+      refresh_token: "rt_new_after_exchange",
+    });
+
+    // Spy on CodexApi.getUsage to ensure it's NOT called
+    const { CodexApi } = await import("../../proxy/codex-api.js");
+    const getUsageSpy = vi.spyOn(CodexApi.prototype, "getUsage");
+
+    const res = await app.request("/auth/accounts", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ refreshToken: "rt_test_only_import" }),
+    });
+
+    expect(res.status).toBe(200);
+    const data = await res.json() as { success: boolean };
+    expect(data.success).toBe(true);
+
+    // getUsage must NOT be called for RT-only imports — it triggers OpenAI risk detection
+    expect(getUsageSpy).not.toHaveBeenCalled();
+    getUsageSpy.mockRestore();
+  });
+
   // ── Round-trip ─────────────────────────────────────────
 
   it("export → import round-trip preserves accounts", async () => {
