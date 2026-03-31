@@ -51,6 +51,7 @@ export interface WsCreateRequest {
       strict?: boolean;
     };
   };
+  service_tier?: string;
   prompt_cache_key?: string;
   include?: string[];
   // NOTE: `store` and `stream` are intentionally omitted.

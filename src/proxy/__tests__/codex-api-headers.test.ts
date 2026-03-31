@@ -112,13 +112,37 @@ describe("codex-api headers", () => {
       expect(transport.lastHeaders!["x-codex-turn-state"]).toBeUndefined();
     });
 
-    it("excludes turnState and service_tier from JSON body", async () => {
+    it("excludes turnState from JSON body", async () => {
       const api = await createApi();
       await api.createResponse(
-        makeRequest({ turnState: "abc", service_tier: "fast" }),
+        makeRequest({ turnState: "abc" }),
       );
       const body = JSON.parse(transport.lastBody!) as Record<string, unknown>;
       expect(body.turnState).toBeUndefined();
+    });
+
+    it("maps service_tier 'fast' to 'priority' in JSON body", async () => {
+      const api = await createApi();
+      await api.createResponse(
+        makeRequest({ service_tier: "fast" }),
+      );
+      const body = JSON.parse(transport.lastBody!) as Record<string, unknown>;
+      expect(body.service_tier).toBe("priority");
+    });
+
+    it("passes non-fast service_tier through unchanged", async () => {
+      const api = await createApi();
+      await api.createResponse(
+        makeRequest({ service_tier: "flex" }),
+      );
+      const body = JSON.parse(transport.lastBody!) as Record<string, unknown>;
+      expect(body.service_tier).toBe("flex");
+    });
+
+    it("omits service_tier from body when null", async () => {
+      const api = await createApi();
+      await api.createResponse(makeRequest({ service_tier: null }));
+      const body = JSON.parse(transport.lastBody!) as Record<string, unknown>;
       expect(body.service_tier).toBeUndefined();
     });
   });
@@ -147,6 +171,46 @@ describe("codex-api headers", () => {
         /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/,
       );
       expect(headers["x-codex-turn-state"]).toBe("ws_turn_abc");
+    });
+
+    it("maps service_tier 'fast' to 'priority' in WS request", async () => {
+      mockCreateWebSocketResponse.mockResolvedValue(
+        new Response("data: {}\n\n", {
+          headers: { "content-type": "text/event-stream" },
+        }),
+      );
+
+      const api = await createApi();
+      await api.createResponse(
+        makeRequest({
+          previous_response_id: "resp_prev",
+          useWebSocket: true,
+          service_tier: "fast",
+        }),
+      );
+
+      const wsRequest = mockCreateWebSocketResponse.mock.calls[0][2] as Record<string, unknown>;
+      expect(wsRequest.service_tier).toBe("priority");
+    });
+
+    it("passes non-fast service_tier through in WS request", async () => {
+      mockCreateWebSocketResponse.mockResolvedValue(
+        new Response("data: {}\n\n", {
+          headers: { "content-type": "text/event-stream" },
+        }),
+      );
+
+      const api = await createApi();
+      await api.createResponse(
+        makeRequest({
+          previous_response_id: "resp_prev",
+          useWebSocket: true,
+          service_tier: "flex",
+        }),
+      );
+
+      const wsRequest = mockCreateWebSocketResponse.mock.calls[0][2] as Record<string, unknown>;
+      expect(wsRequest.service_tier).toBe("flex");
     });
   });
 });

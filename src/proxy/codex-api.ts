@@ -215,7 +215,7 @@ export class CodexApi {
     if (request.tools?.length) wsRequest.tools = request.tools;
     if (request.tool_choice) wsRequest.tool_choice = request.tool_choice;
     if (request.text) wsRequest.text = request.text;
-    // service_tier is stripped — Codex backend rejects it ("Unsupported service_tier")
+    if (request.service_tier) wsRequest.service_tier = request.service_tier === "fast" ? "priority" : request.service_tier;
     if (request.prompt_cache_key) wsRequest.prompt_cache_key = request.prompt_cache_key;
     if (request.include?.length) wsRequest.include = request.include;
 
@@ -243,8 +243,10 @@ export class CodexApi {
     headers["x-client-request-id"] = crypto.randomUUID();
     if (request.turnState) headers["x-codex-turn-state"] = request.turnState;
 
-    const { previous_response_id: _pid, useWebSocket: _ws, turnState: _ts, service_tier: _st, ...bodyFields } = request;
-    const body = JSON.stringify(bodyFields);
+    const { previous_response_id: _pid, useWebSocket: _ws, turnState: _ts, service_tier, ...bodyFields } = request;
+    const body = JSON.stringify(
+      service_tier ? { ...bodyFields, service_tier: service_tier === "fast" ? "priority" : service_tier } : bodyFields,
+    );
 
     let transportRes;
     try {
