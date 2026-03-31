@@ -326,9 +326,27 @@ export async function checkProxySelfUpdate(): Promise<ProxySelfUpdateResult> {
   // Docker or Electron — GitHub Releases API
   const release = await checkGitHubRelease();
   const currentVersion = getProxyInfo().version ?? "0.0.0";
-  const updateAvailable = release !== null
+  let updateAvailable = release !== null
     && release.version !== currentVersion
     && release.version.localeCompare(currentVersion, undefined, { numeric: true }) > 0;
+
+  // Docker false-positive suppression: if the image was built AFTER the release
+  // was published, it likely contains the release content even if the version
+  // string doesn't match (e.g. [skip ci] on version-bump commit).
+  if (updateAvailable && mode === "docker" && release) {
+    const buildTimePath = resolve(getRootDir(), ".docker-build-time");
+    try {
+      const buildTimeStr = readFileSync(buildTimePath, "utf-8").trim();
+      const buildTime = new Date(buildTimeStr).getTime();
+      const releaseTime = new Date(release.publishedAt).getTime();
+      if (buildTime > 0 && releaseTime > 0 && buildTime >= releaseTime) {
+        console.log(`[SelfUpdate] Docker image built at ${buildTimeStr}, release published at ${release.publishedAt} — suppressing false update`);
+        updateAvailable = false;
+      }
+    } catch {
+      // No build-time stamp (older image) — fall through to version comparison
+    }
+  }
 
   const result: ProxySelfUpdateResult = {
     commitsBehind: 0, currentCommit: null, latestCommit: null,

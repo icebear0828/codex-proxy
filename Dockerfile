@@ -55,7 +55,10 @@ COPY --from=native-builder /native/codex-tls.linux-*.node /app/native/
 # 5) Build frontend (Vite → public/) + backend (tsc → dist/)
 RUN cd web && npm run build && cd .. && npx tsc
 
-# 6) Prune dev deps, re-add tsx (needed at runtime by update-checker fork())
+# 6) Stamp build time for update-checker (COPY . invalidates cache, so this is always fresh)
+RUN date -u +%Y-%m-%dT%H:%M:%SZ > /app/.docker-build-time
+
+# 7) Prune dev deps, re-add tsx (needed at runtime by update-checker fork())
 RUN npm prune --omit=dev && npm install --no-save tsx
 
 EXPOSE 8080
