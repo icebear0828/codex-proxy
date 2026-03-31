@@ -9,18 +9,22 @@
     "build": "node electron/build.mjs",
     "dev": "cd ../.. && npm run build && cd packages/electron && npm run build && electron .",
     "prepack": "node electron/prepare-pack.mjs",
-    "pack": "npx electron-builder --config electron-builder.yml",
+    "pack": "npx electron-builder --config electron-builder.yml --dir",
     "postpack": "node electron/prepare-pack.mjs --clean",
     "pack:win": "npm run prepack && npx electron-builder --config electron-builder.yml --win && npm run postpack",
     "pack:mac": "npm run prepack && npx electron-builder --config electron-builder.yml --mac && npm run postpack",
-    "pack:linux": "npm run prepack && npx electron-builder --config electron-builder.yml --linux && npm run postpack"
+    "pack:linux": "npm run prepack && npx electron-builder --config electron-builder.yml --linux && npm run postpack",
+    "test": "vitest run"
   },
   "dependencies": {
     "electron-updater": "^6.3.0"
   },
   "devDependencies": {
+    "@playwright/test": "^1.50.1",
     "electron": "^35.7.5",
     "electron-builder": "^26.0.0",
-    "esbuild": "^0.25.12"
+    "esbuild": "^0.25.12",
+    "playwright": "^1.50.1",
+    "vitest": "^3.2.4"
   }
 }
