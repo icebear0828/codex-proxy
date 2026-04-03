@@ -1,8 +1,6 @@
 <div align="center">
-
   <h1>Codex Proxy</h1>
-  <h3>您的本地 Codex 编程助手中转站</h3>
-  <p>将 Codex Desktop 的能力以 OpenAI / Anthropic / Gemini 标准协议对外暴露，无缝接入任意 AI 客户端。</p>
+  <p>将 Codex Desktop 能力通过标准 API 对外暴露，便于接入任意 AI 客户端。</p>
 
   <p>
     <img src="https://img.shields.io/badge/Runtime-Node.js_18+-339933?style=flat-square&logo=nodedotjs&logoColor=white" alt="Node.js">
@@ -14,11 +12,10 @@
   </p>
 
   <p>
-    <a href="#-快速开始">快速开始</a> &bull;
+    <a href="#-3-分钟快速开始">快速开始</a> &bull;
     <a href="#-核心功能">核心功能</a> &bull;
     <a href="#-可用模型">可用模型</a> &bull;
-    <a href="#-客户端接入">客户端接入</a> &bull;
-    <a href="#-配置说明">配置说明</a>
+    <a href="#-客户端接入">客户端接入</a>
   </p>
 
   <p>
@@ -28,60 +25,63 @@
 
   <br>
 
-  <a href="https://x.com/IceBearMiner"><img src="https://img.shields.io/badge/Follow-@IceBearMiner-000?style=flat-square&logo=x&logoColor=white" alt="X"></a>
+  <a href="https://x.com/IceBearMiner"><img src="https://img.shields.io/badge/关注-@IceBearMiner-000?style=flat-square&logo=x&logoColor=white" alt="X"></a>
   <a href="https://github.com/icebear0828/codex-proxy/issues"><img src="https://img.shields.io/github/issues/icebear0828/codex-proxy?style=flat-square" alt="Issues"></a>
-  <a href="#-赞赏--交流"><img src="https://img.shields.io/badge/赞赏-微信-07C160?style=flat-square&logo=wechat&logoColor=white" alt="赞赏"></a>
-
-  <br><br>
-
-  <table>
-    <tr>
-      <td align="center">
-        <img src="./.github/assets/donate.png" width="180" alt="微信赞赏码"><br>
-        <sub>☕ 赞赏</sub>
-      </td>
-      <td align="center">
-        <img src="./.github/assets/wechat-group.jpg" width="180" alt="微信交流群"><br>
-        <sub>💬 交流群</sub>
-      </td>
-    </tr>
-  </table>
-
+  <a href="#-赞助"><img src="https://img.shields.io/badge/赞助-WeChat-07C160?style=flat-square&logo=wechat&logoColor=white" alt="Donate"></a>
 </div>
 
 ---
 
-> **声明**：本项目由个人独立开发和维护，初衷是解决自己的需求。我有自己的注册机，根本不缺 token，所以这个项目不是为了"薅"谁的资源而存在的。
->
-> 我自愿开源、自愿维护。该有的功能我会加，有 bug 我也会第一时间修。但我没有义务为任何单个用户提供定制服务。
->
-> 觉得代码垃圾？可以不用。觉得你写得更好？欢迎提 PR 加入贡献者。Issue 区用来反馈 bug 和建议，不是用来提需求、催更新、或指点江山的。
+> 你好，欢迎使用 Codex Proxy 👋<br/>
+> 这个项目最开始是我为了自己日常使用搭建的，现在开源出来和大家一起用、一起完善。<br/>
+> 也想特别说明：项目并不是为了“偷任何人的账号”，而是给有自己账号的用户提供一个更顺手的本地代理方案。<br/>
+> 如果你遇到问题，欢迎提交 Issue；如果你有改进想法，也非常欢迎 PR 一起共建。
 
 ---
 
-**Codex Proxy** 是一个轻量级本地中转服务，将 [Codex Desktop](https://openai.com/codex) 的 Responses API 转换为多种标准协议接口（OpenAI `/v1/chat/completions`、Anthropic `/v1/messages`、Gemini、Codex `/v1/responses` 直通）。通过本项目，您可以在 Cursor、Claude Code、Continue 等任何兼容上述协议的客户端中直接使用 Codex 编程模型。
+## 这是什么？
 
-只需一个 ChatGPT 账号（或接入第三方 API 中转站），配合本代理即可在本地搭建一个专属的 AI 编程助手网关。
+**Codex Proxy** 是一个本地中转服务，核心作用是：
 
-## 🚀 快速开始
+- 把 Codex Desktop 的 Responses API 转换成常见协议：
+  - OpenAI `POST /v1/chat/completions`
+  - Anthropic `POST /v1/messages`
+  - Gemini 风格接口
+  - Codex `POST /v1/responses`（直通）
+- 支持流式输出（SSE）和工具调用（Function Calling）
+- 支持多账号、配额管理、自动轮换、代理池等生产可用功能
 
-> **前置条件**：你需要一个 ChatGPT 账号（免费账号即可）。如果还没有，先去 [chat.openai.com](https://chat.openai.com) 注册一个。
+如果你只想尽快跑起来，请直接看下面的 **3 分钟快速开始**。
 
-### 方式一：桌面应用（推荐新手）
+---
 
-下载 → 安装 → 打开就能用。
+## 🚀 3 分钟快速开始
 
-**下载安装包** — 打开 [Releases 页面](https://github.com/icebear0828/codex-proxy/releases)，根据系统下载：
+### 0) 前置条件
+
+- 准备一个 ChatGPT 账号（免费账号可用）
+- 本地可访问 `http://localhost:8080`
+- 若使用源码运行，需准备 Rust 工具链并先编译 native addon：
+
+  ```bash
+  cd native && npm install && npm run build
+  ```
+
+### 1) 推荐方式：桌面应用（新手首选）
+
+1. 打开 [Releases 页面](https://github.com/icebear0828/codex-proxy/releases)
+2. 下载对应系统安装包：
 
 | 系统 | 文件 |
-|------|------|
+|---|---|
 | Windows | `Codex Proxy Setup x.x.x.exe` |
 | macOS | `Codex Proxy-x.x.x.dmg` |
 | Linux | `Codex Proxy-x.x.x.AppImage` |
 
-安装后打开应用，点击登录按钮用 ChatGPT 账号登录。浏览器访问 `http://localhost:8080` 即可看到控制面板。
+3. 安装并启动后，点击登录，使用 ChatGPT 账号授权
+4. 浏览器打开 `http://localhost:8080`
 
-### 方式二：Docker 部署
+### 2) Docker 部署（服务器常用）
 
 ```bash
 mkdir codex-proxy && cd codex-proxy
@@ -89,29 +89,30 @@ curl -O https://raw.githubusercontent.com/icebear0828/codex-proxy/master/docker-
 curl -O https://raw.githubusercontent.com/icebear0828/codex-proxy/master/.env.example
 cp .env.example .env
 docker compose up -d
-# 打开 http://localhost:8080 登录
 ```
 
-> 账号数据保存在 `data/` 文件夹，重启不丢失。其他容器连本服务用宿主机 IP（如 `192.168.x.x:8080`），不要用 `localhost`。
+启动后访问 `http://localhost:8080` 登录。
 
-取消 `docker-compose.yml` 中 Watchtower 的注释即可自动更新。
+> 说明：账号数据保存在 `data/` 目录。局域网其他机器访问时请使用宿主机 IP（如 `192.168.x.x:8080`），不要用 `localhost`。
 
-### 方式三：源码运行
+### 3) 源码运行（开发者）
 
 ```bash
 git clone https://github.com/icebear0828/codex-proxy.git
 cd codex-proxy
-npm install                        # 安装后端依赖
-cd web && npm install && cd ..     # 安装前端依赖
-npm run dev                        # 开发模式（热重载）
-# 或: npm run build && npm start   # 生产模式
+npm install
+cd web && npm install && cd ..
+npm run dev
+# 或生产模式：npm run build && npm start
 ```
 
-> 源码运行需 Rust 工具链（`curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh`），首次安装后执行 `cd native && npm install && npm run build` 编译 TLS addon。
+> 提示：如果你使用 `npm run dev` 并且需要访问控制面板，请先执行一次 `npm run build:web`。
 
-打开 `http://localhost:8080` 登录。
+---
 
-### 验证
+## ✅ 启动后自检
+
+执行：
 
 ```bash
 curl http://localhost:8080/v1/chat/completions \
@@ -119,7 +120,9 @@ curl http://localhost:8080/v1/chat/completions \
   -d '{"model":"codex","messages":[{"role":"user","content":"Hello!"}],"stream":true}'
 ```
 
-看到 AI 回复的文字流即部署成功。
+出现流式输出即表示服务正常。
+
+---
 
 ## 🌟 核心功能
 
@@ -532,9 +535,12 @@ server:
 - 格式错误的 chat payload 返回 400 `invalid_json` 错误
 <!-- CHANGELOG:END -->
 
-## ☕ 赞赏 & 交流
+## ☕ 赞助
 
-觉得有帮助？请作者喝杯咖啡，或加入微信交流群获取使用帮助。二维码见 [页面顶部](#)。
+<div align="center">
+  <p>如果这个项目对你有帮助，欢迎请作者喝杯咖啡 ☕</p>
+  <img src="./.github/assets/donate.png" width="200" alt="微信赞助二维码">
+</div>
 
 ## ⭐ Star History
 
