@@ -311,9 +311,11 @@ export function createResponsesRoutes(
       store: false,
     };
 
-    // Responses API always uses WebSocket transport — enables server-side storage
-    // and previous_response_id for multi-turn conversations.
-    codexRequest.useWebSocket = true;
+    // Compact uses HTTP SSE only (no WebSocket path for /responses/compact).
+    // Regular responses use WebSocket to enable previous_response_id and server-side storage.
+    if (!compact) {
+      codexRequest.useWebSocket = true;
+    }
     if (typeof body.previous_response_id === "string") {
       codexRequest.previous_response_id = body.previous_response_id;
     }
