@@ -11,7 +11,7 @@
 import { resolve } from "path";
 import { existsSync } from "fs";
 import type { TlsTransport, TlsTransportResponse } from "./transport.js";
-import { getProxyUrl } from "./curl-binary.js";
+import { getProxyUrl } from "./proxy.js";
 import { getConfig } from "../config.js";
 import { getBinDir } from "../paths.js";
 

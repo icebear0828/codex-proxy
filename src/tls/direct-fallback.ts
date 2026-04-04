@@ -6,7 +6,7 @@
  * This module provides a generic wrapper that retries with a direct connection.
  */
 
-import { getProxyUrl } from "./curl-binary.js";
+import { getProxyUrl } from "./proxy.js";
 
 /** Detect if an HTTP response is a Cloudflare challenge page. */
 export function isCloudflareChallengeResponse(status: number, body: string): boolean {

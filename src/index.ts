@@ -22,7 +22,7 @@ import { createProxyRoutes } from "./routes/proxies.js";
 import { createResponsesRoutes } from "./routes/responses.js";
 import { startUpdateChecker, stopUpdateChecker } from "./update-checker.js";
 import { startProxyUpdateChecker, stopProxyUpdateChecker, setCloseHandler, getDeployMode } from "./self-update.js";
-import { initProxy } from "./tls/curl-binary.js";
+import { initProxy } from "./tls/proxy.js";
 import { initTransport, getTransport } from "./tls/transport.js";
 import { loadStaticModels } from "./models/model-store.js";
 import { startModelRefresh, stopModelRefresh } from "./models/model-fetcher.js";

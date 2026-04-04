@@ -6,7 +6,7 @@ import type { AccountPool } from "../../auth/account-pool.js";
 import { getConfig, getFingerprint } from "../../config.js";
 import { getConfigDir, getDataDir, getBinDir, isEmbedded } from "../../paths.js";
 import { getTransportInfo } from "../../tls/transport.js";
-import { getCurlDiagnostics } from "../../tls/curl-binary.js";
+import { getProxyUrl } from "../../tls/proxy.js";
 import { isLocalhostRequest } from "../../utils/is-localhost.js";
 
 export function createHealthRoutes(accountPool: AccountPool): Hono {
@@ -94,24 +94,15 @@ export function createHealthRoutes(accountPool: AccountPool): Hono {
     }
 
     const transport = getTransportInfo();
-    const curl = getCurlDiagnostics();
     const poolSummary = accountPool.getPoolSummary();
-    const caCertPath = resolve(getBinDir(), "cacert.pem");
 
     return c.json({
       transport: {
         type: transport.type,
         initialized: transport.initialized,
         impersonate: transport.impersonate,
-        ffi_error: transport.ffi_error,
       },
-      curl: {
-        binary: curl.binary,
-        is_impersonate: curl.is_impersonate,
-        profile: curl.profile,
-      },
-      proxy: { url: curl.proxy_url },
-      ca_cert: { found: existsSync(caCertPath), path: caCertPath },
+      proxy: { url: getProxyUrl() },
       accounts: {
         total: poolSummary.total,
         active: poolSummary.active,

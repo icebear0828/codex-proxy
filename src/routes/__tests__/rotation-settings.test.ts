@@ -43,10 +43,6 @@ vi.mock("../../tls/transport.js", () => ({
   getTransportInfo: vi.fn(() => ({})),
 }));
 
-vi.mock("../../tls/curl-binary.js", () => ({
-  getCurlDiagnostics: vi.fn(() => ({})),
-}));
-
 vi.mock("../../fingerprint/manager.js", () => ({
   buildHeaders: vi.fn(() => ({})),
 }));

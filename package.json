@@ -25,9 +25,7 @@
     "extract": "tsx scripts/build/extract-fingerprint.ts",
     "apply-update": "tsx scripts/build/apply-update.ts",
     "apply-update:dry": "tsx scripts/build/apply-update.ts --dry-run",
-    "setup": "tsx scripts/infra/setup-curl.ts",
-    "update": "tsx scripts/build/full-update.ts",
-    "postinstall": "tsx scripts/infra/setup-curl.ts"
+    "update": "tsx scripts/build/full-update.ts"
   },
   "dependencies": {
     "@hono/node-server": "^1.0.0",
@@ -37,9 +35,6 @@
     "undici": "^7.0.0",
     "ws": "^8.19.0",
     "zod": "^3.23.0"
-  },
-  "optionalDependencies": {
-    "koffi": "^2.15.1"
   },
   "devDependencies": {
     "@electron/asar": "^3.2.0",

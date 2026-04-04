@@ -1,13 +1,10 @@
 /**
  * TLS Transport abstraction — decouples upstream request logic from
- * the concrete transport (curl CLI subprocess vs libcurl FFI).
+ * the concrete transport implementation.
  *
  * Singleton: call initTransport() once at startup, then getTransport() anywhere.
  */
 
-import { existsSync } from "fs";
-import { resolve } from "path";
-import { getBinDir } from "../paths.js";
 import { isNativeAvailable } from "./native-transport.js";
 
 export interface TlsTransportResponse {
@@ -69,8 +66,7 @@ export interface TlsTransport {
 }
 
 let _transport: TlsTransport | null = null;
-let _transportType: "native" | "libcurl-ffi" | "curl-cli" | "none" = "none";
-let _ffiError: string | null = null;
+let _transportType: "native" | "none" = "none";
 
 /**
  * Initialize the transport singleton. Must be called once at startup
@@ -79,48 +75,16 @@ let _ffiError: string | null = null;
 export async function initTransport(): Promise<TlsTransport> {
   if (_transport) return _transport;
 
-  const { getConfig } = await import("../config.js");
-  const config = getConfig();
-  const setting = config.tls.transport ?? "auto";
-
-  // Native transport (Rust reqwest + rustls) — preferred for matching Codex Desktop TLS
-  if (setting === "native" || (setting === "auto" && isNativeAvailable())) {
-    try {
-      const { createNativeTransport } = await import("./native-transport.js");
-      _transport = await createNativeTransport();
-      _transportType = "native";
-      console.log("[TLS] Using native (rustls) transport");
-      return _transport;
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
-      if (setting === "native") {
-        throw new Error(`Failed to initialize native transport: ${msg}`);
-      }
-      console.warn(`[TLS] Native transport unavailable (${msg}), trying FFI fallback`);
-    }
+  if (!isNativeAvailable()) {
+    throw new Error(
+      "Native transport addon not found. Ensure native/codex-tls.*.node is present.",
+    );
   }
 
-  if (setting === "libcurl-ffi" || (setting === "auto" && shouldUseFfi())) {
-    try {
-      const { createLibcurlFfiTransport } = await import("./libcurl-ffi-transport.js");
-      _transport = await createLibcurlFfiTransport();
-      _transportType = "libcurl-ffi";
-      console.log("[TLS] Using libcurl-impersonate FFI transport");
-      return _transport;
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
-      if (setting === "libcurl-ffi") {
-        throw new Error(`Failed to initialize libcurl FFI transport: ${msg}`);
-      }
-      _ffiError = msg;
-      console.warn(`[TLS] FFI transport unavailable (${msg}), falling back to curl CLI`);
-    }
-  }
-
-  const { CurlCliTransport } = await import("./curl-cli-transport.js");
-  _transport = new CurlCliTransport();
-  _transportType = "curl-cli";
-  console.log("[TLS] Using curl CLI transport");
+  const { createNativeTransport } = await import("./native-transport.js");
+  _transport = await createNativeTransport();
+  _transportType = "native";
+  console.log("[TLS] Using native (rustls) transport");
   return _transport;
 }
 
@@ -132,38 +96,16 @@ export function getTransport(): TlsTransport {
   return _transport;
 }
 
-/**
- * Determine if FFI transport should be used in "auto" mode.
- * FFI is preferred for connection pooling (TCP + TLS session reuse).
- * Enabled on Windows (no CLI available) and macOS/Linux (when dylib/so present).
- */
-function shouldUseFfi(): boolean {
-  const binDir = getBinDir();
-
-  if (process.platform === "win32") {
-    return existsSync(resolve(binDir, "libcurl.dll"));
-  }
-  if (process.platform === "darwin") {
-    return existsSync(resolve(binDir, "libcurl-impersonate.dylib"));
-  }
-  if (process.platform === "linux") {
-    return existsSync(resolve(binDir, "libcurl-impersonate.so"));
-  }
-  return false;
-}
-
 /** Get transport diagnostic info. */
 export function getTransportInfo(): {
-  type: "native" | "libcurl-ffi" | "curl-cli" | "none";
+  type: "native" | "none";
   initialized: boolean;
   impersonate: boolean;
-  ffi_error: string | null;
 } {
   return {
     type: _transportType,
     initialized: _transport !== null,
     impersonate: _transport?.isImpersonate() ?? false,
-    ffi_error: _ffiError,
   };
 }
 
@@ -171,5 +113,4 @@ export function getTransportInfo(): {
 export function resetTransport(): void {
   _transport = null;
   _transportType = "none";
-  _ffiError = null;
 }

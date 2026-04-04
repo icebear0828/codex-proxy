@@ -6,22 +6,10 @@ vi.mock("dns/promises", () => ({
   lookup: (...args: unknown[]) => mockLookup(...args),
 }));
 
-vi.mock("fs", () => ({
-  existsSync: () => false, // force system curl fallback
-}));
-
-vi.mock("child_process", () => ({
-  execFileSync: vi.fn(() => Buffer.from("")),
-}));
-
 vi.mock("../../config.js", () => ({
   getConfig: () => ({
-    tls: { curl_binary: "auto", proxy_url: null, force_http11: false },
+    tls: { proxy_url: null },
   }),
-}));
-
-vi.mock("../../paths.js", () => ({
-  getBinDir: () => "/nonexistent",
 }));
 
 // Mock net.createConnection for probePort
@@ -46,14 +34,12 @@ describe("detectLocalProxy hostname resolution", () => {
         setTimeout: vi.fn(),
         on: vi.fn((event: string, handler: () => void) => {
           if (event === "error" && !results.get(key)) {
-            // Schedule error for non-matching hosts
             Promise.resolve().then(handler);
           }
           return sock;
         }),
       };
       if (results.get(key)) {
-        // Simulate successful connection
         Promise.resolve().then(cb);
       }
       return sock;
@@ -61,14 +47,11 @@ describe("detectLocalProxy hostname resolution", () => {
   }
 
   it("resolves host.docker.internal to IP when probe succeeds", async () => {
-    // Only host.docker.internal:7890 responds
     setupProbe(new Map([["host.docker.internal:7890", true]]));
     mockLookup.mockResolvedValue({ address: "192.168.65.254", family: 4 });
 
-    const { initProxy, getProxyUrl, resetCurlBinaryCache } = await import("../curl-binary.js");
-    resetCurlBinaryCache();
-
-    // Reset _proxyUrl by re-running initProxy
+    const { initProxy, getProxyUrl, resetProxyCache } = await import("../proxy.js");
+    resetProxyCache();
     await initProxy();
 
     expect(mockLookup).toHaveBeenCalledWith("host.docker.internal");
@@ -79,8 +62,8 @@ describe("detectLocalProxy hostname resolution", () => {
     setupProbe(new Map([["host.docker.internal:7890", true]]));
     mockLookup.mockRejectedValue(new Error("ENOTFOUND"));
 
-    const { initProxy, getProxyUrl, resetCurlBinaryCache } = await import("../curl-binary.js");
-    resetCurlBinaryCache();
+    const { initProxy, getProxyUrl, resetProxyCache } = await import("../proxy.js");
+    resetProxyCache();
     await initProxy();
 
     expect(getProxyUrl()).toBe("http://host.docker.internal:7890");
@@ -89,8 +72,8 @@ describe("detectLocalProxy hostname resolution", () => {
   it("skips DNS resolution for IP addresses like 127.0.0.1", async () => {
     setupProbe(new Map([["127.0.0.1:7890", true]]));
 
-    const { initProxy, getProxyUrl, resetCurlBinaryCache } = await import("../curl-binary.js");
-    resetCurlBinaryCache();
+    const { initProxy, getProxyUrl, resetProxyCache } = await import("../proxy.js");
+    resetProxyCache();
     await initProxy();
 
     expect(mockLookup).not.toHaveBeenCalled();

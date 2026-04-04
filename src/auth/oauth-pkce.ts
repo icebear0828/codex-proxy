@@ -11,7 +11,7 @@ import { homedir } from "os";
 import { getConfig } from "../config.js";
 import { curlFetchPost, type CurlFetchResponse } from "../tls/curl-fetch.js";
 import { withDirectFallback, isCloudflareChallengeResponse, isProxyNetworkError, isSafeToRetryRefresh } from "../tls/direct-fallback.js";
-import { getProxyUrl } from "../tls/curl-binary.js";
+import { getProxyUrl } from "../tls/proxy.js";
 
 export interface PKCEChallenge {
   codeVerifier: string;

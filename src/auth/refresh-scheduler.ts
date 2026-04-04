@@ -14,6 +14,7 @@ import { getConfig } from "../config.js";
 import { decodeJwtPayload } from "./jwt-utils.js";
 import { refreshAccessToken } from "./oauth-pkce.js";
 import { jitter, jitterInt } from "../utils/jitter.js";
+import { tryAcquireRefreshLock, releaseRefreshLock } from "./refresh-lock.js";
 import type { AccountPool } from "./account-pool.js";
 import type { ProxyPool } from "../proxy/proxy-pool.js";
 
@@ -202,6 +203,18 @@ export class RefreshScheduler {
   }
 
   private async _doRefreshInner(entryId: string): Promise<void> {
+    if (!tryAcquireRefreshLock(entryId)) {
+      console.log(`[RefreshScheduler] Account ${entryId}: another process is refreshing, skipping`);
+      return;
+    }
+    try {
+      await this._doRefreshLocked(entryId);
+    } finally {
+      releaseRefreshLock(entryId);
+    }
+  }
+
+  private async _doRefreshLocked(entryId: string): Promise<void> {
     const entry = this.pool.getEntry(entryId);
     if (!entry) return;
 
