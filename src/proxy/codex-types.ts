@@ -36,6 +36,8 @@ export interface CodexResponsesRequest {
   useWebSocket?: boolean;
   /** Upstream turn-state token for sticky routing (not serialized to body). */
   turnState?: string;
+  /** When true, route to /codex/responses/compact instead of /codex/responses. */
+  compact?: boolean;
 }
 
 /** Structured content part for multimodal Codex input. */

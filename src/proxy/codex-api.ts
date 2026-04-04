@@ -232,7 +232,8 @@ export class CodexApi {
   ): Promise<Response> {
     const transport = this.resolveTransport();
     const baseUrl = this.resolveBaseUrl();
-    const url = `${baseUrl}/codex/responses`;
+    const path = request.compact ? "/codex/responses/compact" : "/codex/responses";
+    const url = `${baseUrl}${path}`;
 
     const headers = this.applyHeaders(
       buildHeadersWithContentType(this.token, this.accountId),
@@ -243,7 +244,7 @@ export class CodexApi {
     headers["x-client-request-id"] = crypto.randomUUID();
     if (request.turnState) headers["x-codex-turn-state"] = request.turnState;
 
-    const { previous_response_id: _pid, useWebSocket: _ws, turnState: _ts, service_tier: _st, ...bodyFields } = request;
+    const { previous_response_id: _pid, useWebSocket: _ws, turnState: _ts, service_tier: _st, compact: _c, ...bodyFields } = request;
     const body = JSON.stringify(bodyFields);
 
     let transportRes;

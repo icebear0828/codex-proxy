@@ -57,6 +57,20 @@ export interface CodexReasoningSummaryDoneEvent {
   text: string;
 }
 
+export interface CodexReasoningSummaryPartAddedEvent {
+  type: "response.reasoning_summary_part.added";
+  itemId: string;
+  outputIndex: number;
+  part: Record<string, unknown>;
+}
+
+export interface CodexReasoningSummaryPartDoneEvent {
+  type: "response.reasoning_summary_part.done";
+  itemId: string;
+  outputIndex: number;
+  part: Record<string, unknown>;
+}
+
 // ── Function call event data shapes ─────────────────────────────
 
 export interface CodexOutputItemAddedEvent {
@@ -146,6 +160,8 @@ export type TypedCodexEvent =
   | CodexTextDoneEvent
   | CodexReasoningSummaryDeltaEvent
   | CodexReasoningSummaryDoneEvent
+  | CodexReasoningSummaryPartAddedEvent
+  | CodexReasoningSummaryPartDoneEvent
   | CodexCompletedEvent
   | CodexOutputItemAddedEvent
   | CodexOutputItemDoneEvent
@@ -231,6 +247,28 @@ export function parseCodexEvent(evt: CodexSSEEvent): TypedCodexEvent {
     case "response.reasoning_summary_text.done": {
       if (isRecord(data) && typeof data.text === "string") {
         return { type: "response.reasoning_summary_text.done", text: data.text };
+      }
+      return { type: "unknown", raw: data };
+    }
+    case "response.reasoning_summary_part.added": {
+      if (isRecord(data) && isRecord(data.part)) {
+        return {
+          type: "response.reasoning_summary_part.added",
+          itemId: typeof data.item_id === "string" ? data.item_id : "",
+          outputIndex: typeof data.output_index === "number" ? data.output_index : 0,
+          part: data.part,
+        };
+      }
+      return { type: "unknown", raw: data };
+    }
+    case "response.reasoning_summary_part.done": {
+      if (isRecord(data) && isRecord(data.part)) {
+        return {
+          type: "response.reasoning_summary_part.done",
+          itemId: typeof data.item_id === "string" ? data.item_id : "",
+          outputIndex: typeof data.output_index === "number" ? data.output_index : 0,
+          part: data.part,
+        };
       }
       return { type: "unknown", raw: data };
     }
