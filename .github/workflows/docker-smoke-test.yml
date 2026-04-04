@@ -1,0 +1,56 @@
+name: Docker Smoke Test
+
+on:
+  push:
+    branches: [ master ]
+  pull_request:
+
+jobs:
+  docker-smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Build Docker image
+        run: docker build -t codex-proxy-test .
+
+      - name: Run container on default port 8080
+        run: |
+          docker run -d --name proxy-8080 -p 8080:8080 codex-proxy-test
+          # Wait up to 30s for healthcheck
+          for i in {1..30}; do
+            if curl -s http://localhost:8080/health | grep -q "ok"; then
+              echo "Healthcheck passed on 8080"
+              break
+            fi
+            sleep 1
+          done
+          # Final curl to verify 200 and fail if not
+          curl -f -s http://localhost:8080/health > /dev/null
+
+      - name: Cleanup default container
+        run: |
+          docker stop proxy-8080
+          docker rm proxy-8080
+
+      - name: Test custom port 8090
+        run: |
+          # Create a custom config with port 8090
+          mkdir -p custom-config
+          cp config/default.yaml custom-config/default.yaml
+          sed -i 's/port: 8080/port: 8090/g' custom-config/default.yaml
+
+          # Run container mapping 8090
+          docker run -d --name proxy-8090 -p 8090:8090 -v $(pwd)/custom-config/default.yaml:/app/config/default.yaml codex-proxy-test
+
+          # Wait up to 30s for healthcheck
+          for i in {1..30}; do
+            if curl -s http://localhost:8090/health | grep -q "ok"; then
+              echo "Healthcheck passed on 8090"
+              break
+            fi
+            sleep 1
+          done
+          # Final curl to verify 200 and fail if not
+          curl -f -s http://localhost:8090/health > /dev/null

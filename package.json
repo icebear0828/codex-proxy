@@ -51,6 +51,7 @@
     "js-beautify": "^1.15.0",
     "tsx": "^4.0.0",
     "typescript": "^5.5.0",
+    "vite-tsconfig-paths": "^6.1.1",
     "vitest": "^3.2.4"
   }
 }
