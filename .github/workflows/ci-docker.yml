@@ -28,25 +28,48 @@ jobs:
   smoke:
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    strategy:
+      matrix:
+        config:
+          - name: default
+            container_port: 8080
+            host_port: 18080
+          - name: custom
+            container_port: 8090
+            host_port: 18090
     steps:
       - uses: actions/checkout@v4
 
       - name: Build Docker image
         run: docker build -t codex-proxy:smoke .
 
+      - name: Setup custom config
+        if: matrix.config.name == 'custom'
+        run: |
+          mkdir -p custom-config
+          echo -e "server:\n  port: ${{ matrix.config.container_port }}" > custom-config/default.yaml
+
       - name: Start container
         run: |
-          docker run -d --name smoke-test \
-            -p 18080:8080 \
-            -e NODE_ENV=production \
-            codex-proxy:smoke
+          if [ "${{ matrix.config.name }}" = "custom" ]; then
+            docker run -d --name smoke-test-${{ matrix.config.name }} \
+              -p ${{ matrix.config.host_port }}:${{ matrix.config.container_port }} \
+              -v $(pwd)/custom-config/default.yaml:/app/config/default.yaml \
+              -e NODE_ENV=production \
+              codex-proxy:smoke
+          else
+            docker run -d --name smoke-test-${{ matrix.config.name }} \
+              -p ${{ matrix.config.host_port }}:${{ matrix.config.container_port }} \
+              -e NODE_ENV=production \
+              codex-proxy:smoke
+          fi
           echo "Container started"
 
       - name: Wait for healthy
         run: |
           echo "Waiting for container to become healthy..."
           for i in $(seq 1 30); do
-            STATUS=$(docker inspect --format='{{.State.Health.Status}}' smoke-test 2>/dev/null || echo "starting")
+            STATUS=$(docker inspect --format='{{.State.Health.Status}}' smoke-test-${{ matrix.config.name }} 2>/dev/null || echo "starting")
             echo "  [$i/30] status: $STATUS"
             if [ "$STATUS" = "healthy" ]; then
               echo "Container is healthy"
@@ -55,19 +78,19 @@ jobs:
             sleep 2
           done
           echo "::error::Container did not become healthy within 60s"
-          docker logs smoke-test
+          docker logs smoke-test-${{ matrix.config.name }}
           exit 1
 
       - name: Verify /health endpoint
         run: |
-          RESPONSE=$(curl -sf http://localhost:18080/health)
+          RESPONSE=$(curl -sf http://localhost:${{ matrix.config.host_port }}/health)
           echo "Response: $RESPONSE"
           echo "$RESPONSE" | jq -e '.status == "ok"'
 
       - name: Verify /v1/models returns valid JSON
         run: |
           # Without auth, should return 401 or model list — either way must be valid JSON
-          STATUS=$(curl -s -o /dev/null -w '%{http_code}' http://localhost:18080/v1/models)
+          STATUS=$(curl -s -o /dev/null -w '%{http_code}' http://localhost:${{ matrix.config.host_port }}/v1/models)
           echo "/v1/models status: $STATUS"
           # 200 (no key set) or 401 (key set) are both acceptable
           if [ "$STATUS" != "200" ] && [ "$STATUS" != "401" ]; then
@@ -78,5 +101,5 @@ jobs:
       - name: Cleanup
         if: always()
         run: |
-          docker logs smoke-test 2>&1 | tail -30
-          docker rm -f smoke-test || true
+          docker logs smoke-test-${{ matrix.config.name }} 2>&1 | tail -30
+          docker rm -f smoke-test-${{ matrix.config.name }} || true
