@@ -21,17 +21,15 @@ files:
   - electron/assets/**/*
   - package.json
   - "!node_modules"
-  - node_modules/koffi/**
   - "!dist"
 
 # Static assets unpacked from asar (filesystem access at runtime)
 asarUnpack:
   - "config/**/*"
   - "public/**/*"
-  - "node_modules/koffi/**"
   - "**/*.node"
 
-# curl-impersonate binaries as extra resources (outside asar)
+# Extra resources (outside asar): cacert.pem, native addon
 extraResources:
   - from: bin/
     to: bin/

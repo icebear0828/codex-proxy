@@ -1,9 +1,6 @@
 import { Hono } from "hono";
-import { existsSync } from "fs";
-import { resolve } from "path";
 import type { AccountPool } from "../../auth/account-pool.js";
 import { getConfig } from "../../config.js";
-import { getBinDir } from "../../paths.js";
 import { getTransport, getTransportInfo } from "../../tls/transport.js";
 import { buildHeaders } from "../../fingerprint/manager.js";
 
@@ -44,19 +41,15 @@ export function createConnectionRoutes(accountPool: AccountPool): Hono {
     // 3. Transport check
     const transportStart = Date.now();
     const transportInfo = getTransportInfo();
-    const caCertPath = resolve(getBinDir(), "cacert.pem");
-    const caCertExists = existsSync(caCertPath);
     const transportOk = transportInfo.initialized;
     checks.push({
       name: "transport",
       status: transportOk ? "pass" : "fail",
       latencyMs: Date.now() - transportStart,
       detail: transportOk
-        ? `${transportInfo.type}, impersonate=${transportInfo.impersonate}, ca_cert=${caCertExists}`
+        ? `${transportInfo.type}, impersonate=${transportInfo.impersonate}`
         : null,
-      error: transportOk
-        ? (transportInfo.ffi_error ? `FFI fallback: ${transportInfo.ffi_error}` : null)
-        : (transportInfo.ffi_error ?? "Transport not initialized"),
+      error: transportOk ? null : "Transport not initialized",
     });
     if (!transportOk) overallFailed = true;
 

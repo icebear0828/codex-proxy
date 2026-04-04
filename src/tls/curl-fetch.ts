@@ -2,7 +2,7 @@
  * Simple GET/POST helpers using the TLS transport layer.
  *
  * Drop-in replacement for Node.js fetch() that routes through
- * the active transport (curl CLI or libcurl FFI) with Chrome TLS profile.
+ * the native (rustls) transport with Chrome TLS fingerprint.
  *
  * Automatically injects anonymous fingerprint headers.
  * Used for non-streaming requests (OAuth, appcast, etc.).

@@ -34,7 +34,7 @@ await build({
   platform: "node",
   format: "esm",
   outfile: "dist-electron/server.mjs",
-  external: ["koffi"],
+  external: [],
   target: "node20",
   sourcemap: true,
   // Mark .node files as external (native addons)

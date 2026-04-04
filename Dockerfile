@@ -24,7 +24,7 @@ RUN npm ci && npm run build
 # ── Stage 2: Application ────────────────────────────────────────────
 FROM node:20-slim
 
-# curl: needed by setup-curl.ts and full-update.ts
+# curl: needed by full-update.ts
 # unzip: needed by full-update.ts to extract Codex.app
 # gosu: needed by entrypoint to drop from root to node user
 RUN apt-get update && \
@@ -33,14 +33,10 @@ RUN apt-get update && \
 
 WORKDIR /app
 
-# 1) Backend deps (postinstall runs tsx scripts/setup-curl.ts)
+# 1) Backend deps
 COPY package*.json tsconfig.json ./
 COPY scripts/ scripts/
 RUN npm ci
-
-# Fail fast if curl-impersonate wasn't downloaded
-RUN test -f bin/curl-impersonate || \
-    (echo "FATAL: curl-impersonate not downloaded. Check network." && exit 1)
 
 # 2) Web deps (separate layer for cache efficiency)
 COPY web/package*.json web/

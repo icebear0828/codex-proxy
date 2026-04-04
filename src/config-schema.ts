@@ -46,10 +46,7 @@ export const ConfigSchema = z.object({
     cleanup_interval_minutes: z.number().min(1).default(5),
   }),
   tls: z.object({
-    curl_binary: z.string().default("auto"),
-    impersonate_profile: z.string().default("chrome136"),
     proxy_url: z.string().nullable().default(null),
-    transport: z.enum(["auto", "native", "curl-cli", "libcurl-ffi"]).default("auto"),
     force_http11: z.boolean().default(false),
   }).default({}),
   quota: z.object({

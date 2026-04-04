@@ -38,7 +38,6 @@ describe("ConfigSchema", () => {
     expect(result.auth.request_interval_ms).toBe(50);
     expect(result.model.default).toBe("gpt-5.2-codex");
     expect(result.model.default_reasoning_effort).toBe("medium");
-    expect(result.tls.transport).toBe("auto");
     expect(result.tls.force_http11).toBe(false);
     expect(result.quota.refresh_interval_minutes).toBe(5);
     expect(result.quota.warning_thresholds.primary).toEqual([80, 90]);
@@ -109,7 +108,6 @@ describe("ConfigSchema", () => {
     const result = ConfigSchema.parse({
       api: {}, client: {}, model: {}, auth: {}, server: {}, session: {},
     });
-    expect(result.tls.curl_binary).toBe("auto");
     expect(result.quota.concurrency).toBe(10);
     expect(result.update.auto_update).toBe(true);
   });

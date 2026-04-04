@@ -23,6 +23,7 @@ import { createResponsesRoutes } from "./routes/responses.js";
 import { startUpdateChecker, stopUpdateChecker } from "./update-checker.js";
 import { startProxyUpdateChecker, stopProxyUpdateChecker, setCloseHandler, getDeployMode } from "./self-update.js";
 import { initProxy } from "./tls/proxy.js";
+import { cleanupStaleLocks } from "./auth/refresh-lock.js";
 import { initTransport, getTransport } from "./tls/transport.js";
 import { loadStaticModels } from "./models/model-store.js";
 import { startModelRefresh, stopModelRefresh } from "./models/model-fetcher.js";
@@ -60,6 +61,9 @@ export async function startServer(options?: StartOptions): Promise<ServerHandle>
   // Initialize TLS transport (auto-selects curl CLI or libcurl FFI)
   const transport = await initTransport();
   initContext(config, fingerprint, transport);
+
+  // Clean up stale refresh locks from previous crashes
+  cleanupStaleLocks();
 
   // Initialize managers
   const accountPool = new AccountPool();
