@@ -11,7 +11,8 @@ bin/
 *.log
 .asar-out/
 tmp/
-.claude/settings.local.json
+.claude/
+native/target/
 
 # Maintenance scripts (private)
 scripts/build/full-update.ts
