@@ -34,19 +34,34 @@ jobs:
       - name: Build Docker image
         run: docker build -t codex-proxy:smoke .
 
-      - name: Start container
+      - name: Start container (Default Port)
         run: |
-          docker run -d --name smoke-test \
+          docker run -d --name smoke-test-default \
             -p 18080:8080 \
             -e NODE_ENV=production \
             codex-proxy:smoke
-          echo "Container started"
+          echo "Default container started"
 
-      - name: Wait for healthy
+      - name: Prepare Custom Port Config
         run: |
-          echo "Waiting for container to become healthy..."
+          mkdir -p test-data
+          echo -e "server:\n  port: 8090" > test-data/local.yaml
+          cat test-data/local.yaml
+
+      - name: Start container (Custom Port)
+        run: |
+          docker run -d --name smoke-test-custom \
+            -p 18090:8090 \
+            -v ${{ github.workspace }}/test-data:/app/data \
+            -e NODE_ENV=production \
+            codex-proxy:smoke
+          echo "Custom container started"
+
+      - name: Wait for healthy (Default Port)
+        run: |
+          echo "Waiting for default container to become healthy..."
           for i in $(seq 1 30); do
-            STATUS=$(docker inspect --format='{{.State.Health.Status}}' smoke-test 2>/dev/null || echo "starting")
+            STATUS=$(docker inspect --format='{{.State.Health.Status}}' smoke-test-default 2>/dev/null || echo "starting")
             echo "  [$i/30] status: $STATUS"
             if [ "$STATUS" = "healthy" ]; then
               echo "Container is healthy"
@@ -55,16 +70,38 @@ jobs:
             sleep 2
           done
           echo "::error::Container did not become healthy within 60s"
-          docker logs smoke-test
+          docker logs smoke-test-default
           exit 1
 
-      - name: Verify /health endpoint
+      - name: Wait for healthy (Custom Port)
         run: |
-          RESPONSE=$(curl -sf http://localhost:18080/health)
-          echo "Response: $RESPONSE"
-          echo "$RESPONSE" | jq -e '.status == "ok"'
+          echo "Waiting for custom container to become healthy..."
+          for i in $(seq 1 30); do
+            STATUS=$(docker inspect --format='{{.State.Health.Status}}' smoke-test-custom 2>/dev/null || echo "starting")
+            echo "  [$i/30] status: $STATUS"
+            if [ "$STATUS" = "healthy" ]; then
+              echo "Container is healthy"
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "::error::Container did not become healthy within 60s"
+          docker logs smoke-test-custom
+          exit 1
 
-      - name: Verify /v1/models returns valid JSON
+      - name: Verify /health endpoint (Both)
+        run: |
+          echo "Checking default port..."
+          RESPONSE_DEF=$(curl -sf http://localhost:18080/health)
+          echo "Response (Default): $RESPONSE_DEF"
+          echo "$RESPONSE_DEF" | jq -e '.status == "ok"'
+
+          echo "Checking custom port..."
+          RESPONSE_CUST=$(curl -sf http://localhost:18090/health)
+          echo "Response (Custom): $RESPONSE_CUST"
+          echo "$RESPONSE_CUST" | jq -e '.status == "ok"'
+
+      - name: Verify /v1/models returns valid JSON (Default Port)
         run: |
           # Without auth, should return 401 or model list — either way must be valid JSON
           STATUS=$(curl -s -o /dev/null -w '%{http_code}' http://localhost:18080/v1/models)
@@ -75,8 +112,26 @@ jobs:
             exit 1
           fi
 
+      - name: Verify /v1/models returns valid JSON (Custom Port)
+        run: |
+          # Without auth, should return 401 or model list — either way must be valid JSON
+          STATUS=$(curl -s -o /dev/null -w '%{http_code}' http://localhost:18090/v1/models)
+          echo "/v1/models status: $STATUS"
+          # 200 (no key set) or 401 (key set) are both acceptable
+          if [ "$STATUS" != "200" ] && [ "$STATUS" != "401" ]; then
+            echo "::error::Unexpected status $STATUS from /v1/models"
+            exit 1
+          fi
+
       - name: Cleanup
         if: always()
         run: |
-          docker logs smoke-test 2>&1 | tail -30
-          docker rm -f smoke-test || true
+          echo "Logs for default container:"
+          docker logs smoke-test-default 2>&1 | tail -30 || true
+          docker rm -f smoke-test-default || true
+
+          echo "Logs for custom container:"
+          docker logs smoke-test-custom 2>&1 | tail -30 || true
+          docker rm -f smoke-test-custom || true
+
+          rm -rf test-data
