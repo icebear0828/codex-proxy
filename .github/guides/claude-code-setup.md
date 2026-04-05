@@ -36,7 +36,7 @@ cat ~/.claude/settings.json
 - **`ANTHROPIC_BASE_URL`** — Codex Proxy 地址（默认 `http://localhost:8080`）
 - **`ANTHROPIC_API_KEY`** — 从 Dashboard 获取的 proxy API key
 
-> **Tip:** Dashboard 的 **Anthropic SDK Setup** 卡片可一键复制所有环境变量（含 Opus / Sonnet / Haiku 层级模型配置）。推荐模型：Opus → `gpt-5.4`，Sonnet → `gpt-5.4-mini`，Haiku → `gpt-5.3-codex`。
+> **Tip:** Dashboard 的 **Anthropic SDK Setup** 卡片可一键复制所有环境变量（含 Opus / Sonnet / Haiku 层级模型配置）。推荐模型：Opus → `gpt-5.4`，Sonnet → `gpt-5.3-codex`，Haiku → `gpt-5.4-mini`。
 
 如果需要手动创建，在 `~/.claude/settings.json` 中填入：
 
@@ -46,8 +46,8 @@ cat ~/.claude/settings.json
     "ANTHROPIC_BASE_URL": "http://localhost:8080",
     "ANTHROPIC_API_KEY": "your-proxy-api-key",
     "ANTHROPIC_DEFAULT_OPUS_MODEL": "gpt-5.4",
-    "ANTHROPIC_DEFAULT_SONNET_MODEL": "gpt-5.4-mini",
-    "ANTHROPIC_DEFAULT_HAIKU_MODEL": "gpt-5.3-codex"
+    "ANTHROPIC_DEFAULT_SONNET_MODEL": "gpt-5.3-codex",
+    "ANTHROPIC_DEFAULT_HAIKU_MODEL": "gpt-5.4-mini"
   }
 }
 ```

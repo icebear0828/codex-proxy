@@ -11,8 +11,8 @@ interface AnthropicSetupProps {
 
 const PRESETS: Array<{ label: string; value: string }> = [
   { label: "gpt-5.4 (Opus)", value: "gpt-5.4" },
-  { label: "gpt-5.4-mini (Sonnet)", value: "gpt-5.4-mini" },
-  { label: "gpt-5.3-codex (Haiku)", value: "gpt-5.3-codex" },
+  { label: "gpt-5.3-codex (Sonnet)", value: "gpt-5.3-codex" },
+  { label: "gpt-5.4-mini (Haiku)", value: "gpt-5.4-mini" },
 ];
 
 export function AnthropicSetup({ apiKey, selectedModel, reasoningEffort, serviceTier }: AnthropicSetupProps) {
@@ -20,8 +20,8 @@ export function AnthropicSetup({ apiKey, selectedModel, reasoningEffort, service
   const origin = typeof window !== "undefined" ? window.location.origin : "http://localhost:8080";
 
   const [opusModel, setOpusModel] = useState("gpt-5.4");
-  const [sonnetModel, setSonnetModel] = useState("gpt-5.4-mini");
-  const [haikuModel, setHaikuModel] = useState("gpt-5.3-codex");
+  const [sonnetModel, setSonnetModel] = useState("gpt-5.3-codex");
+  const [haikuModel, setHaikuModel] = useState("gpt-5.4-mini");
 
   // Custom model from ApiConfig
   const customModel = useMemo(() => {
