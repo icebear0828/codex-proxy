@@ -369,8 +369,7 @@ export async function handleDirectRequest(
     rawResponse = await upstream.createResponse(req.codexRequest, abortController.signal);
   } catch (err) {
     const msg = err instanceof Error ? err.message : "Upstream request failed";
-    const statusMatch = msg.match(/(\d{3})/);
-    const status = statusMatch ? parseInt(statusMatch[1], 10) : 502;
+    const status = err instanceof CodexApiError ? err.status : 502;
     if (status === 429) {
       c.status(429);
       return c.json(fmt.format429(msg));

@@ -71,8 +71,8 @@ export class AnthropicUpstream implements UpstreamAdapter {
     let inputTokens = 0;
     let outputTokens = 0;
 
-    // Track tool_use content blocks by index → { id, name }
-    const toolBlocks = new Map<number, { id: string; name: string }>();
+    // Track tool_use content blocks by index → { id, name, argBuffer }
+    const toolBlocks = new Map<number, { id: string; name: string; argBuffer: string }>();
 
     for await (const raw of parseSSEStream(response)) {
       // Anthropic SSE uses event: field — raw.event = "message_start", etc.
@@ -103,7 +103,7 @@ export class AnthropicUpstream implements UpstreamAdapter {
           if (block?.type === "tool_use") {
             const toolId = typeof block.id === "string" ? block.id : `call_${randomUUID().slice(0, 8)}`;
             const toolName = typeof block.name === "string" ? block.name : "";
-            toolBlocks.set(index, { id: toolId, name: toolName });
+            toolBlocks.set(index, { id: toolId, name: toolName, argBuffer: "" });
             yield {
               event: "response.output_item.added",
               data: {
@@ -133,6 +133,7 @@ export class AnthropicUpstream implements UpstreamAdapter {
           } else if (delta.type === "input_json_delta" && typeof delta.partial_json === "string") {
             const tool = toolBlocks.get(index);
             if (tool) {
+              tool.argBuffer += delta.partial_json;
               yield {
                 event: "response.function_call_arguments.delta",
                 data: { call_id: tool.id, delta: delta.partial_json, output_index: index },
@@ -152,11 +153,9 @@ export class AnthropicUpstream implements UpstreamAdapter {
           const index = typeof data.index === "number" ? data.index : -1;
           const tool = toolBlocks.get(index);
           if (tool) {
-            // Emit function_call_arguments.done — arguments accumulated via deltas
-            // We don't have the full args here; rely on the delta accumulation in the translator
             yield {
               event: "response.function_call_arguments.done",
-              data: { call_id: tool.id, name: tool.name, arguments: "", output_index: index },
+              data: { call_id: tool.id, name: tool.name, arguments: tool.argBuffer, output_index: index },
             };
           }
           break;

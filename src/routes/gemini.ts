@@ -164,7 +164,8 @@ export function createGeminiRoutes(
     };
 
     if (upstreamRouter && !upstreamRouter.isCodexModel(geminiModel)) {
-      return handleDirectRequest(c, upstreamRouter.resolve(geminiModel), proxyReq, GEMINI_FORMAT);
+      const directReq = { ...proxyReq, codexRequest: { ...codexRequest, model: geminiModel } };
+      return handleDirectRequest(c, upstreamRouter.resolve(geminiModel), directReq, GEMINI_FORMAT);
     }
 
     return handleProxyRequest(c, accountPool, cookieJar, proxyReq, GEMINI_FORMAT, proxyPool);

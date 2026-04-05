@@ -21,9 +21,11 @@ import { parseModelName, resolveModelId, getModelInfo, buildDisplayModelName } f
 import { EmptyResponseError } from "../translation/codex-event-extractor.js";
 import {
   handleProxyRequest,
+  handleDirectRequest,
   staggerIfNeeded,
   type FormatAdapter,
 } from "./shared/proxy-handler.js";
+import type { UpstreamRouter } from "../proxy/upstream-router.js";
 import { acquireAccount, releaseAccount } from "./shared/account-acquisition.js";
 import { handleCodexApiError } from "./shared/proxy-error-handler.js";
 import { withRetry } from "../utils/retry.js";
@@ -436,6 +438,7 @@ export function createResponsesRoutes(
   accountPool: AccountPool,
   cookieJar?: CookieJar,
   proxyPool?: ProxyPool,
+  upstreamRouter?: UpstreamRouter,
 ): Hono {
   const app = new Hono();
 
@@ -542,20 +545,20 @@ export function createResponsesRoutes(
     }
 
     const clientWantsStream = body.stream !== false;
+    const proxyReq = {
+      codexRequest,
+      model: displayModel,
+      isStreaming: clientWantsStream,
+      tupleSchema,
+    };
 
-    return handleProxyRequest(
-      c,
-      accountPool,
-      cookieJar,
-      {
-        codexRequest,
-        model: displayModel,
-        isStreaming: clientWantsStream,
-        tupleSchema,
-      },
-      PASSTHROUGH_FORMAT,
-      proxyPool,
-    );
+    if (upstreamRouter && !upstreamRouter.isCodexModel(rawModel)) {
+      // Use raw model name so adapter's extractModelId can strip the provider prefix
+      const directReq = { ...proxyReq, codexRequest: { ...codexRequest, model: rawModel } };
+      return handleDirectRequest(c, upstreamRouter.resolve(rawModel), directReq, PASSTHROUGH_FORMAT);
+    }
+
+    return handleProxyRequest(c, accountPool, cookieJar, proxyReq, PASSTHROUGH_FORMAT, proxyPool);
   };
 
   // ── POST /v1/responses/compact — non-streaming JSON proxy ──

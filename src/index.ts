@@ -123,7 +123,7 @@ export async function startServer(options?: StartOptions): Promise<ServerHandle>
   const chatRoutes = createChatRoutes(accountPool, cookieJar, proxyPool, upstreamRouter);
   const messagesRoutes = createMessagesRoutes(accountPool, cookieJar, proxyPool, upstreamRouter);
   const geminiRoutes = createGeminiRoutes(accountPool, cookieJar, proxyPool, upstreamRouter);
-  const responsesRoutes = createResponsesRoutes(accountPool, cookieJar, proxyPool);
+  const responsesRoutes = createResponsesRoutes(accountPool, cookieJar, proxyPool, upstreamRouter);
   const proxyRoutes = createProxyRoutes(proxyPool, accountPool);
   const usageStats = new UsageStatsStore();
   usageStats.recoverBaseline(accountPool);
