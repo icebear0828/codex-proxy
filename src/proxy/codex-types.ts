@@ -36,8 +36,32 @@ export interface CodexResponsesRequest {
   useWebSocket?: boolean;
   /** Upstream turn-state token for sticky routing (not serialized to body). */
   turnState?: string;
-  /** When true, route to /codex/responses/compact instead of /codex/responses. */
-  compact?: boolean;
+}
+
+/**
+ * Request body for POST /codex/responses/compact (non-streaming JSON).
+ * Matches codex-rs CompactionInput — no stream/store fields.
+ */
+export interface CodexCompactRequest {
+  model: string;
+  input: CodexInputItem[];
+  instructions: string;
+  tools?: unknown[];
+  parallel_tool_calls?: boolean;
+  reasoning?: { effort?: string; summary?: string };
+  text?: {
+    format: {
+      type: "text" | "json_object" | "json_schema";
+      name?: string;
+      schema?: Record<string, unknown>;
+      strict?: boolean;
+    };
+  };
+}
+
+/** Response body from POST /codex/responses/compact. */
+export interface CodexCompactResponse {
+  output: unknown[];
 }
 
 /** Structured content part for multimodal Codex input. */

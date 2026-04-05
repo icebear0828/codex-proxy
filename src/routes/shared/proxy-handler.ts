@@ -67,7 +67,7 @@ export interface FormatAdapter {
 const MAX_EMPTY_RETRIES = 2;
 
 /** Sleep if this account had a recent request, to stagger upstream traffic. */
-async function staggerIfNeeded(prevSlotMs: number | null): Promise<void> {
+export async function staggerIfNeeded(prevSlotMs: number | null): Promise<void> {
   const intervalMs = getConfig().auth.request_interval_ms;
   if (!intervalMs || prevSlotMs == null) return;
   const elapsed = Date.now() - prevSlotMs;
