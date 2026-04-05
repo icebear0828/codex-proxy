@@ -21,8 +21,6 @@ import type {
 import { iterateCodexEvents, EmptyResponseError, type UsageInfo } from "./codex-event-extractor.js";
 import { reconvertTupleValues } from "./tuple-schema.js";
 
-export type { UsageInfo };
-
 /** Format an SSE chunk for streaming output */
 function formatSSE(chunk: ChatCompletionChunk): string {
   return `data: ${JSON.stringify(chunk)}\n\n`;

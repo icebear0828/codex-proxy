@@ -8,8 +8,6 @@ import type { UpstreamAdapter } from "../../proxy/upstream-adapter.js";
 import type { FormatAdapter } from "./proxy-handler.js";
 import type { UsageInfo } from "../../translation/codex-event-extractor.js";
 
-export type { UsageInfo };
-
 /** Minimal subset of Hono's StreamingApi that we actually use. */
 export interface StreamWriter {
   write(chunk: string): Promise<unknown>;
