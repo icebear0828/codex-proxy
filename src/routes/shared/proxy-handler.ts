@@ -14,6 +14,7 @@ import type { StatusCode } from "hono/utils/http-status";
 import { stream } from "hono/streaming";
 import { CodexApi, CodexApiError } from "../../proxy/codex-api.js";
 import type { CodexResponsesRequest } from "../../proxy/codex-api.js";
+import type { UpstreamAdapter } from "../../proxy/upstream-adapter.js";
 import { EmptyResponseError } from "../../translation/codex-event-extractor.js";
 import type { AccountPool } from "../../auth/account-pool.js";
 import type { CookieJar } from "../../proxy/cookie-jar.js";
@@ -45,7 +46,7 @@ export interface FormatAdapter {
   format429: (message: string) => unknown;
   formatError: (status: number, message: string) => unknown;
   streamTranslator: (
-    api: CodexApi,
+    api: UpstreamAdapter,
     response: Response,
     model: string,
     onUsage: (u: { input_tokens: number; output_tokens: number; cached_tokens?: number; reasoning_tokens?: number }) => void,
@@ -53,7 +54,7 @@ export interface FormatAdapter {
     tupleSchema?: Record<string, unknown> | null,
   ) => AsyncGenerator<string>;
   collectTranslator: (
-    api: CodexApi,
+    api: UpstreamAdapter,
     response: Response,
     model: string,
     tupleSchema?: Record<string, unknown> | null,
@@ -347,5 +348,58 @@ async function handleNonStreaming(
       c.status(code);
       return c.json(fmt.formatError(code, msg));
     }
+  }
+}
+
+/**
+ * Lightweight handler for API-key-based upstreams (OpenAI, Anthropic, Gemini, custom).
+ * No account pool management, no session affinity, no retry logic — just proxy + translate.
+ */
+export async function handleDirectRequest(
+  c: Context,
+  upstream: UpstreamAdapter,
+  req: ProxyRequest,
+  fmt: FormatAdapter,
+): Promise<Response> {
+  const abortController = new AbortController();
+  c.req.raw.signal.addEventListener("abort", () => abortController.abort(), { once: true });
+
+  let rawResponse: Response;
+  try {
+    rawResponse = await upstream.createResponse(req.codexRequest, abortController.signal);
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : "Upstream request failed";
+    const statusMatch = msg.match(/(\d{3})/);
+    const status = statusMatch ? parseInt(statusMatch[1], 10) : 502;
+    if (status === 429) {
+      c.status(429);
+      return c.json(fmt.format429(msg));
+    }
+    const code = toErrorStatus(status) as StatusCode;
+    c.status(code);
+    return c.json(fmt.formatError(code, msg));
+  }
+
+  if (req.isStreaming) {
+    c.header("Content-Type", "text/event-stream");
+    c.header("Cache-Control", "no-cache");
+    c.header("Connection", "keep-alive");
+
+    return stream(c, async (s) => {
+      s.onAbort(() => abortController.abort());
+      await streamResponse(s, upstream, rawResponse, req.model, fmt, () => {}, req.tupleSchema, () => {});
+    });
+  }
+
+  // Non-streaming
+  try {
+    const result = await fmt.collectTranslator(upstream, rawResponse, req.model, req.tupleSchema);
+    return c.json(result.response);
+  } catch (err) {
+    abortController.abort();
+    const msg = err instanceof Error ? err.message : "Failed to collect upstream response";
+    const code = toErrorStatus(0) as StatusCode;
+    c.status(code);
+    return c.json(fmt.formatError(code, msg));
   }
 }

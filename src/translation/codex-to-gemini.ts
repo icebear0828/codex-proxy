@@ -9,7 +9,7 @@
  * Non-streaming: collect all text, return Gemini generateContent response.
  */
 
-import type { CodexApi } from "../proxy/codex-api.js";
+import type { UpstreamAdapter } from "../proxy/upstream-adapter.js";
 import type {
   GeminiGenerateContentResponse,
   GeminiUsageMetadata,
@@ -30,7 +30,7 @@ export interface GeminiUsageInfo {
  * Yields string chunks ready to write to the HTTP response.
  */
 export async function* streamCodexToGemini(
-  codexApi: CodexApi,
+  codexApi: UpstreamAdapter,
   rawResponse: Response,
   model: string,
   onUsage?: (usage: GeminiUsageInfo) => void,
@@ -196,7 +196,7 @@ export async function* streamCodexToGemini(
  * Gemini generateContent response.
  */
 export async function collectCodexToGeminiResponse(
-  codexApi: CodexApi,
+  codexApi: UpstreamAdapter,
   rawResponse: Response,
   model: string,
   tupleSchema?: Record<string, unknown> | null,

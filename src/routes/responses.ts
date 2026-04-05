@@ -13,6 +13,7 @@ import type { CookieJar } from "../proxy/cookie-jar.js";
 import type { ProxyPool } from "../proxy/proxy-pool.js";
 import { CodexApi, CodexApiError } from "../proxy/codex-api.js";
 import type { CodexResponsesRequest, CodexCompactRequest, CodexInputItem } from "../proxy/codex-api.js";
+import type { UpstreamAdapter } from "../proxy/upstream-adapter.js";
 import { getConfig } from "../config.js";
 import { prepareSchema } from "../translation/shared-utils.js";
 import { reconvertTupleValues } from "../translation/tuple-schema.js";
@@ -36,7 +37,7 @@ function isRecord(v: unknown): v is Record<string, unknown> {
 // ── Passthrough stream translator ──────────────────────────────────
 
 async function* streamPassthrough(
-  api: CodexApi,
+  api: UpstreamAdapter,
   response: Response,
   _model: string,
   onUsage: (u: { input_tokens: number; output_tokens: number }) => void,
@@ -119,7 +120,7 @@ async function* streamPassthrough(
 // ── Passthrough collect translator ─────────────────────────────────
 
 export async function collectPassthrough(
-  api: CodexApi,
+  api: UpstreamAdapter,
   response: Response,
   _model: string,
   tupleSchema?: Record<string, unknown> | null,

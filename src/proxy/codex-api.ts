@@ -49,6 +49,8 @@ import {
 } from "./codex-types.js";
 
 export class CodexApi {
+  readonly tag = "codex" as const;
+
   private token: string;
   private accountId: string | null;
   private cookieJar: CookieJar | null;

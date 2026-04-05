@@ -4,7 +4,7 @@
  * Encapsulates streaming (SSE) and non-streaming (collect) response paths.
  */
 
-import type { CodexApi } from "../../proxy/codex-api.js";
+import type { UpstreamAdapter } from "../../proxy/upstream-adapter.js";
 import type { FormatAdapter } from "./proxy-handler.js";
 import type { UsageInfo } from "../../translation/codex-event-extractor.js";
 
@@ -24,7 +24,7 @@ export interface StreamWriter {
  */
 export async function streamResponse(
   s: StreamWriter,
-  api: CodexApi,
+  api: UpstreamAdapter,
   rawResponse: Response,
   model: string,
   adapter: FormatAdapter,

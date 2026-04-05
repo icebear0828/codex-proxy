@@ -11,7 +11,7 @@
  */
 
 import { randomUUID } from "crypto";
-import type { CodexApi } from "../proxy/codex-api.js";
+import type { UpstreamAdapter } from "../proxy/upstream-adapter.js";
 import type {
   AnthropicContentBlock,
   AnthropicMessagesResponse,
@@ -39,7 +39,7 @@ function formatSSE(eventType: string, data: unknown): string {
  * thinking content blocks before the text block.
  */
 export async function* streamCodexToAnthropic(
-  codexApi: CodexApi,
+  codexApi: UpstreamAdapter,
   rawResponse: Response,
   model: string,
   onUsage?: (usage: AnthropicUsageInfo) => void,
@@ -264,7 +264,7 @@ export async function* streamCodexToAnthropic(
  * Anthropic Messages response.
  */
 export async function collectCodexToAnthropicResponse(
-  codexApi: CodexApi,
+  codexApi: UpstreamAdapter,
   rawResponse: Response,
   model: string,
   wantThinking?: boolean,
