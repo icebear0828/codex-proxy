@@ -241,7 +241,7 @@ export function useAccounts() {
     if (resp.ok) {
       await loadAccounts();
     }
-    return result;
+    return { added: 0, updated: 0, failed: 0, errors: [], ...result };
   }, [loadAccounts]);
 
   const batchDelete = useCallback(async (ids: string[]): Promise<string | null> => {
