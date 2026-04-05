@@ -1,0 +1,80 @@
+name: CI — Docker Smoke Test
+
+on:
+  push:
+    branches: [ master ]
+  pull_request:
+
+jobs:
+  smoke-test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Build Docker image
+        run: docker build -t codex-proxy-test .
+
+      - name: Run container on default port 8080
+        run: |
+          docker run -d --name smoke-test-8080 -p 8080:8080 codex-proxy-test
+
+          echo "Waiting for container to become healthy..."
+          for i in $(seq 1 15); do
+            STATUS=$(docker inspect --format='{{.State.Health.Status}}' smoke-test-8080)
+            if [ "$STATUS" = "healthy" ]; then
+              echo "Container is healthy"
+              break
+            fi
+            sleep 2
+          done
+
+          if [ "$STATUS" != "healthy" ]; then
+            echo "Container failed to become healthy"
+            docker logs smoke-test-8080
+            exit 1
+          fi
+
+          RESPONSE=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:8080/health)
+          if [ "$RESPONSE" != "200" ]; then
+            echo "Expected 200 OK from /health on 8080, got $RESPONSE"
+            exit 1
+          fi
+
+      - name: Cleanup default container
+        if: always()
+        run: docker rm -f smoke-test-8080 || true
+
+      - name: Test custom port 8090
+        run: |
+          # Modify config file to use port 8090
+          sed -i 's/port: 8080/port: 8090/g' config/default.yaml
+
+          # Run container with custom port 8090, mounting the modified config
+          docker run -d --name smoke-test-8090 -p 8090:8090 -v $(pwd)/config/default.yaml:/app/config/default.yaml codex-proxy-test
+
+          echo "Waiting for container to become healthy on port 8090..."
+          for i in $(seq 1 15); do
+            STATUS=$(docker inspect --format='{{.State.Health.Status}}' smoke-test-8090)
+            if [ "$STATUS" = "healthy" ]; then
+              echo "Container is healthy"
+              break
+            fi
+            sleep 2
+          done
+
+          if [ "$STATUS" != "healthy" ]; then
+            echo "Container failed to become healthy on port 8090"
+            docker logs smoke-test-8090
+            exit 1
+          fi
+
+          RESPONSE=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:8090/health)
+          if [ "$RESPONSE" != "200" ]; then
+            echo "Expected 200 OK from /health on 8090, got $RESPONSE"
+            exit 1
+          fi
+
+      - name: Cleanup custom port container
+        if: always()
+        run: docker rm -f smoke-test-8090 || true
