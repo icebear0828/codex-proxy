@@ -80,21 +80,32 @@ docker compose up -d
 ```bash
 git clone https://github.com/icebear0828/codex-proxy.git
 cd codex-proxy
-npm install                        # Backend deps + auto-download curl-impersonate
-cd web && npm install && cd ..     # Frontend deps
+npm install                        # Backend dependencies
+cd web && npm install && cd ..     # Frontend dependencies
 npm run dev                        # Dev mode (hot reload)
 # Or: npm run build && npm start   # Production mode
 ```
 
-> On Windows, curl-impersonate is not available. Falls back to system curl.
+> **Requires Rust toolchain** (for TLS native addon):
+> ```bash
+> curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+> cd native && npm install && npm run build && cd ..
+> ```
+> Docker / desktop app ship pre-built addons — no manual compilation needed.
 
 ### Verify
 
+After logging in, open the dashboard at `http://localhost:8080` and find your API Key in the **API Configuration** section:
+
 ```bash
+# Replace your-api-key with the key shown in the dashboard
 curl http://localhost:8080/v1/chat/completions \
   -H "Content-Type: application/json" \
+  -H "Authorization: Bearer your-api-key" \
   -d '{"model":"codex","messages":[{"role":"user","content":"Hello!"}],"stream":true}'
 ```
+
+If you see streaming AI text, the setup is working. If you get 401, double-check the API Key.
 
 ## 🌟 Features
 
@@ -122,9 +133,8 @@ curl http://localhost:8080/v1/chat/completions \
 - **Auto-mark unreachable** — unreachable proxies excluded from rotation
 
 ### 4. 🛡️ Anti-Detection & Protocol Impersonation
-- **Chrome TLS fingerprint** — curl-impersonate replicates the full Chrome TLS handshake
-- **Desktop header replication** — `originator`, `User-Agent`, `sec-ch-*` headers in exact Codex Desktop order
-- **Desktop context injection** — optional system prompt injection (off by default, enable via `model.inject_desktop_context`)
+- **Rust Native TLS** — built-in reqwest + rustls native addon, TLS fingerprint matches real Codex Desktop exactly (pinned dependency versions)
+- **Desktop header replication** — `originator`, `User-Agent`, `x-openai-internal-codex-residency`, `x-codex-turn-state`, `x-client-request-id` headers sent per real client behavior
 - **Cookie persistence** — automatic Cloudflare cookie capture and replay
 - **Fingerprint auto-update** — polls Codex Desktop update feed, auto-syncs `app_version` and `build_number`
 
@@ -144,7 +154,7 @@ curl http://localhost:8080/v1/chat/completions \
 │       ▼                                                  │
 │  ┌──────────┐    ┌───────────────┐    ┌──────────────┐   │
 │  │  Routes   │──▶│  Translation  │──▶│    Proxy     │   │
-│  │  (Hono)  │   │ Multi→Codex   │   │ curl TLS/FFI │   │
+│  │  (Hono)  │   │ Multi→Codex   │   │ Native TLS   │   │
 │  └──────────┘   └───────────────┘   └──────┬───────┘   │
 │       ▲                                     │           │
 │       │          ┌───────────────┐          │           │
@@ -154,14 +164,15 @@ curl http://localhost:8080/v1/chat/completions \
 │                                                          │
 │  ┌──────────┐  ┌───────────────┐  ┌──────────────────┐  │
 │  │   Auth   │  │  Fingerprint  │  │   Model Store    │  │
-│  │ OAuth/JWT│  │Chrome TLS/UA  │  │ Static + Dynamic │  │
-│  │  Relay   │  │   Cookie      │  │  Plan Routing    │  │
+│  │ OAuth/JWT│  │ Rust (rustls) │  │ Static + Dynamic │  │
+│  │  Relay   │  │  Headers/UA   │  │  Plan Routing    │  │
 │  └──────────┘  └───────────────┘  └──────────────────┘  │
 │                                                          │
 └──────────────────────────────────────────────────────────┘
                           │
-                  curl-impersonate / FFI
-                   (Chrome TLS fingerprint)
+              Rust Native Addon (napi-rs)
+            reqwest 0.12.28 + rustls 0.23.36
+           (TLS fingerprint = real Codex Desktop)
                           │
                    ┌──────┴──────┐
                    ▼             ▼
@@ -335,7 +346,7 @@ All configuration in `config/default.yaml`:
 | `client` | `app_version`, `build_number`, `chromium_version` | Codex Desktop version to impersonate |
 | `model` | `default`, `default_reasoning_effort`, `inject_desktop_context` | Default model and reasoning config |
 | `auth` | `rotation_strategy`, `rate_limit_backoff_seconds` | Rotation strategy and rate limit backoff |
-| `tls` | `curl_binary`, `impersonate_profile`, `proxy_url`, `force_http11` | TLS impersonation and proxy |
+| `tls` | `proxy_url`, `force_http11` | TLS proxy and HTTP version |
 | `quota` | `refresh_interval_minutes`, `warning_thresholds`, `skip_exhausted` | Quota refresh and warnings |
 | `session` | `ttl_minutes`, `cleanup_interval_minutes` | Dashboard session management |
 
@@ -368,9 +379,43 @@ All configuration in `config/default.yaml`:
 |----------|--------|-------------|
 | `/auth/login` | GET | OAuth login entry |
 | `/auth/accounts` | GET | Account list (`?quota=true` / `?quota=fresh`) |
+| `/auth/accounts` | POST | Add single account (token or refreshToken) |
+| `/auth/accounts/import` | POST | Bulk import accounts |
+| `/auth/accounts/export` | GET | Export accounts (`?format=minimal` for compact) |
 | `/auth/accounts/relay` | POST | Add relay account |
 | `/auth/accounts/batch-delete` | POST | Batch delete accounts |
 | `/auth/accounts/batch-status` | POST | Batch update account status |
+
+**Account Import/Export Examples**
+
+```bash
+# Export all accounts (full format with tokens)
+curl -s http://localhost:8080/auth/accounts/export \
+  -H "Authorization: Bearer your-api-key" > backup.json
+
+# Export minimal format (refreshToken + label only, safe to share)
+curl -s "http://localhost:8080/auth/accounts/export?format=minimal" \
+  -H "Authorization: Bearer your-api-key" > backup-minimal.json
+
+# Bulk import (token, refreshToken, or both)
+curl -X POST http://localhost:8080/auth/accounts/import \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer your-api-key" \
+  -d '{
+    "accounts": [
+      { "token": "eyJhbGciOi..." },
+      { "refreshToken": "v1.abc..." },
+      { "refreshToken": "v1.def...", "label": "Backup" }
+    ]
+  }'
+# Returns: { "added": 2, "updated": 1, "failed": 0, "errors": [] }
+
+# One-step backup restore (export file → import to another instance)
+curl -X POST http://localhost:8080/auth/accounts/import \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer your-api-key" \
+  -d @backup.json
+```
 
 **Admin**
 
@@ -398,7 +443,7 @@ All configuration in `config/default.yaml`:
 ## 📋 Requirements
 
 - **Node.js** 18+ (20+ recommended)
-- **curl** — system curl works; `npm install` auto-downloads curl-impersonate
+- **Rust** — required for source builds (compiles TLS native addon); Docker / desktop app ship pre-built
 - **ChatGPT account** — free account is sufficient
 - **Docker** (optional)
 
@@ -406,7 +451,7 @@ All configuration in `config/default.yaml`:
 
 - Codex API is **stream-only**. `stream: false` causes the proxy to stream internally and return assembled JSON.
 - This project relies on Codex Desktop's public API. Upstream updates are auto-detected and fingerprints auto-synced.
-- On Windows, curl-impersonate is unavailable. Falls back to system curl — use Docker or WSL for full TLS impersonation.
+- Windows source builds need Rust toolchain for the TLS native addon. Docker deployment has it pre-built.
 
 ## ☕ Donate
 
