@@ -32,9 +32,6 @@ session:
   ttl_minutes: 60
   cleanup_interval_minutes: 5
 tls:
-  transport: native
-  curl_binary: auto
-  impersonate_profile: chrome144
   proxy_url: null
   force_http11: false
 quota:

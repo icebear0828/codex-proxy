@@ -6,7 +6,7 @@
  * It requires: instructions, store: false, stream: true.
  *
  * All upstream requests go through the TLS transport layer
- * (native rustls, curl CLI, or libcurl FFI).
+ * (native rustls transport).
  */
 
 import { getConfig } from "../config.js";
