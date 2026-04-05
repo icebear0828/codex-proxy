@@ -41,7 +41,7 @@
         <sub>☕ 赞赏</sub>
       </td>
       <td align="center">
-        <img src="./.github/assets/wechat-group.jpg" width="180" alt="微信交流群"><br>
+        <img src="./docs/wechat.jpg" width="180" alt="微信交流群"><br>
         <sub>💬 交流群</sub>
       </td>
     </tr>
@@ -107,19 +107,30 @@ npm run dev                        # 开发模式（热重载）
 # 或: npm run build && npm start   # 生产模式
 ```
 
-> 源码运行需 Rust 工具链（`curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh`），首次安装后执行 `cd native && npm install && npm run build` 编译 TLS addon。
+> **需要 Rust 工具链**（用于编译 TLS native addon）：
+> ```bash
+> # 1. 安装 Rust（如果没有的话）
+> curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+> # 2. 编译 TLS addon
+> cd native && npm install && npm run build && cd ..
+> ```
+> Docker / 桌面应用已内置编译好的 addon，无需手动编译。
 
 打开 `http://localhost:8080` 登录。
 
 ### 验证
 
+登录后打开控制面板 `http://localhost:8080`，在 **API Configuration** 区域找到你的 API Key，然后：
+
 ```bash
+# 把 your-api-key 替换成控制面板里显示的密钥
 curl http://localhost:8080/v1/chat/completions \
   -H "Content-Type: application/json" \
+  -H "Authorization: Bearer your-api-key" \
   -d '{"model":"codex","messages":[{"role":"user","content":"Hello!"}],"stream":true}'
 ```
 
-看到 AI 回复的文字流即部署成功。
+看到 AI 回复的文字流即部署成功。如果返回 401，请检查 API Key 是否正确。
 
 ## 🌟 核心功能
 
@@ -383,7 +394,7 @@ for await (const chunk of stream) {
 | `client` | `app_version`, `build_number`, `chromium_version` | 模拟的 Codex Desktop 版本 |
 | `model` | `default`, `default_reasoning_effort`, `inject_desktop_context` | 默认模型与推理配置 |
 | `auth` | `rotation_strategy`, `rate_limit_backoff_seconds` | 轮换策略与限流退避 |
-| `tls` | `transport`, `proxy_url`, `force_http11` | TLS transport 与代理 |
+| `tls` | `proxy_url`, `force_http11` | TLS 代理与 HTTP 版本 |
 | `quota` | `refresh_interval_minutes`, `warning_thresholds`, `skip_exhausted` | 额度刷新与预警 |
 | `session` | `ttl_minutes`, `cleanup_interval_minutes` | Dashboard session 管理 |
 
@@ -410,12 +421,11 @@ Electron 桌面版的 `data/local.yaml` 路径：
 
 ```yaml
 tls:
-  transport: native                # native = Rust rustls（推荐）；auto / curl-cli / libcurl-ffi 可选
-  proxy_url: null                  # null = 自动检测本地代理
+  proxy_url: null                  # null = 自动检测本地代理；填写代理 URL 指定上游代理
   force_http11: false              # HTTP/2 失败时自动降级 HTTP/1.1；true = 强制 HTTP/1.1
 ```
 
-> `native` transport 使用内置 Rust addon（reqwest + rustls），TLS 指纹与真实 Codex Desktop 完全一致。源码运行需先编译：`cd native && npm install && npm run build`。
+> 内置 Rust native addon（reqwest + rustls），TLS 指纹与真实 Codex Desktop 完全一致。源码运行需先编译：`cd native && npm install && npm run build`。
 
 ### API 密钥
 
@@ -456,9 +466,43 @@ server:
 |------|------|------|
 | `/auth/login` | GET | OAuth 登录入口 |
 | `/auth/accounts` | GET | 账号列表（`?quota=true` / `?quota=fresh`） |
+| `/auth/accounts` | POST | 添加单个账号（token 或 refreshToken） |
+| `/auth/accounts/import` | POST | 批量导入账号 |
+| `/auth/accounts/export` | GET | 导出账号（`?format=minimal` 精简格式） |
 | `/auth/accounts/relay` | POST | 添加 Relay 中转站账号 |
 | `/auth/accounts/batch-delete` | POST | 批量删除账号 |
 | `/auth/accounts/batch-status` | POST | 批量修改账号状态 |
+
+**账号导入导出示例**
+
+```bash
+# 导出所有账号（完整格式，含 token）
+curl -s http://localhost:8080/auth/accounts/export \
+  -H "Authorization: Bearer your-api-key" > backup.json
+
+# 导出精简格式（仅 refreshToken + label，适合分享）
+curl -s "http://localhost:8080/auth/accounts/export?format=minimal" \
+  -H "Authorization: Bearer your-api-key" > backup-minimal.json
+
+# 批量导入（支持 token、refreshToken，或两者同时传）
+curl -X POST http://localhost:8080/auth/accounts/import \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer your-api-key" \
+  -d '{
+    "accounts": [
+      { "token": "eyJhbGciOi..." },
+      { "refreshToken": "v1.abc..." },
+      { "refreshToken": "v1.def...", "label": "备用账号" }
+    ]
+  }'
+# 返回: { "added": 2, "updated": 1, "failed": 0, "errors": [] }
+
+# 备份恢复一键操作（导出后直接导入到另一个实例）
+curl -X POST http://localhost:8080/auth/accounts/import \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer your-api-key" \
+  -d @backup.json
+```
 
 **管理接口**
 
