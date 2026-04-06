@@ -135,6 +135,7 @@ function Dashboard() {
         <div class="flex flex-col w-full max-w-[960px]">
           <AddAccount
             visible={accounts.addVisible}
+            onCancel={accounts.cancelAdd}
             onSubmitRelay={accounts.submitRelay}
             onAddByRefreshToken={accounts.addByRefreshToken}
             addInfo={accounts.addInfo}

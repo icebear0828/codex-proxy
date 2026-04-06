@@ -108,6 +108,12 @@ export function useAccounts() {
     }
   }, [loadAccounts]);
 
+  const cancelAdd = useCallback(() => {
+    setAddVisible(false);
+    setAddInfo("");
+    setAddError("");
+  }, []);
+
   const submitRelay = useCallback(
     async (callbackUrl: string) => {
       setAddInfo("");
@@ -314,6 +320,7 @@ export function useAccounts() {
     refresh: useCallback(() => loadAccounts(true), [loadAccounts]),
     patchLocal,
     startAdd,
+    cancelAdd,
     submitRelay,
     addByRefreshToken,
     deleteAccount,

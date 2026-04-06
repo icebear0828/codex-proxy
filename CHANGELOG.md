@@ -8,6 +8,10 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- Add Account 对话框新增 Cancel 按钮，OAuth 流程中可随时关闭对话框 (#319)
+
 ### Added
 
 - 第三方 API Key 管理：支持 Anthropic / OpenAI / Gemini / OpenRouter 预设模型 + 自定义 provider，每个 key 绑定一个具体模型，运行时动态路由（优先于 config 固定 key），LRU 轮转多 key 负载均衡
