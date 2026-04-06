@@ -11,6 +11,7 @@
 ### Fixed
 
 - Add Account 对话框新增 Cancel 按钮，OAuth 流程中可随时关闭对话框 (#319)
+- Electron 打包前清空旧 public/ 目录，防止残留旧版前端资源导致显示异常 (#320)
 
 ### Added
 
