@@ -267,21 +267,33 @@ export async function checkDockerRegistryVersion(): Promise<string | null> {
     if (!tokenResp.ok) return null;
     const { token } = await tokenResp.json() as { token: string };
 
-    // Step 2: list all tags
-    const tagsResp = await fetch(
-      `https://ghcr.io/v2/${GHCR_IMAGE}/tags/list`,
-      {
+    // Step 2: list all tags (follow OCI pagination via Link header)
+    const allTags: string[] = [];
+    let nextUrl: string | null = `https://ghcr.io/v2/${GHCR_IMAGE}/tags/list`;
+    const MAX_PAGES = 10; // safety limit
+
+    for (let page = 0; page < MAX_PAGES && nextUrl; page++) {
+      const tagsResp = await fetch(nextUrl, {
         headers: { Authorization: `Bearer ${token}` },
         signal: AbortSignal.timeout(10000),
-      },
-    );
-    if (!tagsResp.ok) return null;
-    const { tags } = await tagsResp.json() as { tags: string[] };
+      });
+      if (!tagsResp.ok) return null;
+      const { tags } = await tagsResp.json() as { tags: string[] };
+      allTags.push(...tags);
+
+      // OCI pagination: Link: </v2/.../tags/list?last=...>; rel="next"
+      const link = tagsResp.headers.get("link");
+      nextUrl = null;
+      if (link) {
+        const m = /<([^>]+)>;\s*rel="next"/.exec(link);
+        if (m) nextUrl = m[1].startsWith("http") ? m[1] : `https://ghcr.io${m[1]}`;
+      }
+    }
 
     // Step 3: filter version tags and find highest
     const VERSION_RE = /^v?(\d+\.\d+\.\d+)$/;
     let latest: string | null = null;
-    for (const tag of tags) {
+    for (const tag of allTags) {
       const m = VERSION_RE.exec(tag);
       if (!m) continue;
       const ver = m[1];

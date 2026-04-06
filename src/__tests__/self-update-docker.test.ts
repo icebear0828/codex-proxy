@@ -26,7 +26,11 @@ function tokenResponse(token = "test-token") {
 }
 
 function tagsResponse(tags: string[]) {
-  return { ok: true, json: async () => ({ name: "icebear0828/codex-proxy", tags }) };
+  return {
+    ok: true,
+    json: async () => ({ name: "icebear0828/codex-proxy", tags }),
+    headers: new Headers(),
+  };
 }
 
 function failResponse(status = 401) {
@@ -116,6 +120,31 @@ describe("checkDockerRegistryVersion", () => {
     const [tagsUrl, tagsOpts] = fetchMock.mock.calls[1] as [string, RequestInit];
     expect(tagsUrl).toBe(GHCR_TAGS_URL);
     expect((tagsOpts.headers as Record<string, string>)["Authorization"]).toBe("Bearer my-token");
+  });
+
+  it("follows OCI pagination via Link header", async () => {
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(tokenResponse())
+      // Page 1: returns Link header for next page
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ name: "icebear0828/codex-proxy", tags: ["v1.0.0", "v1.0.1"] }),
+        headers: new Headers({
+          link: '</v2/icebear0828/codex-proxy/tags/list?last=v1.0.1>; rel="next"',
+        }),
+      })
+      // Page 2: no Link header (last page)
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ name: "icebear0828/codex-proxy", tags: ["v2.0.0", "latest"] }),
+        headers: new Headers(),
+      });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const version = await checkDockerRegistryVersion();
+    expect(version).toBe("2.0.0");
+    // 3 fetch calls: token + page 1 + page 2
+    expect(fetchMock).toHaveBeenCalledTimes(3);
   });
 
   it("handles tags with various v-prefix formats", async () => {

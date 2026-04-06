@@ -221,6 +221,7 @@ describe("self-update", () => {
         .mockResolvedValueOnce({
           ok: true,
           json: () => Promise.resolve({ name: "icebear0828/codex-proxy", tags: registryTags }),
+          headers: new Headers(),
         });
 
       // 3rd call: GitHub Release (if update detected)
@@ -297,6 +298,7 @@ describe("self-update", () => {
         .mockResolvedValueOnce({
           ok: true,
           json: () => Promise.resolve({ tags: ["latest", "v2.0.0"] }),
+          headers: new Headers(),
         })
         // GitHub Release returns 404
         .mockResolvedValueOnce({ ok: false, json: () => Promise.resolve({}) });
