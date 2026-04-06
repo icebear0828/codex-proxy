@@ -25,6 +25,7 @@ export function isCloudflareChallengeResponse(status: number, body: string): boo
 export function isProxyNetworkError(error: unknown): boolean {
   const msg = (error instanceof Error ? error.message : String(error)).toLowerCase();
   return (
+    // Node.js / curl-era patterns
     msg.includes("econnreset") ||
     msg.includes("econnrefused") ||
     msg.includes("ssl_error_syscall") ||
@@ -34,7 +35,17 @@ export function isProxyNetworkError(error: unknown): boolean {
     msg.includes("could not resolve proxy") ||   // proxy hostname resolution failure
     msg.includes("curl exited with code 5") ||   // proxy resolution failure
     msg.includes("curl exited with code 35") ||  // TLS handshake failure
-    msg.includes("curl exited with code 56")     // network receive error
+    msg.includes("curl exited with code 56") ||  // network receive error
+    // reqwest / hyper / rustls patterns (native transport)
+    msg.includes("error sending request") ||     // reqwest generic send failure
+    msg.includes("dns error") ||                 // DNS resolution failure
+    msg.includes("error trying to connect") ||   // hyper connection failure
+    msg.includes("connection refused") ||        // TCP refused (OS-level)
+    msg.includes("connection timed out") ||      // TCP connect timeout
+    msg.includes("network is unreachable") ||    // no route
+    msg.includes("tls handshake") ||             // rustls handshake failure
+    msg.includes("certificate") ||               // cert validation (proxy MITM)
+    msg.includes("broken pipe")                  // write after close
   );
 }
 
@@ -47,13 +58,19 @@ export function isProxyNetworkError(error: unknown): boolean {
 export function isSafeToRetryRefresh(error: unknown): boolean {
   const msg = (error instanceof Error ? error.message : String(error)).toLowerCase();
   return (
+    // Node.js / curl-era patterns
     msg.includes("econnrefused") ||              // server not reachable
     msg.includes("could not resolve proxy") ||   // DNS failure
     msg.includes("could not resolve host") ||    // DNS failure
     msg.includes("curl exited with code 5") ||   // proxy resolution failure
     msg.includes("curl exited with code 6") ||   // DNS failure
     msg.includes("curl exited with code 7") ||   // connection refused
-    msg.includes("curl exited with code 35")     // TLS handshake (before HTTP)
+    msg.includes("curl exited with code 35") ||  // TLS handshake (before HTTP)
+    // reqwest / hyper / rustls patterns (native transport, pre-flight only)
+    msg.includes("dns error") ||                 // DNS resolution failure
+    msg.includes("connection refused") ||        // TCP refused (before HTTP)
+    msg.includes("network is unreachable") ||    // no route (before HTTP)
+    msg.includes("tls handshake")                // TLS handshake (before HTTP)
   );
 }
 

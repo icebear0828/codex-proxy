@@ -6,6 +6,18 @@ use std::collections::HashMap;
 use std::sync::{Mutex, OnceLock};
 use std::time::Duration;
 
+/// Format an error with its full cause chain for diagnostics.
+fn error_chain(e: &dyn std::error::Error) -> String {
+    let mut msg = e.to_string();
+    let mut current = e.source();
+    while let Some(cause) = current {
+        msg.push_str(": ");
+        msg.push_str(&cause.to_string());
+        current = cause.source();
+    }
+    msg
+}
+
 fn runtime() -> &'static tokio::runtime::Runtime {
     static RT: OnceLock<tokio::runtime::Runtime> = OnceLock::new();
     RT.get_or_init(|| {
@@ -147,7 +159,7 @@ impl Task for GetTask {
             let resp = req
                 .send()
                 .await
-                .map_err(|e| Error::from_reason(format!("GET failed: {e}")))?;
+                .map_err(|e| Error::from_reason(format!("GET failed: {}", error_chain(&e))))?;
 
             let status = resp.status().as_u16();
             let set_cookie_headers = extract_set_cookie(resp.headers());
@@ -224,7 +236,7 @@ impl Task for PostTask {
             let resp = req
                 .send()
                 .await
-                .map_err(|e| Error::from_reason(format!("POST failed: {e}")))?;
+                .map_err(|e| Error::from_reason(format!("POST failed: {}", error_chain(&e))))?;
 
             let status = resp.status().as_u16();
             let body = resp
@@ -301,7 +313,7 @@ impl Task for StreamPostTask {
                 .body(body)
                 .send()
                 .await
-                .map_err(|e| Error::from_reason(format!("Streaming POST failed: {e}")))?;
+                .map_err(|e| Error::from_reason(format!("Streaming POST failed: {}", error_chain(&e))))?;
 
             let status = resp.status().as_u16();
             let resp_headers = headers_to_map(resp.headers());
