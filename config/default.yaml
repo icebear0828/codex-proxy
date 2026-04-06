@@ -32,6 +32,7 @@ session:
   ttl_minutes: 60
   cleanup_interval_minutes: 5
 tls:
+  transport: native
   proxy_url: null
   force_http11: false
 quota:
