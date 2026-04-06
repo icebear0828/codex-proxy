@@ -16,6 +16,7 @@ beforeEach(() => {
     session: { ttl_minutes: 1, cleanup_interval_minutes: 1 },
   }));
   _resetForTest();
+  vi.restoreAllMocks();
 });
 
 afterEach(() => {
@@ -61,6 +62,26 @@ describe("dashboard-session", () => {
     createSession();
     createSession();
     expect(getSessionCount()).toBe(2);
+  });
+
+  it("validateSession extends expiresAt on access (sliding window)", () => {
+    const session = createSession();
+    const originalExpiry = session.expiresAt;
+
+    // Advance time by 30 seconds — still valid, should renew
+    const laterTime = session.createdAt + 30_000;
+    vi.spyOn(Date, "now").mockReturnValue(laterTime);
+
+    expect(validateSession(session.id)).toBe(true);
+
+    // expiresAt should have been extended from laterTime
+    // TTL is 1 minute in test config → new expiry = laterTime + 60_000
+    vi.restoreAllMocks();
+
+    // Advance to just after original expiry but before new expiry
+    vi.spyOn(Date, "now").mockReturnValue(originalExpiry + 1);
+    expect(validateSession(session.id)).toBe(true); // still valid due to renewal
+    vi.restoreAllMocks();
   });
 
   it("cleanup removes expired sessions", () => {

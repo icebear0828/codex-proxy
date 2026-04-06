@@ -42,7 +42,7 @@ export const ConfigSchema = z.object({
     proxy_api_key: z.string().nullable().default(null),
   }),
   session: z.object({
-    ttl_minutes: z.number().min(1).default(60),
+    ttl_minutes: z.number().min(1).default(1440),
     cleanup_interval_minutes: z.number().min(1).default(5),
   }),
   tls: z.object({

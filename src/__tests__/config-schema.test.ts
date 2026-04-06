@@ -43,7 +43,7 @@ describe("ConfigSchema", () => {
     expect(result.quota.warning_thresholds.primary).toEqual([80, 90]);
     expect(result.quota.skip_exhausted).toBe(true);
     expect(result.update.auto_update).toBe(true);
-    expect(result.session.ttl_minutes).toBe(60);
+    expect(result.session.ttl_minutes).toBe(1440);
   });
 
   it("respects overridden values", () => {

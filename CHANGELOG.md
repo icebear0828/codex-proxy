@@ -10,8 +10,15 @@
 
 ### Fixed
 
+- 上游 401 时立即触发 RT→AT 刷新，而非等待定时器（修复 token 被提前作废后账号一直显示 expired 的问题）
+- Dashboard session 滑动窗口续期：每次有效请求自动延长过期时间，不再固定 TTL 后断连
+- Dashboard 前端全局 401 拦截：session 过期后自动跳回登录页，不再卡死在空白页
 - Add Account 对话框新增 Cancel 按钮，OAuth 流程中可随时关闭对话框 (#319)
 - Electron 打包前清空旧 public/ 目录，防止残留旧版前端资源导致显示异常 (#320)
+
+### Changed
+
+- Dashboard session 默认 TTL 从 1 小时延长至 24 小时
 
 ### Added
 

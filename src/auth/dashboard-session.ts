@@ -35,10 +35,14 @@ export function createSession(): DashboardSession {
 export function validateSession(id: string): boolean {
   const session = sessions.get(id);
   if (!session) return false;
-  if (Date.now() > session.expiresAt) {
+  const now = Date.now();
+  if (now > session.expiresAt) {
     sessions.delete(id);
     return false;
   }
+  // Sliding window: extend expiry on each valid access
+  const config = getConfig();
+  session.expiresAt = now + config.session.ttl_minutes * 60_000;
   return true;
 }
 

@@ -80,6 +80,9 @@ export async function startServer(options?: StartOptions): Promise<ServerHandle>
   const proxyPool = new ProxyPool();
   refreshScheduler.setProxyPool(proxyPool);
 
+  // Reactive refresh: when upstream 401 marks an account expired, trigger immediate RT→AT refresh
+  accountPool.onExpired((id) => refreshScheduler.triggerRefreshNow(id));
+
   // Create Hono app
   const app = new Hono();
 
