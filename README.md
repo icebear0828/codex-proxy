@@ -41,7 +41,7 @@
         <sub>☕ 赞赏</sub>
       </td>
       <td align="center">
-        <img src="./.github/assets/wechat-group.jpg" width="180" alt="微信交流群"><br>
+        <img src="./docs/wechat.jpg" width="180" alt="微信交流群"><br>
         <sub>💬 交流群</sub>
       </td>
     </tr>
