@@ -80,8 +80,14 @@ export async function startServer(options?: StartOptions): Promise<ServerHandle>
   const proxyPool = new ProxyPool();
   refreshScheduler.setProxyPool(proxyPool);
 
-  // Reactive refresh: when upstream 401 marks an account expired, trigger immediate RT→AT refresh
-  accountPool.onExpired((id) => refreshScheduler.triggerRefreshNow(id));
+  // Reactive refresh: when upstream 401 marks an account expired, trigger immediate RT→AT refresh.
+  // Skip if the scheduler itself just marked it expired (permanent failure) — isRefreshing() is
+  // still true at that point because the callback fires synchronously inside doRefresh's try block.
+  accountPool.onExpired((id) => {
+    if (!refreshScheduler.isRefreshing(id)) {
+      refreshScheduler.triggerRefreshNow(id);
+    }
+  });
 
   // Create Hono app
   const app = new Hono();
