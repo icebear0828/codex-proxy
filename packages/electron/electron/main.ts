@@ -24,6 +24,7 @@ let mainWindow: BrowserWindow | null = null;
 let tray: Tray | null = null;
 let serverHandle: { close: () => Promise<void>; port: number } | null = null;
 let isQuitting = false;
+let allowProcessExit = false;
 
 // Single instance lock
 const gotLock = app.requestSingleInstanceLock();
@@ -54,7 +55,11 @@ function setupAppMenu(): void {
         { role: "hideOthers" },
         { role: "unhide" },
         { type: "separator" },
-        { role: "quit" },
+        {
+          label: "Quit",
+          accelerator: "Command+Q",
+          click: () => quitApplication(),
+        },
       ],
     },
     {
@@ -109,13 +114,15 @@ app.on("ready", async () => {
     if (!existsSync(dataDir)) mkdirSync(dataDir, { recursive: true });
 
     const appRoot = app.getAppPath();
+    // In dev mode, resources (config/, public/, bin/) live at the monorepo root
+    const monorepoRoot = resolve(appRoot, "..", "..");
     const distRoot = app.isPackaged
       ? resolve(process.resourcesPath, "app.asar.unpacked")
-      : appRoot;
+      : monorepoRoot;
 
     const binDir = app.isPackaged
       ? resolve(process.resourcesPath, "bin")
-      : resolve(appRoot, "bin");
+      : resolve(monorepoRoot, "bin");
 
     // 2. Import the bundled backend server (single ESM file, no node_modules needed)
     const serverUrl = pathToFileURL(resolve(appRoot, "dist-electron", "server.mjs")).href;
@@ -167,13 +174,15 @@ app.on("ready", async () => {
       "Codex Proxy - Startup Error",
       `Failed to start:\n\n${err instanceof Error ? err.stack ?? err.message : String(err)}`,
     );
-    app.quit();
+    quitApplication();
   }
 });
 
 // ── Window ───────────────────────────────────────────────────────────
 
 function createWindow(): void {
+  if (IS_MAC) app.dock?.show();
+
   if (mainWindow) {
     mainWindow.show();
     mainWindow.focus();
@@ -221,6 +230,7 @@ function createWindow(): void {
     if (!isQuitting) {
       e.preventDefault();
       mainWindow?.hide();
+      if (IS_MAC) app.dock?.hide();
     }
   });
 
@@ -236,6 +246,28 @@ function createWindow(): void {
 }
 
 // ── Tray ─────────────────────────────────────────────────────────────
+
+function quitApplication(): void {
+  allowProcessExit = true;
+  isQuitting = true;
+
+  if (serverHandle) {
+    const forceQuit = setTimeout(() => {
+      console.error("[Electron] Server close timeout, forcing exit");
+      app.exit(0);
+    }, 5000);
+
+    serverHandle.close()
+      .then(() => { clearTimeout(forceQuit); app.quit(); })
+      .catch((err: unknown) => {
+        console.error("[Electron] Server close error:", err);
+        clearTimeout(forceQuit);
+        app.quit();
+      });
+  } else {
+    app.quit();
+  }
+}
 
 function buildTrayMenu(): Electron.MenuItemConstructorOptions[] {
   const items: Electron.MenuItemConstructorOptions[] = [
@@ -282,26 +314,7 @@ function buildTrayMenu(): Electron.MenuItemConstructorOptions[] {
     { type: "separator" },
     {
       label: "Quit",
-      click: () => {
-        isQuitting = true;
-
-        if (serverHandle) {
-          const forceQuit = setTimeout(() => {
-            console.error("[Electron] Server close timeout, forcing exit");
-            app.exit(0);
-          }, 5000);
-
-          serverHandle.close()
-            .then(() => { clearTimeout(forceQuit); app.quit(); })
-            .catch((err: unknown) => {
-              console.error("[Electron] Server close error:", err);
-              clearTimeout(forceQuit);
-              app.quit();
-            });
-        } else {
-          app.quit();
-        }
-      },
+      click: () => quitApplication(),
     },
   );
 
@@ -341,8 +354,14 @@ app.on("activate", () => {
   createWindow();
 });
 
-// Allow quit from macOS dock/menu bar and system shutdown
-app.on("before-quit", () => {
+app.on("before-quit", (event) => {
+  if (IS_MAC && !allowProcessExit) {
+    event.preventDefault();
+    mainWindow?.hide();
+    app.dock?.hide();
+    return;
+  }
+
   isQuitting = true;
   stopAutoUpdater();
 });
