@@ -1,0 +1,62 @@
+name: Test Electron Launch
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            web/package-lock.json
+            native/package-lock.json
+
+      - name: Install dependencies
+        run: |
+          npm ci --ignore-scripts
+          cd web && npm ci
+
+      - name: Setup Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install native addon dependencies
+        working-directory: native
+        run: npm ci
+
+      - name: Build native addon
+        working-directory: native
+        run: npm run build
+
+      - name: Build web + tsc
+        run: npm run build
+
+      - name: Install Playwright browsers
+        run: npx playwright install --with-deps chromium
+
+      - name: Bundle Electron
+        working-directory: packages/electron
+        run: node electron/build.mjs
+
+      - name: Prepare pack (copy resources)
+        working-directory: packages/electron
+        run: node electron/prepare-pack.mjs
+
+      - name: Test electron-builder
+        working-directory: packages/electron
+        run: npx electron-builder --config electron-builder.yml --linux --dir --publish never
+
+      - name: Run Playwright smoke test
+        run: xvfb-run -a npx vitest run packages/electron/__tests__/launch.test.ts
+        env:
+          CI: true
