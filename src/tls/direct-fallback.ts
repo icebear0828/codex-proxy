@@ -44,7 +44,7 @@ export function isProxyNetworkError(error: unknown): boolean {
     msg.includes("connection timed out") ||      // TCP connect timeout
     msg.includes("network is unreachable") ||    // no route
     msg.includes("tls handshake") ||             // rustls handshake failure
-    msg.includes("certificate") ||               // cert validation (proxy MITM)
+    msg.includes("certificate verify") ||          // cert validation (proxy MITM)
     msg.includes("broken pipe")                  // write after close
   );
 }
