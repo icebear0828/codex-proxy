@@ -28,6 +28,9 @@ jobs:
   smoke:
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    strategy:
+      matrix:
+        port: [8080, 8090]
     steps:
       - uses: actions/checkout@v4
 
@@ -36,9 +39,15 @@ jobs:
 
       - name: Start container
         run: |
-          docker run -d --name smoke-test \
-            -p 18080:8080 \
+          mkdir -p data
+          echo "server:" > data/local.yaml
+          echo "  port: ${{ matrix.port }}" >> data/local.yaml
+
+          docker run -d --name smoke-test-${{ matrix.port }} \
+            -p ${{ matrix.port }}:${{ matrix.port }} \
             -e NODE_ENV=production \
+            -e PORT=${{ matrix.port }} \
+            -v $(pwd)/data/local.yaml:/app/data/local.yaml \
             codex-proxy:smoke
           echo "Container started"
 
@@ -46,7 +55,7 @@ jobs:
         run: |
           echo "Waiting for container to become healthy..."
           for i in $(seq 1 30); do
-            STATUS=$(docker inspect --format='{{.State.Health.Status}}' smoke-test 2>/dev/null || echo "starting")
+            STATUS=$(docker inspect --format='{{.State.Health.Status}}' smoke-test-${{ matrix.port }} 2>/dev/null || echo "starting")
             echo "  [$i/30] status: $STATUS"
             if [ "$STATUS" = "healthy" ]; then
               echo "Container is healthy"
@@ -55,19 +64,19 @@ jobs:
             sleep 2
           done
           echo "::error::Container did not become healthy within 60s"
-          docker logs smoke-test
+          docker logs smoke-test-${{ matrix.port }}
           exit 1
 
       - name: Verify /health endpoint
         run: |
-          RESPONSE=$(curl -sf http://localhost:18080/health)
+          RESPONSE=$(curl -sf http://localhost:${{ matrix.port }}/health)
           echo "Response: $RESPONSE"
           echo "$RESPONSE" | jq -e '.status == "ok"'
 
       - name: Verify /v1/models returns valid JSON
         run: |
           # Without auth, should return 401 or model list — either way must be valid JSON
-          STATUS=$(curl -s -o /dev/null -w '%{http_code}' http://localhost:18080/v1/models)
+          STATUS=$(curl -s -o /dev/null -w '%{http_code}' http://localhost:${{ matrix.port }}/v1/models)
           echo "/v1/models status: $STATUS"
           # 200 (no key set) or 401 (key set) are both acceptable
           if [ "$STATUS" != "200" ] && [ "$STATUS" != "401" ]; then
@@ -78,5 +87,5 @@ jobs:
       - name: Cleanup
         if: always()
         run: |
-          docker logs smoke-test 2>&1 | tail -30
-          docker rm -f smoke-test || true
+          docker logs smoke-test-${{ matrix.port }} 2>&1 | tail -30
+          docker rm -f smoke-test-${{ matrix.port }} || true
