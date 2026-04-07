@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from "preact/hooks";
+import { extractErrorMessage } from "../utils/extract-error";
 
 export interface QuotaSettingsData {
   refresh_interval_minutes: number;
@@ -40,8 +41,8 @@ export function useQuotaSettings(apiKey: string | null) {
         body: JSON.stringify(patch),
       });
       if (!resp.ok) {
-        const body = await resp.json().catch(() => ({ error: `HTTP ${resp.status}` }));
-        throw new Error((body as { error?: string }).error ?? `HTTP ${resp.status}`);
+        const body = await resp.json().catch(() => null);
+        throw new Error(extractErrorMessage(body, `HTTP ${resp.status}`));
       }
       const result = await resp.json() as { success: boolean } & QuotaSettingsData;
       setData({

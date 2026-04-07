@@ -13,6 +13,7 @@ export default defineConfig({
     environment: "node",
     include: [
       "src/**/*.{test,spec}.ts",
+      "shared/**/*.{test,spec}.ts",
       "tests/unit/**/*.{test,spec}.ts",
       "tests/integration/**/*.{test,spec}.ts",
       "packages/electron/__tests__/**/*.{test,spec}.ts",
