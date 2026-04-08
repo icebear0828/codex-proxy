@@ -354,6 +354,13 @@ app.on("activate", () => {
   createWindow();
 });
 
+// Handle OS-initiated termination (system shutdown, logout).
+// SIGTERM → quitApplication() sets allowProcessExit synchronously before
+// before-quit fires, enabling graceful server cleanup instead of SIGKILL.
+process.on("SIGTERM", () => {
+  if (!isQuitting) quitApplication();
+});
+
 app.on("before-quit", (event) => {
   if (IS_MAC && !allowProcessExit) {
     event.preventDefault();
