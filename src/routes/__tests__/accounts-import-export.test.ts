@@ -301,6 +301,60 @@ describe("account import/export", () => {
     getUsageSpy.mockRestore();
   });
 
+  it("POST /auth/accounts/import coerces empty token string to absent (RT-only path)", async () => {
+    // token: "" should be treated as if token is absent — falls through to RT exchange
+    const { refreshAccessToken } = await import("../../auth/oauth-pkce.js");
+    (refreshAccessToken as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+      access_token: "freshToken9999000001",
+      refresh_token: "rt_returned_by_exchange",
+    });
+
+    const res = await app.request("/auth/accounts/import", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        accounts: [{ token: "", refreshToken: "rt_abc_nonempty" }],
+      }),
+    });
+
+    // Must NOT be 400 (schema error). RT exchange was attempted → success.
+    expect(res.status).toBe(200);
+    const data = await res.json() as { added: number; failed: number };
+    expect(data.added).toBe(1);
+    expect(data.failed).toBe(0);
+  });
+
+  it("POST /auth/accounts/import coerces empty refreshToken string to null (token-only path)", async () => {
+    const res = await app.request("/auth/accounts/import", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        accounts: [{ token: "tokenEmptyRT1234567", refreshToken: "" }],
+      }),
+    });
+
+    expect(res.status).toBe(200);
+    const data = await res.json() as { added: number; failed: number };
+    expect(data.added).toBe(1);
+    expect(data.failed).toBe(0);
+
+    // refreshToken should be null (coerced from "")
+    const entry = pool.getAllEntries()[0];
+    expect(entry.refreshToken).toBeNull();
+  });
+
+  it("POST /auth/accounts/import rejects when both token and refreshToken are empty strings", async () => {
+    const res = await app.request("/auth/accounts/import", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        accounts: [{ token: "", refreshToken: "" }],
+      }),
+    });
+
+    expect(res.status).toBe(400);
+  });
+
   it("POST /auth/accounts/import accepts label: null", async () => {
     const res = await app.request("/auth/accounts/import", {
       method: "POST",

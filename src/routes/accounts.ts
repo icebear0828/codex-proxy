@@ -28,9 +28,13 @@ const HealthCheckSchema = z.object({
 }).optional();
 const BatchStatusSchema = z.object({ ids: z.array(z.string()).min(1), status: z.enum(["active", "disabled"]) });
 const LabelSchema = z.object({ label: z.string().max(64).nullable() });
+const emptyStringToUndefined = (v: unknown) =>
+  typeof v === "string" && v.trim() === "" ? undefined : v;
+const emptyStringToNull = (v: unknown) =>
+  typeof v === "string" && v.trim() === "" ? null : v;
 const BulkImportEntrySchema = z.object({
-  token: z.string().min(1).optional(),
-  refreshToken: z.string().min(1).nullable().optional(),
+  token: z.preprocess(emptyStringToUndefined, z.string().min(1).optional()),
+  refreshToken: z.preprocess(emptyStringToNull, z.string().min(1).nullable().optional()),
   label: z.string().max(64).nullable().optional(),
 }).refine((d) => Boolean(d.token) || Boolean(d.refreshToken), { message: "Either token or refreshToken is required" });
 const BulkImportSchema = z.object({ accounts: z.array(BulkImportEntrySchema).min(1) });
