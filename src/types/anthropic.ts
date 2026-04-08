@@ -50,13 +50,19 @@ const AnthropicRedactedThinkingContentSchema = z.object({
   data: z.string(),
 });
 
-const AnthropicContentBlockSchema = z.discriminatedUnion("type", [
-  AnthropicTextContentSchema,
-  AnthropicImageContentSchema,
-  AnthropicToolUseContentSchema,
-  AnthropicToolResultContentSchema,
-  AnthropicThinkingContentSchema,
-  AnthropicRedactedThinkingContentSchema,
+const AnthropicContentBlockSchema = z.union([
+  z.discriminatedUnion("type", [
+    AnthropicTextContentSchema,
+    AnthropicImageContentSchema,
+    AnthropicToolUseContentSchema,
+    AnthropicToolResultContentSchema,
+    AnthropicThinkingContentSchema,
+    AnthropicRedactedThinkingContentSchema,
+  ]),
+  // Catch-all: forward-compatibility for new content block types (e.g. "document")
+  // introduced by Claude Code updates. Unknown types are passed through and ignored
+  // by translation functions.
+  z.object({ type: z.string() }).passthrough(),
 ]);
 
 const AnthropicContentSchema = z.union([
