@@ -12,8 +12,10 @@ import { getConfig } from "../config.js";
 import { parseModelName, buildDisplayModelName } from "../models/model-store.js";
 import {
   handleProxyRequest,
+  handleDirectRequest,
   type FormatAdapter,
 } from "./shared/proxy-handler.js";
+import type { UpstreamRouter } from "../proxy/upstream-router.js";
 
 function makeOpenAIFormat(wantReasoning: boolean): FormatAdapter {
   return {
@@ -55,6 +57,7 @@ export function createChatRoutes(
   accountPool: AccountPool,
   cookieJar?: CookieJar,
   proxyPool?: ProxyPool,
+  upstreamRouter?: UpstreamRouter,
 ): Hono {
   const app = new Hono();
 
@@ -125,20 +128,20 @@ export function createChatRoutes(
     const { codexRequest, tupleSchema } = translateToCodexRequest(req);
     const displayModel = buildDisplayModelName(parseModelName(req.model));
     const wantReasoning = !!req.reasoning_effort;
+    const proxyReq = {
+      codexRequest,
+      model: displayModel,
+      isStreaming: req.stream,
+      tupleSchema,
+    };
+    const fmt = makeOpenAIFormat(wantReasoning);
 
-    return handleProxyRequest(
-      c,
-      accountPool,
-      cookieJar,
-      {
-        codexRequest,
-        model: displayModel,
-        isStreaming: req.stream,
-        tupleSchema,
-      },
-      makeOpenAIFormat(wantReasoning),
-      proxyPool,
-    );
+    if (upstreamRouter && !upstreamRouter.isCodexModel(req.model)) {
+      const directReq = { ...proxyReq, codexRequest: { ...codexRequest, model: req.model } };
+      return handleDirectRequest(c, upstreamRouter.resolve(req.model), directReq, fmt);
+    }
+
+    return handleProxyRequest(c, accountPool, cookieJar, proxyReq, fmt, proxyPool);
   });
 
   return app;

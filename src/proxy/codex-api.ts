@@ -6,7 +6,7 @@
  * It requires: instructions, store: false, stream: true.
  *
  * All upstream requests go through the TLS transport layer
- * (native rustls, curl CLI, or libcurl FFI).
+ * (native rustls transport).
  */
 
 import { getConfig } from "../config.js";
@@ -49,6 +49,8 @@ import {
 } from "./codex-types.js";
 
 export class CodexApi {
+  readonly tag = "codex" as const;
+
   private token: string;
   private accountId: string | null;
   private cookieJar: CookieJar | null;

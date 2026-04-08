@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from "preact/hooks";
+import { extractErrorMessage } from "../utils/extract-error";
 
 export function useSettings() {
   const [apiKey, setApiKey] = useState<string | null>(null);
@@ -36,8 +37,8 @@ export function useSettings() {
         body: JSON.stringify({ proxy_api_key: newKey }),
       });
       if (!resp.ok) {
-        const data = await resp.json().catch(() => ({ error: `HTTP ${resp.status}` }));
-        throw new Error((data as { error?: string }).error ?? `HTTP ${resp.status}`);
+        const body = await resp.json().catch(() => null);
+        throw new Error(extractErrorMessage(body, `HTTP ${resp.status}`));
       }
       const result: { proxy_api_key: string | null } = await resp.json();
       setApiKey(result.proxy_api_key);

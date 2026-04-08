@@ -30,6 +30,10 @@ for (const dir of DIRS) {
       console.warn(`[prepare-pack] skipping ${dir}/ (not found at ${src})`);
       continue;
     }
+    // Clean destination first to avoid stale files from previous builds
+    if (existsSync(dest)) {
+      rmSync(dest, { recursive: true });
+    }
     cpSync(src, dest, { recursive: true });
     console.log(`[prepare-pack] copied ${dir}/ → packages/electron/${dir}/`);
   }

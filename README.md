@@ -107,19 +107,30 @@ npm run dev                        # 开发模式（热重载）
 # 或: npm run build && npm start   # 生产模式
 ```
 
-> 源码运行需 Rust 工具链（`curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh`），首次安装后执行 `cd native && npm install && npm run build` 编译 TLS addon。
+> **需要 Rust 工具链**（用于编译 TLS native addon）：
+> ```bash
+> # 1. 安装 Rust（如果没有的话）
+> curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+> # 2. 编译 TLS addon
+> cd native && npm install && npm run build && cd ..
+> ```
+> Docker / 桌面应用已内置编译好的 addon，无需手动编译。
 
 打开 `http://localhost:8080` 登录。
 
 ### 验证
 
+登录后打开控制面板 `http://localhost:8080`，在 **API Configuration** 区域找到你的 API Key，然后：
+
 ```bash
+# 把 your-api-key 替换成控制面板里显示的密钥
 curl http://localhost:8080/v1/chat/completions \
   -H "Content-Type: application/json" \
+  -H "Authorization: Bearer your-api-key" \
   -d '{"model":"codex","messages":[{"role":"user","content":"Hello!"}],"stream":true}'
 ```
 
-看到 AI 回复的文字流即部署成功。
+看到 AI 回复的文字流即部署成功。如果返回 401，请检查 API Key 是否正确。
 
 ## 🌟 核心功能
 
@@ -232,7 +243,7 @@ claude
 
 > 控制面板的 **Anthropic SDK Setup** 卡片可一键复制环境变量（含 Opus / Sonnet / Haiku 层级模型配置）。
 >
-> 推荐模型：Opus → `gpt-5.4`，Sonnet → `gpt-5.4-mini`，Haiku → `gpt-5.3-codex`。
+> 推荐模型：Opus → `gpt-5.4`，Sonnet → `gpt-5.3-codex`，Haiku → `gpt-5.4-mini`。
 >
 > ⚠️ 配置不生效？请参考 **[Claude Code 配置避坑指南](.github/guides/claude-code-setup.md)**（AUTH_TOKEN 劫持、API Key 黑名单等常见问题）。
 
@@ -383,7 +394,7 @@ for await (const chunk of stream) {
 | `client` | `app_version`, `build_number`, `chromium_version` | 模拟的 Codex Desktop 版本 |
 | `model` | `default`, `default_reasoning_effort`, `inject_desktop_context` | 默认模型与推理配置 |
 | `auth` | `rotation_strategy`, `rate_limit_backoff_seconds` | 轮换策略与限流退避 |
-| `tls` | `transport`, `proxy_url`, `force_http11` | TLS transport 与代理 |
+| `tls` | `proxy_url`, `force_http11` | TLS 代理与 HTTP 版本 |
 | `quota` | `refresh_interval_minutes`, `warning_thresholds`, `skip_exhausted` | 额度刷新与预警 |
 | `session` | `ttl_minutes`, `cleanup_interval_minutes` | Dashboard session 管理 |
 
@@ -410,12 +421,11 @@ Electron 桌面版的 `data/local.yaml` 路径：
 
 ```yaml
 tls:
-  transport: native                # native = Rust rustls（推荐）；auto / curl-cli / libcurl-ffi 可选
-  proxy_url: null                  # null = 自动检测本地代理
+  proxy_url: null                  # null = 自动检测本地代理；填写代理 URL 指定上游代理
   force_http11: false              # HTTP/2 失败时自动降级 HTTP/1.1；true = 强制 HTTP/1.1
 ```
 
-> `native` transport 使用内置 Rust addon（reqwest + rustls），TLS 指纹与真实 Codex Desktop 完全一致。源码运行需先编译：`cd native && npm install && npm run build`。
+> 内置 Rust native addon（reqwest + rustls），TLS 指纹与真实 Codex Desktop 完全一致。源码运行需先编译：`cd native && npm install && npm run build`。
 
 ### API 密钥
 
@@ -456,9 +466,43 @@ server:
 |------|------|------|
 | `/auth/login` | GET | OAuth 登录入口 |
 | `/auth/accounts` | GET | 账号列表（`?quota=true` / `?quota=fresh`） |
+| `/auth/accounts` | POST | 添加单个账号（token 或 refreshToken） |
+| `/auth/accounts/import` | POST | 批量导入账号 |
+| `/auth/accounts/export` | GET | 导出账号（`?format=minimal` 精简格式） |
 | `/auth/accounts/relay` | POST | 添加 Relay 中转站账号 |
 | `/auth/accounts/batch-delete` | POST | 批量删除账号 |
 | `/auth/accounts/batch-status` | POST | 批量修改账号状态 |
+
+**账号导入导出示例**
+
+```bash
+# 导出所有账号（完整格式，含 token）
+curl -s http://localhost:8080/auth/accounts/export \
+  -H "Authorization: Bearer your-api-key" > backup.json
+
+# 导出精简格式（仅 refreshToken + label，适合分享）
+curl -s "http://localhost:8080/auth/accounts/export?format=minimal" \
+  -H "Authorization: Bearer your-api-key" > backup-minimal.json
+
+# 批量导入（支持 token、refreshToken，或两者同时传）
+curl -X POST http://localhost:8080/auth/accounts/import \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer your-api-key" \
+  -d '{
+    "accounts": [
+      { "token": "eyJhbGciOi..." },
+      { "refreshToken": "v1.abc..." },
+      { "refreshToken": "v1.def...", "label": "备用账号" }
+    ]
+  }'
+# 返回: { "added": 2, "updated": 1, "failed": 0, "errors": [] }
+
+# 备份恢复一键操作（导出后直接导入到另一个实例）
+curl -X POST http://localhost:8080/auth/accounts/import \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer your-api-key" \
+  -d @backup.json
+```
 
 **管理接口**
 
@@ -504,25 +548,23 @@ server:
 ### [Unreleased]
 
 **Added**
+- 第三方 API Key 管理：支持 Anthropic / OpenAI / Gemini / OpenRouter 预设模型 + 自定义 provider，每个 key 绑定一个具体模型，运行时动态路由（优先于 config 固定 key），LRU 轮转多 key 负载均衡
+  - REST API：`GET/POST /auth/api-keys`、`GET /auth/api-keys/catalog`、`POST /auth/api-keys/import`、`GET /auth/api-keys/export`、批量删除、label/status 管理
+  - Dashboard 新增 API Keys tab：表单添加（御三家下拉选模型 / custom 手填）、import/export、toggle 启停、删除
+  - 持久化 `data/api-keys.json`，UpstreamRouter 优先级 0 匹配 pool entry
 - 加强伪装：Rust native transport（reqwest + rustls），TLS 指纹精确匹配真实 Codex Desktop；补齐 `x-openai-internal-codex-residency`、`x-client-request-id`、`x-codex-turn-state` 请求头
 - 账号探活：`POST /auth/accounts/health-check` 批量健康检查 + `POST /auth/accounts/:id/refresh` 单账号刷新，通过 OAuth refresh 探测存活状态，带 stagger 延迟和并发控制
 - Session affinity：同一对话链路由到同一账号，修复 `previous_response_id` 跨账号失效问题
 - `prompt_cache_key`：每个对话链生成唯一 UUID 传递给后端，启用 prompt cache
-- WebSocket 请求新增 `include: ["reasoning.encrypted_content"]`（reasoning 开启时自动设置）
 - ...（[查看全部](./CHANGELOG.md)）
 **Changed**
-- 删除冗余测试文件：`self-update-auto.test.ts`（superset 覆盖）、`account-import-refresh.test.ts`（迁移到 service 层）
-- 重命名 `model-plan-routing.test.ts` → `plan-routing-integration.test.ts` 以区分作用域
-- libcurl FFI 连接复用：macOS/Linux 自动构建 dylib，通过 CURLSH 共享连接缓存 + SSL session，消除每次请求的 TCP/TLS 握手开销（~2.9s → ~100-300ms）
-- setup 脚本自动下载静态库、编译 C wrapper、生成 dylib + cacert.pem
-- 自动更新（热更新）功能，默认开启，用户可在 Dashboard 设置中关闭
-  - Git 模式：检测到更新后自动 pull → install → build → 重启
-  - Electron (Win/Linux)：自动下载更新，退出时安装；dock/任务栏显示下载进度条
-  - Electron (macOS)：自动打开 release 页面（平台限制无法自动安装）
-  - 配置项 `update.auto_update`，持久化到 `data/local.yaml`
+- Dashboard session 默认 TTL 从 1 小时延长至 24 小时
 **Fixed**
-- 修复 `service_tier` 在 WebSocket 和 HTTP 两条路径均被丢弃的 bug — 现在正确转发给后端
-- 修复 `PUT /api/proxies/settings` 被 `PUT /api/proxies/:id` 路由参数 shadow 的 bug（Hono 按注册顺序匹配）
+- 上游 401 时立即触发 RT→AT 刷新，而非等待定时器（修复 token 被提前作废后账号一直显示 expired 的问题）
+- Dashboard session 滑动窗口续期：每次有效请求自动延长过期时间，不再固定 TTL 后断连
+- Dashboard 前端全局 401 拦截：session 过期后自动跳回登录页，不再卡死在空白页
+- Add Account 对话框新增 Cancel 按钮，OAuth 流程中可随时关闭对话框 (#319)
+- Electron 打包前清空旧 public/ 目录，防止残留旧版前端资源导致显示异常 (#320)
 
 ### [v0.8.0](https://github.com/icebear0828/codex-proxy/releases/tag/v0.8.0) - 2026-02-24
 

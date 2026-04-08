@@ -10,7 +10,7 @@ import { extractChatGptAccountId } from "../auth/jwt-utils.js";
 export interface ImportEntry {
   token?: string;
   refreshToken?: string | null;
-  label?: string;
+  label?: string | null;
 }
 
 export interface ImportResult {

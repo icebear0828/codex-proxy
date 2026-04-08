@@ -10,6 +10,7 @@ import { AccountList } from "./components/AccountList";
 import { SettingsTab } from "./components/SettingsTab";
 import { ProxyPool } from "./components/ProxyPool";
 import { Footer } from "./components/Footer";
+import { ApiKeyManager } from "./components/ApiKeyManager";
 import { ProxySettings } from "./pages/ProxySettings";
 import { AccountManagement } from "./pages/AccountManagement";
 import { UsageStats } from "./pages/UsageStats";
@@ -55,6 +56,7 @@ function useUpdateMessage() {
 const TABS: Array<{ hash: string; label: TranslationKey }> = [
   { hash: "", label: "overview" },
   { hash: "#/accounts", label: "manageAccounts" },
+  { hash: "#/api-keys", label: "apiKeys" },
   { hash: "#/proxies", label: "proxySettings" },
   { hash: "#/usage-stats", label: "usageStats" },
   { hash: "#/settings", label: "settings" },
@@ -133,6 +135,7 @@ function Dashboard() {
         <div class="flex flex-col w-full max-w-[960px]">
           <AddAccount
             visible={accounts.addVisible}
+            onCancel={accounts.cancelAdd}
             onSubmitRelay={accounts.submitRelay}
             onAddByRefreshToken={accounts.addByRefreshToken}
             addInfo={accounts.addInfo}
@@ -164,6 +167,10 @@ function Dashboard() {
 
           {activeTab === "#/accounts" && (
             <AccountManagement embedded />
+          )}
+
+          {activeTab === "#/api-keys" && (
+            <ApiKeyManager />
           )}
 
           {activeTab === "#/proxies" && (

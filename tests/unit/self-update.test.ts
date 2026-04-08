@@ -206,23 +206,48 @@ describe("self-update", () => {
       _existsSync.mockReturnValue(false);
     });
 
-    it("returns release when update available", async () => {
-      const releaseData = {
-        tag_name: "v2.0.0",
-        body: "New release notes",
-        html_url: "https://github.com/repo/releases/v2.0.0",
-        published_at: "2026-03-09T00:00:00Z",
-      };
+    // Helper: mock GHCR token + tags + optional GitHub Release
+    function mockDockerFetch(
+      registryTags: string[],
+      releaseData?: { tag_name: string; body: string; html_url: string; published_at: string },
+    ): ReturnType<typeof vi.fn> {
+      const mockFetch = vi.fn()
+        // 1st call: GHCR token
+        .mockResolvedValueOnce({
+          ok: true,
+          json: () => Promise.resolve({ token: "anon-token" }),
+        })
+        // 2nd call: GHCR tags
+        .mockResolvedValueOnce({
+          ok: true,
+          json: () => Promise.resolve({ name: "icebear0828/codex-proxy", tags: registryTags }),
+          headers: new Headers(),
+        });
 
-      // Mock package.json version (current) as 1.0.0
+      // 3rd call: GitHub Release (if update detected)
+      if (releaseData) {
+        mockFetch.mockResolvedValueOnce({
+          ok: true,
+          json: () => Promise.resolve(releaseData),
+        });
+      }
+
+      vi.stubGlobal("fetch", mockFetch);
+      return mockFetch;
+    }
+
+    it("returns release when update available in registry", async () => {
       _readFileSync.mockReturnValue(JSON.stringify({ version: "1.0.0" }));
 
-      // Mock globalThis.fetch for GitHub API
-      const mockFetch = vi.fn().mockResolvedValue({
-        ok: true,
-        json: () => Promise.resolve(releaseData),
-      });
-      vi.stubGlobal("fetch", mockFetch);
+      mockDockerFetch(
+        ["latest", "v1.0.0", "v2.0.0"],
+        {
+          tag_name: "v2.0.0",
+          body: "New release notes",
+          html_url: "https://github.com/repo/releases/v2.0.0",
+          published_at: "2026-03-09T00:00:00Z",
+        },
+      );
 
       const { checkProxySelfUpdate } = await importFresh();
       const result = await checkProxySelfUpdate();
@@ -235,19 +260,10 @@ describe("self-update", () => {
       vi.unstubAllGlobals();
     });
 
-    it("returns no update when same version", async () => {
+    it("returns no update when registry version matches current", async () => {
       _readFileSync.mockReturnValue(JSON.stringify({ version: "2.0.0" }));
 
-      const mockFetch = vi.fn().mockResolvedValue({
-        ok: true,
-        json: () => Promise.resolve({
-          tag_name: "v2.0.0",
-          body: "",
-          html_url: "",
-          published_at: "",
-        }),
-      });
-      vi.stubGlobal("fetch", mockFetch);
+      mockDockerFetch(["latest", "v2.0.0"]);
 
       const { checkProxySelfUpdate } = await importFresh();
       const result = await checkProxySelfUpdate();
@@ -257,65 +273,49 @@ describe("self-update", () => {
       vi.unstubAllGlobals();
     });
 
-    it("suppresses false update when Docker image was built after release", async () => {
-      // Package.json says 1.0.0, release says 2.0.0 — normally an update
-      _readFileSync.mockImplementation((path: string) => {
-        if (String(path).includes(".docker-build-time")) {
-          return "2026-03-10T12:00:00Z\n"; // built AFTER release
-        }
-        return JSON.stringify({ version: "1.0.0" });
-      });
-      _existsSync.mockReturnValue(false); // no .git → docker mode
+    it("no false positive: registry has same version even if GitHub Release is newer", async () => {
+      // Registry only has v2.0.44 (image not yet published for v2.0.45)
+      _readFileSync.mockReturnValue(JSON.stringify({ version: "2.0.44" }));
 
-      const mockFetch = vi.fn().mockResolvedValue({
-        ok: true,
-        json: () => Promise.resolve({
-          tag_name: "v2.0.0",
-          body: "Notes",
-          html_url: "https://github.com/repo/releases/v2.0.0",
-          published_at: "2026-03-09T00:00:00Z", // released BEFORE build
-        }),
-      });
-      vi.stubGlobal("fetch", mockFetch);
+      mockDockerFetch(["latest", "v2.0.44"]);
 
       const { checkProxySelfUpdate } = await importFresh();
       const result = await checkProxySelfUpdate();
-      // Build time > release time → suppress false positive
       expect(result.updateAvailable).toBe(false);
       expect(result.release).toBeNull();
 
       vi.unstubAllGlobals();
     });
 
-    it("shows update when Docker image was built before release", async () => {
-      _readFileSync.mockImplementation((path: string) => {
-        if (String(path).includes(".docker-build-time")) {
-          return "2026-03-08T00:00:00Z\n"; // built BEFORE release
-        }
-        return JSON.stringify({ version: "1.0.0" });
-      });
-      _existsSync.mockReturnValue(false);
+    it("synthesizes release info when GitHub Release unavailable", async () => {
+      _readFileSync.mockReturnValue(JSON.stringify({ version: "1.0.0" }));
 
-      const mockFetch = vi.fn().mockResolvedValue({
-        ok: true,
-        json: () => Promise.resolve({
-          tag_name: "v2.0.0",
-          body: "Notes",
-          html_url: "https://github.com/repo/releases/v2.0.0",
-          published_at: "2026-03-09T00:00:00Z",
-        }),
-      });
+      const mockFetch = vi.fn()
+        .mockResolvedValueOnce({
+          ok: true,
+          json: () => Promise.resolve({ token: "t" }),
+        })
+        .mockResolvedValueOnce({
+          ok: true,
+          json: () => Promise.resolve({ tags: ["latest", "v2.0.0"] }),
+          headers: new Headers(),
+        })
+        // GitHub Release returns 404
+        .mockResolvedValueOnce({ ok: false, json: () => Promise.resolve({}) });
       vi.stubGlobal("fetch", mockFetch);
 
       const { checkProxySelfUpdate } = await importFresh();
       const result = await checkProxySelfUpdate();
       expect(result.updateAvailable).toBe(true);
       expect(result.release).not.toBeNull();
+      expect(result.release!.version).toBe("2.0.0");
+      expect(result.release!.tag).toBe("v2.0.0");
+      expect(result.release!.body).toBe("");
 
       vi.unstubAllGlobals();
     });
 
-    it("handles GitHub API error gracefully", async () => {
+    it("handles GHCR registry error gracefully", async () => {
       const mockFetch = vi.fn().mockRejectedValue(new Error("network failure"));
       vi.stubGlobal("fetch", mockFetch);
 

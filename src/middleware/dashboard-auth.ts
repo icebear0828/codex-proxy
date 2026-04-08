@@ -13,6 +13,14 @@ import { isLocalhostRequest } from "../utils/is-localhost.js";
 import { validateSession } from "../auth/dashboard-session.js";
 import { parseSessionCookie } from "../utils/parse-cookie.js";
 
+/** Detect HTTPS from X-Forwarded-Proto or protocol. */
+function isHttps(c: Context): boolean {
+  const proto = c.req.header("x-forwarded-proto");
+  if (proto) return proto.toLowerCase() === "https";
+  const url = new URL(c.req.url);
+  return url.protocol === "https:";
+}
+
 /** Paths that are always allowed through without dashboard session. */
 const ALLOWED_PREFIXES = ["/assets/", "/v1/", "/v1beta/"];
 const ALLOWED_EXACT = new Set([
@@ -43,7 +51,15 @@ export async function dashboardAuth(c: Context, next: Next): Promise<Response | 
 
   // Check session cookie
   const sessionId = parseSessionCookie(c.req.header("cookie"));
-  if (sessionId && validateSession(sessionId)) return next();
+  if (sessionId && validateSession(sessionId)) {
+    // Sliding window: refresh cookie Max-Age to stay in sync with server-side renewal
+    const maxAge = config.session.ttl_minutes * 60;
+    const secure = isHttps(c);
+    let cookie = `_codex_session=${sessionId}; HttpOnly; SameSite=Strict; Path=/; Max-Age=${maxAge}`;
+    if (secure) cookie += "; Secure";
+    c.header("Set-Cookie", cookie);
+    return next();
+  }
 
   // Not authenticated — reject
   c.status(401);

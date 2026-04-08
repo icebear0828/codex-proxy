@@ -42,7 +42,7 @@ export const ConfigSchema = z.object({
     proxy_api_key: z.string().nullable().default(null),
   }),
   session: z.object({
-    ttl_minutes: z.number().min(1).default(60),
+    ttl_minutes: z.number().min(1).default(1440),
     cleanup_interval_minutes: z.number().min(1).default(5),
   }),
   tls: z.object({
@@ -62,6 +62,30 @@ export const ConfigSchema = z.object({
     auto_update: z.boolean().default(true),
     auto_download: z.boolean().default(false),
   }).default({}),
+  /** Third-party API provider keys for multi-backend routing. */
+  providers: z.object({
+    openai: z.object({
+      api_key: z.string(),
+      base_url: z.string().default("https://api.openai.com/v1"),
+    }).optional(),
+    anthropic: z.object({
+      api_key: z.string(),
+    }).optional(),
+    gemini: z.object({
+      api_key: z.string(),
+    }).optional(),
+    /** OpenAI-compatible third-party providers (Groq, DeepSeek, Together, etc.). */
+    custom: z.record(
+      z.string(),
+      z.object({
+        api_key: z.string(),
+        base_url: z.string(),
+        models: z.array(z.string()).default([]),
+      }),
+    ).default({}),
+  }).default({}),
+  /** Explicit model → provider name routing table. */
+  model_routing: z.record(z.string(), z.string()).default({}),
 });
 
 export type AppConfig = z.infer<typeof ConfigSchema>;

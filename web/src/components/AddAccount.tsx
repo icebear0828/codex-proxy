@@ -4,13 +4,14 @@ import type { TranslationKey } from "../../../shared/i18n/translations";
 
 interface AddAccountProps {
   visible: boolean;
+  onCancel: () => void;
   onSubmitRelay: (callbackUrl: string) => Promise<void>;
   onAddByRefreshToken: (refreshToken: string) => Promise<string | null>;
   addInfo: string;
   addError: string;
 }
 
-export function AddAccount({ visible, onSubmitRelay, onAddByRefreshToken, addInfo, addError }: AddAccountProps) {
+export function AddAccount({ visible, onCancel, onSubmitRelay, onAddByRefreshToken, addInfo, addError }: AddAccountProps) {
   const t = useT();
   const [input, setInput] = useState("");
   const [submitting, setSubmitting] = useState(false);
@@ -49,6 +50,14 @@ export function AddAccount({ visible, onSubmitRelay, onAddByRefreshToken, addInf
       )}
       {visible && (
         <section class="bg-white dark:bg-card-dark border border-gray-200 dark:border-border-dark rounded-xl p-5 shadow-sm transition-colors space-y-4">
+          <div class="flex justify-end">
+            <button
+              onClick={onCancel}
+              class="text-slate-400 hover:text-slate-600 dark:text-text-dim dark:hover:text-text-main transition-colors text-sm"
+            >
+              {t("cancel")}
+            </button>
+          </div>
           {/* OAuth callback relay */}
           <div>
             <ol class="text-sm text-slate-500 dark:text-text-dim mb-4 space-y-1.5 list-decimal list-inside">

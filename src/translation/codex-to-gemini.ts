@@ -9,31 +9,24 @@
  * Non-streaming: collect all text, return Gemini generateContent response.
  */
 
-import type { CodexApi } from "../proxy/codex-api.js";
+import type { UpstreamAdapter } from "../proxy/upstream-adapter.js";
 import type {
   GeminiGenerateContentResponse,
   GeminiUsageMetadata,
   GeminiPart,
 } from "../types/gemini.js";
-import { iterateCodexEvents, EmptyResponseError } from "./codex-event-extractor.js";
+import { iterateCodexEvents, EmptyResponseError, type UsageInfo } from "./codex-event-extractor.js";
 import { reconvertTupleValues } from "./tuple-schema.js";
-
-export interface GeminiUsageInfo {
-  input_tokens: number;
-  output_tokens: number;
-  cached_tokens?: number;
-  reasoning_tokens?: number;
-}
 
 /**
  * Stream Codex Responses API events as Gemini SSE.
  * Yields string chunks ready to write to the HTTP response.
  */
 export async function* streamCodexToGemini(
-  codexApi: CodexApi,
+  codexApi: UpstreamAdapter,
   rawResponse: Response,
   model: string,
-  onUsage?: (usage: GeminiUsageInfo) => void,
+  onUsage?: (usage: UsageInfo) => void,
   onResponseId?: (id: string) => void,
   tupleSchema?: Record<string, unknown> | null,
 ): AsyncGenerator<string> {
@@ -196,13 +189,13 @@ export async function* streamCodexToGemini(
  * Gemini generateContent response.
  */
 export async function collectCodexToGeminiResponse(
-  codexApi: CodexApi,
+  codexApi: UpstreamAdapter,
   rawResponse: Response,
   model: string,
   tupleSchema?: Record<string, unknown> | null,
 ): Promise<{
   response: GeminiGenerateContentResponse;
-  usage: GeminiUsageInfo;
+  usage: UsageInfo;
   responseId: string | null;
 }> {
   let fullText = "";
@@ -234,7 +227,7 @@ export async function collectCodexToGeminiResponse(
     }
   }
 
-  const usage: GeminiUsageInfo = {
+  const usage: UsageInfo = {
     input_tokens: inputTokens,
     output_tokens: outputTokens,
     ...(cachedTokens != null ? { cached_tokens: cachedTokens } : {}),

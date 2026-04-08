@@ -31,7 +31,7 @@ const LabelSchema = z.object({ label: z.string().max(64).nullable() });
 const BulkImportEntrySchema = z.object({
   token: z.string().min(1).optional(),
   refreshToken: z.string().min(1).nullable().optional(),
-  label: z.string().max(64).optional(),
+  label: z.string().max(64).nullable().optional(),
 }).refine((d) => Boolean(d.token) || Boolean(d.refreshToken), { message: "Either token or refreshToken is required" });
 const BulkImportSchema = z.object({ accounts: z.array(BulkImportEntrySchema).min(1) });
 

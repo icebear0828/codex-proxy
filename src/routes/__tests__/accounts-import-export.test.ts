@@ -301,6 +301,23 @@ describe("account import/export", () => {
     getUsageSpy.mockRestore();
   });
 
+  it("POST /auth/accounts/import accepts label: null", async () => {
+    const res = await app.request("/auth/accounts/import", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        accounts: [
+          { token: "tokenNULL1234567890", label: null },
+        ],
+      }),
+    });
+
+    expect(res.status).toBe(200);
+    const data = await res.json() as { added: number; failed: number };
+    expect(data.added).toBe(1);
+    expect(data.failed).toBe(0);
+  });
+
   // ── Round-trip ─────────────────────────────────────────
 
   it("export → import round-trip preserves accounts", async () => {

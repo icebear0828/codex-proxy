@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "preact/hooks";
+import { useState, useEffect, useCallback, useRef } from "preact/hooks";
 import type { Account } from "../types";
 
 export function useAccounts() {
@@ -9,6 +9,7 @@ export function useAccounts() {
   const [addVisible, setAddVisible] = useState(false);
   const [addInfo, setAddInfo] = useState("");
   const [addError, setAddError] = useState("");
+  const addCleanupRef = useRef<(() => void) | null>(null);
 
   const loadAccounts = useCallback(async (fresh = false) => {
     setRefreshing(true);
@@ -101,12 +102,21 @@ export function useAccounts() {
         clearInterval(pollTimer);
         window.removeEventListener("focus", onFocus);
         document.removeEventListener("visibilitychange", onVisible);
+        addCleanupRef.current = null;
       };
+      addCleanupRef.current = cleanup;
       setTimeout(cleanup, 5 * 60 * 1000);
     } catch (err) {
       setAddError(err instanceof Error ? err.message : "failedStartLogin");
     }
   }, [loadAccounts]);
+
+  const cancelAdd = useCallback(() => {
+    addCleanupRef.current?.();
+    setAddVisible(false);
+    setAddInfo("");
+    setAddError("");
+  }, []);
 
   const submitRelay = useCallback(
     async (callbackUrl: string) => {
@@ -241,7 +251,7 @@ export function useAccounts() {
     if (resp.ok) {
       await loadAccounts();
     }
-    return result;
+    return { added: 0, updated: 0, failed: 0, errors: [], ...result };
   }, [loadAccounts]);
 
   const batchDelete = useCallback(async (ids: string[]): Promise<string | null> => {
@@ -314,6 +324,7 @@ export function useAccounts() {
     refresh: useCallback(() => loadAccounts(true), [loadAccounts]),
     patchLocal,
     startAdd,
+    cancelAdd,
     submitRelay,
     addByRefreshToken,
     deleteAccount,

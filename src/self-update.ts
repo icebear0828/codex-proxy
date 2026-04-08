@@ -1,7 +1,7 @@
 /**
  * Proxy self-update — detects available updates in three deployment modes:
  * - CLI (git): git fetch + commit log
- * - Docker (no .git): GitHub Releases API
+ * - Docker (no .git): GHCR registry tag list (checks actual published images)
  * - Electron (embedded): GitHub Releases API
  */
 
@@ -78,6 +78,7 @@ function hardRestart(cwd: string): void {
 const execFileAsync = promisify(execFile);
 
 const GITHUB_REPO = "icebear0828/codex-proxy";
+const GHCR_IMAGE = "icebear0828/codex-proxy";
 const CHECK_INTERVAL_MS = 6 * 60 * 60 * 1000; // 6 hours
 const INITIAL_DELAY_MS = 10_000; // 10 seconds after startup
 
@@ -246,6 +247,66 @@ async function getRemoteChangelog(cwd: string): Promise<string | null> {
   }
 }
 
+/**
+ * Check GHCR (GitHub Container Registry) for the latest published Docker image version.
+ *
+ * Uses the OCI Distribution API with anonymous token:
+ * 1. GET /token?scope=repository:…:pull → anonymous bearer token
+ * 2. GET /v2/…/tags/list → all published tags
+ * 3. Filter v* tags, return highest semver.
+ *
+ * Returns null on any failure (network, auth, no version tags).
+ */
+export async function checkDockerRegistryVersion(): Promise<string | null> {
+  try {
+    // Step 1: obtain anonymous pull token
+    const tokenResp = await fetch(
+      `https://ghcr.io/token?service=ghcr.io&scope=repository:${GHCR_IMAGE}:pull`,
+      { signal: AbortSignal.timeout(10000) },
+    );
+    if (!tokenResp.ok) return null;
+    const { token } = await tokenResp.json() as { token: string };
+
+    // Step 2: list all tags (follow OCI pagination via Link header)
+    const allTags: string[] = [];
+    let nextUrl: string | null = `https://ghcr.io/v2/${GHCR_IMAGE}/tags/list`;
+    const MAX_PAGES = 10; // safety limit
+
+    for (let page = 0; page < MAX_PAGES && nextUrl; page++) {
+      const tagsResp = await fetch(nextUrl, {
+        headers: { Authorization: `Bearer ${token}` },
+        signal: AbortSignal.timeout(10000),
+      });
+      if (!tagsResp.ok) return null;
+      const { tags } = await tagsResp.json() as { tags: string[] };
+      allTags.push(...tags);
+
+      // OCI pagination: Link: </v2/.../tags/list?last=...>; rel="next"
+      const link = tagsResp.headers.get("link");
+      nextUrl = null;
+      if (link) {
+        const m = /<([^>]+)>;\s*rel="next"/.exec(link);
+        if (m) nextUrl = m[1].startsWith("http") ? m[1] : `https://ghcr.io${m[1]}`;
+      }
+    }
+
+    // Step 3: filter version tags and find highest
+    const VERSION_RE = /^v?(\d+\.\d+\.\d+)$/;
+    let latest: string | null = null;
+    for (const tag of allTags) {
+      const m = VERSION_RE.exec(tag);
+      if (!m) continue;
+      const ver = m[1];
+      if (!latest || ver.localeCompare(latest, undefined, { numeric: true }) > 0) {
+        latest = ver;
+      }
+    }
+    return latest;
+  } catch {
+    return null;
+  }
+}
+
 /** Check GitHub Releases API for the latest version. */
 async function checkGitHubRelease(): Promise<GitHubReleaseInfo | null> {
   try {
@@ -323,30 +384,45 @@ export async function checkProxySelfUpdate(): Promise<ProxySelfUpdateResult> {
     return result;
   }
 
-  // Docker or Electron — GitHub Releases API
-  const release = await checkGitHubRelease();
   const currentVersion = getProxyInfo().version ?? "0.0.0";
+
+  if (mode === "docker") {
+    // Docker — check actual GHCR registry for published image tags
+    const registryVersion = await checkDockerRegistryVersion();
+    let updateAvailable = registryVersion !== null
+      && registryVersion !== currentVersion
+      && registryVersion.localeCompare(currentVersion, undefined, { numeric: true }) > 0;
+
+    // Fetch GitHub Release notes for context (best effort)
+    let release: GitHubReleaseInfo | null = null;
+    if (updateAvailable) {
+      release = await checkGitHubRelease();
+      // If the release version doesn't match registry, synthesize minimal info
+      if (!release || release.version !== registryVersion) {
+        release = {
+          version: registryVersion!,
+          tag: `v${registryVersion}`,
+          body: "",
+          url: `https://github.com/${GITHUB_REPO}/releases/tag/v${registryVersion}`,
+          publishedAt: "",
+        };
+      }
+    }
+
+    const result: ProxySelfUpdateResult = {
+      commitsBehind: 0, currentCommit: null, latestCommit: null,
+      commits: [], changelog: null, release: updateAvailable ? release : null,
+      updateAvailable, mode,
+    };
+    _cachedResult = result;
+    return result;
+  }
+
+  // Electron — GitHub Releases API
+  const release = await checkGitHubRelease();
   let updateAvailable = release !== null
     && release.version !== currentVersion
     && release.version.localeCompare(currentVersion, undefined, { numeric: true }) > 0;
-
-  // Docker false-positive suppression: if the image was built AFTER the release
-  // was published, it likely contains the release content even if the version
-  // string doesn't match (e.g. [skip ci] on version-bump commit).
-  if (updateAvailable && mode === "docker" && release) {
-    const buildTimePath = resolve(getRootDir(), ".docker-build-time");
-    try {
-      const buildTimeStr = readFileSync(buildTimePath, "utf-8").trim();
-      const buildTime = new Date(buildTimeStr).getTime();
-      const releaseTime = new Date(release.publishedAt).getTime();
-      if (buildTime > 0 && releaseTime > 0 && buildTime >= releaseTime) {
-        console.log(`[SelfUpdate] Docker image built at ${buildTimeStr}, release published at ${release.publishedAt} — suppressing false update`);
-        updateAvailable = false;
-      }
-    } catch {
-      // No build-time stamp (older image) — fall through to version comparison
-    }
-  }
 
   const result: ProxySelfUpdateResult = {
     commitsBehind: 0, currentCommit: null, latestCommit: null,

@@ -11,7 +11,7 @@
  */
 
 import { randomUUID } from "crypto";
-import type { CodexApi } from "../proxy/codex-api.js";
+import type { UpstreamAdapter } from "../proxy/upstream-adapter.js";
 import type {
   ChatCompletionResponse,
   ChatCompletionChunk,
@@ -20,8 +20,6 @@ import type {
 } from "../types/openai.js";
 import { iterateCodexEvents, EmptyResponseError, type UsageInfo } from "./codex-event-extractor.js";
 import { reconvertTupleValues } from "./tuple-schema.js";
-
-export type { UsageInfo };
 
 /** Format an SSE chunk for streaming output */
 function formatSSE(chunk: ChatCompletionChunk): string {
@@ -34,7 +32,7 @@ function formatSSE(chunk: ChatCompletionChunk): string {
  * Calls onUsage when the response.completed event arrives with usage data.
  */
 export async function* streamCodexToOpenAI(
-  codexApi: CodexApi,
+  codexApi: UpstreamAdapter,
   rawResponse: Response,
   model: string,
   onUsage?: (usage: UsageInfo) => void,
@@ -327,7 +325,7 @@ export async function* streamCodexToOpenAI(
  * ChatCompletionResponse. Returns both the response and extracted usage.
  */
 export async function collectCodexResponse(
-  codexApi: CodexApi,
+  codexApi: UpstreamAdapter,
   rawResponse: Response,
   model: string,
   wantReasoning?: boolean,

@@ -13,6 +13,7 @@ import type { CookieJar } from "../proxy/cookie-jar.js";
 import type { ProxyPool } from "../proxy/proxy-pool.js";
 import { CodexApi, CodexApiError } from "../proxy/codex-api.js";
 import type { CodexResponsesRequest, CodexCompactRequest, CodexInputItem } from "../proxy/codex-api.js";
+import type { UpstreamAdapter } from "../proxy/upstream-adapter.js";
 import { getConfig } from "../config.js";
 import { prepareSchema } from "../translation/shared-utils.js";
 import { reconvertTupleValues } from "../translation/tuple-schema.js";
@@ -20,9 +21,11 @@ import { parseModelName, resolveModelId, getModelInfo, buildDisplayModelName } f
 import { EmptyResponseError } from "../translation/codex-event-extractor.js";
 import {
   handleProxyRequest,
+  handleDirectRequest,
   staggerIfNeeded,
   type FormatAdapter,
 } from "./shared/proxy-handler.js";
+import type { UpstreamRouter } from "../proxy/upstream-router.js";
 import { acquireAccount, releaseAccount } from "./shared/account-acquisition.js";
 import { handleCodexApiError } from "./shared/proxy-error-handler.js";
 import { withRetry } from "../utils/retry.js";
@@ -36,7 +39,7 @@ function isRecord(v: unknown): v is Record<string, unknown> {
 // ── Passthrough stream translator ──────────────────────────────────
 
 async function* streamPassthrough(
-  api: CodexApi,
+  api: UpstreamAdapter,
   response: Response,
   _model: string,
   onUsage: (u: { input_tokens: number; output_tokens: number }) => void,
@@ -119,7 +122,7 @@ async function* streamPassthrough(
 // ── Passthrough collect translator ─────────────────────────────────
 
 export async function collectPassthrough(
-  api: CodexApi,
+  api: UpstreamAdapter,
   response: Response,
   _model: string,
   tupleSchema?: Record<string, unknown> | null,
@@ -435,6 +438,7 @@ export function createResponsesRoutes(
   accountPool: AccountPool,
   cookieJar?: CookieJar,
   proxyPool?: ProxyPool,
+  upstreamRouter?: UpstreamRouter,
 ): Hono {
   const app = new Hono();
 
@@ -541,20 +545,20 @@ export function createResponsesRoutes(
     }
 
     const clientWantsStream = body.stream !== false;
+    const proxyReq = {
+      codexRequest,
+      model: displayModel,
+      isStreaming: clientWantsStream,
+      tupleSchema,
+    };
 
-    return handleProxyRequest(
-      c,
-      accountPool,
-      cookieJar,
-      {
-        codexRequest,
-        model: displayModel,
-        isStreaming: clientWantsStream,
-        tupleSchema,
-      },
-      PASSTHROUGH_FORMAT,
-      proxyPool,
-    );
+    if (upstreamRouter && !upstreamRouter.isCodexModel(rawModel)) {
+      // Use raw model name so adapter's extractModelId can strip the provider prefix
+      const directReq = { ...proxyReq, codexRequest: { ...codexRequest, model: rawModel } };
+      return handleDirectRequest(c, upstreamRouter.resolve(rawModel), directReq, PASSTHROUGH_FORMAT);
+    }
+
+    return handleProxyRequest(c, accountPool, cookieJar, proxyReq, PASSTHROUGH_FORMAT, proxyPool);
   };
 
   // ── POST /v1/responses/compact — non-streaming JSON proxy ──

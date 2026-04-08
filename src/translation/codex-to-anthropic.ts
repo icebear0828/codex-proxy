@@ -11,20 +11,13 @@
  */
 
 import { randomUUID } from "crypto";
-import type { CodexApi } from "../proxy/codex-api.js";
+import type { UpstreamAdapter } from "../proxy/upstream-adapter.js";
 import type {
   AnthropicContentBlock,
   AnthropicMessagesResponse,
   AnthropicUsage,
 } from "../types/anthropic.js";
-import { iterateCodexEvents, EmptyResponseError } from "./codex-event-extractor.js";
-
-export interface AnthropicUsageInfo {
-  input_tokens: number;
-  output_tokens: number;
-  cached_tokens?: number;
-  reasoning_tokens?: number;
-}
+import { iterateCodexEvents, EmptyResponseError, type UsageInfo } from "./codex-event-extractor.js";
 
 /** Format an Anthropic SSE event with named event type */
 function formatSSE(eventType: string, data: unknown): string {
@@ -39,10 +32,10 @@ function formatSSE(eventType: string, data: unknown): string {
  * thinking content blocks before the text block.
  */
 export async function* streamCodexToAnthropic(
-  codexApi: CodexApi,
+  codexApi: UpstreamAdapter,
   rawResponse: Response,
   model: string,
-  onUsage?: (usage: AnthropicUsageInfo) => void,
+  onUsage?: (usage: UsageInfo) => void,
   onResponseId?: (id: string) => void,
   wantThinking?: boolean,
 ): AsyncGenerator<string> {
@@ -264,13 +257,13 @@ export async function* streamCodexToAnthropic(
  * Anthropic Messages response.
  */
 export async function collectCodexToAnthropicResponse(
-  codexApi: CodexApi,
+  codexApi: UpstreamAdapter,
   rawResponse: Response,
   model: string,
   wantThinking?: boolean,
 ): Promise<{
   response: AnthropicMessagesResponse;
-  usage: AnthropicUsageInfo;
+  usage: UsageInfo;
   responseId: string | null;
 }> {
   const id = `msg_${randomUUID().replace(/-/g, "").slice(0, 24)}`;

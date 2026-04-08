@@ -8,8 +8,24 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- 上游 401 时立即触发 RT→AT 刷新，而非等待定时器（修复 token 被提前作废后账号一直显示 expired 的问题）
+- Dashboard session 滑动窗口续期：每次有效请求自动延长过期时间，不再固定 TTL 后断连
+- Dashboard 前端全局 401 拦截：session 过期后自动跳回登录页，不再卡死在空白页
+- Add Account 对话框新增 Cancel 按钮，OAuth 流程中可随时关闭对话框 (#319)
+- Electron 打包前清空旧 public/ 目录，防止残留旧版前端资源导致显示异常 (#320)
+
+### Changed
+
+- Dashboard session 默认 TTL 从 1 小时延长至 24 小时
+
 ### Added
 
+- 第三方 API Key 管理：支持 Anthropic / OpenAI / Gemini / OpenRouter 预设模型 + 自定义 provider，每个 key 绑定一个具体模型，运行时动态路由（优先于 config 固定 key），LRU 轮转多 key 负载均衡
+  - REST API：`GET/POST /auth/api-keys`、`GET /auth/api-keys/catalog`、`POST /auth/api-keys/import`、`GET /auth/api-keys/export`、批量删除、label/status 管理
+  - Dashboard 新增 API Keys tab：表单添加（御三家下拉选模型 / custom 手填）、import/export、toggle 启停、删除
+  - 持久化 `data/api-keys.json`，UpstreamRouter 优先级 0 匹配 pool entry
 - 加强伪装：Rust native transport（reqwest + rustls），TLS 指纹精确匹配真实 Codex Desktop；补齐 `x-openai-internal-codex-residency`、`x-client-request-id`、`x-codex-turn-state` 请求头
 - 账号探活：`POST /auth/accounts/health-check` 批量健康检查 + `POST /auth/accounts/:id/refresh` 单账号刷新，通过 OAuth refresh 探测存活状态，带 stagger 延迟和并发控制
 - Session affinity：同一对话链路由到同一账号，修复 `previous_response_id` 跨账号失效问题
@@ -78,7 +94,7 @@
 - Refresh-token-only 导入：批量导入现在支持只传 `refreshToken`（无需有效 JWT），后端自动用 RT 换取 AT 后添加账号
 - 导入模板下载：AccountImportExport 工具栏新增模板下载按钮，包含 token-only、RT-only、label 等示例格式
 - 导入支持 label 字段：批量导入时可为每条记录指定 label
-- Claude Code Setup 卡片：Dashboard 按 Opus/Sonnet/Haiku/自定义 层级一键复制环境变量（推荐模型 gpt-5.4 / gpt-5.4-mini / gpt-5.3-codex）
+- Claude Code Setup 卡片：Dashboard 按 Opus/Sonnet/Haiku/自定义 层级一键复制环境变量（推荐模型 gpt-5.4 / gpt-5.3-codex / gpt-5.4-mini）
 - 账号启用/禁用 toggle：AccountCard 和 AccountTable 新增 per-account 开关，无需批量操作即可快速切换账号状态
 - Codex CLI 配置说明：README 新增 `~/.codex/config.toml` 配置示例
 - Token 刷新并发控制（`auth.refresh_concurrency`，默认 2）：多账号同时到期时限制并发数，避免上游限流

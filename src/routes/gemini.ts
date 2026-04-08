@@ -23,8 +23,10 @@ import { getConfig } from "../config.js";
 import { getModelCatalog } from "../models/model-store.js";
 import {
   handleProxyRequest,
+  handleDirectRequest,
   type FormatAdapter,
 } from "./shared/proxy-handler.js";
+import type { UpstreamRouter } from "../proxy/upstream-router.js";
 
 function makeError(
   code: number,
@@ -77,6 +79,7 @@ export function createGeminiRoutes(
   accountPool: AccountPool,
   cookieJar?: CookieJar,
   proxyPool?: ProxyPool,
+  upstreamRouter?: UpstreamRouter,
 ): Hono {
   const app = new Hono();
 
@@ -153,19 +156,19 @@ export function createGeminiRoutes(
       `[Gemini] Model: ${geminiModel} → ${codexRequest.model}`,
     );
 
-    return handleProxyRequest(
-      c,
-      accountPool,
-      cookieJar,
-      {
-        codexRequest,
-        model: geminiModel,
-        isStreaming,
-        tupleSchema,
-      },
-      GEMINI_FORMAT,
-      proxyPool,
-    );
+    const proxyReq = {
+      codexRequest,
+      model: geminiModel,
+      isStreaming,
+      tupleSchema,
+    };
+
+    if (upstreamRouter && !upstreamRouter.isCodexModel(geminiModel)) {
+      const directReq = { ...proxyReq, codexRequest: { ...codexRequest, model: geminiModel } };
+      return handleDirectRequest(c, upstreamRouter.resolve(geminiModel), directReq, GEMINI_FORMAT);
+    }
+
+    return handleProxyRequest(c, accountPool, cookieJar, proxyReq, GEMINI_FORMAT, proxyPool);
   });
 
   // List available models (Gemini format)

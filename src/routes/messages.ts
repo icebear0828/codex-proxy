@@ -19,8 +19,10 @@ import { getConfig } from "../config.js";
 import { parseModelName, buildDisplayModelName } from "../models/model-store.js";
 import {
   handleProxyRequest,
+  handleDirectRequest,
   type FormatAdapter,
 } from "./shared/proxy-handler.js";
+import type { UpstreamRouter } from "../proxy/upstream-router.js";
 
 function makeError(
   type: AnthropicErrorType,
@@ -51,6 +53,7 @@ export function createMessagesRoutes(
   accountPool: AccountPool,
   cookieJar?: CookieJar,
   proxyPool?: ProxyPool,
+  upstreamRouter?: UpstreamRouter,
 ): Hono {
   const app = new Hono();
 
@@ -98,19 +101,19 @@ export function createMessagesRoutes(
 
     const codexRequest = translateAnthropicToCodexRequest(req);
     const wantThinking = req.thinking?.type === "enabled" || req.thinking?.type === "adaptive";
+    const proxyReq = {
+      codexRequest,
+      model: buildDisplayModelName(parseModelName(req.model)),
+      isStreaming: req.stream,
+    };
+    const fmt = makeAnthropicFormat(wantThinking);
 
-    return handleProxyRequest(
-      c,
-      accountPool,
-      cookieJar,
-      {
-        codexRequest,
-        model: buildDisplayModelName(parseModelName(req.model)),
-        isStreaming: req.stream,
-      },
-      makeAnthropicFormat(wantThinking),
-      proxyPool,
-    );
+    if (upstreamRouter && !upstreamRouter.isCodexModel(req.model)) {
+      const directReq = { ...proxyReq, codexRequest: { ...codexRequest, model: req.model } };
+      return handleDirectRequest(c, upstreamRouter.resolve(req.model), directReq, fmt);
+    }
+
+    return handleProxyRequest(c, accountPool, cookieJar, proxyReq, fmt, proxyPool);
   });
 
   return app;
