@@ -1,0 +1,59 @@
+name: "test: CI smoke test — Docker image builds and starts healthy"
+
+on:
+  push:
+    branches:
+      - master
+  pull_request:
+
+jobs:
+  docker-smoke-test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Build Docker image
+        run: docker build -t codex-proxy-test .
+
+      - name: Test default port 8080
+        run: |
+          docker run -d --name codex-test-8080 -p 8080:8080 codex-proxy-test
+          # Wait for healthcheck to pass (up to 30s)
+          timeout 30s bash -c 'until curl -s http://localhost:8080/health | grep -q "ok"; do sleep 1; done'
+          # Verify 200 OK from /health
+          STATUS=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:8080/health)
+          if [ "$STATUS" -ne 200 ]; then
+            echo "Expected 200, got $STATUS"
+            exit 1
+          fi
+
+      - name: Cleanup default port container
+        run: |
+          docker stop codex-test-8080
+          docker rm codex-test-8080
+
+      - name: Test custom port 8090
+        run: |
+          # Create a modified config
+          mkdir -p /tmp/config
+          cp config/default.yaml /tmp/config/default.yaml
+          sed -i 's/port: 8080/port: 8090/' /tmp/config/default.yaml
+
+          # Run container with modified config mounted
+          docker run -d --name codex-test-8090 -p 8090:8090 -v /tmp/config/default.yaml:/app/config/default.yaml codex-proxy-test
+
+          # Wait for healthcheck to pass (up to 30s)
+          timeout 30s bash -c 'until curl -s http://localhost:8090/health | grep -q "ok"; do sleep 1; done'
+
+          # Verify 200 OK from /health
+          STATUS=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:8090/health)
+          if [ "$STATUS" -ne 200 ]; then
+            echo "Expected 200, got $STATUS"
+            exit 1
+          fi
+
+      - name: Cleanup custom port container
+        run: |
+          docker stop codex-test-8090
+          docker rm codex-test-8090

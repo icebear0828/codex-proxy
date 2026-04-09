@@ -1,0 +1,28 @@
+name: "test: CI smoke test — web frontend builds and serves"
+
+on:
+  push:
+    branches:
+      - master
+  pull_request:
+
+jobs:
+  web-smoke-test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install root dependencies
+        run: npm ci
+
+      - name: Build project
+        run: npm run build
+
+      - name: Run Web Smoke Test
+        run: npm test -- src/__tests__/web-smoke.test.ts
