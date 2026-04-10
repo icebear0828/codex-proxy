@@ -6,6 +6,7 @@
   "main": "dist-electron/main.cjs",
   "author": "codex-proxy",
   "scripts": {
+    "test": "vitest run",
     "build": "node electron/build.mjs",
     "dev": "cd ../.. && npm run build && cd packages/electron && npm run build && electron .",
     "prepack": "node electron/prepare-pack.mjs",
@@ -19,8 +20,10 @@
     "electron-updater": "^6.3.0"
   },
   "devDependencies": {
+    "@playwright/test": "^1.59.1",
     "electron": "^35.7.5",
     "electron-builder": "^26.0.0",
-    "esbuild": "^0.25.12"
+    "esbuild": "^0.25.12",
+    "playwright": "^1.59.1"
   }
 }
