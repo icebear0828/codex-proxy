@@ -28,6 +28,9 @@ jobs:
   smoke:
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    strategy:
+      matrix:
+        port: [8080, 8090]
     steps:
       - uses: actions/checkout@v4
 
@@ -36,9 +39,10 @@ jobs:
 
       - name: Start container
         run: |
-          docker run -d --name smoke-test \
-            -p 18080:8080 \
+          docker run -d --name smoke-test-${{ matrix.port }} \
+            -p 18080:${{ matrix.port }} \
             -e NODE_ENV=production \
+            -e PORT=${{ matrix.port }} \
             codex-proxy:smoke
           echo "Container started"
 
@@ -46,7 +50,7 @@ jobs:
         run: |
           echo "Waiting for container to become healthy..."
           for i in $(seq 1 30); do
-            STATUS=$(docker inspect --format='{{.State.Health.Status}}' smoke-test 2>/dev/null || echo "starting")
+            STATUS=$(docker inspect --format='{{.State.Health.Status}}' smoke-test-${{ matrix.port }} 2>/dev/null || echo "starting")
             echo "  [$i/30] status: $STATUS"
             if [ "$STATUS" = "healthy" ]; then
               echo "Container is healthy"
@@ -55,7 +59,7 @@ jobs:
             sleep 2
           done
           echo "::error::Container did not become healthy within 60s"
-          docker logs smoke-test
+          docker logs smoke-test-${{ matrix.port }}
           exit 1
 
       - name: Verify /health endpoint
@@ -78,5 +82,5 @@ jobs:
       - name: Cleanup
         if: always()
         run: |
-          docker logs smoke-test 2>&1 | tail -30
-          docker rm -f smoke-test || true
+          docker logs smoke-test-${{ matrix.port }} 2>&1 | tail -30
+          docker rm -f smoke-test-${{ matrix.port }} || true
