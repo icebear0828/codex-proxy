@@ -66,9 +66,17 @@ describe("rotation-strategy", () => {
       expect(strategy.select([a, b], state).id).toBe("b");
     });
 
-    it("treats missing window_reset_at as Infinity (picks known reset first)", () => {
-      const a = makeEntry("a", { request_count: 1 }); // no reset info
+    it("does not penalize new accounts without window_reset_at — falls through to request_count", () => {
+      // Account A is brand-new (no window info yet), account B has a known window.
+      // A has fewer requests so it should win: null window must not count as Infinity.
+      const a = makeEntry("a", { request_count: 1 }); // no window info
       const b = makeEntry("b", { request_count: 5, window_reset_at: Date.now() + 86400_000 });
+      expect(strategy.select([a, b], state).id).toBe("a");
+    });
+
+    it("falls through to request_count when both accounts have no window_reset_at", () => {
+      const a = makeEntry("a", { request_count: 3 });
+      const b = makeEntry("b", { request_count: 1 });
       expect(strategy.select([a, b], state).id).toBe("b");
     });
 
