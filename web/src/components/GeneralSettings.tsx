@@ -30,7 +30,7 @@ export function GeneralSettings() {
   const currentInjectContext = gs.data?.inject_desktop_context ?? false;
   const currentSuppressDirectives = gs.data?.suppress_desktop_directives ?? false;
   const currentDefaultModel = gs.data?.default_model ?? "";
-  const currentReasoningEffort = gs.data?.default_reasoning_effort ?? "medium";
+  const currentReasoningEffort = gs.data?.default_reasoning_effort ?? "";
   const currentRefreshEnabled = gs.data?.refresh_enabled ?? true;
   const currentRefreshMargin = gs.data?.refresh_margin_seconds ?? 300;
   const currentRefreshConcurrency = gs.data?.refresh_concurrency ?? 2;
@@ -100,7 +100,7 @@ export function GeneralSettings() {
     }
 
     if (draftReasoningEffort !== null) {
-      patch.default_reasoning_effort = draftReasoningEffort;
+      patch.default_reasoning_effort = draftReasoningEffort === "" ? null : draftReasoningEffort;
     }
 
     if (draftRefreshEnabled !== null) {
@@ -265,6 +265,7 @@ export function GeneralSettings() {
               value={displayReasoningEffort}
               onChange={(e) => setDraftReasoningEffort((e.target as HTMLSelectElement).value)}
             >
+              <option value="">Disabled (no reasoning)</option>
               <option value="low">low</option>
               <option value="medium">medium</option>
               <option value="high">high</option>

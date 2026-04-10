@@ -219,14 +219,13 @@ export function translateGeminiToCodexRequest(
     request.tool_choice = codexToolChoice;
   }
 
-  // Reasoning effort: thinking config > suffix > model default > config default
+  // Reasoning effort: thinking config > suffix > config default
   const thinkingEffort = budgetToEffort(
     req.generationConfig?.thinkingConfig?.thinkingBudget,
   );
   const effort =
     thinkingEffort ??
     parsed.reasoningEffort ??
-    modelInfo?.defaultReasoningEffort ??
     cfg.default_reasoning_effort;
   request.reasoning = { summary: "auto", ...(effort ? { effort } : {}) };
 

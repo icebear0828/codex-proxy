@@ -8,7 +8,7 @@ export interface GeneralSettingsData {
   inject_desktop_context: boolean;
   suppress_desktop_directives: boolean;
   default_model: string;
-  default_reasoning_effort: string;
+  default_reasoning_effort: string | null;
   refresh_enabled: boolean;
   refresh_margin_seconds: number;
   refresh_concurrency: number;

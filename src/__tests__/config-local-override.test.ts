@@ -44,7 +44,7 @@ client:
   chromium_version: "136"
 model:
   default: test-model
-  default_reasoning_effort: medium
+  default_reasoning_effort: null
   default_service_tier: null
   inject_desktop_context: false
   suppress_desktop_directives: false

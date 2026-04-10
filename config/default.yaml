@@ -10,7 +10,7 @@ client:
   chromium_version: "144"
 model:
   default: gpt-5.2-codex
-  default_reasoning_effort: medium
+  default_reasoning_effort: null
   default_service_tier: null
   inject_desktop_context: false
   suppress_desktop_directives: false

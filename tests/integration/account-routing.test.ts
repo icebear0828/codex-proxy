@@ -32,7 +32,7 @@ vi.mock("@src/config.js", () => ({
     },
     model: {
       default: "gpt-5.2-codex",
-      default_reasoning_effort: "medium",
+      default_reasoning_effort: null,
       default_service_tier: null,
     },
     server: { proxy_api_key: null },
@@ -73,7 +73,7 @@ describe("account-routing integration", () => {
       },
       model: {
         default: "gpt-5.2-codex",
-        default_reasoning_effort: "medium",
+        default_reasoning_effort: null,
         default_service_tier: null,
       },
       server: { proxy_api_key: null },
@@ -166,7 +166,7 @@ describe("account-routing integration", () => {
       },
       model: {
         default: "gpt-5.2-codex",
-        default_reasoning_effort: "medium",
+        default_reasoning_effort: null,
         default_service_tier: null,
       },
       server: { proxy_api_key: null },

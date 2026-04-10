@@ -10,6 +10,8 @@
 
 ### Fixed
 
+- 默认不再发送 `reasoning.effort`：移除 `modelInfo.defaultReasoningEffort` 自动兜底，`default_reasoning_effort` 默认改为 `null`，彻底消除简单对话触发 medium 推理导致的 token 暴涨；Dashboard 新增 "Disabled (no reasoning)" 选项，用户可按需开启
+
 - 上游 401 时立即触发 RT→AT 刷新，而非等待定时器（修复 token 被提前作废后账号一直显示 expired 的问题）
 - Dashboard session 滑动窗口续期：每次有效请求自动延长过期时间，不再固定 TTL 后断连
 - Dashboard 前端全局 401 拦截：session 过期后自动跳回登录页，不再卡死在空白页

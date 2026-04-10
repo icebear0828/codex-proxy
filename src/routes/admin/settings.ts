@@ -132,7 +132,7 @@ export function createSettingsRoutes(): Hono {
       inject_desktop_context?: boolean;
       suppress_desktop_directives?: boolean;
       default_model?: string;
-      default_reasoning_effort?: string;
+      default_reasoning_effort?: string | null;
       refresh_enabled?: boolean;
       refresh_margin_seconds?: number;
       refresh_concurrency?: number;
@@ -161,9 +161,12 @@ export function createSettingsRoutes(): Hono {
 
     if (body.default_reasoning_effort !== undefined) {
       const validEfforts = ["low", "medium", "high", "xhigh"];
-      if (!validEfforts.includes(body.default_reasoning_effort)) {
+      if (
+        body.default_reasoning_effort !== null &&
+        !validEfforts.includes(body.default_reasoning_effort)
+      ) {
         c.status(400);
-        return c.json({ error: `default_reasoning_effort must be one of: ${validEfforts.join(", ")}` });
+        return c.json({ error: `default_reasoning_effort must be one of: ${validEfforts.join(", ")} or null` });
       }
     }
 

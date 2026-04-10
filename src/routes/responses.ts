@@ -486,13 +486,12 @@ export function createResponsesRoutes(
       codexRequest.previous_response_id = body.previous_response_id;
     }
 
-    // Reasoning effort: explicit body > suffix > model default > config default
+    // Reasoning effort: explicit body > suffix > config default
     const effort =
       (isRecord(body.reasoning) && typeof body.reasoning.effort === "string"
         ? body.reasoning.effort
         : null) ??
       parsed.reasoningEffort ??
-      modelInfo?.defaultReasoningEffort ??
       config.model.default_reasoning_effort;
     const summary =
       isRecord(body.reasoning) && typeof body.reasoning.summary === "string"
