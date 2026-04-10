@@ -136,13 +136,24 @@ export async function handleProxyRequest(
     const inputItems = req.codexRequest.input?.length ?? 0;
     const instrLen = req.codexRequest.instructions?.length ?? 0;
     const affinityHit = preferredEntryId && entryId === preferredEntryId;
+    const reasoningField = req.codexRequest.reasoning
+      ? `effort=${req.codexRequest.reasoning.effort ?? "none"} summary=${req.codexRequest.reasoning.summary ?? "none"}`
+      : "off";
     console.log(
-      `[${fmt.tag}] Account ${entryId} | model=${req.model} | input_items=${inputItems} instr=${instrLen}B payload=${reqJson.length}B` +
+      `[${fmt.tag}] Account ${entryId} | model=${req.model} | input_items=${inputItems} instr=${instrLen}B payload=${reqJson.length}B reasoning=[${reasoningField}]` +
       (prevRespId ? ` | affinity=${affinityHit ? "hit" : "miss"}` : ""),
     );
     if (reqJson.length > 50_000) {
+      // Log per-item size breakdown to diagnose large payload origin
+      const itemSizes = (req.codexRequest.input ?? []).map((item, i) => {
+        const sz = JSON.stringify(item).length;
+        const role = typeof item === "object" && item !== null && "role" in item ? (item as Record<string, unknown>).role : (item as Record<string, unknown>).type;
+        return `  [${i}] ${role} ${sz}B`;
+      });
       console.warn(
-        `[${fmt.tag}] ⚠ Large payload (${(reqJson.length / 1024).toFixed(1)}KB) — input_items=${inputItems} instr=${instrLen}B`,
+        `[${fmt.tag}] ⚠ Large payload (${(reqJson.length / 1024).toFixed(1)}KB) — input_items=${inputItems} instr=${instrLen}B\n` +
+        `  instructions: ${instrLen}B\n` +
+        itemSizes.join("\n"),
       );
     }
   }
@@ -208,11 +219,21 @@ export async function handleProxyRequest(
               affinityMap.record(capturedResponseId, capturedEntryId, conversationId, upstreamTurnState);
             }
             if (usageInfo) {
+              const uncached = usageInfo.cached_tokens
+                ? usageInfo.input_tokens - usageInfo.cached_tokens
+                : usageInfo.input_tokens;
               console.log(
-                `[${fmt.tag}] Account ${capturedEntryId} | Usage: in=${usageInfo.input_tokens} out=${usageInfo.output_tokens}` +
-                (usageInfo.cached_tokens ? ` cached=${usageInfo.cached_tokens}` : "") +
+                `[${fmt.tag}] Account ${capturedEntryId} | Usage: in=${usageInfo.input_tokens}` +
+                (usageInfo.cached_tokens ? ` (cached=${usageInfo.cached_tokens} uncached=${uncached})` : "") +
+                ` out=${usageInfo.output_tokens}` +
                 (usageInfo.reasoning_tokens ? ` reasoning=${usageInfo.reasoning_tokens}` : ""),
               );
+              if (usageInfo.input_tokens > 10_000) {
+                console.warn(
+                  `[${fmt.tag}] ⚠ High input token count: ${usageInfo.input_tokens} tokens` +
+                  (usageInfo.reasoning_tokens ? ` (reasoning=${usageInfo.reasoning_tokens})` : ""),
+                );
+              }
             }
             releaseAccount(accountPool, capturedEntryId, usageInfo, released);
           }
@@ -294,6 +315,19 @@ async function handleNonStreaming(
       );
       if (result.responseId && affinityMap && conversationId) {
         affinityMap.record(result.responseId, currentEntryId, conversationId, turnState);
+      }
+      if (result.usage) {
+        const u = result.usage;
+        const uncached = u.cached_tokens ? u.input_tokens - u.cached_tokens : u.input_tokens;
+        console.log(
+          `[${fmt.tag}] Account ${currentEntryId} | Usage: in=${u.input_tokens}` +
+          (u.cached_tokens ? ` (cached=${u.cached_tokens} uncached=${uncached})` : "") +
+          ` out=${u.output_tokens}` +
+          (u.reasoning_tokens ? ` reasoning=${u.reasoning_tokens}` : ""),
+        );
+        if (u.input_tokens > 10_000) {
+          console.warn(`[${fmt.tag}] ⚠ High input token count: ${u.input_tokens} tokens`);
+        }
       }
       releaseAccount(accountPool, currentEntryId, result.usage, released);
       return c.json(result.response);
