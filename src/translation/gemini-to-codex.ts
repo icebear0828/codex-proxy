@@ -227,7 +227,9 @@ export function translateGeminiToCodexRequest(
     thinkingEffort ??
     parsed.reasoningEffort ??
     cfg.default_reasoning_effort;
-  request.reasoning = { summary: "auto", ...(effort ? { effort } : {}) };
+  if (effort) {
+    request.reasoning = { effort, summary: "auto" };
+  }
 
   // Service tier: suffix > config default
   const serviceTier =

@@ -493,11 +493,14 @@ export function createResponsesRoutes(
         : null) ??
       parsed.reasoningEffort ??
       config.model.default_reasoning_effort;
-    const summary =
-      isRecord(body.reasoning) && typeof body.reasoning.summary === "string"
-        ? body.reasoning.summary
-        : "auto";
-    codexRequest.reasoning = { summary, ...(effort ? { effort } : {}) };
+    const clientReasoningRecord = isRecord(body.reasoning) ? body.reasoning : null;
+    if (effort || clientReasoningRecord) {
+      const summary =
+        clientReasoningRecord && typeof clientReasoningRecord.summary === "string"
+          ? clientReasoningRecord.summary
+          : "auto";
+      codexRequest.reasoning = { summary, ...(effort ? { effort } : {}) };
+    }
 
     // Service tier
     const serviceTier =

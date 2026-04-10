@@ -187,7 +187,9 @@ export function translateToCodexRequest(
     req.reasoning_effort ??
     parsed.reasoningEffort ??
     cfg.default_reasoning_effort;
-  request.reasoning = { summary: "auto", ...(effort ? { effort } : {}) };
+  if (effort) {
+    request.reasoning = { effort, summary: "auto" };
+  }
 
   // Service tier: explicit API field > suffix > config default
   const serviceTier =
