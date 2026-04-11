@@ -153,7 +153,6 @@ describe("dashboard-auth middleware", () => {
       const res = await app.request("/auth/accounts", {
         headers: { "X-Forwarded-For": "8.8.8.8" },
       });
-      // trust_proxy off → ignores XFF, treats socket 127.0.0.1 as localhost → pass
       expect(res.status).toBe(200);
     });
 
@@ -164,7 +163,6 @@ describe("dashboard-auth middleware", () => {
       const res = await app.request("/auth/accounts", {
         headers: { "X-Forwarded-For": "8.8.8.8" },
       });
-      // trust_proxy on → XFF=8.8.8.8 is not localhost → blocked
       expect(res.status).toBe(401);
     });
 
@@ -173,7 +171,6 @@ describe("dashboard-auth middleware", () => {
       mockGetConnInfo.mockReturnValue({ remote: { address: "127.0.0.1" } });
       const app = createApp();
       const res = await app.request("/auth/accounts");
-      // No XFF → falls back to socket 127.0.0.1 → localhost bypass
       expect(res.status).toBe(200);
     });
   });

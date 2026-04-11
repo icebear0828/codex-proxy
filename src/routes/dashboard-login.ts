@@ -68,7 +68,7 @@ export function createDashboardAuthRoutes(): Hono {
   // POST /auth/dashboard-login — validate proxy_api_key and set session cookie
   app.post("/auth/dashboard-login", async (c) => {
     const config = getConfig();
-    const remoteAddr = getRealClientIp(c, config) || "unknown";
+    const remoteAddr = getRealClientIp(c, config.server.trust_proxy) || "unknown";
 
     // Rate limit check
     if (!checkRateLimit(remoteAddr)) {
@@ -127,8 +127,8 @@ export function createDashboardAuthRoutes(): Hono {
       return c.json({ required: false, authenticated: true });
     }
 
-    // Localhost → no gate required (trust_proxy aware)
-    const remoteAddr = getRealClientIp(c, config);
+    // Localhost → no gate required
+    const remoteAddr = getRealClientIp(c, config.server.trust_proxy);
     if (isLocalhostRequest(remoteAddr)) {
       return c.json({ required: false, authenticated: true });
     }

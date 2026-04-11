@@ -40,9 +40,7 @@ export async function dashboardAuth(c: Context, next: Next): Promise<Response | 
   if (!config.server.proxy_api_key) return next();
 
   // Localhost → bypass (Electron + local dev)
-  // When trust_proxy is enabled, real IP is read from X-Forwarded-For/X-Real-IP
-  // so tunnel traffic (frp, ngrok) from 127.0.0.1 is no longer bypassed.
-  const remoteAddr = getRealClientIp(c, config);
+  const remoteAddr = getRealClientIp(c, config.server.trust_proxy);
   if (isLocalhostRequest(remoteAddr)) return next();
 
   // Always-allowed paths
