@@ -40,6 +40,7 @@ export const ConfigSchema = z.object({
     host: z.string().default("0.0.0.0"),
     port: z.number().min(1).max(65535).default(8080),
     proxy_api_key: z.string().nullable().default(null),
+    trust_proxy: z.boolean().default(false),
   }),
   session: z.object({
     ttl_minutes: z.number().min(1).default(1440),

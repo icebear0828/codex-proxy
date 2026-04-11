@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { Hono } from "hono";
 
 const mockConfig = {
-  server: { proxy_api_key: "test-key" as string | null },
+  server: { proxy_api_key: "test-key" as string | null, trust_proxy: false },
   session: { ttl_minutes: 60, cleanup_interval_minutes: 5 },
 };
 
@@ -44,6 +44,7 @@ describe("dashboard-auth middleware", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockConfig.server.proxy_api_key = "test-key";
+    mockConfig.server.trust_proxy = false;
     mockGetConnInfo.mockReturnValue({ remote: { address: "192.168.1.100" } });
     sessionMod._clearTestSessions();
   });
@@ -142,5 +143,38 @@ describe("dashboard-auth middleware", () => {
       headers: { Cookie: "_codex_session=invalid-id" },
     });
     expect(res.status).toBe(401);
+  });
+
+  describe("trust_proxy", () => {
+    it("bypasses auth for localhost socket even with X-Forwarded-For when trust_proxy=false", async () => {
+      mockConfig.server.trust_proxy = false;
+      mockGetConnInfo.mockReturnValue({ remote: { address: "127.0.0.1" } });
+      const app = createApp();
+      const res = await app.request("/auth/accounts", {
+        headers: { "X-Forwarded-For": "8.8.8.8" },
+      });
+      // trust_proxy off → ignores XFF, treats socket 127.0.0.1 as localhost → pass
+      expect(res.status).toBe(200);
+    });
+
+    it("requires auth when trust_proxy=true and X-Forwarded-For reveals remote IP", async () => {
+      mockConfig.server.trust_proxy = true;
+      mockGetConnInfo.mockReturnValue({ remote: { address: "127.0.0.1" } });
+      const app = createApp();
+      const res = await app.request("/auth/accounts", {
+        headers: { "X-Forwarded-For": "8.8.8.8" },
+      });
+      // trust_proxy on → XFF=8.8.8.8 is not localhost → blocked
+      expect(res.status).toBe(401);
+    });
+
+    it("still bypasses for localhost when trust_proxy=true and no forwarded headers", async () => {
+      mockConfig.server.trust_proxy = true;
+      mockGetConnInfo.mockReturnValue({ remote: { address: "127.0.0.1" } });
+      const app = createApp();
+      const res = await app.request("/auth/accounts");
+      // No XFF → falls back to socket 127.0.0.1 → localhost bypass
+      expect(res.status).toBe(200);
+    });
   });
 });

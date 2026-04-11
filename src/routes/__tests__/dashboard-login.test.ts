@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { Hono } from "hono";
 
 const mockConfig = {
-  server: { proxy_api_key: "secret-key" as string | null },
+  server: { proxy_api_key: "secret-key" as string | null, trust_proxy: false },
   session: { ttl_minutes: 60, cleanup_interval_minutes: 5 },
   auth: { rotation_strategy: "least_used" as string },
   quota: {
@@ -89,6 +89,7 @@ describe("dashboard auth endpoints", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockConfig.server.proxy_api_key = "secret-key";
+    mockConfig.server.trust_proxy = false;
     mockGetConnInfo.mockReturnValue({ remote: { address: "192.168.1.100" } });
     _resetForTest();
     _resetRateLimitForTest();
@@ -232,6 +233,28 @@ describe("dashboard auth endpoints", () => {
       const body = await res.json();
       expect(body.required).toBe(true);
       expect(body.authenticated).toBe(false);
+    });
+
+    it("returns required=true when trust_proxy=true and X-Forwarded-For reveals remote IP from localhost socket", async () => {
+      mockConfig.server.trust_proxy = true;
+      mockGetConnInfo.mockReturnValue({ remote: { address: "127.0.0.1" } });
+      const app = createApp();
+      const res = await app.request("/auth/dashboard-status", {
+        headers: { "X-Forwarded-For": "8.8.8.8" },
+      });
+      const body = await res.json();
+      expect(body.required).toBe(true);
+      expect(body.authenticated).toBe(false);
+    });
+
+    it("returns required=false when trust_proxy=true but no XFF (direct localhost)", async () => {
+      mockConfig.server.trust_proxy = true;
+      mockGetConnInfo.mockReturnValue({ remote: { address: "127.0.0.1" } });
+      const app = createApp();
+      const res = await app.request("/auth/dashboard-status");
+      const body = await res.json();
+      expect(body.required).toBe(false);
+      expect(body.authenticated).toBe(true);
     });
 
     it("returns required=true, authenticated=true for remote with valid session", async () => {

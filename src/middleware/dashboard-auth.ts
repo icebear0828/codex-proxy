@@ -7,9 +7,9 @@
  */
 
 import type { Context, Next } from "hono";
-import { getConnInfo } from "@hono/node-server/conninfo";
 import { getConfig } from "../config.js";
 import { isLocalhostRequest } from "../utils/is-localhost.js";
+import { getRealClientIp } from "../utils/get-real-client-ip.js";
 import { validateSession } from "../auth/dashboard-session.js";
 import { parseSessionCookie } from "../utils/parse-cookie.js";
 
@@ -40,7 +40,9 @@ export async function dashboardAuth(c: Context, next: Next): Promise<Response | 
   if (!config.server.proxy_api_key) return next();
 
   // Localhost → bypass (Electron + local dev)
-  const remoteAddr = getConnInfo(c).remote.address ?? "";
+  // When trust_proxy is enabled, real IP is read from X-Forwarded-For/X-Real-IP
+  // so tunnel traffic (frp, ngrok) from 127.0.0.1 is no longer bypassed.
+  const remoteAddr = getRealClientIp(c, config);
   if (isLocalhostRequest(remoteAddr)) return next();
 
   // Always-allowed paths
