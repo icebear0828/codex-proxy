@@ -19,7 +19,6 @@ function isRecord(v: unknown): v is Record<string, unknown> {
 }
 
 function extractModelId(model: string): string {
-  // Strip provider prefix: "openai:gpt-4o" → "gpt-4o", "groq:llama-3" → "llama-3"
   const colon = model.indexOf(":");
   return colon > 0 ? model.slice(colon + 1) : model;
 }

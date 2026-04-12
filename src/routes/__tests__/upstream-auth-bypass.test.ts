@@ -90,7 +90,7 @@ describe("upstream direct routing without Codex auth", () => {
   it("allows OpenAI chat direct upstream routing without local accounts", async () => {
     const pool = new AccountPool();
     const app = createChatRoutes(pool, undefined, undefined, {
-      isCodexModel: vi.fn(() => false),
+      resolveMatch: vi.fn(() => ({ kind: "adapter" })),
       resolve: vi.fn(() => ({ tag: "custom-upstream" })),
     } as never);
 
@@ -174,15 +174,16 @@ describe("upstream direct routing without Codex auth", () => {
     pool.destroy();
   });
 
-  it("still requires proxy api key for OpenAI direct upstream requests", async () => {
+  it("bypasses proxy api key validation for configured direct upstream models", async () => {
     mockConfig.server.proxy_api_key = "proxy-secret";
     const pool = new AccountPool();
     const app = createChatRoutes(pool, undefined, undefined, {
-      isCodexModel: vi.fn(() => false),
+      resolveMatch: vi.fn(() => ({ kind: "api-key", adapter: { tag: "custom-upstream" }, entry: { model: "deepseek-chat" } })),
+      hasApiKeyModel: vi.fn(() => true),
       resolve: vi.fn(() => ({ tag: "custom-upstream" })),
     } as never);
 
-    const rejected = await app.request("/v1/chat/completions", {
+    const res = await app.request("/v1/chat/completions", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -194,23 +195,81 @@ describe("upstream direct routing without Codex auth", () => {
       }),
     });
 
-    expect(rejected.status).toBe(401);
-    expect(mockHandleDirectRequest).toHaveBeenCalledTimes(0);
+    expect(res.status).toBe(200);
+    expect(mockHandleDirectRequest).toHaveBeenCalledTimes(1);
+    pool.destroy();
+  });
 
-    const accepted = await app.request("/v1/chat/completions", {
+  it("returns 404 for unknown models before auth", async () => {
+    mockConfig.server.proxy_api_key = "proxy-secret";
+    const pool = new AccountPool();
+    const app = createChatRoutes(pool, undefined, undefined, {
+      resolveMatch: vi.fn(() => ({ kind: "not-found" })),
+    } as never);
+
+    const res = await app.request("/v1/chat/completions", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        Authorization: "Bearer proxy-secret",
+        Authorization: "Bearer wrong-key",
       },
       body: JSON.stringify({
-        model: "deepseek-chat",
+        model: "unknown-model-xyz",
         messages: [{ role: "user", content: "hello" }],
       }),
     });
 
-    expect(accepted.status).toBe(200);
+    expect(res.status).toBe(404);
+    expect(mockHandleDirectRequest).toHaveBeenCalledTimes(0);
+    pool.destroy();
+  });
+
+  it("falls back to direct upstream for codex models when accounts are exhausted", async () => {
+    mockConfig.server.proxy_api_key = "proxy-secret";
+    const pool = new AccountPool();
+    const app = createChatRoutes(pool, undefined, undefined, {
+      resolveMatch: vi.fn(() => ({ kind: "codex", adapter: { tag: "codex" } })),
+      hasApiKeyModel: vi.fn(() => true),
+      resolve: vi.fn(() => ({ tag: "custom-upstream" })),
+    } as never);
+
+    const res = await app.request("/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: "Bearer wrong-key",
+      },
+      body: JSON.stringify({
+        model: "gpt-5.2-codex",
+        messages: [{ role: "user", content: "hello" }],
+      }),
+    });
+
+    expect(res.status).toBe(200);
     expect(mockHandleDirectRequest).toHaveBeenCalledTimes(1);
+    pool.destroy();
+  });
+
+  it("still requires login for codex models without api-key fallback", async () => {
+    const pool = new AccountPool();
+    const app = createChatRoutes(pool, undefined, undefined, {
+      resolveMatch: vi.fn(() => ({ kind: "codex", adapter: { tag: "codex" } })),
+      hasApiKeyModel: vi.fn(() => false),
+    } as never);
+
+    const res = await app.request("/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        model: "gpt-5.2-codex",
+        messages: [{ role: "user", content: "hello" }],
+      }),
+    });
+
+    expect(res.status).toBe(401);
+    expect(mockHandleDirectRequest).toHaveBeenCalledTimes(0);
     pool.destroy();
   });
 });

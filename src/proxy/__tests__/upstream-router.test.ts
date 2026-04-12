@@ -61,10 +61,13 @@ describe("UpstreamRouter", () => {
     expect(router.resolve("gemini-1.5-pro").tag).toBe("gemini");
   });
 
-  it("falls back to codex for unknown models", () => {
+  it("routes known codex models to codex", () => {
     expect(router.resolve("gpt-5.2-codex").tag).toBe("codex");
     expect(router.resolve("o3").tag).toBe("codex");
-    expect(router.resolve("unknown-model-xyz").tag).toBe("codex");
+  });
+
+  it("returns not-found for unknown models", () => {
+    expect(router.resolveMatch("unknown-model-xyz")).toEqual({ kind: "not-found" });
   });
 
   it("isCodexModel returns true only for codex-routed models", () => {
@@ -83,7 +86,17 @@ describe("UpstreamRouter", () => {
     expect(router.resolve("openai:deepseek-chat").tag).toBe("openai");
   });
 
-  it("returns default adapter for unknown prefix", () => {
-    expect(router.resolve("unknown-provider:gpt-4o").tag).toBe("codex");
+  it("treats unknown provider prefix as model-not-found", () => {
+    expect(router.resolveMatch("unknown-provider:gpt-4o")).toEqual({ kind: "not-found" });
+  });
+
+  it("classifies known codex-looking models as codex", () => {
+    expect(router.resolveMatch("gpt-5.2-codex").kind).toBe("codex");
+    expect(router.resolveMatch("o3").kind).toBe("codex");
+  });
+
+  it("classifies explicit upstream routes as adapter matches", () => {
+    expect(router.resolveMatch("openai:gpt-4o").kind).toBe("adapter");
+    expect(router.resolveMatch("claude-3-5-sonnet-20241022").kind).toBe("adapter");
   });
 });

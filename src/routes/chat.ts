@@ -9,7 +9,7 @@ import {
   collectCodexResponse,
 } from "../translation/codex-to-openai.js";
 import { getConfig } from "../config.js";
-import { parseModelName, buildDisplayModelName } from "../models/model-store.js";
+import { parseModelName, buildDisplayModelName, getModelAliases, getModelInfo } from "../models/model-store.js";
 import {
   handleProxyRequest,
   handleDirectRequest,
@@ -53,6 +53,22 @@ function makeOpenAIFormat(wantReasoning: boolean): FormatAdapter {
   };
 }
 
+function hasKnownCodexModel(model: string): boolean {
+  const aliases = getModelAliases();
+  return !!aliases[model] || !!getModelInfo(model);
+}
+
+function formatModelNotFound(model: string) {
+  return {
+    error: {
+      message: `Model '${model}' not found`,
+      type: "invalid_request_error",
+      param: "model",
+      code: "model_not_found",
+    },
+  };
+}
+
 export function createChatRoutes(
   accountPool: AccountPool,
   cookieJar?: CookieJar,
@@ -90,11 +106,46 @@ export function createChatRoutes(
       });
     }
     const req = parsed.data;
+    const routeMatch = upstreamRouter?.resolveMatch(req.model) ?? (hasKnownCodexModel(req.model)
+      ? { kind: "codex" as const }
+      : { kind: "not-found" as const });
 
-    const allowUnauthenticated = !!(upstreamRouter && !upstreamRouter.isCodexModel(req.model));
+    if (routeMatch.kind === "not-found") {
+      c.status(404);
+      return c.json(formatModelNotFound(req.model));
+    }
 
-    // Auth check
-    if (!allowUnauthenticated && !accountPool.isAuthenticated()) {
+    const wantReasoning = !!req.reasoning_effort;
+    const fmt = makeOpenAIFormat(wantReasoning);
+    const { codexRequest, tupleSchema } = translateToCodexRequest(req);
+    const displayModel = buildDisplayModelName(parseModelName(req.model));
+    const proxyReq = {
+      codexRequest,
+      model: displayModel,
+      isStreaming: req.stream,
+      tupleSchema,
+    };
+
+    if (routeMatch.kind === "api-key" || routeMatch.kind === "adapter") {
+      const directReq = {
+        ...proxyReq,
+        model: req.model,
+        codexRequest: { ...codexRequest, model: req.model },
+      };
+      return handleDirectRequest(c, routeMatch.adapter, directReq, fmt);
+    }
+
+    // Auth check for Codex route only
+    if (!accountPool.isAuthenticated()) {
+      if (upstreamRouter?.hasApiKeyModel(req.model)) {
+        const directReq = {
+          ...proxyReq,
+          model: req.model,
+          codexRequest: { ...codexRequest, model: req.model },
+        };
+        return handleDirectRequest(c, upstreamRouter.resolve(req.model), directReq, fmt);
+      }
+
       c.status(401);
       return c.json({
         error: {
@@ -106,15 +157,26 @@ export function createChatRoutes(
       });
     }
 
-    // Optional proxy API key check
+    const summary = accountPool.getPoolSummary();
+    if (summary.active === 0 && upstreamRouter?.hasApiKeyModel(req.model)) {
+      const directReq = {
+        ...proxyReq,
+        model: req.model,
+        codexRequest: { ...codexRequest, model: req.model },
+      };
+      return handleDirectRequest(c, upstreamRouter.resolve(req.model), directReq, fmt);
+    }
+
+    if (summary.active === 0) {
+      return handleProxyRequest(c, accountPool, cookieJar, proxyReq, fmt, proxyPool);
+    }
+
+
     const config = getConfig();
     if (config.server.proxy_api_key) {
       const authHeader = c.req.header("Authorization");
       const providedKey = authHeader?.replace("Bearer ", "");
-      if (
-        !providedKey ||
-        !accountPool.validateProxyApiKey(providedKey)
-      ) {
+      if (!providedKey || !accountPool.validateProxyApiKey(providedKey)) {
         c.status(401);
         return c.json({
           error: {
@@ -125,26 +187,6 @@ export function createChatRoutes(
           },
         });
       }
-    }
-
-    const { codexRequest, tupleSchema } = translateToCodexRequest(req);
-    const displayModel = buildDisplayModelName(parseModelName(req.model));
-    const wantReasoning = !!req.reasoning_effort;
-    const proxyReq = {
-      codexRequest,
-      model: displayModel,
-      isStreaming: req.stream,
-      tupleSchema,
-    };
-    const fmt = makeOpenAIFormat(wantReasoning);
-
-    if (upstreamRouter && !upstreamRouter.isCodexModel(req.model)) {
-      const directReq = {
-        ...proxyReq,
-        model: req.model,
-        codexRequest: { ...codexRequest, model: req.model },
-      };
-      return handleDirectRequest(c, upstreamRouter.resolve(req.model), directReq, fmt);
     }
 
     return handleProxyRequest(c, accountPool, cookieJar, proxyReq, fmt, proxyPool);
