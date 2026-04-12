@@ -19,8 +19,10 @@
     "electron-updater": "^6.3.0"
   },
   "devDependencies": {
+    "@playwright/test": "^1.59.1",
     "electron": "^35.7.5",
     "electron-builder": "^26.0.0",
-    "esbuild": "^0.25.12"
+    "esbuild": "^0.25.12",
+    "playwright": "^1.59.1"
   }
 }

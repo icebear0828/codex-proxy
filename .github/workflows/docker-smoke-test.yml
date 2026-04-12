@@ -1,0 +1,64 @@
+name: Docker Smoke Test
+
+on:
+  push:
+    branches:
+      - master
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Build Docker Image
+        run: docker build -t codex-proxy-test .
+
+      - name: Test Default Port (8080)
+        run: |
+          docker run -d --name codex-proxy-8080 -p 8080:8080 codex-proxy-test
+          # Wait up to 30s for the healthcheck to pass
+          for i in {1..15}; do
+            STATUS=$(docker inspect --format='{{json .State.Health.Status}}' codex-proxy-8080)
+            if [ "$STATUS" = '"healthy"' ]; then
+              break
+            fi
+            sleep 2
+          done
+          STATUS=$(docker inspect --format='{{json .State.Health.Status}}' codex-proxy-8080)
+          if [ "$STATUS" != '"healthy"' ]; then
+            docker logs codex-proxy-8080
+            exit 1
+          fi
+          # Verify the endpoint
+          curl -f http://localhost:8080/health
+
+      - name: Cleanup Default Port Container
+        run: docker rm -f codex-proxy-8080
+
+      - name: Test Custom Port (8090)
+        run: |
+          # Create a modified config
+          mkdir -p test-config
+          cp -r config/* test-config/
+          sed -i 's/port: 8080/port: 8090/' test-config/default.yaml
+
+          docker run -d --name codex-proxy-8090 -p 8090:8090 -v ${{ github.workspace }}/test-config:/app/config codex-proxy-test
+
+          # Wait up to 30s for the healthcheck to pass
+          for i in {1..15}; do
+            STATUS=$(docker inspect --format='{{json .State.Health.Status}}' codex-proxy-8090)
+            if [ "$STATUS" = '"healthy"' ]; then
+              break
+            fi
+            sleep 2
+          done
+          STATUS=$(docker inspect --format='{{json .State.Health.Status}}' codex-proxy-8090)
+          if [ "$STATUS" != '"healthy"' ]; then
+            docker logs codex-proxy-8090
+            exit 1
+          fi
+          # Verify the endpoint
+          curl -f http://localhost:8090/health
