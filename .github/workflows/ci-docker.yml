@@ -28,6 +28,9 @@ jobs:
   smoke:
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    strategy:
+      matrix:
+        port: [8080, 8090]
     steps:
       - uses: actions/checkout@v4
 
@@ -36,10 +39,18 @@ jobs:
 
       - name: Start container
         run: |
-          docker run -d --name smoke-test \
-            -p 18080:8080 \
-            -e NODE_ENV=production \
-            codex-proxy:smoke
+          if [ "${{ matrix.port }}" = "8090" ]; then
+            docker run -d --name smoke-test \
+              -p 18090:${{ matrix.port }} \
+              -e NODE_ENV=production \
+              -e PORT=${{ matrix.port }} \
+              codex-proxy:smoke
+          else
+            docker run -d --name smoke-test \
+              -p 18080:8080 \
+              -e NODE_ENV=production \
+              codex-proxy:smoke
+          fi
           echo "Container started"
 
       - name: Wait for healthy
@@ -60,14 +71,16 @@ jobs:
 
       - name: Verify /health endpoint
         run: |
-          RESPONSE=$(curl -sf http://localhost:18080/health)
+          HOST_PORT=$(( ${{ matrix.port }} + 10000 ))
+          RESPONSE=$(curl -sf http://localhost:$HOST_PORT/health)
           echo "Response: $RESPONSE"
           echo "$RESPONSE" | jq -e '.status == "ok"'
 
       - name: Verify /v1/models returns valid JSON
         run: |
+          HOST_PORT=$(( ${{ matrix.port }} + 10000 ))
           # Without auth, should return 401 or model list — either way must be valid JSON
-          STATUS=$(curl -s -o /dev/null -w '%{http_code}' http://localhost:18080/v1/models)
+          STATUS=$(curl -s -o /dev/null -w '%{http_code}' http://localhost:$HOST_PORT/v1/models)
           echo "/v1/models status: $STATUS"
           # 200 (no key set) or 401 (key set) are both acceptable
           if [ "$STATUS" != "200" ] && [ "$STATUS" != "401" ]; then
