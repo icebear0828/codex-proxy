@@ -97,6 +97,17 @@ describe("ApiKeyPool", () => {
     expect(results).toHaveLength(2);
   });
 
+  it("hasActiveModel returns true for active entry", () => {
+    pool.add({ provider: "openai", model: "gpt-5.4", apiKey: "k1" });
+    expect(pool.hasActiveModel("gpt-5.4")).toBe(true);
+  });
+
+  it("hasActiveModel returns false for disabled entry", () => {
+    const entry = pool.add({ provider: "openai", model: "gpt-5.4", apiKey: "k1" });
+    pool.setStatus(entry.id, "disabled");
+    expect(pool.hasActiveModel("gpt-5.4")).toBe(false);
+  });
+
   // ── Remove ────────────────────────────────────────────────────
 
   it("remove deletes the entry", () => {

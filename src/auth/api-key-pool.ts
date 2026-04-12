@@ -115,6 +115,11 @@ export class ApiKeyPool {
     return [...new Set(this.entries.filter((e) => e.status === "active").map((e) => e.model))];
   }
 
+  /** Returns true if any active entry matches the given model ID. */
+  hasActiveModel(modelId: string): boolean {
+    return this.entries.some((e) => e.status === "active" && e.model === modelId);
+  }
+
   // ── Mutations ──────────────────────────────────────────────────
 
   add(input: {

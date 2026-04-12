@@ -79,7 +79,7 @@ export function createModelRoutes(apiKeyPool?: ApiKeyPool): Hono {
       return c.json(toRuntimeOpenAIModel(modelId));
     }
 
-    if (apiKeyPool?.getActiveModels().includes(modelId)) {
+    if (apiKeyPool?.hasActiveModel(modelId)) {
       return c.json(toRuntimeOpenAIModel(modelId));
     }
 
