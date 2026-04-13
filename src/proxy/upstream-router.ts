@@ -42,10 +42,6 @@ export class UpstreamRouter {
     return explicitProvider ? [model, explicitProvider.bareModel] : [model];
   }
 
-  private getDefaultAdapter(): UpstreamAdapter | undefined {
-    return this.adapters.get(this.defaultTag) ?? this.adapters.values().next().value;
-  }
-
   constructor(
     private readonly adapters: Map<string, UpstreamAdapter>,
     private readonly modelRouting: Record<string, string>,
@@ -59,7 +55,6 @@ export class UpstreamRouter {
   }
 
   resolveMatch(model: string): UpstreamRouteMatch {
-    const defaultAdapter = this.getDefaultAdapter();
     const explicitProvider = this.splitExplicitProvider(model);
 
     if (this.apiKeyPool && this.adapterFactory) {
