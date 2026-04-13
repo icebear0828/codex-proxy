@@ -20,7 +20,7 @@ export type AdapterFactory = (entry: ApiKeyEntry) => UpstreamAdapter;
 export type UpstreamRouteMatch =
   | { kind: "api-key"; adapter: UpstreamAdapter; entry: ApiKeyEntry }
   | { kind: "adapter"; adapter: UpstreamAdapter }
-  | { kind: "codex"; adapter: UpstreamAdapter }
+  | { kind: "codex"; adapter?: UpstreamAdapter }
   | { kind: "not-found" };
 
 export class UpstreamRouter {
@@ -91,8 +91,8 @@ export class UpstreamRouter {
       return { kind: "adapter", adapter: this.adapters.get("gemini")! };
     }
 
-    if (this.isKnownCodexModel(model) && defaultAdapter?.tag === "codex") {
-      return { kind: "codex", adapter: defaultAdapter };
+    if (this.isKnownCodexModel(model)) {
+      return { kind: "codex" };
     }
 
     return { kind: "not-found" };
@@ -100,7 +100,7 @@ export class UpstreamRouter {
 
   resolve(model: string): UpstreamAdapter {
     const match = this.resolveMatch(model);
-    if (match.kind === "not-found") {
+    if (match.kind === "not-found" || !match.adapter) {
       throw new Error(`No upstream adapter available for model \"${model}\"`);
     }
     return match.adapter;

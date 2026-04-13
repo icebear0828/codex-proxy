@@ -62,8 +62,8 @@ describe("UpstreamRouter", () => {
   });
 
   it("routes known codex models to codex", () => {
-    expect(router.resolve("gpt-5.2-codex").tag).toBe("codex");
-    expect(router.resolve("o3").tag).toBe("codex");
+    expect(router.resolveMatch("gpt-5.2-codex").kind).toBe("codex");
+    expect(router.resolveMatch("o3").kind).toBe("codex");
   });
 
   it("returns not-found for unknown models", () => {
