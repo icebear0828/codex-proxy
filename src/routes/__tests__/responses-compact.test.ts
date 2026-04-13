@@ -154,8 +154,7 @@ describe("POST /v1/responses/compact", () => {
 
   it("routes compact requests for runtime API-key models to direct upstream", async () => {
     const upstreamRouter = {
-      isCodexModel: vi.fn((model: string) => model !== "my-custom-model"),
-      resolve: vi.fn(() => ({ tag: "custom-upstream" })),
+      resolveMatch: vi.fn(() => ({ kind: "adapter", adapter: { tag: "custom-upstream" } })),
     };
     app = createResponsesRoutes(pool, undefined, undefined, upstreamRouter as never);
 
@@ -180,6 +179,8 @@ describe("POST /v1/responses/compact", () => {
       input: [{ role: "user", content: "Hello" }],
       instructions: "You are helpful",
       parallel_tool_calls: true,
+      stream: true,
+      store: false,
     });
     expect(capturedCompactRequest).toBeNull();
   });

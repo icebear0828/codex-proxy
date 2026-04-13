@@ -357,12 +357,15 @@ async function handleCompact(
     };
   }
 
-  if (upstreamRouter && !upstreamRouter.isCodexModel(rawModel)) {
+  const compactRouteMatch = upstreamRouter?.resolveMatch(rawModel);
+  if (compactRouteMatch?.kind === "api-key" || compactRouteMatch?.kind === "adapter") {
     const directReq = {
       codexRequest: {
         model: rawModel,
         input: compactRequest.input,
         instructions: compactRequest.instructions,
+        stream: true as const,
+        store: false as const,
         ...(compactRequest.tools ? { tools: compactRequest.tools } : {}),
         ...(compactRequest.parallel_tool_calls !== undefined
           ? { parallel_tool_calls: compactRequest.parallel_tool_calls }
@@ -373,7 +376,7 @@ async function handleCompact(
       model: rawModel,
       isStreaming: false,
     };
-    return handleDirectRequest(c, upstreamRouter.resolve(rawModel), directReq, PASSTHROUGH_FORMAT);
+    return handleDirectRequest(c, compactRouteMatch.adapter, directReq, PASSTHROUGH_FORMAT);
   }
 
   // Acquire account
