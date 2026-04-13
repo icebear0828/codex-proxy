@@ -77,7 +77,8 @@ export function createMessagesRoutes(
     }
     const req = parsed.data;
 
-    const allowUnauthenticated = !!(upstreamRouter && !upstreamRouter.isCodexModel(req.model));
+    const routeMatch = upstreamRouter?.resolveMatch(req.model);
+    const allowUnauthenticated = routeMatch?.kind === "api-key" || routeMatch?.kind === "adapter";
 
     // Auth check
     if (!allowUnauthenticated && !accountPool.isAuthenticated()) {
@@ -110,13 +111,13 @@ export function createMessagesRoutes(
     };
     const fmt = makeAnthropicFormat(wantThinking);
 
-    if (upstreamRouter && !upstreamRouter.isCodexModel(req.model)) {
+    if (routeMatch?.kind === "api-key" || routeMatch?.kind === "adapter") {
       const directReq = {
         ...proxyReq,
         model: req.model,
         codexRequest: { ...codexRequest, model: req.model },
       };
-      return handleDirectRequest(c, upstreamRouter.resolve(req.model), directReq, fmt);
+      return handleDirectRequest(c, routeMatch.adapter, directReq, fmt);
     }
 
     return handleProxyRequest(c, accountPool, cookieJar, proxyReq, fmt, proxyPool);

@@ -485,7 +485,8 @@ export function createResponsesRoutes(
     if (body instanceof Response) return body;
 
     const rawModel = typeof body.model === "string" ? body.model : "codex";
-    const allowUnauthenticated = !!(upstreamRouter && !upstreamRouter.isCodexModel(rawModel));
+    const routeMatch = upstreamRouter?.resolveMatch(rawModel);
+    const allowUnauthenticated = routeMatch?.kind === "api-key" || routeMatch?.kind === "adapter";
     const authErr = checkAuth(c, accountPool, allowUnauthenticated);
     if (authErr) return authErr;
 
@@ -576,10 +577,10 @@ export function createResponsesRoutes(
       tupleSchema,
     };
 
-    if (upstreamRouter && !upstreamRouter.isCodexModel(rawModel)) {
+    if (routeMatch?.kind === "api-key" || routeMatch?.kind === "adapter") {
       // Use raw model name so adapter's extractModelId can strip the provider prefix
       const directReq = { ...proxyReq, codexRequest: { ...codexRequest, model: rawModel } };
-      return handleDirectRequest(c, upstreamRouter.resolve(rawModel), directReq, PASSTHROUGH_FORMAT);
+      return handleDirectRequest(c, routeMatch.adapter, directReq, PASSTHROUGH_FORMAT);
     }
 
     return handleProxyRequest(c, accountPool, cookieJar, proxyReq, PASSTHROUGH_FORMAT, proxyPool);
@@ -607,7 +608,8 @@ export function createResponsesRoutes(
     if (body instanceof Response) return body;
 
     const rawModel = typeof body.model === "string" ? body.model : "codex";
-    const allowUnauthenticated = !!(upstreamRouter && !upstreamRouter.isCodexModel(rawModel));
+    const routeMatch = upstreamRouter?.resolveMatch(rawModel);
+    const allowUnauthenticated = routeMatch?.kind === "api-key" || routeMatch?.kind === "adapter";
     const authErr = checkAuth(c, accountPool, allowUnauthenticated);
     if (authErr) return authErr;
 

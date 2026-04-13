@@ -137,15 +137,6 @@ export function createChatRoutes(
 
     // Auth check for Codex route only
     if (!accountPool.isAuthenticated()) {
-      if (upstreamRouter?.hasApiKeyModel(req.model)) {
-        const directReq = {
-          ...proxyReq,
-          model: req.model,
-          codexRequest: { ...codexRequest, model: req.model },
-        };
-        return handleDirectRequest(c, upstreamRouter.resolve(req.model), directReq, fmt);
-      }
-
       c.status(401);
       return c.json({
         error: {
@@ -158,19 +149,9 @@ export function createChatRoutes(
     }
 
     const summary = accountPool.getPoolSummary();
-    if (summary.active === 0 && upstreamRouter?.hasApiKeyModel(req.model)) {
-      const directReq = {
-        ...proxyReq,
-        model: req.model,
-        codexRequest: { ...codexRequest, model: req.model },
-      };
-      return handleDirectRequest(c, upstreamRouter.resolve(req.model), directReq, fmt);
-    }
-
     if (summary.active === 0) {
       return handleProxyRequest(c, accountPool, cookieJar, proxyReq, fmt, proxyPool);
     }
-
 
     const config = getConfig();
     if (config.server.proxy_api_key) {

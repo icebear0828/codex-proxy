@@ -111,8 +111,7 @@ describe("upstream direct routing without Codex auth", () => {
   it("allows Anthropic messages direct upstream routing without local accounts", async () => {
     const pool = new AccountPool();
     const app = createMessagesRoutes(pool, undefined, undefined, {
-      isCodexModel: vi.fn(() => false),
-      resolve: vi.fn(() => ({ tag: "custom-upstream" })),
+      resolveMatch: vi.fn(() => ({ kind: "adapter", adapter: { tag: "custom-upstream" } })),
     } as never);
 
     const res = await app.request("/v1/messages", {
@@ -136,8 +135,7 @@ describe("upstream direct routing without Codex auth", () => {
   it("allows Gemini direct upstream routing without local accounts", async () => {
     const pool = new AccountPool();
     const app = createGeminiRoutes(pool, undefined, undefined, {
-      isCodexModel: vi.fn(() => false),
-      resolve: vi.fn(() => ({ tag: "custom-upstream" })),
+      resolveMatch: vi.fn(() => ({ kind: "adapter", adapter: { tag: "custom-upstream" } })),
     } as never);
 
     const res = await app.request("/v1beta/models/gemini-2.5-pro:generateContent", {
@@ -156,8 +154,7 @@ describe("upstream direct routing without Codex auth", () => {
   it("allows Responses direct upstream routing without local accounts", async () => {
     const pool = new AccountPool();
     const app = createResponsesRoutes(pool, undefined, undefined, {
-      isCodexModel: vi.fn(() => false),
-      resolve: vi.fn(() => ({ tag: "custom-upstream" })),
+      resolveMatch: vi.fn(() => ({ kind: "adapter", adapter: { tag: "custom-upstream" } })),
     } as never);
 
     const res = await app.request("/v1/responses", {
@@ -221,32 +218,6 @@ describe("upstream direct routing without Codex auth", () => {
 
     expect(res.status).toBe(404);
     expect(mockHandleDirectRequest).toHaveBeenCalledTimes(0);
-    pool.destroy();
-  });
-
-  it("falls back to direct upstream for codex models when accounts are exhausted", async () => {
-    mockConfig.server.proxy_api_key = "proxy-secret";
-    const pool = new AccountPool();
-    const app = createChatRoutes(pool, undefined, undefined, {
-      resolveMatch: vi.fn(() => ({ kind: "codex", adapter: { tag: "codex" } })),
-      hasApiKeyModel: vi.fn(() => true),
-      resolve: vi.fn(() => ({ tag: "custom-upstream" })),
-    } as never);
-
-    const res = await app.request("/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: "Bearer wrong-key",
-      },
-      body: JSON.stringify({
-        model: "gpt-5.2-codex",
-        messages: [{ role: "user", content: "hello" }],
-      }),
-    });
-
-    expect(res.status).toBe(200);
-    expect(mockHandleDirectRequest).toHaveBeenCalledTimes(1);
     pool.destroy();
   });
 

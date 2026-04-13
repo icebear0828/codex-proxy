@@ -124,7 +124,8 @@ export function createGeminiRoutes(
     }
     const req = validationResult.data;
 
-    const allowUnauthenticated = !!(upstreamRouter && !upstreamRouter.isCodexModel(geminiModel));
+    const routeMatch = upstreamRouter?.resolveMatch(geminiModel);
+    const allowUnauthenticated = routeMatch?.kind === "api-key" || routeMatch?.kind === "adapter";
 
     // Auth check
     if (!allowUnauthenticated && !accountPool.isAuthenticated()) {
@@ -165,9 +166,9 @@ export function createGeminiRoutes(
       tupleSchema,
     };
 
-    if (upstreamRouter && !upstreamRouter.isCodexModel(geminiModel)) {
+    if (routeMatch?.kind === "api-key" || routeMatch?.kind === "adapter") {
       const directReq = { ...proxyReq, codexRequest: { ...codexRequest, model: geminiModel } };
-      return handleDirectRequest(c, upstreamRouter.resolve(geminiModel), directReq, GEMINI_FORMAT);
+      return handleDirectRequest(c, routeMatch.adapter, directReq, GEMINI_FORMAT);
     }
 
     return handleProxyRequest(c, accountPool, cookieJar, proxyReq, GEMINI_FORMAT, proxyPool);
