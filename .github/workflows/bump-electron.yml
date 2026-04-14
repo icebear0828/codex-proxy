@@ -1,11 +1,8 @@
 name: Bump version + release
 
 on:
-  push:
-    branches: [master]
-    paths-ignore:
-      - "packages/electron/package.json"
-      - "*.md"
+  schedule:
+    - cron: "0 16 * * *"   # UTC 16:00 = 北京时间 00:00，每天最多一个版本
   workflow_dispatch:
 
 concurrency:
@@ -50,9 +47,9 @@ jobs:
             exit 0
           fi
 
-          # Count non-merge, non-chore commits since last tag
+          # Count commits that affect runtime behavior (skip chore/docs/ci/test/refactor/style)
           NEW_COMMITS=$(git log "${LAST_TAG}..HEAD" --no-merges \
-            --pretty=format:"%s" | grep -cvE "^(chore|docs|ci)" || true)
+            --pretty=format:"%s" | grep -cvE "^(chore|docs|ci|test|refactor|style)" || true)
           if [ "$NEW_COMMITS" -eq 0 ]; then
             echo "No meaningful commits since $LAST_TAG, skipping"
             echo "skip=true" >> "$GITHUB_OUTPUT"
