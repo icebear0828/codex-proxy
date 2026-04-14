@@ -41,8 +41,12 @@
         <sub>☕ 赞赏</sub>
       </td>
       <td align="center">
-        <img src="./.github/assets/wechat-group.jpg" width="180" alt="微信交流群"><br>
-        <sub>💬 交流群</sub>
+        <img src="./.github/assets/wechat.png" width="180" alt="微信交流群"><br>
+        <sub>💬 微信群</sub>
+      </td>
+      <td align="center">
+        <img src="./.github/assets/tgimage.png" width="180" alt="Telegram 群"><br>
+        <sub>💬 Telegram</sub>
       </td>
     </tr>
   </table>
@@ -228,6 +232,8 @@ curl http://localhost:8080/v1/chat/completions \
 > **后缀**：任意模型名后追加 `-fast` 启用 Fast 模式，`-high`/`-low` 切换推理等级。例如：`codex-fast`、`gpt-5.2-codex-high-fast`。
 >
 > **Plan Routing**：不同 plan（free/plus/team/business）的账号自动路由到各自支持的模型。模型列表由后端动态获取，自动同步。
+>
+> **前端模型选择 ≠ 配置文件**：Dashboard 中切换模型只影响前端展示和 API 示例中的模型名，**不会修改** `config/default.yaml` 或 `data/local.yaml` 中的 `model.default`。实际使用哪个模型取决于客户端请求中的 `model` 字段（如 Cursor、Claude Code 等自行指定），配置文件中的 `model.default` 仅在客户端未指定模型时作为兜底。
 
 ## 🔗 客户端接入
 

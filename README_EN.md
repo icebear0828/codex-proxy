@@ -203,6 +203,8 @@ If you see streaming AI text, the setup is working. If you get 401, double-check
 > **Suffixes**: Append `-fast` for Fast mode, `-high`/`-low` for reasoning effort. E.g. `codex-fast`, `gpt-5.2-codex-high-fast`.
 >
 > **Plan Routing**: Accounts on different plans auto-route to their supported models. Models are dynamically fetched and auto-synced.
+>
+> **Dashboard model picker ≠ config file**: Changing the model in the Dashboard only affects the UI display and API examples — it does **not** modify `model.default` in `config/default.yaml` or `data/local.yaml`. The actual model used is determined by the `model` field in each client request (Cursor, Claude Code, etc.). The `model.default` config is only a fallback when the client omits the model field.
 
 ## 🔗 Client Setup
 
@@ -454,11 +456,25 @@ curl -X POST http://localhost:8080/auth/accounts/import \
 - This project relies on Codex Desktop's public API. Upstream updates are auto-detected and fingerprints auto-synced.
 - Windows source builds need Rust toolchain for the TLS native addon. Docker deployment has it pre-built.
 
-## ☕ Donate
+## ☕ Donate & Community
 
 <div align="center">
-  <p>Find this useful? Buy me a coffee!</p>
-  <img src="./.github/assets/donate.png" width="200" alt="WeChat Donate">
+  <table>
+    <tr>
+      <td align="center">
+        <img src="./.github/assets/donate.png" width="180" alt="WeChat Donate"><br>
+        <sub>☕ Donate</sub>
+      </td>
+      <td align="center">
+        <img src="./.github/assets/wechat.png" width="180" alt="WeChat Group"><br>
+        <sub>💬 WeChat</sub>
+      </td>
+      <td align="center">
+        <img src="./.github/assets/tgimage.png" width="180" alt="Telegram Group"><br>
+        <sub>💬 Telegram</sub>
+      </td>
+    </tr>
+  </table>
 </div>
 
 ## 📄 License
