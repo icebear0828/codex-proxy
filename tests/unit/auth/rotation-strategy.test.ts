@@ -122,6 +122,15 @@ describe("rotation-strategy", () => {
       expect(strategy.select([a, b], state).id).toBe("b");
     });
 
+    it("disperses across tied candidates on cold start (thundering herd)", () => {
+      const freshState: RotationState = { roundRobinIndex: 0 };
+      const candidates = [makeEntry("a"), makeEntry("b"), makeEntry("c")];
+      const picks = Array.from({ length: 6 }, () =>
+        strategy.select(candidates, freshState).id,
+      );
+      expect(picks).toEqual(["a", "b", "c", "a", "b", "c"]);
+    });
+
     it("treats accounts without cached quota as non-exhausted", () => {
       const noQuota = makeEntry("noQuota", { request_count: 2, window_reset_at: Date.now() + 7 * 86400_000 });
       const exhausted = makeEntry(

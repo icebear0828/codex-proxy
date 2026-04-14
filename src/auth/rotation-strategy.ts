@@ -16,8 +16,8 @@ export interface RotationStrategy {
 }
 
 const leastUsed: RotationStrategy = {
-  select(candidates) {
-    const sorted = [...candidates].sort((a, b) => {
+  select(candidates, state) {
+    const cmp = (a: AccountEntry, b: AccountEntry): number => {
       // Primary: deprioritize quota-exhausted accounts
       const aExhausted = a.cachedQuota?.rate_limit?.limit_reached ? 1 : 0;
       const bExhausted = b.cachedQuota?.rate_limit?.limit_reached ? 1 : 0;
@@ -36,8 +36,16 @@ const leastUsed: RotationStrategy = {
       const aTime = a.usage.last_used ? new Date(a.usage.last_used).getTime() : 0;
       const bTime = b.usage.last_used ? new Date(b.usage.last_used).getTime() : 0;
       return aTime - bTime;
-    });
-    return sorted[0];
+    };
+    const sorted = [...candidates].sort(cmp);
+    // Rotate among tied front-runners to avoid thundering herd on cold start
+    let tiedCount = 1;
+    while (tiedCount < sorted.length && cmp(sorted[0], sorted[tiedCount]) === 0) {
+      tiedCount++;
+    }
+    const pick = state.roundRobinIndex % tiedCount;
+    state.roundRobinIndex++;
+    return sorted[pick];
   },
 };
 
