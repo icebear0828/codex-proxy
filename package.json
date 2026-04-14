@@ -15,6 +15,11 @@
   "scripts": {
     "test": "vitest run",
     "test:watch": "vitest",
+    "test:unit": "vitest run --include 'tests/unit/**/*.test.ts'",
+    "test:e2e": "vitest run --include 'tests/e2e/**/*.test.ts'",
+    "test:integration": "vitest run --include 'tests/integration/**/*.test.ts'",
+    "test:stress": "vitest run --config tests/vitest.config.ts",
+    "test:real": "vitest run --config tests/real/vitest.config.ts",
     "dev": "tsx watch src/index.ts",
     "dev:web": "cd web && npx vite",
     "build:web": "cd web && npx vite build",

@@ -59,19 +59,9 @@ vi.mock("fs", () => ({
 
 vi.mock("@src/tls/transport.js", () => ({
   getTransportInfo: vi.fn(() => ({
-    type: "curl-cli",
+    type: "native",
     initialized: true,
     impersonate: false,
-    ffi_error: null,
-  })),
-}));
-
-vi.mock("@src/tls/curl-binary.js", () => ({
-  getCurlDiagnostics: vi.fn(() => ({
-    binary: "/usr/bin/curl",
-    is_impersonate: false,
-    profile: null,
-    proxy_url: null,
   })),
 }));
 
@@ -168,15 +158,14 @@ describe("GET /debug/diagnostics", () => {
     const res = await app.request("/debug/diagnostics");
     expect(res.status).toBe(200);
     const body = await res.json() as {
-      transport: { type: string; initialized: boolean };
-      curl: { binary: string };
+      transport: { type: string; initialized: boolean; impersonate: boolean };
       accounts: { total: number };
       paths: { bin: string; config: string; data: string };
       runtime: { platform: string; node_version: string };
     };
-    expect(body.transport.type).toBe("curl-cli");
+    expect(body.transport.type).toBe("native");
     expect(body.transport.initialized).toBe(true);
-    expect(body.curl.binary).toBe("/usr/bin/curl");
+    expect(body.transport.impersonate).toBe(false);
     expect(typeof body.accounts.total).toBe("number");
     expect(body.paths.bin).toBe("/tmp/codex-e2e-debug/bin");
     expect(body.runtime.node_version).toContain("v");
