@@ -1,0 +1,54 @@
+models:
+  - id: gpt-5.4
+    displayName: GPT-5.4
+    description: Latest Codex flagship model
+    isDefault: true
+    supportedReasoningEfforts:
+      - { reasoningEffort: minimal, description: "Minimal reasoning" }
+      - { reasoningEffort: low, description: "Fastest responses" }
+      - { reasoningEffort: medium, description: "Balanced speed and quality" }
+      - { reasoningEffort: high, description: "Deepest reasoning" }
+    defaultReasoningEffort: medium
+    inputModalities: [text, image]
+    supportsPersonality: true
+    upgrade: null
+
+  - id: gpt-5.3-codex
+    displayName: GPT-5.3 Codex
+    description: Codex flagship model
+    isDefault: false
+    supportedReasoningEfforts:
+      - { reasoningEffort: low, description: "Fastest responses" }
+      - { reasoningEffort: medium, description: "Balanced speed and quality" }
+      - { reasoningEffort: high, description: "Deepest reasoning" }
+    defaultReasoningEffort: medium
+    inputModalities: [text]
+    supportsPersonality: false
+    upgrade: null
+
+  - id: gpt-5.3-codex-high
+    displayName: GPT-5.3 Codex High
+    description: GPT-5.3 Codex — high reasoning tier
+    isDefault: false
+    supportedReasoningEfforts:
+      - { reasoningEffort: high, description: "Deepest reasoning" }
+    defaultReasoningEffort: high
+    inputModalities: [text]
+    supportsPersonality: false
+    upgrade: null
+
+  - id: gpt-5.3-codex-spark
+    displayName: GPT-5.3 Codex Spark
+    description: Ultra-lightweight
+    isDefault: false
+    supportedReasoningEfforts:
+      - { reasoningEffort: minimal, description: "Minimal reasoning" }
+      - { reasoningEffort: low, description: "Fastest responses" }
+    defaultReasoningEffort: low
+    inputModalities: [text]
+    supportsPersonality: false
+    upgrade: null
+
+aliases:
+  codex: "gpt-5.4"
+  codex-mini: "gpt-5.3-codex-spark"

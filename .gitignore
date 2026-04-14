@@ -21,7 +21,6 @@ scripts/build/check-update.ts
 scripts/build/types.ts
 scripts/manual-test/
 scripts/cron-update.sh
-tests/
 config/extraction-patterns.yaml
 
 # Design / internal files
