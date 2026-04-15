@@ -2,6 +2,24 @@ import { useState, useEffect, useCallback, useRef } from "preact/hooks";
 
 export type LogFilterDirection = "ingress" | "egress" | "all";
 
+export function normalizeLogsQueryState<T>(
+  prev: { direction: LogFilterDirection; search: string; page: number; selected: T | null },
+  next: { direction?: LogFilterDirection; search?: string; page?: number },
+): { direction: LogFilterDirection; search: string; page: number; selected: T | null } {
+  const direction = next.direction ?? prev.direction;
+  const search = next.search ?? prev.search;
+  const page = next.page ?? prev.page;
+  const queryChanged = direction !== prev.direction || search !== prev.search;
+  const pageChanged = page !== prev.page;
+  return {
+    direction,
+    search,
+    page: queryChanged ? 0 : page,
+    selected: queryChanged || pageChanged ? null : prev.selected,
+  };
+}
+
+
 export interface LogRecord {
   id: string;
   requestId: string;
@@ -28,18 +46,18 @@ export interface LogState {
 }
 
 export function useLogs(refreshIntervalMs = 1500) {
-  const [direction, setDirection] = useState<LogFilterDirection>("all");
-  const [search, setSearch] = useState("");
+  const [direction, setDirectionState] = useState<LogFilterDirection>("all");
+  const [search, setSearchState] = useState("");
   const [records, setRecords] = useState<LogRecord[]>([]);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
   const [state, setState] = useState<LogState | null>(null);
   const [selected, setSelected] = useState<LogRecord | null>(null);
-  const [page, setPage] = useState(0);
+  const [page, setPageState] = useState(0);
   const pageSize = 50;
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  const load = useCallback(async (nextPage = page) => {
+  const load = useCallback(async (nextPage: number) => {
     try {
       const params = new URLSearchParams({
         direction,
@@ -55,7 +73,32 @@ export function useLogs(refreshIntervalMs = 1500) {
       }
     } catch { /* ignore */ }
     setLoading(false);
-  }, [direction, search, page, pageSize]);
+  }, [direction, search, pageSize]);
+
+  const setDirection = useCallback((nextDirection: LogFilterDirection) => {
+    setDirectionState((prevDirection) => {
+      const next = normalizeLogsQueryState({ direction: prevDirection, search, page, selected }, { direction: nextDirection });
+      setPageState(next.page);
+      setSelected(next.selected);
+      return next.direction;
+    });
+  }, [search, page, selected]);
+
+  const setSearch = useCallback((nextSearch: string) => {
+    const next = normalizeLogsQueryState({ direction, search, page, selected }, { search: nextSearch });
+    setSearchState(next.search);
+    setPageState(next.page);
+    setSelected(next.selected);
+  }, [direction, search, page, selected]);
+
+  const setPage = useCallback((updater: number | ((prev: number) => number)) => {
+    setPageState((prevPage) => {
+      const nextPage = typeof updater === "function" ? updater(prevPage) : updater;
+      const next = normalizeLogsQueryState({ direction, search, page: prevPage, selected }, { page: nextPage });
+      setSelected(next.selected);
+      return next.page;
+    });
+  }, [direction, search, selected]);
 
   const loadState = useCallback(async () => {
     try {
@@ -113,10 +156,6 @@ export function useLogs(refreshIntervalMs = 1500) {
 
   const nextPage = useCallback(() => setPage((p) => p + 1), []);
   const prevPage = useCallback(() => setPage((p) => Math.max(0, p - 1)), []);
-
-  useEffect(() => {
-    load(page);
-  }, [page, load]);
 
   return {
     direction,

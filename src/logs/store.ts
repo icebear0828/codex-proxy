@@ -38,6 +38,18 @@ export interface LogQuery {
 }
 
 const DEFAULT_CAPACITY = 2000;
+const DEFAULT_LIMIT = 50;
+const MAX_LIMIT = 200;
+
+function normalizeLimit(limit: number | undefined): number {
+  if (limit === undefined || !Number.isFinite(limit)) return DEFAULT_LIMIT;
+  return Math.min(Math.max(1, Math.trunc(limit)), MAX_LIMIT);
+}
+
+function normalizeOffset(offset: number | undefined): number {
+  if (offset === undefined || !Number.isFinite(offset)) return 0;
+  return Math.max(0, Math.trunc(offset));
+}
 
 export class LogStore {
   private records: LogRecord[] = [];
@@ -99,8 +111,8 @@ export class LogStore {
     }
 
     const total = results.length;
-    const limit = Math.min(Math.max(1, query.limit ?? 50), 200);
-    const offset = Math.max(0, query.offset ?? 0);
+    const limit = normalizeLimit(query.limit);
+    const offset = normalizeOffset(query.offset);
     const sliced = results.slice(offset, offset + limit).reverse();
 
     return { records: sliced, total, offset, limit };

@@ -18,6 +18,8 @@ describe("log routes", () => {
   beforeEach(() => {
     store.list.mockReset();
     store.get.mockReset();
+    store.clear.mockReset();
+    store.setState.mockReset();
   });
 
   it("returns paginated logs", async () => {
@@ -42,14 +44,38 @@ describe("log routes", () => {
     const app = new Hono();
     app.route("/", createLogRoutes());
 
-    const res = await app.request("/admin/logs?limit=1&offset=0");
+    const res = await app.request("/admin/logs?limit=1&offset=0&direction=egress&search=messages");
     expect(res.status).toBe(200);
 
-    expect(store.list).toHaveBeenCalledWith({ direction: "all", search: undefined, limit: 1, offset: 0 });
+    expect(store.list).toHaveBeenCalledWith({ direction: "egress", search: "messages", limit: 1, offset: 0 });
     const body = await res.json();
     expect(body.total).toBe(2);
     expect(body.records).toHaveLength(1);
     expect(body.records[0].id).toBe("1");
+  });
+
+  it("rejects invalid pagination params", async () => {
+    const app = new Hono();
+    app.route("/", createLogRoutes());
+
+    const badLimit = await app.request("/admin/logs?limit=abc");
+    expect(badLimit.status).toBe(400);
+    expect(store.list).not.toHaveBeenCalled();
+
+    const badOffset = await app.request("/admin/logs?offset=-1");
+    expect(badOffset.status).toBe(400);
+    expect(store.list).not.toHaveBeenCalled();
+  });
+
+  it("falls back to all when direction is unknown", async () => {
+    store.list.mockReturnValue({ total: 0, offset: 0, limit: 50, records: [] });
+
+    const app = new Hono();
+    app.route("/", createLogRoutes());
+
+    const res = await app.request("/admin/logs?direction=weird");
+    expect(res.status).toBe(200);
+    expect(store.list).toHaveBeenCalledWith({ direction: "all", search: undefined, limit: undefined, offset: undefined });
   });
 
   it("returns a selected log entry", async () => {

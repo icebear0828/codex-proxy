@@ -1,5 +1,11 @@
 import { Hono } from "hono";
+import { z } from "zod";
 import { logStore, type LogDirection } from "../../logs/store.js";
+
+const ListLogsQuerySchema = z.object({
+  limit: z.preprocess((value) => value === undefined ? undefined : Number(value), z.number().int().min(1).max(200).optional()),
+  offset: z.preprocess((value) => value === undefined ? undefined : Number(value), z.number().int().min(0).optional()),
+});
 
 function parseDirection(raw: string | null | undefined): LogDirection | "all" {
   if (raw === "ingress" || raw === "egress" || raw === "all") return raw;
@@ -10,11 +16,23 @@ export function createLogRoutes(): Hono {
   const app = new Hono();
 
   app.get("/admin/logs", (c) => {
+    const parsed = ListLogsQuerySchema.safeParse({
+      limit: c.req.query("limit"),
+      offset: c.req.query("offset"),
+    });
+    if (!parsed.success) {
+      c.status(400);
+      return c.json({ error: "Invalid request", details: parsed.error.issues });
+    }
+
     const direction = parseDirection(c.req.query("direction"));
     const search = c.req.query("search");
-    const limit = parseInt(c.req.query("limit") ?? "50", 10);
-    const offset = parseInt(c.req.query("offset") ?? "0", 10);
-    const data = logStore.list({ direction, search, limit, offset });
+    const data = logStore.list({
+      direction,
+      search,
+      limit: parsed.data.limit,
+      offset: parsed.data.offset,
+    });
     return c.json(data);
   });
 
