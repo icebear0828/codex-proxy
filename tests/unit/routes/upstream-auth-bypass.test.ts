@@ -105,6 +105,13 @@ describe("upstream direct routing without Codex auth", () => {
 
     expect(res.status).toBe(200);
     expect(mockHandleDirectRequest).toHaveBeenCalledTimes(1);
+    const [, , directReq] = mockHandleDirectRequest.mock.calls[0] as [
+      unknown,
+      unknown,
+      { codexRequest: { tools?: unknown[] } },
+      unknown,
+    ];
+    expect(directReq.codexRequest.tools).toEqual([]);
     pool.destroy();
   });
 

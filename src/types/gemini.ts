@@ -48,13 +48,16 @@ export const GeminiGenerateContentRequestSchema = z.object({
   contents: z.array(GeminiContentSchema).min(1),
   systemInstruction: GeminiContentSchema.optional(),
   generationConfig: GeminiGenerationConfigSchema.optional(),
-  // Tool-related fields (accepted for compatibility, not forwarded to Codex)
+  // Tool-related fields. googleSearch/googleSearchRetrieval are converted to
+  // Codex hosted web_search; functionDeclarations become function tools.
   tools: z.array(z.object({
     functionDeclarations: z.array(z.object({
       name: z.string(),
       description: z.string().optional(),
       parameters: z.record(z.unknown()).optional(),
     })).optional(),
+    googleSearch: z.record(z.unknown()).optional(),
+    googleSearchRetrieval: z.record(z.unknown()).optional(),
   }).passthrough()).optional(),
   toolConfig: z.object({
     functionCallingConfig: z.object({

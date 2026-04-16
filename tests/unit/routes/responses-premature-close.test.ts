@@ -91,6 +91,135 @@ describe("collectPassthrough premature close handling", () => {
     expect(result.usage).toEqual({ input_tokens: 10, output_tokens: 20 });
   });
 
+  it("backfills completed response output from streamed web_search and message items", async () => {
+    const api = createMockApi([
+      { event: "response.created", data: { response: { id: "resp_search" } } },
+      {
+        event: "response.output_item.done",
+        data: {
+          output_index: 0,
+          item: {
+            id: "ws_1",
+            type: "web_search_call",
+            status: "completed",
+            actions: [{ type: "search", query: "codex proxy" }],
+          },
+        },
+      },
+      {
+        event: "response.output_item.done",
+        data: {
+          output_index: 1,
+          item: {
+            id: "msg_1",
+            type: "message",
+            role: "assistant",
+            status: "completed",
+            content: [{ type: "output_text", text: "搜索完成" }],
+          },
+        },
+      },
+      {
+        event: "response.completed",
+        data: {
+          response: {
+            id: "resp_search",
+            output: [],
+            usage: { input_tokens: 11, output_tokens: 22 },
+          },
+        },
+      },
+    ]);
+
+    const result = await collectPassthrough(api as never, new Response("ok"), "test-model");
+    const response = result.response as { output: unknown[]; output_text?: string };
+    expect(response.output).toHaveLength(2);
+    expect(response.output[0]).toMatchObject({ type: "web_search_call" });
+    expect(response.output_text).toBe("搜索完成");
+  });
+
+  it("synthesizes completed response output from text deltas when output items are absent", async () => {
+    const api = createMockApi([
+      { event: "response.created", data: { response: { id: "resp_delta" } } },
+      { event: "response.output_text.delta", data: { delta: "搜索" } },
+      { event: "response.output_text.delta", data: { delta: "完成" } },
+      {
+        event: "response.completed",
+        data: {
+          response: {
+            id: "resp_delta",
+            output: [],
+            usage: { input_tokens: 3, output_tokens: 4 },
+          },
+        },
+      },
+    ]);
+
+    const result = await collectPassthrough(api as never, new Response("ok"), "test-model");
+    const response = result.response as { output: Array<{ content: Array<{ text: string }> }>; output_text?: string };
+    expect(response.output[0].content[0].text).toBe("搜索完成");
+    expect(response.output_text).toBe("搜索完成");
+  });
+
+  it("keeps output_text synchronized after tuple reconversion", async () => {
+    const api = createMockApi([
+      { event: "response.created", data: { response: { id: "resp_tuple" } } },
+      {
+        event: "response.output_item.done",
+        data: {
+          output_index: 0,
+          item: {
+            id: "msg_tuple",
+            type: "message",
+            role: "assistant",
+            status: "completed",
+            content: [
+              {
+                type: "output_text",
+                text: "{\"point\":{\"0\":42,\"1\":\"hello\"}}",
+              },
+            ],
+          },
+        },
+      },
+      {
+        event: "response.completed",
+        data: {
+          response: {
+            id: "resp_tuple",
+            output: [],
+            usage: { input_tokens: 6, output_tokens: 7 },
+          },
+        },
+      },
+    ]);
+
+    const tupleSchema = {
+      type: "object",
+      properties: {
+        point: {
+          type: "array",
+          prefixItems: [{ type: "number" }, { type: "string" }],
+          items: false,
+        },
+      },
+    };
+
+    const result = await collectPassthrough(
+      api as never,
+      new Response("ok"),
+      "test-model",
+      tupleSchema,
+    );
+    const response = result.response as {
+      output: Array<{ content: Array<{ text: string }> }>;
+      output_text?: string;
+    };
+
+    expect(response.output[0].content[0].text).toBe("{\"point\":[42,\"hello\"]}");
+    expect(response.output_text).toBe("{\"point\":[42,\"hello\"]}");
+  });
+
   it("rethrows original error if response.completed was already received", async () => {
     const api = createMockApi(
       [

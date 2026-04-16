@@ -41,6 +41,7 @@ export { parseSSEBlock, parseSSEStream } from "./codex-sse.js";
 
 import {
   CodexApiError,
+  PreviousResponseWebSocketError,
   type CodexResponsesRequest,
   type CodexCompactRequest,
   type CodexCompactResponse,
@@ -167,7 +168,7 @@ export class CodexApi {
   /**
    * Create a response (streaming).
    * Routes to WebSocket when previous_response_id is present (HTTP SSE doesn't support it).
-   * Falls back to HTTP SSE if WebSocket fails.
+   * 仅当不依赖 previous_response_id 时，WebSocket 失败后才降级到 HTTP SSE。
    */
   async createResponse(
     request: CodexResponsesRequest,
@@ -179,6 +180,12 @@ export class CodexApi {
         return await this.createResponseViaWebSocket(request, signal, onRateLimits);
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
+        if (request.previous_response_id) {
+          console.warn(
+            `[CodexApi] WebSocket 失败（${msg}），previous_response_id 不能安全降级到 HTTP SSE`,
+          );
+          throw new PreviousResponseWebSocketError(msg);
+        }
         console.warn(`[CodexApi] WebSocket failed (${msg}), falling back to HTTP SSE`);
         const { previous_response_id: _, useWebSocket: _ws, ...httpRequest } = request;
         return this.createResponseViaHttp(httpRequest as CodexResponsesRequest, signal);
@@ -356,4 +363,4 @@ export class CodexApi {
 }
 
 // Re-export CodexApiError for backward compatibility
-export { CodexApiError } from "./codex-types.js";
+export { CodexApiError, PreviousResponseWebSocketError } from "./codex-types.js";

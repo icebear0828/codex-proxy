@@ -84,6 +84,21 @@ describe("translateAnthropicToCodexRequest", () => {
       expect(result.instructions).toBe("First paragraph.\n\nSecond paragraph.");
     });
 
+    it("strips Claude billing header noise from system blocks", () => {
+      const result = translateAnthropicToCodexRequest(
+        makeRequest({
+          system: [
+            {
+              type: "text" as const,
+              text: "x-anthropic-billing-header: cc_version=2.1.100.db0; cch=abcd1;",
+            },
+            { type: "text" as const, text: "Keep answers short." },
+          ],
+        }),
+      );
+      expect(result.instructions).toBe("Keep answers short.");
+    });
+
     it("falls back to default instructions when no system provided", () => {
       const result = translateAnthropicToCodexRequest(makeRequest());
       expect(result.instructions).toBe("You are a helpful assistant.");
@@ -330,7 +345,43 @@ describe("translateAnthropicToCodexRequest", () => {
       const toolChoice = { type: "auto" as const };
       translateAnthropicToCodexRequest(makeRequest({ tool_choice: toolChoice }));
 
-      expect(anthropicToolChoiceToCodex).toHaveBeenCalledWith(toolChoice);
+      expect(anthropicToolChoiceToCodex).toHaveBeenCalledWith(toolChoice, undefined);
+    });
+
+    it("passes tools context when converting tool_choice", () => {
+      const tools = [
+        { name: "web_search", description: "Custom search", input_schema: {} },
+      ];
+      const toolChoice = { type: "tool" as const, name: "web_search" };
+      translateAnthropicToCodexRequest(makeRequest({ tools, tool_choice: toolChoice }));
+
+      expect(anthropicToolChoiceToCodex).toHaveBeenCalledWith(toolChoice, tools);
+    });
+
+    it("does not inject hosted web_search by default", () => {
+      const result = translateAnthropicToCodexRequest(makeRequest());
+
+      expect(result.tools).toEqual([]);
+    });
+
+    it("injects hosted web_search when explicitly requested", () => {
+      const result = translateAnthropicToCodexRequest(
+        makeRequest(),
+        undefined,
+        { injectHostedWebSearch: true },
+      );
+
+      expect(result.tools).toEqual([{ type: "web_search" }]);
+    });
+
+    it("does not duplicate hosted web_search when injected and already present", () => {
+      const result = translateAnthropicToCodexRequest(
+        makeRequest({ tools: [{ type: "web_search" as const, name: "web_search" }] }),
+        undefined,
+        { injectHostedWebSearch: true },
+      );
+
+      expect(result.tools).toEqual([{ type: "web_search", name: "web_search" }]);
     });
   });
 

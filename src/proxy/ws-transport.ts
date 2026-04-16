@@ -42,7 +42,7 @@ export interface WsCreateRequest {
   previous_response_id?: string;
   reasoning?: { effort?: string; summary?: string };
   tools?: unknown[];
-  tool_choice?: string | { type: string; name: string };
+  tool_choice?: string | { type: string; name?: string };
   text?: {
     format: {
       type: "text" | "json_object" | "json_schema";
