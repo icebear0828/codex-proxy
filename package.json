@@ -20,7 +20,7 @@
     "test:integration": "vitest run --include 'tests/integration/**/*.test.ts'",
     "test:stress": "vitest run --config tests/vitest.config.ts",
     "test:real": "vitest run --config tests/real/vitest.config.ts",
-    "test:local-chat": "vitest run tests/local-chat/chat-completions.test.ts",
+    "test:local-chat": "vitest run --config tests/local-chat/vitest.config.ts",
     "dev": "tsx watch src/index.ts",
     "dev:web": "cd web && npx vite",
     "build:web": "cd web && npx vite build",
