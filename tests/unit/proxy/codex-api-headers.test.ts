@@ -148,5 +148,33 @@ describe("codex-api headers", () => {
       );
       expect(headers["x-codex-turn-state"]).toBe("ws_turn_abc");
     });
+
+    it("previous_response_id 场景下 WebSocket 失败不会降级成 HTTP delta-only", async () => {
+      const { PreviousResponseWebSocketError } = await import("@src/proxy/codex-api.js");
+      mockCreateWebSocketResponse.mockRejectedValue(new Error("ws down"));
+
+      const api = await createApi();
+      await expect(api.createResponse(
+        makeRequest({
+          previous_response_id: "resp_prev",
+          useWebSocket: true,
+          input: [{ type: "function_call_output", call_id: "call_1", output: "ok" }],
+        }),
+      )).rejects.toBeInstanceOf(PreviousResponseWebSocketError);
+
+      expect(transport.post).not.toHaveBeenCalled();
+    });
+
+    it("没有 previous_response_id 时 WebSocket 失败仍可安全降级到 HTTP", async () => {
+      mockCreateWebSocketResponse.mockRejectedValue(new Error("ws down"));
+
+      const api = await createApi();
+      await api.createResponse(makeRequest({ useWebSocket: true }));
+
+      expect(transport.post).toHaveBeenCalledOnce();
+      const body = JSON.parse(transport.lastBody!) as Record<string, unknown>;
+      expect(body.previous_response_id).toBeUndefined();
+      expect(body.useWebSocket).toBeUndefined();
+    });
   });
 });

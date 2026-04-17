@@ -44,6 +44,28 @@ describe("parseSSEBlock", () => {
     const result = parseSSEBlock(block);
     expect(result?.data).toBe("plain text error");
   });
+
+  it("parses non-standard pretty-printed JSON continuations", () => {
+    const block = [
+      "event: error",
+      "data: {",
+      '  "error": {',
+      '    "code": "server_error",',
+      '    "message": "upstream failed"',
+      "  }",
+      "}",
+    ].join("\n");
+    const result = parseSSEBlock(block);
+    expect(result).toEqual({
+      event: "error",
+      data: {
+        error: {
+          code: "server_error",
+          message: "upstream failed",
+        },
+      },
+    });
+  });
 });
 
 describe("parseSSEStream", () => {

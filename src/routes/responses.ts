@@ -29,11 +29,35 @@ import type { UpstreamRouter } from "../proxy/upstream-router.js";
 import { acquireAccount, releaseAccount } from "./shared/account-acquisition.js";
 import { handleCodexApiError } from "./shared/proxy-error-handler.js";
 import { withRetry } from "../utils/retry.js";
+import { extractCodexError } from "../types/codex-events.js";
 
 // ── Helpers ────────────────────────────────────────────────────────
 
 function isRecord(v: unknown): v is Record<string, unknown> {
   return typeof v === "object" && v !== null && !Array.isArray(v);
+}
+
+function extractOutputTextFromItem(item: unknown): string {
+  if (!isRecord(item) || !Array.isArray(item.content)) return "";
+  const chunks: string[] = [];
+  for (const part of item.content) {
+    if (
+      isRecord(part) &&
+      (part.type === "output_text" || part.type === "text") &&
+      typeof part.text === "string"
+    ) {
+      chunks.push(part.text);
+    }
+  }
+  return chunks.join("");
+}
+
+function syncOutputTextFromOutput(response: Record<string, unknown>): void {
+  if (!Array.isArray(response.output)) return;
+  const outputText = (response.output as unknown[])
+    .map(extractOutputTextFromItem)
+    .join("");
+  if (outputText) response.output_text = outputText;
 }
 
 // ── Passthrough stream translator ──────────────────────────────────
@@ -82,7 +106,11 @@ async function* streamPassthrough(
           for (const item of resp.output as unknown[]) {
             if (isRecord(item) && Array.isArray(item.content)) {
               for (const part of item.content as unknown[]) {
-                if (isRecord(part) && part.type === "output_text" && typeof part.text === "string") {
+                if (
+                  isRecord(part) &&
+                  (part.type === "output_text" || part.type === "text") &&
+                  typeof part.text === "string"
+                ) {
                   try {
                     const parsed = JSON.parse(part.text) as unknown;
                     part.text = JSON.stringify(reconvertTupleValues(parsed, tupleSchema));
@@ -134,6 +162,8 @@ export async function collectPassthrough(
   let finalResponse: unknown = null;
   let usage = { input_tokens: 0, output_tokens: 0 };
   let responseId: string | null = null;
+  const outputItems: unknown[] = [];
+  let textDeltas = "";
 
   try {
     for await (const raw of api.parseStream(response)) {
@@ -145,7 +175,32 @@ export async function collectPassthrough(
         if (resp && typeof resp.id === "string") responseId = resp.id;
       }
 
+      if (raw.event === "response.output_text.delta" && typeof data.delta === "string") {
+        textDeltas += data.delta;
+      }
+
+      if (raw.event === "response.output_item.done" && isRecord(data.item)) {
+        outputItems.push(data.item);
+      }
+
       if (raw.event === "response.completed" && resp) {
+        // Codex hosted search 经常完整流出 output_item.done/text delta，
+        // 但 completed.response.output 为空。这里用流式事件回填最终 JSON。
+        if (Array.isArray(resp.output) && resp.output.length === 0) {
+          if (outputItems.length > 0) {
+            resp.output = outputItems;
+          } else if (textDeltas) {
+            resp.output = [{
+              type: "message",
+              role: "assistant",
+              status: "completed",
+              content: [{ type: "output_text", text: textDeltas }],
+            }];
+          }
+        }
+        if (typeof resp.output_text !== "string" || !resp.output_text) {
+          syncOutputTextFromOutput(resp);
+        }
         finalResponse = resp;
         if (typeof resp.id === "string") responseId = resp.id;
         if (isRecord(resp.usage)) {
@@ -157,9 +212,9 @@ export async function collectPassthrough(
       }
 
       if (raw.event === "error" || raw.event === "response.failed") {
-        const err = isRecord(data.error) ? data.error : data;
+        const err = extractCodexError(data);
         throw new Error(
-          `Codex API error: ${typeof err.code === "string" ? err.code : "unknown"}: ${typeof err.message === "string" ? err.message : JSON.stringify(data)}`,
+          `Codex API error: ${err.code}: ${err.message}`,
         );
       }
     }
@@ -181,7 +236,11 @@ export async function collectPassthrough(
       for (const item of resp.output as unknown[]) {
         if (isRecord(item) && Array.isArray(item.content)) {
           for (const part of item.content as unknown[]) {
-            if (isRecord(part) && part.type === "output_text" && typeof part.text === "string") {
+            if (
+              isRecord(part) &&
+              (part.type === "output_text" || part.type === "text") &&
+              typeof part.text === "string"
+            ) {
               try {
                 const parsed = JSON.parse(part.text) as unknown;
                 part.text = JSON.stringify(reconvertTupleValues(parsed, tupleSchema));
@@ -192,6 +251,7 @@ export async function collectPassthrough(
           }
         }
       }
+      syncOutputTextFromOutput(resp);
     }
   }
 

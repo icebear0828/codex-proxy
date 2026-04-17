@@ -11,6 +11,9 @@ interface AffinityEntry {
   entryId: string;
   conversationId: string;
   turnState?: string;
+  instructions?: string;
+  inputTokens?: number;
+  functionCallIds?: string[];
   createdAt: number;
 }
 
@@ -28,8 +31,24 @@ export class SessionAffinityMap {
   }
 
   /** Record that a response was created by a specific account in a conversation. */
-  record(responseId: string, entryId: string, conversationId: string, turnState?: string): void {
-    this.map.set(responseId, { entryId, conversationId, turnState, createdAt: Date.now() });
+  record(
+    responseId: string,
+    entryId: string,
+    conversationId: string,
+    turnState?: string,
+    instructions?: string,
+    inputTokens?: number,
+    functionCallIds?: string[],
+  ): void {
+    this.map.set(responseId, {
+      entryId,
+      conversationId,
+      turnState,
+      instructions,
+      inputTokens,
+      functionCallIds: functionCallIds ? [...functionCallIds] : undefined,
+      createdAt: Date.now(),
+    });
   }
 
   /** Look up which account created a given response. */
@@ -44,10 +63,47 @@ export class SessionAffinityMap {
     return entry?.conversationId ?? null;
   }
 
+  /** Look up the latest response ID recorded for a conversation. */
+  lookupLatestResponseIdByConversationId(conversationId: string): string | null {
+    let latestResponseId: string | null = null;
+    let latestCreatedAt = -1;
+    for (const [responseId, entry] of this.map) {
+      if (entry.conversationId !== conversationId) continue;
+      const liveEntry = this.getEntry(responseId);
+      if (!liveEntry) continue;
+      if (liveEntry.createdAt >= latestCreatedAt) {
+        latestCreatedAt = liveEntry.createdAt;
+        latestResponseId = responseId;
+      }
+    }
+    return latestResponseId;
+  }
+
   /** Look up the upstream turn-state token for a given response. */
   lookupTurnState(responseId: string): string | null {
     const entry = this.getEntry(responseId);
     return entry?.turnState ?? null;
+  }
+
+  lookupInstructions(responseId: string): string | null {
+    const entry = this.getEntry(responseId);
+    return entry?.instructions ?? null;
+  }
+
+  lookupLatestInstructionsByConversationId(conversationId: string): string | null {
+    const responseId = this.lookupLatestResponseIdByConversationId(conversationId);
+    if (!responseId) return null;
+    return this.lookupInstructions(responseId);
+  }
+
+  lookupInputTokens(responseId: string): number | null {
+    const entry = this.getEntry(responseId);
+    return entry?.inputTokens ?? null;
+  }
+
+  lookupFunctionCallIds(responseId: string): string[] {
+    const entry = this.getEntry(responseId);
+    return entry?.functionCallIds ? [...entry.functionCallIds] : [];
   }
 
   private getEntry(responseId: string): AffinityEntry | null {

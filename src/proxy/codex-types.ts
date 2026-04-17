@@ -16,7 +16,7 @@ export interface CodexResponsesRequest {
   /** Optional: tools available to the model */
   tools?: unknown[];
   /** Optional: tool choice strategy */
-  tool_choice?: string | { type: string; name: string };
+  tool_choice?: string | { type: string; name?: string };
   /** Optional: text output format (JSON mode / structured outputs) */
   text?: {
     format: {
@@ -124,5 +124,22 @@ export class CodexApiError extends Error {
       detail = body;
     }
     super(`Codex API error (${status}): ${detail}`);
+  }
+}
+
+/** previous_response_id 只能通过 WebSocket 安全续链，失败后不能降级为 HTTP delta-only。 */
+export class PreviousResponseWebSocketError extends CodexApiError {
+  constructor(public readonly causeMessage: string) {
+    super(
+      0,
+      JSON.stringify({
+        error: {
+          message:
+            "WebSocket failed while using previous_response_id; HTTP SSE fallback would drop server-side history: " +
+            causeMessage,
+        },
+      }),
+    );
+    this.name = "PreviousResponseWebSocketError";
   }
 }

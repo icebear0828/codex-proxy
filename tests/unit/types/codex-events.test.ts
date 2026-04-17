@@ -73,3 +73,35 @@ describe("parseCodexEvent — content_part events", () => {
     expect(result.type).toBe("response.content_part.done");
   });
 });
+
+describe("parseCodexEvent — error events", () => {
+  it("extracts response.failed errors from response.error", () => {
+    const raw = makeRaw("response.failed", {
+      type: "response.failed",
+      response: {
+        id: "resp_1",
+        error: {
+          code: "server_error",
+          message: "upstream failed",
+        },
+      },
+    });
+    const result = parseCodexEvent(raw);
+    expect(result.type).toBe("response.failed");
+    if (result.type === "response.failed") {
+      expect(result.error.code).toBe("server_error");
+      expect(result.error.message).toBe("upstream failed");
+      expect(result.response.id).toBe("resp_1");
+    }
+  });
+
+  it("marks partial JSON error payloads as malformed", () => {
+    const raw = makeRaw("error", "{");
+    const result = parseCodexEvent(raw);
+    expect(result.type).toBe("error");
+    if (result.type === "error") {
+      expect(result.error.code).toBe("malformed_error_event");
+      expect(result.error.message).toBe("{");
+    }
+  });
+});

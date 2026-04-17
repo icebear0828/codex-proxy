@@ -8,12 +8,23 @@ import type { CodexSSEEvent } from "./codex-types.js";
 export function parseSSEBlock(block: string): CodexSSEEvent | null {
   let event = "";
   const dataLines: string[] = [];
+  let dataStarted = false;
 
   for (const line of block.split("\n")) {
-    if (line.startsWith("event:")) {
-      event = line.slice(6).trim();
-    } else if (line.startsWith("data:")) {
-      dataLines.push(line.slice(5).trimStart());
+    const normalizedLine = line.endsWith("\r") ? line.slice(0, -1) : line;
+    if (normalizedLine.startsWith("event:")) {
+      event = normalizedLine.slice(6).trim();
+    } else if (normalizedLine.startsWith("data:")) {
+      dataStarted = true;
+      dataLines.push(normalizedLine.slice(5).trimStart());
+    } else if (
+      dataStarted &&
+      !normalizedLine.startsWith("id:") &&
+      !normalizedLine.startsWith("retry:") &&
+      !normalizedLine.startsWith(":")
+    ) {
+      // 兼容非标准上游错误流：JSON 被漂亮打印成多行，但续行没有重复 data: 前缀。
+      dataLines.push(normalizedLine);
     }
   }
 

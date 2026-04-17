@@ -46,18 +46,27 @@ export const ChatCompletionRequestSchema = z.object({
   // Codex-specific extensions
   reasoning_effort: z.enum(["low", "medium", "high", "xhigh"]).optional(),
   service_tier: z.enum(["fast", "flex"]).nullable().optional(),
-  // New tool format (accepted for compatibility, not forwarded to Codex)
-  tools: z.array(z.object({
-    type: z.literal("function"),
-    function: z.object({
-      name: z.string(),
-      description: z.string().optional(),
-      parameters: z.record(z.unknown()).optional(),
+  // New tool format. In addition to function tools, accept hosted web search
+  // tools so OpenAI-compatible clients can ask Codex to search natively.
+  tools: z.array(z.union([
+    z.object({
+      type: z.literal("function"),
+      function: z.object({
+        name: z.string(),
+        description: z.string().optional(),
+        parameters: z.record(z.unknown()).optional(),
+      }),
     }),
-  })).optional(),
+    z.object({
+      type: z.enum(["web_search", "web_search_preview"]),
+      search_context_size: z.enum(["low", "medium", "high"]).optional(),
+      user_location: z.record(z.unknown()).optional(),
+    }).passthrough(),
+  ])).optional(),
   tool_choice: z.union([
     z.enum(["none", "auto", "required"]),
     z.object({ type: z.literal("function"), function: z.object({ name: z.string() }) }),
+    z.object({ type: z.enum(["web_search", "web_search_preview"]) }).passthrough(),
   ]).optional(),
   parallel_tool_calls: z.boolean().optional(),
   // Structured output format (JSON mode / JSON Schema)

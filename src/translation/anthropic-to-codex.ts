@@ -12,7 +12,19 @@ import { parseModelName, getModelInfo } from "../models/model-store.js";
 import { getConfig } from "../config.js";
 import { buildInstructions, budgetToEffort } from "./shared-utils.js";
 import type { ModelConfigOverride } from "./shared-utils.js";
-import { anthropicToolsToCodex, anthropicToolChoiceToCodex } from "./tool-format.js";
+import {
+  anthropicToolsToCodex,
+  anthropicToolChoiceToCodex,
+  type AnthropicToolConversionOptions,
+} from "./tool-format.js";
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function hasHostedWebSearchTool(tools: unknown[]): boolean {
+  return tools.some((tool) => isRecord(tool) && tool.type === "web_search");
+}
 
 /**
  * Map Anthropic thinking budget_tokens to Codex reasoning effort.
@@ -39,6 +51,13 @@ function extractTextContent(
     .filter((b) => b.type === "text" && typeof b.text === "string")
     .map((b) => b.text as string)
     .join("\n");
+}
+
+const BILLING_HEADER_PREFIX = "x-anthropic-billing-header:";
+
+function normalizeSystemInstructionText(text: string): string {
+  const trimmed = text.trim();
+  return trimmed.startsWith(BILLING_HEADER_PREFIX) ? "" : trimmed;
 }
 
 /**
@@ -174,14 +193,18 @@ function contentToInputItems(
 export function translateAnthropicToCodexRequest(
   req: AnthropicMessagesRequest,
   modelConfig?: ModelConfigOverride,
+  options?: { injectHostedWebSearch?: boolean; mapClaudeCodeWebSearch?: boolean },
 ): CodexResponsesRequest {
   // Extract system instructions
   let userInstructions: string;
   if (req.system) {
     if (typeof req.system === "string") {
-      userInstructions = req.system;
+      userInstructions = normalizeSystemInstructionText(req.system);
     } else {
-      userInstructions = req.system.map((b) => b.text).join("\n\n");
+      userInstructions = req.system
+        .map((b) => normalizeSystemInstructionText(b.text))
+        .filter(Boolean)
+        .join("\n\n");
     }
   } else {
     userInstructions = "You are a helpful assistant.";
@@ -210,8 +233,21 @@ export function translateAnthropicToCodexRequest(
   const modelInfo = getModelInfo(modelId);
 
   // Convert tools to Codex format
-  const codexTools = req.tools?.length ? anthropicToolsToCodex(req.tools) : [];
-  const codexToolChoice = anthropicToolChoiceToCodex(req.tool_choice);
+  const toolConversionOptions: AnthropicToolConversionOptions | undefined =
+    options?.mapClaudeCodeWebSearch === true ? { mapClaudeCodeWebSearch: true } : undefined;
+  const codexTools = req.tools?.length
+    ? toolConversionOptions
+      ? anthropicToolsToCodex(req.tools, toolConversionOptions)
+      : anthropicToolsToCodex(req.tools)
+    : [];
+  // Claude Code 在非 Anthropic 官方 base URL 下会禁用自身 ToolSearch。
+  // 只有走本地 Codex 后端时才默认交给 Codex hosted web_search。
+  if (options?.injectHostedWebSearch === true && !hasHostedWebSearchTool(codexTools)) {
+    codexTools.push({ type: "web_search" });
+  }
+  const codexToolChoice = toolConversionOptions
+    ? anthropicToolChoiceToCodex(req.tool_choice, req.tools, toolConversionOptions)
+    : anthropicToolChoiceToCodex(req.tool_choice, req.tools);
 
   // Build request
   const request: CodexResponsesRequest = {

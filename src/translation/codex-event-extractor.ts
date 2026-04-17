@@ -131,6 +131,10 @@ export async function* iterateCodexEvents(
       case "response.output_item.done":
       case "response.content_part.added":
       case "response.content_part.done":
+      case "response.output_text.annotation.added":
+      case "response.web_search_call.in_progress":
+      case "response.web_search_call.searching":
+      case "response.web_search_call.completed":
         // Lifecycle markers — no data extraction needed
         break;
 
