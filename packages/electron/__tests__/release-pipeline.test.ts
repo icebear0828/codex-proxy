@@ -6,16 +6,23 @@
  * Tests the sequence: core build → desktop build → esbuild → prepare-pack.
  */
 
-import { describe, it, expect, afterAll } from "vitest";
+import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { existsSync, rmSync, readFileSync, statSync } from "fs";
 import { resolve } from "path";
 import { execFileSync } from "child_process";
+import { acquireElectronTestLock } from "./test-lock.js";
 
 const PKG_DIR = resolve(import.meta.dirname, "..");
 const ROOT_DIR = resolve(PKG_DIR, "..", "..");
 const DIST_ELECTRON = resolve(PKG_DIR, "dist-electron");
 
 describe("release pipeline", () => {
+  let releaseLock: (() => void) | null = null;
+
+  beforeAll(async () => {
+    releaseLock = await acquireElectronTestLock();
+  });
+
   afterAll(() => {
     // Clean up build artifacts
     if (existsSync(DIST_ELECTRON)) rmSync(DIST_ELECTRON, { recursive: true });
@@ -25,6 +32,7 @@ describe("release pipeline", () => {
         cwd: PKG_DIR,
       });
     } catch { /* ignore */ }
+    releaseLock?.();
   });
 
   it("core build produces web assets", () => {

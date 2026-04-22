@@ -115,6 +115,29 @@ vi.mock("@src/tls/transport.js", () => ({
   getTransport: vi.fn(() => mockTransport),
 }));
 
+vi.mock("@src/proxy/ws-transport.js", () => ({
+  createWebSocketResponse: vi.fn(async (
+    wsUrl: string,
+    headers: Record<string, string>,
+    request: unknown,
+    signal?: AbortSignal,
+    proxyUrl?: string | null,
+  ) => {
+    const body = JSON.stringify(request);
+    _lastTransportBody = body;
+    const result = await _transportPost(wsUrl, headers, body, signal, undefined, proxyUrl);
+    if (result.status < 200 || result.status >= 300) {
+      const errorBody = await new Response(result.body as BodyInit).text();
+      const { CodexApiError } = await import("@src/proxy/codex-types.js");
+      throw new CodexApiError(result.status, errorBody);
+    }
+    return new Response(result.body as BodyInit, {
+      status: result.status,
+      headers: result.headers,
+    });
+  }),
+}));
+
 vi.mock("@src/tls/curl-binary.js", () => ({
   initProxy: vi.fn(async () => {}),
   getCurlBinary: vi.fn(() => null),

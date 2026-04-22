@@ -5,15 +5,22 @@
  * with the expected exports.
  */
 
-import { describe, it, expect, afterAll } from "vitest";
+import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { existsSync, rmSync, statSync } from "fs";
 import { resolve } from "path";
 import { execFileSync } from "child_process";
+import { acquireElectronTestLock } from "./test-lock.js";
 
 const PKG_DIR = resolve(import.meta.dirname, "..");
 const DIST = resolve(PKG_DIR, "dist-electron");
 
 describe("electron build (esbuild)", () => {
+  let releaseLock: (() => void) | null = null;
+
+  beforeAll(async () => {
+    releaseLock = await acquireElectronTestLock();
+  });
+
   // Build once for all tests in this suite
   const buildOnce = (() => {
     let built = false;
@@ -32,6 +39,7 @@ describe("electron build (esbuild)", () => {
     if (existsSync(DIST)) {
       rmSync(DIST, { recursive: true });
     }
+    releaseLock?.();
   });
 
   it("produces main.cjs (Electron main process)", () => {

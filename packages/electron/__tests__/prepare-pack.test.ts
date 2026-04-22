@@ -6,10 +6,11 @@
  * up afterward.
  */
 
-import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, beforeAll, beforeEach, afterEach, afterAll } from "vitest";
 import { existsSync, mkdirSync, writeFileSync, rmSync, readFileSync } from "fs";
 import { resolve } from "path";
 import { execFileSync } from "child_process";
+import { acquireElectronTestLock } from "./test-lock.js";
 
 const PKG_DIR = resolve(import.meta.dirname, "..");
 const ROOT_DIR = resolve(PKG_DIR, "..", "..");
@@ -19,6 +20,12 @@ const SCRIPT = resolve(PKG_DIR, "electron", "prepare-pack.mjs");
 const DIRS = ["config", "public", "bin"];
 
 describe("prepare-pack.mjs", () => {
+  let releaseLock: (() => void) | null = null;
+
+  beforeAll(async () => {
+    releaseLock = await acquireElectronTestLock();
+  });
+
   // Clean up any leftover copies before/after each test
   function cleanCopies(): void {
     for (const dir of DIRS) {
@@ -32,6 +39,9 @@ describe("prepare-pack.mjs", () => {
 
   beforeEach(cleanCopies);
   afterEach(cleanCopies);
+  afterAll(() => {
+    releaseLock?.();
+  });
 
   it("copies root directories into packages/electron/", () => {
     execFileSync("node", [SCRIPT], { cwd: PKG_DIR });

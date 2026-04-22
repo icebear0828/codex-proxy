@@ -6,7 +6,8 @@ public-desktop/
 data/
 public/
 docs/
-bin/
+bin/*
+!bin/README.md
 .env
 *.log
 .asar-out/

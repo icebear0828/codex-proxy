@@ -9,7 +9,11 @@ import {
   collectCodexResponse,
 } from "../translation/codex-to-openai.js";
 import { getConfig } from "../config.js";
-import { parseModelName, buildDisplayModelName, getModelAliases, getModelInfo } from "../models/model-store.js";
+import {
+  parseModelName,
+  buildDisplayModelName,
+  isRecognizedModelName,
+} from "../models/model-store.js";
 import { enqueueLogEntry } from "../logs/entry.js";
 import { getRealClientIp } from "../utils/get-real-client-ip.js";
 import { randomUUID } from "crypto";
@@ -55,11 +59,6 @@ function makeOpenAIFormat(wantReasoning: boolean): FormatAdapter {
     collectTranslator: (api, response, model, tupleSchema) =>
       collectCodexResponse(api, response, model, wantReasoning, tupleSchema),
   };
-}
-
-function hasKnownCodexModel(model: string): boolean {
-  const aliases = getModelAliases();
-  return !!aliases[model] || !!getModelInfo(model);
 }
 
 function formatModelNotFound(model: string) {
@@ -110,7 +109,7 @@ export function createChatRoutes(
       });
     }
     const req = parsed.data;
-    const routeMatch = upstreamRouter?.resolveMatch(req.model) ?? (hasKnownCodexModel(req.model)
+    const routeMatch = upstreamRouter?.resolveMatch(req.model) ?? (isRecognizedModelName(req.model)
       ? { kind: "codex" as const }
       : { kind: "not-found" as const });
 

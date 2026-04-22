@@ -314,16 +314,29 @@ describe("E2E: POST /v1/chat/completions", () => {
 
   // ── Model suffix ──────────────────────────────────────────────
 
-  // TODO: alias "codex" doesn't resolve suffix — codex-high returns 404
-  it.skip("model suffix: codex-high resolves reasoning effort", async () => {
+  it("model suffix: gpt-5.4-low resolves reasoning effort", async () => {
     setTransportPost(async () =>
       makeTransportResponse(buildTextStreamChunks("resp_chat_sfx", "Suffix!")),
+    );
+
+    const res = await chatRequest(defaultBody({ model: "gpt-5.4-low" }));
+    expect(res.status).toBe(200);
+
+    const sentBody = JSON.parse(getLastTransportBody()!);
+    expect(sentBody.model).toBe("gpt-5.4");
+    expect(sentBody.reasoning?.effort).toBe("low");
+  });
+
+  it("model suffix: codex-high resolves reasoning effort", async () => {
+    setTransportPost(async () =>
+      makeTransportResponse(buildTextStreamChunks("resp_chat_alias_sfx", "Alias suffix!")),
     );
 
     const res = await chatRequest(defaultBody({ model: "codex-high" }));
     expect(res.status).toBe(200);
 
     const sentBody = JSON.parse(getLastTransportBody()!);
+    expect(sentBody.model).toBe("gpt-5.4");
     expect(sentBody.reasoning?.effort).toBe("high");
   });
 });
