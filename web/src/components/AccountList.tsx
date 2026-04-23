@@ -128,6 +128,13 @@ export function AccountList({ accounts, loading, onDelete, onRefresh, refreshing
     localStorage.setItem(EXPAND_ALL_STORAGE_KEY, String(visibleCount > PAGE_SIZE));
   }, [visibleCount]);
 
+  const statusCounts: Record<string, number> = {};
+  for (const a of accounts) statusCounts[a.status] = (statusCounts[a.status] ?? 0) + 1;
+
+  const displayAccounts = statusFilter === "all"
+    ? accounts
+    : accounts.filter((a) => a.status === statusFilter);
+
   useEffect(() => {
     if (statusFilter !== "all" && !statusCounts[statusFilter]) {
       setStatusFilter("all");
@@ -135,15 +142,12 @@ export function AccountList({ accounts, loading, onDelete, onRefresh, refreshing
   }, [statusCounts, statusFilter]);
 
   useEffect(() => {
-    if (visibleCount > PAGE_SIZE) {
-      setVisibleCount((current) => Math.max(current, displayAccounts.length));
-    }
-  }, [displayAccounts.length, visibleCount]);
-
-  useEffect(() => {
-    if (visibleCount > PAGE_SIZE && displayAccounts.length <= PAGE_SIZE) {
+    if (visibleCount <= PAGE_SIZE) return;
+    if (displayAccounts.length <= PAGE_SIZE) {
       setVisibleCount(PAGE_SIZE);
+      return;
     }
+    setVisibleCount((current) => Math.max(current, displayAccounts.length));
   }, [displayAccounts.length, visibleCount]);
 
   useEffect(() => {
@@ -178,13 +182,6 @@ export function AccountList({ accounts, loading, onDelete, onRefresh, refreshing
   const isInvalid = (a: Account) => a.status === "expired" || a.status === "banned";
   const invalidCount = accounts.filter(isInvalid).length;
   const expiredCount = accounts.filter((a) => a.status === "expired").length;
-
-  const statusCounts: Record<string, number> = {};
-  for (const a of accounts) statusCounts[a.status] = (statusCounts[a.status] ?? 0) + 1;
-
-  const displayAccounts = statusFilter === "all"
-    ? accounts
-    : accounts.filter((a) => a.status === statusFilter);
 
   return (
     <section class="flex flex-col gap-4">

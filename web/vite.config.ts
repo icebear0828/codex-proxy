@@ -5,11 +5,13 @@ import path from "path";
 export default defineConfig({
   plugins: [preact()],
   resolve: {
-    alias: {
+    alias: [
       // Allow shared/ files outside web/ to resolve preact from web/node_modules
-      "preact": path.resolve(__dirname, "node_modules/preact"),
-      "preact/hooks": path.resolve(__dirname, "node_modules/preact/hooks"),
-    },
+      { find: /^preact$/, replacement: path.resolve(__dirname, "node_modules/preact") },
+      { find: /^preact\/hooks$/, replacement: path.resolve(__dirname, "node_modules/preact/hooks") },
+      { find: /^preact\/jsx-runtime$/, replacement: path.resolve(__dirname, "node_modules/preact/jsx-runtime") },
+      { find: /^preact\/jsx-dev-runtime$/, replacement: path.resolve(__dirname, "node_modules/preact/jsx-runtime") },
+    ],
   },
   build: {
     outDir: "../public",
