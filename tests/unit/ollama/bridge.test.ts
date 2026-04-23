@@ -361,7 +361,8 @@ describe("Ollama bridge routes", () => {
   });
 
   it("aborts malformed upstream SSE when the pending buffer grows too large", async () => {
-    fetchMock.mockResolvedValueOnce(new Response(`data: ${"x".repeat(10 * 1024 * 1024)}`, {
+    // Buffer cap is 64 MB — needs to accommodate 4K image_generation events.
+    fetchMock.mockResolvedValueOnce(new Response(`data: ${"x".repeat(65 * 1024 * 1024)}`, {
       status: 200,
       headers: { "Content-Type": "text/event-stream" },
     }));

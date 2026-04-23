@@ -186,9 +186,11 @@ describe("CodexApi.parseStream", () => {
     }).rejects.toThrow("Response body is null");
   });
 
-  it("throws on buffer overflow (>10MB)", async () => {
+  it("throws on buffer overflow (>64MB)", async () => {
+    // Buffer cap was raised to 64 MB to accommodate 4K image_generation_call
+    // events (base64-encoded 8 MP PNG can be 10-15 MB per single event).
     const api = createApi();
-    const hugeData = "x".repeat(11 * 1024 * 1024);
+    const hugeData = "x".repeat(65 * 1024 * 1024);
     const response = mockResponse(hugeData);
 
     await expect(async () => {

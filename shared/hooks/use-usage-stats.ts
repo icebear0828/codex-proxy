@@ -21,16 +21,23 @@ export interface UsageDataPoint {
 
 export type Granularity = "raw" | "hourly" | "daily";
 
+/** 15 s fetch hard timeout — stops the dashboard from showing "—" forever
+ *  when an extension, service worker, or upstream stall blackholes the
+ *  request and neither resolves nor rejects. */
+const FETCH_TIMEOUT_MS = 15_000;
+
 export function useUsageSummary(refreshIntervalMs = 30_000) {
   const [summary, setSummary] = useState<UsageSummary | null>(null);
   const [loading, setLoading] = useState(true);
 
   const load = useCallback(async () => {
     try {
-      const resp = await fetch("/admin/usage-stats/summary");
+      const resp = await fetch("/admin/usage-stats/summary", {
+        signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
+      });
       if (resp.ok) setSummary(await resp.json());
-    } catch { /* ignore */ }
-    setLoading(false);
+    } catch { /* network error / timeout / abort — fall through */ }
+    finally { setLoading(false); }
   }, []);
 
   useEffect(() => {
@@ -50,13 +57,14 @@ export function useUsageHistory(granularity: Granularity, hours: number, refresh
     try {
       const resp = await fetch(
         `/admin/usage-stats/history?granularity=${granularity}&hours=${hours}`,
+        { signal: AbortSignal.timeout(FETCH_TIMEOUT_MS) },
       );
       if (resp.ok) {
         const body = await resp.json();
         setDataPoints(body.data_points);
       }
-    } catch { /* ignore */ }
-    setLoading(false);
+    } catch { /* network error / timeout / abort — fall through */ }
+    finally { setLoading(false); }
   }, [granularity, hours]);
 
   useEffect(() => {
