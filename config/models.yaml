@@ -7,13 +7,13 @@
 # Dynamic fetch merges with static; backend entries win for shared IDs.
 # Models endpoint now requires ?client_version= query parameter.
 #
-# Last updated: 2026-04-15 (removed retired models: gpt-5.2-codex, gpt-5.1 family, gpt-5)
+# Last updated: 2026-04-23 (added gpt-5.5, gpt-image-2; default → gpt-5.4; removed codex alias)
 
 models:
-  # ── GPT-5.4 family (current flagship) ───────────────────────────────
-  - id: gpt-5.4
-    displayName: GPT-5.4
-    description: Latest frontier agentic coding model
+  # ── GPT-5.5 (newest general-purpose, Plus-only) ─────────────────────
+  - id: gpt-5.5
+    displayName: GPT-5.5
+    description: Latest general-purpose flagship
     isDefault: false
     supportedReasoningEfforts:
       - { reasoningEffort: low,    description: "Fast responses with lighter reasoning" }
@@ -22,6 +22,23 @@ models:
       - { reasoningEffort: xhigh,  description: "Extra high reasoning depth" }
     defaultReasoningEffort: medium
     inputModalities: [text, image]
+    outputModalities: [text]
+    supportsPersonality: false
+    upgrade: null
+
+  # ── GPT-5.4 family (default flagship) ───────────────────────────────
+  - id: gpt-5.4
+    displayName: GPT-5.4
+    description: Latest frontier agentic coding model
+    isDefault: true
+    supportedReasoningEfforts:
+      - { reasoningEffort: low,    description: "Fast responses with lighter reasoning" }
+      - { reasoningEffort: medium, description: "Balances speed and reasoning depth" }
+      - { reasoningEffort: high,   description: "Greater reasoning depth for complex problems" }
+      - { reasoningEffort: xhigh,  description: "Extra high reasoning depth" }
+    defaultReasoningEffort: medium
+    inputModalities: [text, image]
+    outputModalities: [text]
     supportsPersonality: false
     upgrade: null
 
@@ -36,6 +53,7 @@ models:
       - { reasoningEffort: xhigh,  description: "Extra high reasoning depth" }
     defaultReasoningEffort: medium
     inputModalities: [text, image]
+    outputModalities: [text]
     supportsPersonality: false
     upgrade: null
 
@@ -43,7 +61,7 @@ models:
   - id: gpt-5.3-codex
     displayName: GPT-5.3 Codex
     description: Frontier Codex-optimized agentic coding model
-    isDefault: true
+    isDefault: false
     supportedReasoningEfforts:
       - { reasoningEffort: low,    description: "Fast responses with lighter reasoning" }
       - { reasoningEffort: medium, description: "Balances speed and reasoning depth" }
@@ -95,6 +113,18 @@ models:
     supportsPersonality: false
     upgrade: null
 
+  # ── Image generation (tool-invoked, not a chat model) ───────────────
+  - id: gpt-image-2
+    displayName: GPT Image 2
+    description: Image generation backend invoked via the image_generation tool (not a chat model)
+    isDefault: false
+    supportedReasoningEfforts: []
+    defaultReasoningEffort: medium
+    inputModalities: [text, image]
+    outputModalities: [image]
+    supportsPersonality: false
+    upgrade: null
+
   # ── Open-source models ──────────────────────────────────────────────
   - id: gpt-oss-120b
     displayName: GPT-OSS 120B
@@ -122,5 +152,4 @@ models:
     supportsPersonality: false
     upgrade: null
 
-aliases:
-  codex: "gpt-5.3-codex"
+aliases: {}

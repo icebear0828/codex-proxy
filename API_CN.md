@@ -78,6 +78,61 @@ Google Gemini 兼容接口。
 - 流式：SSE 事件 `response.created`、`response.output_text.delta`、`response.completed`
 - 非流式：`{ response, usage, responseId }`
 
+#### image_generation 工具
+
+在 `tools[]` 里声明 `{"type": "image_generation", ...}`，模型可以调用服务端图像
+生成后端（`gpt-image-2`）。前提：**ChatGPT Plus 及以上** 账号——free 账号上游
+会静默剥掉工具，模型会改用 SVG 文本假装画图。
+
+**支持字段**（除 `type` 全部可选）：
+
+| 字段 | 枚举 / 范围 | 默认 | 备注 |
+|---|---|---|---|
+| `size` | `1024x1024`、`1024x1536`、`1536x1024`、`2048x2048`、`2048x3072`、`auto` | `auto` | 1024 以下分辨率被拒（最小像素预算）|
+| `output_format` | `png` / `jpeg` / `webp` | `png` | `gif` 被拒 |
+| `output_compression` | 整数 0–100 | `100` | **仅 jpeg / webp 生效** — png 下非 100 报错 |
+| `background` | `auto` / `opaque` | `auto` | `transparent` 被拒 |
+| `moderation` | `auto` / `low` | `auto` | 其他枚举被拒 |
+| `partial_images` | 整数 0–3 | 0 | `>3` 被拒 |
+
+**静默改写 / 明确拒绝的字段**：
+
+- `model` — 不管传啥，上游强制改回 `gpt-image-2`。
+- `quality` — 传任何值都被 echo 为 `auto`，用户值不生效。
+- `n` — `unknown_parameter`；一次只能出一张图。
+- `input_image`、`mask`、`input_fidelity`、`style`、`response_format` — 全部拒绝。
+
+**事件顺序**（模型调用工具时）：
+
+1. `response.created` — `tools[]` 被上游补全默认字段回显。
+2. `response.output_item.added` — `{type: "image_generation_call", ...}`。
+3. `response.image_generation_call.in_progress` → `.generating` → （可选）`.partial_image` × N。
+4. `response.output_item.done` — 完整的 `image_generation_call`：
+   - `result` — base64 图像（格式跟 `output_format`）。
+   - `revised_prompt` — 模型实际使用的最终提示词。
+5. `response.completed`。
+
+**编辑模式**（带参考图）：在 user message 的 content 数组里加 `input_image`
+块，`data:` URL 和 HTTPS URL 都支持。
+
+```jsonc
+{
+  "model": "gpt-5.4",
+  "stream": true,
+  "input": [{
+    "role": "user",
+    "content": [
+      {"type": "input_text", "text": "把这张图的天空改成黄昏。"},
+      {"type": "input_image", "image_url": "data:image/png;base64,AAA...", "detail": "high"}
+    ]
+  }],
+  "tools": [{"type": "image_generation", "size": "1024x1024"}]
+}
+```
+
+合法 content-part 类型（由上游枚举校验回显）：`input_text`、`input_image`、
+`output_text`、`refusal`、`input_file`、`computer_screenshot`、`summary_text`。
+
 ---
 
 ## 模型

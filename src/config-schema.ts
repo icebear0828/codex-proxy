@@ -16,7 +16,7 @@ export const ConfigSchema = z.object({
     chromium_version: z.string().default("136"),
   }),
   model: z.object({
-    default: z.string().default("gpt-5.3-codex"),
+    default: z.string().default("gpt-5.4"),
     default_reasoning_effort: z.string().nullable().default(null),
     default_service_tier: z.string().nullable().default(null),
     inject_desktop_context: z.boolean().default(false),

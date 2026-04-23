@@ -36,7 +36,7 @@ client:
   arch: "arm64"
   chromium_version: "136"
 model:
-  default: "gpt-5.3-codex"
+  default: "gpt-5.4"
   default_reasoning_effort: null
   default_service_tier: null
   suppress_desktop_directives: true
@@ -92,7 +92,7 @@ describe("config", () => {
     const config = loadConfig("/tmp/test-config");
     expect(config.api.base_url).toBe("https://chatgpt.com/backend-api");
     expect(config.server.port).toBe(8080);
-    expect(config.model.default).toBe("gpt-5.3-codex");
+    expect(config.model.default).toBe("gpt-5.4");
   });
 
   it("loads fingerprint config", async () => {

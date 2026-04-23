@@ -28,6 +28,8 @@ export interface CodexModelInfo {
   supportedReasoningEfforts: { reasoningEffort: string; description: string }[];
   defaultReasoningEffort: string;
   inputModalities: string[];
+  /** Output content types. Defaults to ['text'] when absent (chat models). */
+  outputModalities?: string[];
   supportsPersonality: boolean;
   upgrade: string | null;
   /** Where this model entry came from */
@@ -62,6 +64,7 @@ export interface BackendModelEntry {
     description?: string;
   }>;
   input_modalities?: string[];
+  output_modalities?: string[];
   supports_personality?: boolean;
   upgrade?: string | null;
   prefer_websockets?: boolean;
@@ -189,6 +192,10 @@ export class ModelStore {
           supportedReasoningEfforts: _hasExplicitEfforts
             ? model.supportedReasoningEfforts
             : existing.supportedReasoningEfforts,
+          // Preserve static isDefault when backend doesn't explicitly mark a default.
+          // Codex backend typically omits is_default for non-flagship models, which
+          // would otherwise clobber our YAML-declared default to false.
+          isDefault: raw.is_default === true ? true : existing.isDefault,
           source: "backend",
         });
       } else {
@@ -389,7 +396,7 @@ function normalizeBackendModel(raw: BackendModelEntry): NormalizedModelWithMeta 
         description: e.description ?? "",
       }));
 
-  return {
+  const out: NormalizedModelWithMeta = {
     id,
     displayName: raw.display_name ?? raw.name ?? id,
     description: raw.description ?? "",
@@ -404,6 +411,10 @@ function normalizeBackendModel(raw: BackendModelEntry): NormalizedModelWithMeta 
     source: "backend",
     _hasExplicitEfforts: hasExplicitEfforts,
   };
+  // Only set outputModalities when backend provided it — otherwise the spread
+  // in applyBackendModels would clobber the static catalog value with undefined.
+  if (raw.output_modalities) out.outputModalities = raw.output_modalities;
+  return out;
 }
 
 // ── Default instance + backward-compatible free functions ─────────

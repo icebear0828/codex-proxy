@@ -78,6 +78,63 @@ Native Codex Responses API passthrough (WebSocket transport).
 - Streaming: SSE with `response.created`, `response.output_text.delta`, `response.completed`
 - Non-streaming: `{ response, usage, responseId }`
 
+#### image_generation tool
+
+Declare `{"type": "image_generation", ...}` in `tools[]` to let the model invoke
+the server-side image generation backend (`gpt-image-2`). Requires a **ChatGPT
+Plus or higher** account — free plans have the tool silently stripped upstream
+and the model falls back to returning SVG text.
+
+**Supported fields** (all optional except `type`):
+
+| Field | Enum / range | Default | Notes |
+|---|---|---|---|
+| `size` | `1024x1024`, `1024x1536`, `1536x1024`, `2048x2048`, `2048x3072`, `auto` | `auto` | Resolutions below 1024 px are rejected (min pixel budget) |
+| `output_format` | `png` / `jpeg` / `webp` | `png` | `gif` is rejected |
+| `output_compression` | integer 0–100 | `100` | **jpeg / webp only** — PNG rejects any non-100 |
+| `background` | `auto` / `opaque` | `auto` | `transparent` is rejected for this model |
+| `moderation` | `auto` / `low` | `auto` | other enums rejected |
+| `partial_images` | integer 0–3 | 0 | `>3` rejected |
+
+**Silently rewritten / hard-rejected fields**:
+
+- `model` — whatever you send, upstream forces `gpt-image-2`.
+- `quality` — any value is echoed back as `auto`; the user-supplied value has no effect.
+- `n` — rejected (`unknown_parameter`); one image per call.
+- `input_image`, `mask`, `input_fidelity`, `style`, `response_format` — rejected.
+
+**Event stream order** (when the model invokes the tool):
+
+1. `response.created` — echoes `tools[]` with upstream-normalized fields.
+2. `response.output_item.added` — `{type: "image_generation_call", ...}`.
+3. `response.image_generation_call.in_progress` → `.generating` → (optional) `.partial_image` × N.
+4. `response.output_item.done` — the completed `image_generation_call` with:
+   - `result` — base64-encoded image bytes (PNG / JPEG / WebP by `output_format`).
+   - `revised_prompt` — the final prompt the model actually used.
+5. `response.completed`.
+
+**Edit mode** (supply a reference image): put an `input_image` block in the user
+message content. `data:` URLs and HTTPS URLs both work.
+
+```jsonc
+{
+  "model": "gpt-5.4",
+  "stream": true,
+  "input": [{
+    "role": "user",
+    "content": [
+      {"type": "input_text", "text": "Make this sky a sunset."},
+      {"type": "input_image", "image_url": "data:image/png;base64,AAA...", "detail": "high"}
+    ]
+  }],
+  "tools": [{"type": "image_generation", "size": "1024x1024"}]
+}
+```
+
+Legal content-part types (from upstream enum validation): `input_text`,
+`input_image`, `output_text`, `refusal`, `input_file`, `computer_screenshot`,
+`summary_text`.
+
 ### Ollama-Compatible Bridge
 
 The optional bridge runs on a separate listener, defaulting to `http://127.0.0.1:11434`.

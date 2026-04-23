@@ -37,7 +37,7 @@ export function createMockConfig(overrides?: MockConfigOverrides): AppConfig {
       chromium_version: "136",
     },
     model: {
-      default: "gpt-5.3-codex",
+      default: "gpt-5.4",
       default_reasoning_effort: null,
       default_service_tier: null,
       inject_desktop_context: false,

@@ -131,7 +131,7 @@ npm run dev                        # 开发模式（热重载）
 curl http://localhost:8080/v1/chat/completions \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer your-api-key" \
-  -d '{"model":"codex","messages":[{"role":"user","content":"Hello!"}],"stream":true}'
+  -d '{"model":"gpt-5.4","messages":[{"role":"user","content":"Hello!"}],"stream":true}'
 ```
 
 看到 AI 回复的文字流即部署成功。如果返回 401，请检查 API Key 是否正确。
@@ -213,39 +213,59 @@ curl http://localhost:8080/v1/chat/completions \
 
 ## 📦 可用模型
 
-| 模型 ID | 别名 | 推理等级 | 说明 |
-|---------|------|---------|------|
-| `gpt-5.4` | — | low / medium / high / xhigh | 最新旗舰模型 |
-| `gpt-5.4-mini` | — | low / medium / high / xhigh | 5.4 轻量版 |
-| `gpt-5.3-codex` | — | low / medium / high / xhigh | 5.3 编程优化模型 |
-| `gpt-5.2-codex` | `codex` | low / medium / high / xhigh | 前沿 agentic 编程模型（默认） |
-| `gpt-5.2` | — | low / medium / high / xhigh | 专业工作 + 长时间代理 |
-| `gpt-5.1-codex-max` | — | low / medium / high / xhigh | 扩展上下文 / 深度推理 |
-| `gpt-5.1-codex` | — | low / medium / high | GPT-5.1 编程模型 |
-| `gpt-5.1` | — | low / medium / high | 通用 GPT-5.1 |
-| `gpt-5-codex` | — | low / medium / high | GPT-5 编程模型 |
-| `gpt-5` | — | minimal / low / medium / high | 通用 GPT-5 |
-| `gpt-oss-120b` | — | low / medium / high | 开源 120B 模型 |
-| `gpt-oss-20b` | — | low / medium / high | 开源 20B 模型 |
-| `gpt-5.1-codex-mini` | — | medium / high | 轻量快速编程模型 |
-| `gpt-5-codex-mini` | — | medium / high | 轻量编程模型 |
+| 模型 ID | 推理等级 | 输出 | 说明 |
+|---------|---------|------|------|
+| `gpt-5.5` | low / medium / high / xhigh | 文本 | 通用旗舰（Plus+） |
+| `gpt-5.4` | low / medium / high / xhigh | 文本 | 最新旗舰模型（默认） |
+| `gpt-5.4-mini` | low / medium / high / xhigh | 文本 | 5.4 轻量版 |
+| `gpt-5.3-codex` | low / medium / high / xhigh | 文本 | 5.3 编程优化模型 |
+| `gpt-5.2` | low / medium / high / xhigh | 文本 | 专业工作 + 长时间代理 |
+| `gpt-5-codex` | low / medium / high | 文本 | GPT-5 编程模型 |
+| `gpt-5-codex-mini` | medium / high | 文本 | 轻量编程模型 |
+| `gpt-oss-120b` | low / medium / high | 文本 | 开源 120B 模型 |
+| `gpt-oss-20b` | low / medium / high | 文本 | 开源 20B 模型 |
+| `gpt-image-2` | — | 图像 | 图像生成后端（Plus+，通过 `image_generation` 工具调用） |
 
-> **后缀**：任意模型名后追加 `-fast` 启用 Fast 模式，`-high`/`-low` 切换推理等级。例如：`codex-fast`、`gpt-5.2-codex-high-fast`。
+> **后缀**：任意 chat 模型名后追加 `-fast` 启用 Fast 模式，`-high`/`-low` 切换推理等级。例如：`gpt-5.4-fast`、`gpt-5.4-high-fast`。图像模型（`gpt-image-2`）不支持后缀。
 >
 > **Plan Routing**：不同 plan（free/plus/team/business）的账号自动路由到各自支持的模型。模型列表由后端动态获取，自动同步。
 >
 > **前端模型选择 ≠ 配置文件**：Dashboard 中切换模型只影响前端展示和 API 示例中的模型名，**不会修改** `config/default.yaml` 或 `data/local.yaml` 中的 `model.default`。实际使用哪个模型取决于客户端请求中的 `model` 字段（如 Cursor、Claude Code 等自行指定），配置文件中的 `model.default` 仅在客户端未指定模型时作为兜底。
 
+### 🖼️ 图像生成
+
+图像生成走 `/v1/responses` 的 `image_generation` 内置工具，后端固定为 `gpt-image-2`。
+
+**前提**：ChatGPT **Plus 及以上** 账号（free 账号上游会静默剥掉工具，模型会降级用 SVG 文本假装画图）。
+
+```bash
+curl -N http://localhost:8080/v1/responses \
+  -H "Authorization: Bearer $PROXY_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "gpt-5.4",
+    "stream": true,
+    "input": [{"role":"user","content":"Draw a red circle on white background."}],
+    "tools": [{"type":"image_generation","size":"1024x1024"}]
+  }'
+```
+
+常用参数：`size`（1024×1024 / 1024×1536 / 1536×1024 / 2048×2048 / `auto`）、`output_format`（`png` / `jpeg` / `webp`）、`output_compression`（jpeg / webp 可调）、`background`（`auto` / `opaque`）、`moderation`（`auto` / `low`）、`partial_images`（0–3）。一次只能出 1 张图（`n` 固定为 1）；`model` 字段不管传什么都会被上游改写回 `gpt-image-2`。详见 [API.md](./API.md#image_generation-tool)。
+
+事件流里 `image_generation_call` item 的 `result` 字段即 base64 编码的图像；`revised_prompt` 是上游改写后的最终提示词。
+
+**编辑模式**（带参考图）：在 user message 的 `content` 里追加 `{"type":"input_image","image_url":"data:image/png;base64,..."}` 即可。
+
 ## 🔗 客户端接入
 
-> 所有客户端的 API Key 均从控制面板 (`http://localhost:8080`) 获取。模型名填 `codex`（默认 gpt-5.2-codex）或任意 [可用模型](#-可用模型) ID。
+> 所有客户端的 API Key 均从控制面板 (`http://localhost:8080`) 获取。模型名填具体 ID（默认 `gpt-5.4`）或任意 [可用模型](#-可用模型) ID。
 
 ### Claude Code (CLI)
 
 ```bash
 export ANTHROPIC_BASE_URL=http://localhost:8080
 export ANTHROPIC_API_KEY=your-api-key
-# 切换模型: export ANTHROPIC_MODEL=codex-fast / gpt-5.4 / gpt-5.1-codex-mini ...
+# 切换模型: export ANTHROPIC_MODEL=gpt-5.4 / gpt-5.4-fast / gpt-5.4-mini ...
 claude
 ```
 
@@ -296,7 +316,7 @@ codex
 2. 选择 OpenAI API
 3. 设置 **Base URL**: `http://localhost:8080/v1`
 4. 设置 **API Key**: 你的 API Key
-5. 添加模型名 `codex`（或其他模型 ID）
+5. 添加模型名 `gpt-5.4`（或其他模型 ID）
 
 ### Windsurf
 
@@ -304,7 +324,7 @@ codex
 2. 选择 **OpenAI Compatible**
 3. **API Base URL**: `http://localhost:8080/v1`
 4. **API Key**: 你的 API Key
-5. **Model**: `codex`
+5. **Model**: `gpt-5.4`
 
 ### Cline (VSCode 扩展)
 
@@ -312,7 +332,7 @@ codex
 2. **API Provider**: 选择 OpenAI Compatible
 3. **Base URL**: `http://localhost:8080/v1`
 4. **API Key**: 你的 API Key
-5. **Model ID**: `codex`
+5. **Model ID**: `gpt-5.4`
 
 ### Continue (VSCode 扩展)
 
@@ -322,7 +342,7 @@ codex
   "models": [{
     "title": "Codex",
     "provider": "openai",
-    "model": "codex",
+    "model": "gpt-5.4",
     "apiBase": "http://localhost:8080/v1",
     "apiKey": "your-api-key"
   }]
@@ -334,14 +354,14 @@ codex
 ```bash
 aider --openai-api-base http://localhost:8080/v1 \
       --openai-api-key your-api-key \
-      --model openai/codex
+      --model openai/gpt-5.4
 ```
 
 或设置环境变量：
 ```bash
 export OPENAI_API_BASE=http://localhost:8080/v1
 export OPENAI_API_KEY=your-api-key
-aider --model openai/codex
+aider --model openai/gpt-5.4
 ```
 
 ### Cherry Studio
@@ -350,7 +370,7 @@ aider --model openai/codex
 2. **类型**: OpenAI
 3. **API 地址**: `http://localhost:8080/v1`
 4. **API Key**: 你的 API Key
-5. 添加模型 `codex`
+5. 添加模型 `gpt-5.4`
 
 ### Ollama 兼容客户端
 
@@ -360,14 +380,14 @@ aider --model openai/codex
 |--------|-----|
 | Base URL | `http://localhost:11434` |
 | API Key | 不需要，Bridge 内部会使用 Codex Proxy 的密钥访问主服务 |
-| Model | `codex`（或其他模型 ID） |
+| Model | `gpt-5.4`（或其他模型 ID） |
 
 ```bash
 curl http://localhost:11434/api/tags
 
 curl http://localhost:11434/api/chat \
   -H "Content-Type: application/json" \
-  -d '{"model":"codex","messages":[{"role":"user","content":"Hello!"}],"stream":true}'
+  -d '{"model":"gpt-5.4","messages":[{"role":"user","content":"Hello!"}],"stream":true}'
 ```
 
 > Ollama API 本身没有鉴权。默认仅监听 `127.0.0.1`，不建议暴露到公网或未信任的局域网。
@@ -380,7 +400,7 @@ curl http://localhost:11434/api/chat \
 |--------|-----|
 | Base URL | `http://localhost:8080/v1` |
 | API Key | 控制面板获取 |
-| Model | `codex`（或其他模型 ID） |
+| Model | `gpt-5.4`（或其他模型 ID） |
 
 <details>
 <summary>SDK 代码示例（Python / Node.js）</summary>
@@ -390,7 +410,7 @@ curl http://localhost:11434/api/chat \
 from openai import OpenAI
 client = OpenAI(base_url="http://localhost:8080/v1", api_key="your-api-key")
 for chunk in client.chat.completions.create(
-    model="codex", messages=[{"role": "user", "content": "Hello!"}], stream=True
+    model="gpt-5.4", messages=[{"role": "user", "content": "Hello!"}], stream=True
 ):
     print(chunk.choices[0].delta.content or "", end="")
 ```
@@ -400,7 +420,7 @@ for chunk in client.chat.completions.create(
 import OpenAI from "openai";
 const client = new OpenAI({ baseURL: "http://localhost:8080/v1", apiKey: "your-api-key" });
 const stream = await client.chat.completions.create({
-  model: "codex", messages: [{ role: "user", content: "Hello!" }], stream: true,
+  model: "gpt-5.4", messages: [{ role: "user", content: "Hello!" }], stream: true,
 });
 for await (const chunk of stream) {
   process.stdout.write(chunk.choices[0]?.delta?.content || "");
