@@ -95,6 +95,7 @@ models:
       - { reasoningEffort: low, description: "Low" }
     defaultReasoningEffort: low
     inputModalities: [text]
+    outputModalities: [image]
     supportsPersonality: false
     upgrade: null
 aliases:
@@ -330,6 +331,50 @@ describe("ModelStore", () => {
       }]);
       const plans = getModelPlanTypes("gpt-5.4");
       expect(plans).toContain("plus");
+    });
+
+    it("preserves static isDefault when backend omits is_default", () => {
+      // Fixture declares gpt-5.4 as isDefault: true. A backend fetch that
+      // doesn't include is_default must not silently demote it to false.
+      loadStaticModels("/tmp/test-config");
+      applyBackendModels([{
+        slug: "gpt-5.4",
+        display_name: "Backend 5.4",
+        // no is_default field
+      }]);
+      expect(getModelInfo("gpt-5.4")!.isDefault).toBe(true);
+    });
+
+    it("lets backend promote a non-default to default via is_default: true", () => {
+      loadStaticModels("/tmp/test-config");
+      applyBackendModels([{
+        slug: "gpt-5.3-codex",
+        display_name: "Backend 5.3",
+        is_default: true,
+      }]);
+      expect(getModelInfo("gpt-5.3-codex")!.isDefault).toBe(true);
+    });
+
+    it("preserves static outputModalities when backend omits output_modalities", () => {
+      // Fixture declares gpt-5.3-codex-spark with outputModalities: [image].
+      // A backend fetch without the field must keep it, not clobber to undefined.
+      loadStaticModels("/tmp/test-config");
+      applyBackendModels([{
+        slug: "gpt-5.3-codex-spark",
+        display_name: "Backend Spark",
+        // no output_modalities field
+      }]);
+      expect(getModelInfo("gpt-5.3-codex-spark")!.outputModalities).toEqual(["image"]);
+    });
+
+    it("lets backend override outputModalities when output_modalities is present", () => {
+      loadStaticModels("/tmp/test-config");
+      applyBackendModels([{
+        slug: "gpt-5.3-codex-spark",
+        display_name: "Backend Spark",
+        output_modalities: ["text", "audio"],
+      }]);
+      expect(getModelInfo("gpt-5.3-codex-spark")!.outputModalities).toEqual(["text", "audio"]);
     });
   });
 

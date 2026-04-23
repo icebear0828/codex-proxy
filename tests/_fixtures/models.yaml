@@ -46,6 +46,7 @@ models:
       - { reasoningEffort: low, description: "Fastest responses" }
     defaultReasoningEffort: low
     inputModalities: [text]
+    outputModalities: [image]
     supportsPersonality: false
     upgrade: null
 

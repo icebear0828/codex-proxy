@@ -63,7 +63,14 @@ export function createModelRoutes(apiKeyPool?: ApiKeyPool): Hono {
   // Full catalog with reasoning efforts (for dashboard UI)
   // Must be before :modelId to avoid being matched as a model ID
   app.get("/v1/models/catalog", (c) => {
-    return c.json(getModelCatalog());
+    // Default outputModalities to ["text"] for chat-family entries that don't
+    // set it explicitly, matching the interface's documented default.
+    return c.json(
+      getModelCatalog().map((m) => ({
+        ...m,
+        outputModalities: m.outputModalities ?? ["text"],
+      })),
+    );
   });
 
   app.get("/v1/models/:modelId", (c) => {
