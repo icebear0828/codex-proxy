@@ -43,7 +43,10 @@ export function parseSSEBlock(block: string): CodexSSEEvent | null {
   return { event, data };
 }
 
-const MAX_SSE_BUFFER = 10 * 1024 * 1024; // 10MB
+// 64 MB — large enough to hold a single 4K image_generation_call event
+// (base64-encoded 8 MP PNG can be 10-15 MB) with headroom. The buffer caps
+// one unparsed event block between two \n\n delimiters, not the whole stream.
+const MAX_SSE_BUFFER = 64 * 1024 * 1024;
 
 export async function* parseSSEStream(
   response: Response,

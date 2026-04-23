@@ -62,7 +62,9 @@ const CONTEXT_WINDOW_OVERRIDES = new Map<string, number>([
 ]);
 
 const encoder = new TextEncoder();
-const MAX_SSE_BUFFER = 10 * 1024 * 1024;
+// Keep in sync with src/proxy/codex-sse.ts — 64 MB accommodates 4K
+// image_generation_call events without prematurely aborting the stream.
+const MAX_SSE_BUFFER = 64 * 1024 * 1024;
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === "object" && !Array.isArray(value);
