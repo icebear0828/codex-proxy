@@ -634,11 +634,15 @@ curl -X POST http://localhost:8080/auth/accounts/import \
 ### [Unreleased]
 
 **Added**
+- `config/models.yaml`: `gpt-5.5` (Plus-only general-purpose chat) and `gpt-image-2` (Plus-only image-generation backend) entered the static catalog
+- `CodexModelInfo.outputModalities` optional field on the model catalog interface to flag image-gen models apart from chat models (`src/models/model-store.ts`, `BackendModelEntry.output_modalities` also added for backend passthrough). `/v1/models/catalog` defaults missing values to `["text"]` so API output matches the documented contract.
+- README 新增图像生成小节 + 模型表 Output 列；`API.md` / `API_CN.md` 补 `image_generation` 工具参数矩阵、事件流、编辑模式文档
 - Dashboard: new Logs tab to inspect ingress/egress requests, with enable/pause controls, filters, search, and details panel.
 - 控制台新增日志页面：支持启用/暂停、方向筛选、搜索与详情查看，便于排查请求流向。
-- `auth.tier_priority` 配置项：按 plan 类型排序账号选择优先级（如 `["plus", "pro", "team", "free"]`），高优先级 tier 的账号在有可用时始终优先选择；默认 `null`（不启用），与所有轮转策略兼容 (#348)
-- `server.trust_proxy` config option (default `false`): when enabled, the real client IP is read from `X-Forwarded-For` / `X-Real-IP` headers instead of the raw socket address. Required for users who expose codex-proxy via tunnel software (frp, ngrok, etc.) so that dashboard auth works correctly — previously all tunnel traffic appeared as `127.0.0.1` and bypassed authentication even when `proxy_api_key` was set (#350)
+- ...（[查看全部](./CHANGELOG.md)）
 **Changed**
+- Default model switched from `gpt-5.3-codex` → `gpt-5.4` (`config/default.yaml`, `config/models.yaml.isDefault`, Zod schema default in `src/config-schema.ts`). Removed the `codex` alias — clients must use full model IDs. Sonnet mapping in Anthropic preset/README 推荐表保持 `gpt-5.3-codex` 不变（编程场景更贴位）
+- Static `isDefault` and `outputModalities` on `config/models.yaml` entries now survive the backend dynamic fetch merge (previously the spread of normalized `undefined`/`false` silently clobbered YAML-declared values)
 - Dashboard session 默认 TTL 从 1 小时延长至 24 小时
 **Fixed**
 - 无可用账号时不再执行无意义的重试，直接返回描述性错误信息（含各状态账号计数：rate-limited / expired / banned / disabled）(#362)
