@@ -89,7 +89,7 @@ and the model falls back to returning SVG text.
 
 | Field | Enum / range | Default | Notes |
 |---|---|---|---|
-| `size` | `1024x1024`, `1024x1536`, `1536x1024`, `2048x2048`, `2048x3072`, `auto` | `auto` | Resolutions below 1024 px are rejected (min pixel budget) |
+| `size` | `1024x1024`, `1024x1536`, `1536x1024`, `2048x2048`, `2048x3072`, `3072x2048`, `3840x2160` (4K UHD), `auto` | `auto` | Longest edge ≤ 3840 px; total pixel budget ≈ 8 MP (`3072x3072` is rejected). Resolutions below 1024 px also rejected (min pixel budget) |
 | `output_format` | `png` / `jpeg` / `webp` | `png` | `gif` is rejected |
 | `output_compression` | integer 0–100 | `100` | **jpeg / webp only** — PNG rejects any non-100 |
 | `background` | `auto` / `opaque` | `auto` | `transparent` is rejected for this model |
@@ -118,7 +118,7 @@ message content. `data:` URLs and HTTPS URLs both work.
 
 ```jsonc
 {
-  "model": "gpt-5.4",
+  "model": "gpt-5.5",
   "stream": true,
   "input": [{
     "role": "user",

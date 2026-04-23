@@ -88,7 +88,7 @@ Google Gemini 兼容接口。
 
 | 字段 | 枚举 / 范围 | 默认 | 备注 |
 |---|---|---|---|
-| `size` | `1024x1024`、`1024x1536`、`1536x1024`、`2048x2048`、`2048x3072`、`auto` | `auto` | 1024 以下分辨率被拒（最小像素预算）|
+| `size` | `1024x1024`、`1024x1536`、`1536x1024`、`2048x2048`、`2048x3072`、`3072x2048`、`3840x2160`（4K UHD）、`auto` | `auto` | 最长边 ≤ 3840 px；总像素预算约 8 MP（`3072x3072` 会被拒）；1024 以下分辨率也被拒（最小像素预算）|
 | `output_format` | `png` / `jpeg` / `webp` | `png` | `gif` 被拒 |
 | `output_compression` | 整数 0–100 | `100` | **仅 jpeg / webp 生效** — png 下非 100 报错 |
 | `background` | `auto` / `opaque` | `auto` | `transparent` 被拒 |
@@ -117,7 +117,7 @@ Google Gemini 兼容接口。
 
 ```jsonc
 {
-  "model": "gpt-5.4",
+  "model": "gpt-5.5",
   "stream": true,
   "input": [{
     "role": "user",
