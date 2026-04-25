@@ -17,6 +17,41 @@
 import type { CodexInputItem } from "./codex-api.js";
 import type { ParsedRateLimit } from "./rate-limit-headers.js";
 import { parseRateLimitsEvent } from "./rate-limit-headers.js";
+import { CodexApiError } from "./codex-types.js";
+
+/**
+ * Map an upstream WS terminal error frame (`type: "error"` or
+ * `type: "response.failed"`) to an HTTP-equivalent status so that the
+ * proxy-handler's existing CodexApiError rotation flow can take over.
+ *
+ * Returns null for events we don't want to rotate on (genuine model
+ * errors, validation errors, etc.) — those keep the SSE pass-through
+ * behavior so the client sees the real reason.
+ */
+function classifyWsErrorEvent(msg: Record<string, unknown>): { status: number } | null {
+  const type = typeof msg.type === "string" ? msg.type : "";
+  if (type !== "error" && type !== "response.failed") return null;
+  const errorObj = typeof msg.error === "object" && msg.error !== null
+    ? (msg.error as Record<string, unknown>)
+    : null;
+  if (!errorObj) return null;
+  const codeRaw =
+    (typeof errorObj.code === "string" ? errorObj.code : null) ??
+    (typeof errorObj.type === "string" ? errorObj.type : null) ??
+    "";
+  const lower = codeRaw.toLowerCase();
+  if (lower.includes("usage_limit") || lower.includes("rate_limit")) return { status: 429 };
+  if (lower.includes("quota_exhausted") || lower.includes("payment_required")) return { status: 402 };
+  if (
+    lower.includes("unauthorized") ||
+    lower.includes("token_invalid") ||
+    lower.includes("deactivated")
+  ) {
+    return { status: 401 };
+  }
+  if (lower.includes("forbidden") || lower.includes("banned")) return { status: 403 };
+  return null;
+}
 
 /** Cached ws module — loaded once on first use. */
 let _WS: typeof import("ws").default | undefined;
@@ -96,7 +131,11 @@ export async function createWebSocketResponse(
     const encoder = new TextEncoder();
     let controller: ReadableStreamDefaultController<Uint8Array> | null = null;
     let streamClosed = false;
-    let connected = false;
+    // Flips the first time we either resolve(Response) or reject(...).
+    // Internal `codex.rate_limits` frames do NOT flip this — we keep waiting
+    // for a real first frame so we can detect early upstream errors and
+    // route them through the existing CodexApiError → rotation path.
+    let earlyDecisionMade = false;
 
     function closeStream() {
       if (!streamClosed && controller) {
@@ -114,8 +153,9 @@ export async function createWebSocketResponse(
 
     // Abort signal handling
     const onAbort = () => {
-      ws.close(1000, "aborted");
-      if (!connected) {
+      try { ws.close(1000, "aborted"); } catch { /* already closing */ }
+      if (!earlyDecisionMade) {
+        earlyDecisionMade = true;
         reject(new Error("Aborted during WebSocket connect"));
       }
     };
@@ -136,48 +176,75 @@ export async function createWebSocketResponse(
       upgradeHeaders = response.headers;
     });
 
-    ws.on("open", () => {
-      connected = true;
-      ws.send(JSON.stringify(request));
-
-      // Build response headers from WS upgrade headers
+    function buildResponse(): Response {
       const responseHeaders = new Headers({ "content-type": "text/event-stream" });
       for (const [key, value] of Object.entries(upgradeHeaders)) {
         const v = Array.isArray(value) ? value[0] : value;
         if (v != null) responseHeaders.set(key, v);
       }
-      resolve(new Response(stream, { status: 200, headers: responseHeaders }));
+      return new Response(stream, { status: 200, headers: responseHeaders });
+    }
+
+    ws.on("open", () => {
+      ws.send(JSON.stringify(request));
+      // resolve() is deferred until the first non-internal frame arrives in
+      // ws.on("message"). This lets us classify early upstream errors (e.g.
+      // usage_limit_reached) and reject with a CodexApiError so the
+      // proxy-handler's existing rotation flow takes over instead of the
+      // error being passed through mid-stream to the client.
     });
 
     ws.on("message", (data: Buffer | string) => {
       if (streamClosed) return;
       const raw = typeof data === "string" ? data : data.toString("utf-8");
 
+      let msg: Record<string, unknown> | null = null;
+      let type = "unknown";
       try {
-        const msg = JSON.parse(raw) as Record<string, unknown>;
-        const type = (msg.type as string) ?? "unknown";
+        msg = JSON.parse(raw) as Record<string, unknown>;
+        type = typeof msg.type === "string" ? msg.type : "unknown";
+      } catch {
+        // Non-JSON message — handled below as raw data.
+      }
 
-        // Extract rate-limit data from codex.rate_limits event (WS-only)
-        if (type === "codex.rate_limits" && onRateLimits) {
-          const rl = parseRateLimitsEvent(msg);
-          if (rl) onRateLimits(rl);
-          // Don't forward internal rate-limit events to downstream clients
-          return;
+      // Internal rate-limit frames are observed via `onRateLimits` but not
+      // streamed, and they don't flip the early-decision flag — we keep
+      // waiting for a real frame so we can detect early upstream errors.
+      // If no callback is provided (test-only path), fall through and
+      // forward the frame as SSE like any other event.
+      if (msg && type === "codex.rate_limits" && onRateLimits) {
+        const rl = parseRateLimitsEvent(msg);
+        if (rl) onRateLimits(rl);
+        return;
+      }
+
+      if (!earlyDecisionMade) {
+        earlyDecisionMade = true;
+        if (msg) {
+          const classified = classifyWsErrorEvent(msg);
+          if (classified) {
+            reject(new CodexApiError(classified.status, JSON.stringify(msg)));
+            try { ws.close(1000, "early upstream error"); } catch { /* already closing */ }
+            return;
+          }
         }
+        resolve(buildResponse());
+        // fall through to enqueue this first frame
+      }
 
+      if (msg) {
         // Re-encode as SSE: event: <type>\ndata: <full json>\n\n
         const sse = `event: ${type}\ndata: ${raw}\n\n`;
         controller!.enqueue(encoder.encode(sse));
 
         // Close stream after response.completed, response.failed, or error
         if (type === "response.completed" || type === "response.failed" || type === "error") {
-          // Let the SSE chunk flush, then close
           queueMicrotask(() => {
             closeStream();
             ws.close(1000);
           });
         }
-      } catch {
+      } else {
         // Non-JSON message — emit as raw data
         const sse = `data: ${raw}\n\n`;
         controller!.enqueue(encoder.encode(sse));
@@ -186,15 +253,24 @@ export async function createWebSocketResponse(
 
     ws.on("error", (err: Error) => {
       signal?.removeEventListener("abort", onAbort);
-      if (!connected) {
+      if (!earlyDecisionMade) {
+        earlyDecisionMade = true;
         reject(err);
       } else {
         errorStream(err);
       }
     });
 
-    ws.on("close", (_code: number, _reason: Buffer) => {
+    ws.on("close", (code: number, reason: Buffer) => {
       signal?.removeEventListener("abort", onAbort);
+      if (!earlyDecisionMade) {
+        earlyDecisionMade = true;
+        const reasonStr = reason && reason.length ? reason.toString("utf-8") : "";
+        reject(new Error(
+          `WebSocket closed before any data: code=${code}` +
+            (reasonStr ? ` reason=${reasonStr}` : ""),
+        ));
+      }
       closeStream();
     });
   });

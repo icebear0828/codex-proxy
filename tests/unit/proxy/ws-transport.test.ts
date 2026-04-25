@@ -61,6 +61,54 @@ function lastWs(): MockWs {
   return wsInstances[wsInstances.length - 1] as MockWs;
 }
 
+/**
+ * Wait until the dynamic import inside `createWebSocketResponse` finishes,
+ * the MockWebSocket constructor has registered an instance, and the `open`
+ * microtask has fired (so `ws.send(request)` has run).
+ */
+async function waitForOpen(): Promise<void> {
+  for (let i = 0; i < 50; i++) {
+    if (wsInstances.length > 0) {
+      const ws = wsInstances[wsInstances.length - 1] as MockWs;
+      if (ws.readyState === 1 && ws.sentMessages.length > 0) return;
+    }
+    await new Promise<void>((r) => setTimeout(r, 0));
+  }
+  throw new Error("WebSocket did not open within timeout");
+}
+
+/**
+ * Start a connect, wait for `open` to fire, and return the unresolved
+ * promise + the MockWs so tests can drive the message sequence.
+ *
+ * `createWebSocketResponse` no longer resolves on `open` — it waits for the
+ * first non-internal frame so it can detect early upstream errors and reject
+ * with a `CodexApiError` instead of streaming the error to the client.
+ */
+async function startConnect(
+  req: WsCreateRequest = BASE_REQUEST,
+  headers: Record<string, string> = {},
+): Promise<{ promise: Promise<Response>; ws: MockWs }> {
+  const promise = createWebSocketResponse("wss://test/ws", headers, req);
+  // Swallow the rejection if the test never awaits `promise` (e.g. it
+  // expects the promise to reject). We re-throw on any awaiter via the
+  // returned reference, so this only suppresses unhandled-rejection noise.
+  promise.catch(() => { /* test-controlled */ });
+  await waitForOpen();
+  return { promise, ws: lastWs() };
+}
+
+/** Drive a normal connect: emit `response.created` to unblock resolve. */
+async function connect(
+  req: WsCreateRequest = BASE_REQUEST,
+  headers: Record<string, string> = {},
+): Promise<{ response: Response; ws: MockWs }> {
+  const { promise, ws } = await startConnect(req, headers);
+  ws.emit("message", JSON.stringify({ type: "response.created", response: { id: "resp_init" } }));
+  const response = await promise;
+  return { response, ws };
+}
+
 /** Helper: read entire stream to string */
 async function readStream(response: Response): Promise<string> {
   const reader = response.body!.getReader();
@@ -80,23 +128,27 @@ describe("createWebSocketResponse", () => {
   });
 
   it("connects and sends the request message", async () => {
-    const response = await createWebSocketResponse("wss://test/ws", { auth: "bearer" }, BASE_REQUEST);
-    expect(response.status).toBe(200);
+    const { promise, ws } = await startConnect(BASE_REQUEST, { auth: "bearer" });
 
-    const ws = lastWs();
     expect(ws.url).toBe("wss://test/ws");
     expect((ws.opts?.headers as Record<string, string>)?.auth).toBe("bearer");
     expect(ws.sentMessages).toHaveLength(1);
     expect(JSON.parse(ws.sentMessages[0])).toEqual(BASE_REQUEST);
 
+    // Unblock resolve and verify the Response is HTTP 200.
+    ws.emit("message", JSON.stringify({ type: "response.created", response: { id: "resp_1" } }));
+    const response = await promise;
+    expect(response.status).toBe(200);
+
     ws.close();
   });
 
   it("re-encodes WebSocket JSON messages as SSE events", async () => {
-    const response = await createWebSocketResponse("wss://test/ws", {}, BASE_REQUEST);
-    const ws = lastWs();
+    const { promise, ws } = await startConnect();
 
     ws.emit("message", JSON.stringify({ type: "response.created", response: { id: "resp_123" } }));
+    const response = await promise;
+
     ws.emit("message", JSON.stringify({ type: "response.output_text.delta", delta: "Hello" }));
     ws.emit("message", JSON.stringify({
       type: "response.completed",
@@ -123,21 +175,23 @@ describe("createWebSocketResponse", () => {
   });
 
   it("closes stream after response.completed", async () => {
-    const response = await createWebSocketResponse("wss://test/ws", {}, BASE_REQUEST);
-    const ws = lastWs();
+    const { promise, ws } = await startConnect();
 
     ws.emit("message", JSON.stringify({ type: "response.completed", response: { id: "resp_1" } }));
 
+    const response = await promise;
     const text = await readStream(response);
     expect(text).toContain("response.completed");
   });
 
-  it("closes stream after response.failed", async () => {
-    const response = await createWebSocketResponse("wss://test/ws", {}, BASE_REQUEST);
-    const ws = lastWs();
+  it("closes stream after response.failed without rotatable error code", async () => {
+    const { promise, ws } = await startConnect();
 
+    // No `error.code` / `error.type` → classifier returns null → resolves
+    // and streams the failure to the client (current pass-through behavior).
     ws.emit("message", JSON.stringify({ type: "response.failed", error: { message: "boom" } }));
 
+    const response = await promise;
     const text = await readStream(response);
     expect(text).toContain("response.failed");
   });
@@ -157,8 +211,7 @@ describe("createWebSocketResponse", () => {
       previous_response_id: "resp_prev_123",
     };
 
-    await createWebSocketResponse("wss://test/ws", {}, req);
-    const ws = lastWs();
+    const { ws } = await startConnect(req);
     const sent = JSON.parse(ws.sentMessages[0]);
     expect(sent.previous_response_id).toBe("resp_prev_123");
     expect(sent.store).toBeUndefined();
@@ -168,8 +221,10 @@ describe("createWebSocketResponse", () => {
   });
 
   it("preserves message ordering", async () => {
-    const response = await createWebSocketResponse("wss://test/ws", {}, BASE_REQUEST);
-    const ws = lastWs();
+    const { promise, ws } = await startConnect();
+
+    ws.emit("message", JSON.stringify({ type: "response.created", response: { id: "resp_1" } }));
+    const response = await promise;
 
     for (let i = 0; i < 5; i++) {
       ws.emit("message", JSON.stringify({ type: "response.output_text.delta", delta: `chunk${i}` }));
@@ -192,14 +247,12 @@ describe("createWebSocketResponse", () => {
     // Import CodexApi to verify parseStream works with WS-generated SSE
     const { CodexApi } = await import("@src/proxy/codex-api.js");
 
-    const response = await createWebSocketResponse("wss://test/ws", {}, BASE_REQUEST);
-    const ws = lastWs();
+    const { response, ws } = await connect();
 
-    ws.emit("message", JSON.stringify({ type: "response.created", response: { id: "resp_1" } }));
     ws.emit("message", JSON.stringify({ type: "response.output_text.delta", delta: "Hello" }));
     ws.emit("message", JSON.stringify({
       type: "response.completed",
-      response: { id: "resp_1", usage: { input_tokens: 10, output_tokens: 5 } },
+      response: { id: "resp_init", usage: { input_tokens: 10, output_tokens: 5 } },
     }));
 
     // parseStream should work identically on WS-generated SSE
