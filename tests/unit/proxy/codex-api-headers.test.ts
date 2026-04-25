@@ -176,5 +176,24 @@ describe("codex-api headers", () => {
       expect(body.previous_response_id).toBeUndefined();
       expect(body.useWebSocket).toBeUndefined();
     });
+
+    it("WS 上游返回的 CodexApiError 不能降级到 HTTP（必须抛给 proxy-handler 轮转）", async () => {
+      // Without re-throwing, the same account would just retry over HTTP and
+      // hit the same usage_limit_reached, never rotating.
+      const { CodexApiError } = await import("@src/proxy/codex-api.js");
+      mockCreateWebSocketResponse.mockRejectedValue(
+        new CodexApiError(429, JSON.stringify({
+          type: "error",
+          error: { code: "usage_limit_reached", message: "Limit reached" },
+        })),
+      );
+
+      const api = await createApi();
+      await expect(
+        api.createResponse(makeRequest({ useWebSocket: true })),
+      ).rejects.toBeInstanceOf(CodexApiError);
+
+      expect(transport.post).not.toHaveBeenCalled();
+    });
   });
 });

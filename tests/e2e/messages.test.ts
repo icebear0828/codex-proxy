@@ -178,9 +178,13 @@ describe("E2E: POST /v1/messages", () => {
   });
 
   it("upstream 500: retries then returns api_error", async () => {
-    setTransportPost(async () =>
+    // Count attempts at the underlying transport (covers both WS and HTTP
+    // paths; messages.ts forces useWebSocket=true, so withRetry retries the
+    // WS attempt 3x rather than falling back to HTTP).
+    const post = vi.fn(async () =>
       makeErrorTransportResponse(500, JSON.stringify({ detail: "Internal error" })),
     );
+    setTransportPost(post);
 
     const res = await messagesRequest(defaultBody());
     expect(res.status).toBe(500);
@@ -188,7 +192,7 @@ describe("E2E: POST /v1/messages", () => {
     const body = await res.json() as { type: string; error: { type: string } };
     expect(body.type).toBe("error");
     expect(body.error.type).toBe("api_error");
-    expect(getMockTransport().post).toHaveBeenCalledTimes(3);
+    expect(post).toHaveBeenCalledTimes(3);
   }, 10_000);
 
   // ── Auth ───────────────────────────────────────────────────────
