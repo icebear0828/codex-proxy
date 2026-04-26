@@ -25,6 +25,7 @@ interface AutoUpdaterOptions {
   rebuildTrayMenu: () => void;
   autoUpdate?: boolean;
   autoDownload?: boolean;
+  allowPrerelease?: boolean;
 }
 
 const state: AutoUpdateState = {
@@ -58,7 +59,10 @@ export function initAutoUpdater(options: AutoUpdaterOptions): void {
   // macOS always false — ad-hoc signed zips can't be auto-installed
   autoUpdater.autoDownload = isAutoDownload;
   autoUpdater.autoInstallOnAppQuit = !IS_MAC;
-  autoUpdater.allowPrerelease = false;
+  // Beta channel opt-in via config.update.allow_prerelease (default false).
+  // electron-builder writes beta-mac.yml / beta.yml for tags like vX.Y.Z-beta.SHA;
+  // setting allowPrerelease=true makes electron-updater consume that channel.
+  autoUpdater.allowPrerelease = options.allowPrerelease ?? false;
 
   autoUpdater.on("checking-for-update", () => {
     state.checking = true;

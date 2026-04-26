@@ -29,11 +29,12 @@ jobs:
           IFS='.' read -r PKG_MAJOR PKG_MINOR _PKG_PATCH <<< "$PKG_VERSION"
           SERIES="${PKG_MAJOR}.${PKG_MINOR}"
 
-          # Find latest tag in this series (e.g. v2.0.x)
-          LAST_TAG=$(git tag --sort=-v:refname | grep "^v${SERIES}\." | head -1 || echo "")
+          # Find latest stable tag in this series (e.g. v2.0.x). Excludes
+          # prerelease tags like v2.0.67-beta.SHA produced by bump-electron-beta.yml.
+          LAST_TAG=$(git tag --sort=-v:refname | grep -E "^v${SERIES}\.[0-9]+$" | head -1 || echo "")
           if [ -z "$LAST_TAG" ]; then
-            # First release in this series — use any previous tag for commit check
-            LAST_TAG=$(git tag --sort=-v:refname | grep '^v' | head -1 || echo "")
+            # First release in this series — use any previous stable tag for commit check
+            LAST_TAG=$(git tag --sort=-v:refname | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | head -1 || echo "")
             if [ -z "$LAST_TAG" ]; then
               echo "No previous tag, skipping"
               echo "skip=true" >> "$GITHUB_OUTPUT"
@@ -119,6 +120,23 @@ jobs:
           done
           echo "::error::Push failed after 3 attempts"
           exit 1
+
+      - name: Sync bump commit back to dev (FF)
+        if: steps.bump.outputs.new_tag
+        # Without this, every stable bump leaves dev behind master by one commit.
+        # The next promote run would then fail FF check ("manual rebase needed")
+        # and stay stuck until someone manually rebases dev.
+        run: |
+          if ! git ls-remote --exit-code --heads origin dev >/dev/null 2>&1; then
+            echo "dev branch does not exist, skipping sync"
+            exit 0
+          fi
+          git fetch origin dev:refs/remotes/origin/dev
+          if git push origin master:dev; then
+            echo "Synced master ($(git rev-parse master)) to dev (FF)"
+          else
+            echo "::warning::FF push master:dev refused (dev moved during bump window). Manual sync needed."
+          fi
 
       - name: Trigger release workflow
         if: steps.bump.outputs.new_tag
