@@ -161,6 +161,26 @@ describe("createWebSocketResponse — early-stream error rejection", () => {
     expect(text).toContain("model_not_supported_in_plan");
   });
 
+  it("does NOT rotate on substring-only matches like soft_rate_limit_warning", async () => {
+    // Regression: previously the classifier used `lower.includes("rate_limit")`
+    // which would have classified `soft_rate_limit_warning` as a terminal 429
+    // and triggered account rotation. The exact-match allowlist must let this
+    // fall through to SSE pass-through.
+    const promise = createWebSocketResponse("wss://test/ws", {}, BASE_REQUEST);
+    const ws = await waitForOpen();
+
+    ws.emit("message", JSON.stringify({
+      type: "error",
+      error: { code: "soft_rate_limit_warning", message: "approaching cap" },
+    }));
+
+    const response = await promise;
+    expect(response.status).toBe(200);
+    const text = await readAll(response);
+    expect(text).toContain("event: error");
+    expect(text).toContain("soft_rate_limit_warning");
+  });
+
   it("treats codex.rate_limits as internal — does not flip the early-decision flag", async () => {
     // Sequence: rate-limits frame → usage_limit_reached error.
     // The rate-limits frame must be consumed via onRateLimits and must NOT

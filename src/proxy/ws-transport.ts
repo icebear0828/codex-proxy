@@ -27,7 +27,31 @@ import { CodexApiError } from "./codex-types.js";
  * Returns null for events we don't want to rotate on (genuine model
  * errors, validation errors, etc.) — those keep the SSE pass-through
  * behavior so the client sees the real reason.
+ *
+ * Why exact-match: a substring rule like `includes("rate_limit")` would
+ * also match codes such as `soft_rate_limit_warning` and incorrectly
+ * trigger account rotation. We allowlist concrete codes and fall through
+ * for everything else (unknown codes stream as SSE — safer default).
  */
+const ROTATABLE_ERROR_CODES: Readonly<Record<string, number>> = {
+  // 429 — weekly/primary cap
+  usage_limit_reached: 429,
+  rate_limit_exceeded: 429,
+  rate_limit_reached: 429,
+  // 402 — plan/credit exhausted
+  quota_exhausted: 402,
+  payment_required: 402,
+  // 401 — credential rejected upstream
+  unauthorized: 401,
+  token_invalid: 401,
+  token_expired: 401,
+  account_deactivated: 401,
+  // 403 — account banned
+  forbidden: 403,
+  account_banned: 403,
+  banned: 403,
+};
+
 function classifyWsErrorEvent(msg: Record<string, unknown>): { status: number } | null {
   const type = typeof msg.type === "string" ? msg.type : "";
   if (type !== "error" && type !== "response.failed") return null;
@@ -39,18 +63,8 @@ function classifyWsErrorEvent(msg: Record<string, unknown>): { status: number } 
     (typeof errorObj.code === "string" ? errorObj.code : null) ??
     (typeof errorObj.type === "string" ? errorObj.type : null) ??
     "";
-  const lower = codeRaw.toLowerCase();
-  if (lower.includes("usage_limit") || lower.includes("rate_limit")) return { status: 429 };
-  if (lower.includes("quota_exhausted") || lower.includes("payment_required")) return { status: 402 };
-  if (
-    lower.includes("unauthorized") ||
-    lower.includes("token_invalid") ||
-    lower.includes("deactivated")
-  ) {
-    return { status: 401 };
-  }
-  if (lower.includes("forbidden") || lower.includes("banned")) return { status: 403 };
-  return null;
+  const status = ROTATABLE_ERROR_CODES[codeRaw.toLowerCase()];
+  return status ? { status } : null;
 }
 
 /** Cached ws module — loaded once on first use. */
