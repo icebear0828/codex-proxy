@@ -1,7 +1,11 @@
 import { Hono } from "hono";
 import { getConfig, getLocalConfigPath, reloadAllConfigs } from "../../config.js";
 import { mutateYaml } from "../../utils/yaml-mutate.js";
-import { getOllamaBridgeStatusForConfig, restartOllamaBridge } from "../../ollama/server.js";
+import {
+  getOllamaBridgeRuntimeStatus,
+  getOllamaBridgeStatusForConfig,
+  restartOllamaBridge,
+} from "../../ollama/server.js";
 
 interface OllamaSettingsBody {
   enabled?: boolean;
@@ -63,7 +67,10 @@ export function createOllamaAdminRoutes(): Hono {
   });
 
   app.get("/admin/ollama-status", (c) => {
-    return c.json(getOllamaBridgeStatusForConfig(getConfig()));
+    // Raw runtime — reflects whatever the running bridge last reported,
+    // without overlaying pending config edits. Use /admin/ollama-settings
+    // for the config-merged view.
+    return c.json(getOllamaBridgeRuntimeStatus());
   });
 
   app.post("/admin/ollama-settings", async (c) => {
