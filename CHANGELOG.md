@@ -8,6 +8,17 @@
 
 ## [Unreleased]
 
+### Changed
+
+- Ollama bridge cleanup（#403 review followups, closes #405 #406 #407）：
+  - `src/ollama/bridge.ts` 不再重复实现 `normalizeHostname` / `isLoopbackHostname`，统一从 `src/utils/host.ts` 引入；`shared/utils/host.ts` 改为薄 re-export 以兼容前端的现有 import (#405)
+  - `proxyOpenAIRequest` 转发头扩展到 `Content-Type` / `Accept` / `User-Agent` / `X-Request-Id` / `traceparent` / `tracestate`（#403 review #2）；`/v1/*` 路径剥离改用 `path.replace(/^\/v1/, "")` 替代 `slice(3)`
+  - `MAX_SSE_BUFFER` 重命名为 `MAX_SSE_BUFFER_CHARS` 并补注释，明确比较的是 String 的 UTF-16 code unit 数（#403 review #3）
+  - `src/config-loader.ts` 5 段 `if (!raw.ollama) raw.ollama = {}` 合并为开头一次性兜底（#403 review #4）
+  - `getOllamaBridgeStatus(config?)` 拆成 `getOllamaBridgeRuntimeStatus()` 与 `getOllamaBridgeStatusForConfig(config)`，调用方按需选择（#403 review #5）
+  - `POST /admin/ollama-settings` 移除多余的 `checkApiKey`，与其他 admin POST 一致由 `dashboardAuth` 中间件统一鉴权（#406）
+  - 删除根目录开发日志 `OLLAMA_BRIDGE_INTEGRATION.md`（Phase 1/2 scope 已并入 CHANGELOG，git 历史保留原文）
+
 ### Added
 
 - 发版流程引入 `dev` 分支 + beta channel：`bump-electron-beta.yml` 在 dev push 时打 `vX.Y.Z-beta.SHA` tag 出预发布包；`promote-dev-to-master.yml` 每天 14:00 UTC 检查 dev soak ≥24h + CI 绿后 fast-forward 到 master，再由现有 `bump-electron.yml` 出 stable tag (`.github/workflows/`)

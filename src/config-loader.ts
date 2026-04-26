@@ -90,32 +90,31 @@ export function applyEnvOverrides(
     }
   }
   const ollamaEnabledEnv = process.env.OLLAMA_BRIDGE_ENABLED?.trim().toLowerCase();
-  if (ollamaEnabledEnv) {
-    if (!raw.ollama) raw.ollama = {};
-    (raw.ollama as Record<string, unknown>).enabled = ["1", "true", "yes"].includes(ollamaEnabledEnv);
-  }
   const ollamaHostEnv = process.env.OLLAMA_BRIDGE_HOST?.trim();
-  if (ollamaHostEnv) {
-    if (!raw.ollama) raw.ollama = {};
-    (raw.ollama as Record<string, unknown>).host = ollamaHostEnv;
-  }
   const ollamaPortEnv = process.env.OLLAMA_BRIDGE_PORT?.trim();
-  if (ollamaPortEnv) {
-    const parsed = parseInt(ollamaPortEnv, 10);
-    if (!isNaN(parsed)) {
-      if (!raw.ollama) raw.ollama = {};
-      (raw.ollama as Record<string, unknown>).port = parsed;
-    }
-  }
   const ollamaVersionEnv = process.env.OLLAMA_BRIDGE_VERSION?.trim();
-  if (ollamaVersionEnv) {
-    if (!raw.ollama) raw.ollama = {};
-    (raw.ollama as Record<string, unknown>).version = ollamaVersionEnv;
-  }
   const ollamaDisableVisionEnv = process.env.OLLAMA_BRIDGE_DISABLE_VISION?.trim().toLowerCase();
-  if (ollamaDisableVisionEnv) {
+  if (ollamaEnabledEnv || ollamaHostEnv || ollamaPortEnv || ollamaVersionEnv || ollamaDisableVisionEnv) {
     if (!raw.ollama) raw.ollama = {};
-    (raw.ollama as Record<string, unknown>).disable_vision = ["1", "true", "yes"].includes(ollamaDisableVisionEnv);
+    const ollama = raw.ollama as Record<string, unknown>;
+    if (ollamaEnabledEnv) {
+      ollama.enabled = ["1", "true", "yes"].includes(ollamaEnabledEnv);
+    }
+    if (ollamaHostEnv) {
+      ollama.host = ollamaHostEnv;
+    }
+    if (ollamaPortEnv) {
+      const parsed = parseInt(ollamaPortEnv, 10);
+      if (!isNaN(parsed)) {
+        ollama.port = parsed;
+      }
+    }
+    if (ollamaVersionEnv) {
+      ollama.version = ollamaVersionEnv;
+    }
+    if (ollamaDisableVisionEnv) {
+      ollama.disable_vision = ["1", "true", "yes"].includes(ollamaDisableVisionEnv);
+    }
   }
   // Only apply HTTPS_PROXY env if user hasn't explicitly set proxy_url in local.yaml
   const localTls = localOverrides?.tls as Record<string, unknown> | undefined;

@@ -161,8 +161,16 @@ export async function restartOllamaBridge(config: AppConfig): Promise<OllamaBrid
   return startOllamaBridge(config, runtime);
 }
 
-export function getOllamaBridgeStatus(config?: AppConfig): OllamaBridgeStatus {
-  if (!config) return status;
+/** Live runtime status — reflects whatever the running bridge last reported. */
+export function getOllamaBridgeRuntimeStatus(): OllamaBridgeStatus {
+  return status;
+}
+
+/** Runtime status overlaid with the current `config.ollama.*` values. Use this
+ *  for endpoints that need to show "what the user has configured" alongside
+ *  "what is currently running" — when the bridge is stopped, fields like
+ *  port/endpoint fall back to the config so the UI can reflect pending changes. */
+export function getOllamaBridgeStatusForConfig(config: AppConfig): OllamaBridgeStatus {
   return {
     ...status,
     enabled: config.ollama.enabled,

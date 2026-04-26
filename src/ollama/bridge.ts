@@ -1,5 +1,7 @@
 import { createHash } from "node:crypto";
 import { Hono } from "hono";
+import { isLoopbackHostname } from "../utils/host.js";
+
 
 export interface OllamaBridgeOptions {
   upstreamBaseUrl: string;
@@ -62,9 +64,12 @@ const CONTEXT_WINDOW_OVERRIDES = new Map<string, number>([
 ]);
 
 const encoder = new TextEncoder();
-// Keep in sync with src/proxy/codex-sse.ts — 64 MB accommodates 4K
-// image_generation_call events without prematurely aborting the stream.
-const MAX_SSE_BUFFER = 64 * 1024 * 1024;
+// Cap on the in-memory SSE accumulation buffer. Counted in UTF-16 code units
+// (the unit of String.length), not bytes — for the JSON traffic this proxy
+// handles, that's roughly 1 unit per byte, so ~64 MB. Keep in sync with
+// src/proxy/codex-sse.ts. Sized to accommodate 4K image_generation_call
+// frames without prematurely aborting the stream.
+const MAX_SSE_BUFFER_CHARS = 64 * 1024 * 1024;
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === "object" && !Array.isArray(value);
@@ -76,21 +81,6 @@ function asRecord(value: unknown): Record<string, unknown> {
 
 function getString(value: unknown): string | undefined {
   return typeof value === "string" ? value : undefined;
-}
-
-function normalizeHostname(hostname: string): string {
-  return hostname.trim().toLowerCase().replace(/^\[(.*)\]$/, "$1").replace(/\.$/, "");
-}
-
-function isLoopbackHostname(hostname: string): boolean {
-  const normalized = normalizeHostname(hostname);
-  if (normalized === "localhost" || normalized === "::1" || normalized === "0:0:0:0:0:0:0:1") {
-    return true;
-  }
-  const parts = normalized.split(".");
-  if (parts.length !== 4 || parts.some((part) => !/^\d{1,3}$/.test(part))) return false;
-  const octets = parts.map((part) => Number(part));
-  return octets[0] === 127 && octets.every((octet) => octet >= 0 && octet <= 255);
 }
 
 function getAllowedCorsOrigin(request?: Request): string | null {
@@ -507,8 +497,8 @@ async function streamOllamaChat(
           const { done, value } = await reader.read();
           if (done) break;
           buffer += decoder.decode(value, { stream: true });
-          if (buffer.length > MAX_SSE_BUFFER) {
-            throw new Error(`SSE buffer exceeded ${MAX_SSE_BUFFER} bytes`);
+          if (buffer.length > MAX_SSE_BUFFER_CHARS) {
+            throw new Error(`SSE buffer exceeded ${MAX_SSE_BUFFER_CHARS} chars`);
           }
           while (true) {
             const boundary = buffer.indexOf("\n\n");
@@ -671,6 +661,16 @@ async function copyUpstreamResponse(upstreamResponse: Response, request: Request
   });
 }
 
+/** Headers we forward verbatim from the client to the upstream OpenAI-compat endpoint. */
+const FORWARDED_HEADERS = [
+  "content-type",
+  "accept",
+  "user-agent",
+  "x-request-id",
+  "traceparent",
+  "tracestate",
+] as const;
+
 async function proxyOpenAIRequest(
   request: Request,
   pathname: string,
@@ -680,10 +680,10 @@ async function proxyOpenAIRequest(
     ? undefined
     : await request.text();
   const headers: Record<string, string> = {};
-  const contentType = request.headers.get("content-type");
-  const accept = request.headers.get("accept");
-  if (contentType) headers["Content-Type"] = contentType;
-  if (accept) headers.Accept = accept;
+  for (const name of FORWARDED_HEADERS) {
+    const value = request.headers.get(name);
+    if (value) headers[name] = value;
+  }
   const upstreamResponse = await upstreamFetch(pathname, {
     method: request.method,
     headers,
@@ -703,7 +703,8 @@ export function createOllamaBridgeApp(options: OllamaBridgeOptions): Hono {
 
   app.all("/v1/*", async (c) => {
     const search = new URL(c.req.raw.url).search;
-    return proxyOpenAIRequest(c.req.raw, `${c.req.path.slice(3)}${search}`, upstreamFetch);
+    const upstreamPath = c.req.path.replace(/^\/v1/, "");
+    return proxyOpenAIRequest(c.req.raw, `${upstreamPath}${search}`, upstreamFetch);
   });
 
   app.get("/api/tags", async (c) => {

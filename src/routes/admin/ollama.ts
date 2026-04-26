@@ -1,7 +1,7 @@
 import { Hono } from "hono";
 import { getConfig, getLocalConfigPath, reloadAllConfigs } from "../../config.js";
 import { mutateYaml } from "../../utils/yaml-mutate.js";
-import { getOllamaBridgeStatus, restartOllamaBridge } from "../../ollama/server.js";
+import { getOllamaBridgeStatusForConfig, restartOllamaBridge } from "../../ollama/server.js";
 
 interface OllamaSettingsBody {
   enabled?: boolean;
@@ -13,13 +13,6 @@ interface OllamaSettingsBody {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === "object" && !Array.isArray(value);
-}
-
-function checkApiKey(authHeader: string | undefined): boolean {
-  const currentKey = getConfig().server.proxy_api_key;
-  if (!currentKey) return true;
-  const token = authHeader?.startsWith("Bearer ") ? authHeader.slice(7) : "";
-  return token === currentKey;
 }
 
 function validateBody(body: OllamaSettingsBody): string | null {
@@ -58,7 +51,7 @@ function currentPayload() {
   const config = getConfig();
   return {
     ...currentSettingsPayload(),
-    status: getOllamaBridgeStatus(config),
+    status: getOllamaBridgeStatusForConfig(config),
   };
 }
 
@@ -70,15 +63,14 @@ export function createOllamaAdminRoutes(): Hono {
   });
 
   app.get("/admin/ollama-status", (c) => {
-    return c.json(getOllamaBridgeStatus(getConfig()));
+    return c.json(getOllamaBridgeStatusForConfig(getConfig()));
   });
 
   app.post("/admin/ollama-settings", async (c) => {
-    if (!checkApiKey(c.req.header("Authorization"))) {
-      c.status(401);
-      return c.json({ error: "Invalid current API key" });
-    }
-
+    // Auth is handled at the middleware layer (`src/middleware/dashboard-auth.ts`):
+    // all `/admin/*` routes require either a localhost request or a valid
+    // dashboard session, matching the convention used by the other admin
+    // POSTs (`/admin/quota-settings`, `/admin/rotation-settings`, etc.).
     let parsedBody: unknown;
     try {
       parsedBody = await c.req.json();

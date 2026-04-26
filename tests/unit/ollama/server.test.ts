@@ -119,7 +119,7 @@ describe("Ollama bridge server lifecycle", () => {
 
   it("starts the listener and reports the externally usable endpoint", async () => {
     mockServe.mockReturnValueOnce(createFakeServer(49152));
-    const { startOllamaBridge, getOllamaBridgeStatus, stopOllamaBridge } = await loadModule();
+    const { startOllamaBridge, getOllamaBridgeStatusForConfig, stopOllamaBridge } = await loadModule();
     const config = createConfig({ host: "0.0.0.0", port: 0, disable_vision: true });
 
     const status = await startOllamaBridge(config, {
@@ -144,7 +144,7 @@ describe("Ollama bridge server lifecycle", () => {
     expect(status.started_at).toMatch(/^\d{4}-\d{2}-\d{2}T/);
 
     await stopOllamaBridge();
-    expect(getOllamaBridgeStatus(config)).toMatchObject({
+    expect(getOllamaBridgeStatusForConfig(config)).toMatchObject({
       running: false,
       port: 0,
       endpoint: "http://127.0.0.1:0",
