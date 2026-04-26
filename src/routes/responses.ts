@@ -66,11 +66,25 @@ function syncOutputTextFromOutput(response: Record<string, unknown>): void {
 
 // ── Passthrough stream translator ──────────────────────────────────
 
+/** Extract usage from a response.completed payload, including cached_tokens
+ *  (nested in input_tokens_details per the OpenAI Responses API contract). */
+export function extractResponseUsage(usage: Record<string, unknown>): { input_tokens: number; output_tokens: number; cached_tokens?: number } {
+  const result: { input_tokens: number; output_tokens: number; cached_tokens?: number } = {
+    input_tokens: typeof usage.input_tokens === "number" ? usage.input_tokens : 0,
+    output_tokens: typeof usage.output_tokens === "number" ? usage.output_tokens : 0,
+  };
+  const inputDetails = isRecord(usage.input_tokens_details) ? usage.input_tokens_details : null;
+  if (inputDetails && typeof inputDetails.cached_tokens === "number") {
+    result.cached_tokens = inputDetails.cached_tokens;
+  }
+  return result;
+}
+
 async function* streamPassthrough(
   api: UpstreamAdapter,
   response: Response,
   _model: string,
-  onUsage: (u: { input_tokens: number; output_tokens: number }) => void,
+  onUsage: (u: { input_tokens: number; output_tokens: number; cached_tokens?: number }) => void,
   onResponseId: (id: string) => void,
   tupleSchema?: Record<string, unknown> | null,
 ): AsyncGenerator<string> {
@@ -141,10 +155,7 @@ async function* streamPassthrough(
         const resp = data.response;
         if (typeof resp.id === "string") onResponseId(resp.id);
         if (raw.event === "response.completed" && isRecord(resp.usage)) {
-          onUsage({
-            input_tokens: typeof resp.usage.input_tokens === "number" ? resp.usage.input_tokens : 0,
-            output_tokens: typeof resp.usage.output_tokens === "number" ? resp.usage.output_tokens : 0,
-          });
+          onUsage(extractResponseUsage(resp.usage));
         }
       }
     }
@@ -160,11 +171,11 @@ export async function collectPassthrough(
   tupleSchema?: Record<string, unknown> | null,
 ): Promise<{
   response: unknown;
-  usage: { input_tokens: number; output_tokens: number };
+  usage: { input_tokens: number; output_tokens: number; cached_tokens?: number };
   responseId: string | null;
 }> {
   let finalResponse: unknown = null;
-  let usage = { input_tokens: 0, output_tokens: 0 };
+  let usage: { input_tokens: number; output_tokens: number; cached_tokens?: number } = { input_tokens: 0, output_tokens: 0 };
   let responseId: string | null = null;
   const outputItems: unknown[] = [];
   let textDeltas = "";
@@ -208,10 +219,7 @@ export async function collectPassthrough(
         finalResponse = resp;
         if (typeof resp.id === "string") responseId = resp.id;
         if (isRecord(resp.usage)) {
-          usage = {
-            input_tokens: typeof resp.usage.input_tokens === "number" ? resp.usage.input_tokens : 0,
-            output_tokens: typeof resp.usage.output_tokens === "number" ? resp.usage.output_tokens : 0,
-          };
+          usage = extractResponseUsage(resp.usage);
         }
       }
 
