@@ -121,6 +121,23 @@ jobs:
           echo "::error::Push failed after 3 attempts"
           exit 1
 
+      - name: Sync bump commit back to dev (FF)
+        if: steps.bump.outputs.new_tag
+        # Without this, every stable bump leaves dev behind master by one commit.
+        # The next promote run would then fail FF check ("manual rebase needed")
+        # and stay stuck until someone manually rebases dev.
+        run: |
+          if ! git ls-remote --exit-code --heads origin dev >/dev/null 2>&1; then
+            echo "dev branch does not exist, skipping sync"
+            exit 0
+          fi
+          git fetch origin dev:refs/remotes/origin/dev
+          if git push origin master:dev; then
+            echo "Synced master ($(git rev-parse master)) to dev (FF)"
+          else
+            echo "::warning::FF push master:dev refused (dev moved during bump window). Manual sync needed."
+          fi
+
       - name: Trigger release workflow
         if: steps.bump.outputs.new_tag
         run: |

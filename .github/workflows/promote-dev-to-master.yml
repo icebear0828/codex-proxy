@@ -22,13 +22,25 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Guard — dev branch must exist
+        id: dev_exists
+        run: |
+          if git ls-remote --exit-code --heads origin dev >/dev/null 2>&1; then
+            echo "ok=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "::notice::dev branch does not exist yet, nothing to promote"
+            echo "ok=false" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Fetch master and dev
+        if: steps.dev_exists.outputs.ok == 'true'
         run: |
           git fetch origin master:refs/remotes/origin/master --tags
           git fetch origin dev:refs/remotes/origin/dev
 
       - name: Check ahead-count
         id: ahead
+        if: steps.dev_exists.outputs.ok == 'true'
         run: |
           AHEAD=$(git rev-list --count origin/master..origin/dev)
           echo "ahead=$AHEAD" >> "$GITHUB_OUTPUT"
@@ -75,11 +87,12 @@ jobs:
           DEV_SHA=$(git rev-parse origin/dev)
           echo "Checking check-runs for $DEV_SHA"
 
-          # Exclude this workflow's own checks (promote-dev) and bump workflows from the gate
+          # Exclude this workflow's own checks (promote-dev) and bump workflows from the gate.
+          # (?i) makes the regex case-insensitive so we catch "promote"/"Promote", "bump-beta"/etc.
           STATUS=$(gh api "repos/${{ github.repository }}/commits/${DEV_SHA}/check-runs" \
             --jq '
               [.check_runs[]
-               | select(.name | test("Promote|bump-beta|Bump|Bump version") | not)
+               | select(.name | test("(?i)promote|bump") | not)
               ] as $relevant
               | if ($relevant | length) == 0
                 then "no-checks"
