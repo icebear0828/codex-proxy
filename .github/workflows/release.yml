@@ -106,6 +106,9 @@ jobs:
 
       - name: Pack (${{ matrix.platform }}${{ matrix.arch && format('-{0}', matrix.arch) || '' }})
         working-directory: packages/electron
+        # shell: bash needed so the Windows runner uses Git Bash instead of pwsh
+        # (pwsh doesn't handle backslash line continuations the same way).
+        shell: bash
         run: |
           # Drive electron-builder version from the tag, not package.json. Required
           # so beta tags (vX.Y.Z-beta.SHA, where bump-electron-beta.yml deliberately
@@ -194,6 +197,7 @@ jobs:
 
       - name: Pack (mac-x64)
         working-directory: packages/electron
+        shell: bash
         run: |
           TAG="${{ inputs.tag || github.ref_name }}"
           VERSION="${TAG#v}"
