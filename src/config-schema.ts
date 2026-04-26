@@ -70,6 +70,7 @@ export const ConfigSchema = z.object({
   update: z.object({
     auto_update: z.boolean().default(true),
     auto_download: z.boolean().default(false),
+    allow_prerelease: z.boolean().default(false),
   }).default({}),
   ollama: z.object({
     enabled: z.boolean().default(false),

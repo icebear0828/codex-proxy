@@ -54,6 +54,7 @@ quota:
   skip_exhausted: true
 update:
   auto_update: true
+  # allow_prerelease: false  # set true to receive beta builds (vX.Y.Z-beta.SHA) from the dev branch
 ollama:
   enabled: false
   host: 127.0.0.1

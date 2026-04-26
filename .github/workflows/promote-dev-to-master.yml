@@ -1,0 +1,111 @@
+name: Promote dev → master
+
+on:
+  schedule:
+    - cron: "0 14 * * *"   # UTC 14:00 = PRC 22:00 (2h before bump-electron stable run)
+  workflow_dispatch:
+
+concurrency:
+  group: promote-dev
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+  actions: read
+  checks: read
+
+jobs:
+  promote:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Fetch master and dev
+        run: |
+          git fetch origin master:refs/remotes/origin/master --tags
+          git fetch origin dev:refs/remotes/origin/dev
+
+      - name: Check ahead-count
+        id: ahead
+        run: |
+          AHEAD=$(git rev-list --count origin/master..origin/dev)
+          echo "ahead=$AHEAD" >> "$GITHUB_OUTPUT"
+          if [ "$AHEAD" -eq 0 ]; then
+            echo "::notice::dev is not ahead of master, nothing to promote"
+          else
+            echo "dev is $AHEAD commit(s) ahead of master"
+          fi
+
+      - name: Check fast-forward possible
+        id: ff
+        if: steps.ahead.outputs.ahead != '0'
+        run: |
+          if git merge-base --is-ancestor origin/master origin/dev; then
+            echo "ok=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "ok=false" >> "$GITHUB_OUTPUT"
+            echo "::warning::master has commits not in dev — manual rebase needed (likely a hotfix landed directly on master)"
+          fi
+
+      - name: Check soak (>= 24h since latest dev commit)
+        id: soak
+        if: steps.ff.outputs.ok == 'true'
+        run: |
+          DEV_TS=$(git log -1 origin/dev --format=%ct)
+          NOW=$(date +%s)
+          AGE=$(( NOW - DEV_TS ))
+          MIN_AGE=86400
+          echo "dev HEAD age: ${AGE}s (need >= ${MIN_AGE}s)"
+          if [ "$AGE" -lt "$MIN_AGE" ]; then
+            REMAIN=$(( MIN_AGE - AGE ))
+            echo "::notice::Soak: ${REMAIN}s remaining before dev is eligible for promotion"
+            echo "ok=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "ok=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Check CI status on dev HEAD
+        id: ci
+        if: steps.soak.outputs.ok == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          DEV_SHA=$(git rev-parse origin/dev)
+          echo "Checking check-runs for $DEV_SHA"
+
+          # Exclude this workflow's own checks (promote-dev) and bump workflows from the gate
+          STATUS=$(gh api "repos/${{ github.repository }}/commits/${DEV_SHA}/check-runs" \
+            --jq '
+              [.check_runs[]
+               | select(.name | test("Promote|bump-beta|Bump|Bump version") | not)
+              ] as $relevant
+              | if ($relevant | length) == 0
+                then "no-checks"
+                else
+                  if all($relevant[]; .conclusion == "success" or .conclusion == "skipped")
+                  then "green"
+                  else "not-green"
+                  end
+                end
+            ')
+
+          echo "status=$STATUS"
+          if [ "$STATUS" = "green" ] || [ "$STATUS" = "no-checks" ]; then
+            echo "ok=true" >> "$GITHUB_OUTPUT"
+            echo "dev_sha=$DEV_SHA" >> "$GITHUB_OUTPUT"
+          else
+            echo "::notice::CI on dev is not green (status=$STATUS), skipping promotion"
+            echo "ok=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Fast-forward push dev → master
+        if: steps.ci.outputs.ok == 'true'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          DEV_SHA="${{ steps.ci.outputs.dev_sha }}"
+          echo "Promoting $DEV_SHA to master"
+          git push origin "${DEV_SHA}:refs/heads/master"
+          echo "::notice::Promoted dev ($DEV_SHA) to master. bump-electron.yml will pick it up on the next 16:00 UTC tick."

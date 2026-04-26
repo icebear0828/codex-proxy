@@ -1,0 +1,86 @@
+name: Bump beta + release (dev)
+
+on:
+  push:
+    branches: [dev]
+    paths-ignore:
+      - "CHANGELOG.md"
+      - "README.md"
+      - "docs/**"
+      - "*.md"
+  workflow_dispatch:
+
+concurrency:
+  group: bump-beta
+  cancel-in-progress: true
+
+permissions:
+  contents: write
+  actions: write
+
+jobs:
+  bump-beta:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: dev
+
+      - name: Decide whether to release a beta
+        id: check
+        run: |
+          # Find latest stable tag (excludes prerelease suffixes)
+          LAST_STABLE=$(git tag --sort=-v:refname | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | head -1 || echo "")
+          if [ -z "$LAST_STABLE" ]; then
+            echo "No stable tag yet, skipping beta"
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          # Only count meaningful commits since last stable (mirror bump-electron.yml filter)
+          NEW_COMMITS=$(git log "${LAST_STABLE}..HEAD" --no-merges \
+            --pretty=format:"%s" | grep -cvE "^(chore|docs|ci|test|refactor|style)" || true)
+          if [ "$NEW_COMMITS" -eq 0 ]; then
+            echo "No meaningful commits since $LAST_STABLE, skipping"
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          # Next patch + short SHA suffix (semver prerelease)
+          CURRENT="${LAST_STABLE#v}"
+          IFS='.' read -r MAJOR MINOR PATCH <<< "$CURRENT"
+          NEXT_PATCH=$((PATCH + 1))
+          SHORT_SHA=$(git rev-parse --short=7 HEAD)
+          NEW_TAG="v${MAJOR}.${MINOR}.${NEXT_PATCH}-beta.${SHORT_SHA}"
+
+          # SHA suffix makes collisions impossible unless we redo the same commit
+          if git rev-parse "$NEW_TAG" >/dev/null 2>&1; then
+            echo "Tag $NEW_TAG already exists (re-run on same commit), skipping"
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          echo "Will tag $NEW_TAG (commits since stable: $NEW_COMMITS)"
+          echo "skip=false" >> "$GITHUB_OUTPUT"
+          echo "new_tag=$NEW_TAG" >> "$GITHUB_OUTPUT"
+
+      - name: Tag and push
+        id: tag
+        if: steps.check.outputs.skip != 'true'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          NEW_TAG="${{ steps.check.outputs.new_tag }}"
+          git tag -a "$NEW_TAG" -m "Beta release $NEW_TAG"
+          git push origin "$NEW_TAG"
+          echo "new_tag=$NEW_TAG" >> "$GITHUB_OUTPUT"
+
+      - name: Trigger release workflow
+        if: steps.tag.outputs.new_tag
+        run: |
+          echo "Dispatching release for $NEW_TAG"
+          gh workflow run release.yml -f tag="$NEW_TAG"
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          NEW_TAG: ${{ steps.tag.outputs.new_tag }}
