@@ -29,7 +29,7 @@ function UsageContent({ t, summary, summaryLoading, granularity, setGranularity,
   return (
     <>
       {/* Summary cards */}
-      <div class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
+      <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3 mb-6">
         <SummaryCard
           label={t("totalInputTokens")}
           value={summaryLoading ? "—" : formatNumber(summary?.total_input_tokens ?? 0)}
@@ -37,6 +37,17 @@ function UsageContent({ t, summary, summaryLoading, granularity, setGranularity,
         <SummaryCard
           label={t("totalOutputTokens")}
           value={summaryLoading ? "—" : formatNumber(summary?.total_output_tokens ?? 0)}
+        />
+        <SummaryCard
+          label={t("cacheHitRate")}
+          value={summaryLoading ? "—" : formatHitRate(summary?.total_cached_tokens ?? 0, summary?.total_input_tokens ?? 0)}
+          hint={
+            summaryLoading
+              ? undefined
+              : t("cacheHitRateHint")
+                  .replace("{cached}", formatNumber(summary?.total_cached_tokens ?? 0))
+                  .replace("{input}", formatNumber(summary?.total_input_tokens ?? 0))
+          }
         />
         <SummaryCard
           label={t("totalRequestCount")}
@@ -137,11 +148,18 @@ export function UsageStats({ embedded }: { embedded?: boolean } = {}) {
   );
 }
 
-function SummaryCard({ label, value }: { label: string; value: string }) {
+function SummaryCard({ label, value, hint }: { label: string; value: string; hint?: string }) {
   return (
     <div class="bg-white dark:bg-card-dark rounded-xl border border-gray-200 dark:border-border-dark p-4">
       <div class="text-xs text-slate-500 dark:text-text-dim mb-1">{label}</div>
       <div class="text-lg font-semibold text-slate-800 dark:text-text-main">{value}</div>
+      {hint && <div class="mt-1 text-[11px] text-slate-400 dark:text-text-dim truncate">{hint}</div>}
     </div>
   );
+}
+
+function formatHitRate(cached: number, input: number): string {
+  if (input <= 0) return "—";
+  const pct = (cached / input) * 100;
+  return `${pct.toFixed(1)}%`;
 }

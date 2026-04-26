@@ -8,6 +8,7 @@
   --chart-blue: #3b82f6;
   --chart-green: #10b981;
   --chart-amber: #f59e0b;
+  --chart-violet: #8b5cf6;
   color-scheme: light;
 }
 
@@ -17,6 +18,7 @@
   --chart-blue: #60a5fa;
   --chart-green: #34d399;
   --chart-amber: #fbbf24;
+  --chart-violet: #a78bfa;
   color-scheme: dark;
 }
 

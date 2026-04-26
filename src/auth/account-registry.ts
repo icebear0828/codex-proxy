@@ -77,12 +77,14 @@ export class AccountRegistry {
         request_count: 0,
         input_tokens: 0,
         output_tokens: 0,
+        cached_tokens: 0,
         empty_response_count: 0,
         last_used: null,
         rate_limit_until: null,
         window_request_count: 0,
         window_input_tokens: 0,
         window_output_tokens: 0,
+        window_cached_tokens: 0,
         window_counters_reset_at: null,
         limit_window_seconds: null,
       },
@@ -317,7 +319,10 @@ export class AccountRegistry {
   // ── Quota / usage mutations ───────────────────────────────────────
 
   /** Record request usage on release (called by lifecycle). */
-  recordUsage(entryId: string, usage?: { input_tokens?: number; output_tokens?: number }): void {
+  recordUsage(
+    entryId: string,
+    usage?: { input_tokens?: number; output_tokens?: number; cached_tokens?: number },
+  ): void {
     const entry = this.accounts.get(entryId);
     if (!entry) return;
 
@@ -326,11 +331,13 @@ export class AccountRegistry {
     if (usage) {
       entry.usage.input_tokens += usage.input_tokens ?? 0;
       entry.usage.output_tokens += usage.output_tokens ?? 0;
+      entry.usage.cached_tokens = (entry.usage.cached_tokens ?? 0) + (usage.cached_tokens ?? 0);
     }
     entry.usage.window_request_count = (entry.usage.window_request_count ?? 0) + 1;
     if (usage) {
       entry.usage.window_input_tokens = (entry.usage.window_input_tokens ?? 0) + (usage.input_tokens ?? 0);
       entry.usage.window_output_tokens = (entry.usage.window_output_tokens ?? 0) + (usage.output_tokens ?? 0);
+      entry.usage.window_cached_tokens = (entry.usage.window_cached_tokens ?? 0) + (usage.cached_tokens ?? 0);
     }
     this.schedulePersist();
   }
@@ -369,6 +376,7 @@ export class AccountRegistry {
         entry.usage.window_request_count = 0;
         entry.usage.window_input_tokens = 0;
         entry.usage.window_output_tokens = 0;
+        entry.usage.window_cached_tokens = 0;
         entry.usage.window_counters_reset_at = new Date().toISOString();
       }
     }
@@ -386,6 +394,7 @@ export class AccountRegistry {
       request_count: 0,
       input_tokens: 0,
       output_tokens: 0,
+      cached_tokens: 0,
       empty_response_count: 0,
       last_used: null,
       rate_limit_until: null,
@@ -393,6 +402,7 @@ export class AccountRegistry {
       window_request_count: 0,
       window_input_tokens: 0,
       window_output_tokens: 0,
+      window_cached_tokens: 0,
       window_counters_reset_at: new Date().toISOString(),
       limit_window_seconds: entry.usage.limit_window_seconds ?? null,
     };

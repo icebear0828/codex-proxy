@@ -101,12 +101,14 @@ function migrateFromLegacy(): AccountEntry[] {
         request_count: 0,
         input_tokens: 0,
         output_tokens: 0,
+        cached_tokens: 0,
         empty_response_count: 0,
         last_used: null,
         rate_limit_until: null,
         window_request_count: 0,
         window_input_tokens: 0,
         window_output_tokens: 0,
+        window_cached_tokens: 0,
         window_counters_reset_at: null,
         limit_window_seconds: null,
       },
@@ -183,6 +185,15 @@ function loadPersisted(): { entries: AccountEntry[]; needsPersist: boolean } {
         entry.usage.window_output_tokens = 0;
         entry.usage.window_counters_reset_at = null;
         entry.usage.limit_window_seconds = null;
+        needsPersist = true;
+      }
+      // Backfill cached_tokens fields (added in cache-hit-rate stats)
+      if (entry.usage.cached_tokens == null) {
+        entry.usage.cached_tokens = 0;
+        needsPersist = true;
+      }
+      if (entry.usage.window_cached_tokens == null) {
+        entry.usage.window_cached_tokens = 0;
         needsPersist = true;
       }
       // Backfill window_reset_at (missing causes NaN in refreshStatus)

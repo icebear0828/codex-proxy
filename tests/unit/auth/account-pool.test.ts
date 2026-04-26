@@ -187,6 +187,19 @@ describe("AccountPool", () => {
       expect(accounts[0].usage.input_tokens).toBe(300);
       expect(accounts[0].usage.output_tokens).toBe(150);
     });
+
+    it("accumulates cached_tokens across releases", () => {
+      pool.addAccount("token-aaa");
+
+      const a1 = pool.acquire()!;
+      pool.release(a1.entryId, { input_tokens: 100, output_tokens: 50, cached_tokens: 70 });
+      const a2 = pool.acquire()!;
+      pool.release(a2.entryId, { input_tokens: 200, output_tokens: 100, cached_tokens: 130 });
+
+      const accounts = pool.getAccounts();
+      expect(accounts[0].usage.cached_tokens).toBe(200);
+      expect(accounts[0].usage.window_cached_tokens).toBe(200);
+    });
   });
 
   // ── Rate limiting ─────────────────────────────────────────────────

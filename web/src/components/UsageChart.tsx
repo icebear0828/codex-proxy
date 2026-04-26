@@ -29,9 +29,9 @@ export function UsageChart({ data, height = 260 }: UsageChartProps) {
 
   const reqHeight = Math.round(height * 0.6);
 
-  const { inputPoints, outputPoints, requestPoints, xLabels, yTokenLabels, yReqLabels } = useMemo(() => {
+  const { inputPoints, outputPoints, cachedPoints, requestPoints, xLabels, yTokenLabels, yReqLabels } = useMemo(() => {
     if (data.length === 0) {
-      return { inputPoints: "", outputPoints: "", requestPoints: "", xLabels: [], yTokenLabels: [], yReqLabels: [] };
+      return { inputPoints: "", outputPoints: "", cachedPoints: "", requestPoints: "", xLabels: [], yTokenLabels: [], yReqLabels: [] };
     }
 
     const chartW = width - PADDING.left - PADDING.right;
@@ -40,7 +40,8 @@ export function UsageChart({ data, height = 260 }: UsageChartProps) {
 
     const maxInput = Math.max(...data.map((d) => d.input_tokens));
     const maxOutput = Math.max(...data.map((d) => d.output_tokens));
-    const yMaxT = Math.max(maxInput, maxOutput, 1);
+    const maxCached = Math.max(...data.map((d) => d.cached_tokens ?? 0));
+    const yMaxT = Math.max(maxInput, maxOutput, maxCached, 1);
     const yMaxR = Math.max(...data.map((d) => d.request_count), 1);
 
     const toX = (i: number) => PADDING.left + (i / Math.max(data.length - 1, 1)) * chartW;
@@ -49,6 +50,7 @@ export function UsageChart({ data, height = 260 }: UsageChartProps) {
 
     const inp = data.map((d, i) => `${toX(i)},${toYTokens(d.input_tokens)}`).join(" ");
     const out = data.map((d, i) => `${toX(i)},${toYTokens(d.output_tokens)}`).join(" ");
+    const cac = data.map((d, i) => `${toX(i)},${toYTokens(d.cached_tokens ?? 0)}`).join(" ");
     const req = data.map((d, i) => `${toX(i)},${toYReqs(d.request_count)}`).join(" ");
 
     // X axis labels (up to 6)
@@ -67,7 +69,7 @@ export function UsageChart({ data, height = 260 }: UsageChartProps) {
       yRL.push({ y: PADDING.top + reqChartH - frac * reqChartH, label: formatNumber(Math.round(yMaxR * frac)) });
     }
 
-    return { inputPoints: inp, outputPoints: out, requestPoints: req, xLabels: xl, yTokenLabels: yTL, yReqLabels: yRL };
+    return { inputPoints: inp, outputPoints: out, cachedPoints: cac, requestPoints: req, xLabels: xl, yTokenLabels: yTL, yReqLabels: yRL };
   }, [data, height, reqHeight]);
 
   if (data.length === 0) {
@@ -88,6 +90,9 @@ export function UsageChart({ data, height = 260 }: UsageChartProps) {
           </span>
           <span class="flex items-center gap-1">
             <span class="inline-block w-3 h-0.5 bg-emerald-500 rounded" /> Output Tokens
+          </span>
+          <span class="flex items-center gap-1">
+            <span class="inline-block w-3 h-0.5 bg-violet-500 rounded" /> Cached Tokens
           </span>
         </div>
         <svg
@@ -151,6 +156,14 @@ export function UsageChart({ data, height = 260 }: UsageChartProps) {
             stroke="var(--chart-green)"
             stroke-width="2"
             stroke-linejoin="round"
+          />
+          <polyline
+            points={cachedPoints}
+            fill="none"
+            stroke="var(--chart-violet)"
+            stroke-width="2"
+            stroke-linejoin="round"
+            stroke-dasharray="4 3"
           />
         </svg>
       </div>

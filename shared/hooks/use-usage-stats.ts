@@ -7,6 +7,7 @@ import { useState, useEffect, useCallback } from "preact/hooks";
 export interface UsageSummary {
   total_input_tokens: number;
   total_output_tokens: number;
+  total_cached_tokens: number;
   total_request_count: number;
   total_accounts: number;
   active_accounts: number;
@@ -16,6 +17,7 @@ export interface UsageDataPoint {
   timestamp: string;
   input_tokens: number;
   output_tokens: number;
+  cached_tokens: number;
   request_count: number;
 }
 

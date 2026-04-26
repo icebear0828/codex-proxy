@@ -13,13 +13,13 @@ import { UsageStatsStore, type UsageStatsPersistence, type UsageSnapshot } from 
 import { createUsageStatsRoutes } from "@src/routes/admin/usage-stats.js";
 import type { AccountPool } from "@src/auth/account-pool.js";
 
-function createMockPool(totals: { input_tokens: number; output_tokens: number; request_count: number }): AccountPool {
+function createMockPool(totals: { input_tokens: number; output_tokens: number; request_count: number; cached_tokens?: number }): AccountPool {
   return {
     getAllEntries: () => [
       {
         id: "e1",
         status: "active",
-        usage: totals,
+        usage: { ...totals, cached_tokens: totals.cached_tokens ?? 0 },
       },
     ],
   } as unknown as AccountPool;
@@ -50,6 +50,18 @@ describe("usage stats routes", () => {
       expect(body.total_request_count).toBe(20);
       expect(body.total_accounts).toBe(1);
       expect(body.active_accounts).toBe(1);
+    });
+
+    it("exposes total_cached_tokens for cache-hit-rate computation", async () => {
+      const pool = createMockPool({ input_tokens: 5000, output_tokens: 1000, request_count: 20, cached_tokens: 3500 });
+      const store = createStore();
+      const app = new Hono();
+      app.route("/", createUsageStatsRoutes(pool, store));
+
+      const res = await app.request("/admin/usage-stats/summary");
+      const body = await res.json();
+      expect(body.total_cached_tokens).toBe(3500);
+      expect(body.total_input_tokens).toBe(5000);
     });
   });
 
