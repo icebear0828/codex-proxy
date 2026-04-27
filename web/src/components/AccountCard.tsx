@@ -69,6 +69,11 @@ export function AccountCard({ account, index, onDelete, proxies, onProxyChange, 
   const winTokens = (usage.window_input_tokens ?? 0) + (usage.window_output_tokens ?? 0);
   const imageTokens = (usage.image_input_tokens ?? 0) + (usage.image_output_tokens ?? 0);
   const winImageTokens = (usage.window_image_input_tokens ?? 0) + (usage.window_image_output_tokens ?? 0);
+  const imageRequests = usage.image_request_count ?? 0;
+  const imageRequestsFailed = usage.image_request_failed_count ?? 0;
+  const winImageRequests = usage.window_image_request_count ?? 0;
+  const winImageRequestsFailed = usage.window_image_request_failed_count ?? 0;
+  const hasImageActivity = imageRequests > 0 || imageRequestsFailed > 0 || imageTokens > 0;
   const plan = account.planType || t("freeTier");
   const windowSec = account.quota?.rate_limit?.limit_window_seconds;
   const windowDur = windowSec ? formatWindowDuration(windowSec, lang === "zh") : null;
@@ -282,17 +287,25 @@ export function AccountCard({ account, index, onDelete, proxies, onProxyChange, 
           <span class="text-slate-500 dark:text-text-dim">{t("windowTokens")}</span>
           <span class="font-medium">{formatNumber(winTokens)}</span>
         </div>
-        {(winImageTokens > 0 || imageTokens > 0) && (
-          <div class="flex justify-between text-[0.78rem]">
-            <span class="text-slate-500 dark:text-text-dim">{t("windowImageTokens")}</span>
-            <span class="font-medium">{formatNumber(winImageTokens)}</span>
-          </div>
+        {hasImageActivity && (
+          <>
+            <div class="flex justify-between text-[0.78rem]">
+              <span class="text-slate-500 dark:text-text-dim">{t("windowImageTokens")}</span>
+              <span class="font-medium">{formatNumber(winImageTokens)}</span>
+            </div>
+            <div class="flex justify-between text-[0.78rem]">
+              <span class="text-slate-500 dark:text-text-dim">{t("windowImageRequests")}</span>
+              <span class="font-medium">
+                {formatNumber(winImageRequests)} ok · {formatNumber(winImageRequestsFailed)} failed
+              </span>
+            </div>
+          </>
         )}
         <div class="flex justify-between text-[0.68rem]">
           <span class="text-slate-400 dark:text-text-dim/70">{t("totalAll")}</span>
           <span class="text-slate-400 dark:text-text-dim/70">
             {formatNumber(requests)} req · {formatNumber(tokens)} tok
-            {imageTokens > 0 ? ` · ${formatNumber(imageTokens)} img` : ""}
+            {hasImageActivity ? ` · ${formatNumber(imageRequests)}/${formatNumber(imageRequestsFailed)} img` : ""}
           </span>
         </div>
       </div>

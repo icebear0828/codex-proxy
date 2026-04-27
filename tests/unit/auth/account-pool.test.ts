@@ -200,6 +200,70 @@ describe("AccountPool", () => {
       expect(accounts[0].usage.cached_tokens).toBe(200);
       expect(accounts[0].usage.window_cached_tokens).toBe(200);
     });
+
+    it("counts image_request_count on attempted+succeeded release", () => {
+      pool.addAccount("token-aaa");
+      const a = pool.acquire()!;
+      pool.release(a.entryId, {
+        input_tokens: 100, output_tokens: 30,
+        image_input_tokens: 31, image_output_tokens: 196,
+        image_request_attempted: true, image_request_succeeded: true,
+      });
+      const accounts = pool.getAccounts();
+      expect(accounts[0].usage.image_request_count).toBe(1);
+      expect(accounts[0].usage.image_request_failed_count).toBeFalsy();
+      expect(accounts[0].usage.window_image_request_count).toBe(1);
+    });
+
+    it("counts image_request_failed_count on attempted+failed release (silent strip / upstream error)", () => {
+      pool.addAccount("token-aaa");
+      const a = pool.acquire()!;
+      pool.release(a.entryId, {
+        input_tokens: 100, output_tokens: 30,
+        // No image tokens (silent strip case) — succeeded=false drives failed counter.
+        image_request_attempted: true, image_request_succeeded: false,
+      });
+      const accounts = pool.getAccounts();
+      expect(accounts[0].usage.image_request_count).toBeFalsy();
+      expect(accounts[0].usage.image_request_failed_count).toBe(1);
+      expect(accounts[0].usage.window_image_request_failed_count).toBe(1);
+    });
+
+    it("counts image_request_failed_count on pure failure release with no usage info", () => {
+      pool.addAccount("token-aaa");
+      const a = pool.acquire()!;
+      // proxy-handler synthesizes this for upstream HTTP errors / timeouts
+      // when the request declared the image_generation tool.
+      pool.release(a.entryId, {
+        input_tokens: 0, output_tokens: 0,
+        image_request_attempted: true, image_request_succeeded: false,
+      });
+      const accounts = pool.getAccounts();
+      expect(accounts[0].usage.image_request_failed_count).toBe(1);
+    });
+
+    it("does not touch image_request counters when attempted=false (regular non-image request)", () => {
+      pool.addAccount("token-aaa");
+      const a = pool.acquire()!;
+      pool.release(a.entryId, { input_tokens: 100, output_tokens: 30 });
+      const accounts = pool.getAccounts();
+      expect(accounts[0].usage.image_request_count).toBeFalsy();
+      expect(accounts[0].usage.image_request_failed_count).toBeFalsy();
+    });
+
+    it("accumulates image_request_count across multiple successful releases", () => {
+      pool.addAccount("token-aaa");
+      for (let i = 0; i < 3; i++) {
+        const a = pool.acquire()!;
+        pool.release(a.entryId, {
+          input_tokens: 100, output_tokens: 30,
+          image_input_tokens: 30, image_output_tokens: 196,
+          image_request_attempted: true, image_request_succeeded: true,
+        });
+      }
+      const accounts = pool.getAccounts();
+      expect(accounts[0].usage.image_request_count).toBe(3);
+    });
   });
 
   // ── Rate limiting ─────────────────────────────────────────────────
