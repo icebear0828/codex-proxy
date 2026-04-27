@@ -173,8 +173,9 @@ export class AnthropicUpstream implements UpstreamAdapter {
             outputTokens = usage.output_tokens;
           }
           if (usage && typeof usage.cache_read_input_tokens === "number") {
-            // message_delta sometimes re-emits cache info; prefer the last value seen.
-            cachedTokens = usage.cache_read_input_tokens;
+            // message_delta sometimes re-emits cache info; take the larger of
+            // start vs delta so a later 0 doesn't clobber a real cache hit.
+            cachedTokens = Math.max(cachedTokens, usage.cache_read_input_tokens);
           }
           break;
         }

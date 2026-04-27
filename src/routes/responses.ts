@@ -22,7 +22,7 @@ import { getConfig } from "../config.js";
 import { prepareSchema } from "../translation/shared-utils.js";
 import { reconvertTupleValues } from "../translation/tuple-schema.js";
 import { parseModelName, resolveModelId, getModelInfo, buildDisplayModelName } from "../models/model-store.js";
-import { EmptyResponseError } from "../translation/codex-event-extractor.js";
+import { EmptyResponseError, type UsageInfo } from "../translation/codex-event-extractor.js";
 import {
   handleProxyRequest,
   handleDirectRequest,
@@ -419,6 +419,14 @@ async function handleCompact(
   if (Array.isArray(body.tools) && body.tools.length > 0) {
     compactRequest.tools = body.tools;
   }
+  // Compact responses don't surface tool_usage.image_gen, so any image_generation
+  // tool sent here can only be classified as failed regardless of upstream outcome.
+  // Counting it still catches accidental misuse on the dashboard.
+  const compactExpectsImageGen = Array.isArray(body.tools)
+    && body.tools.some((t): t is Record<string, unknown> => isRecord(t) && t.type === "image_generation");
+  const compactImageFailedUsage: UsageInfo | undefined = compactExpectsImageGen
+    ? { input_tokens: 0, output_tokens: 0, image_request_attempted: true, image_request_succeeded: false }
+    : undefined;
   if (typeof body.parallel_tool_calls === "boolean") {
     compactRequest.parallel_tool_calls = body.parallel_tool_calls;
   }
@@ -493,11 +501,11 @@ async function handleCompact(
         { tag: TAG },
       );
 
-      releaseAccount(accountPool, entryId, undefined, released);
+      releaseAccount(accountPool, entryId, compactImageFailedUsage, released);
       return c.json(result);
     } catch (err) {
       if (!(err instanceof CodexApiError)) {
-        releaseAccount(accountPool, entryId, undefined, released);
+        releaseAccount(accountPool, entryId, compactImageFailedUsage, released);
         throw err;
       }
 
@@ -506,13 +514,13 @@ async function handleCompact(
       );
 
       if (decision.action === "respond") {
-        releaseAccount(accountPool, entryId, undefined, released);
+        releaseAccount(accountPool, entryId, compactImageFailedUsage, released);
         c.status(decision.status as StatusCode);
         return c.json(formatResponsesError(decision.status, decision.message));
       }
 
       if (decision.releaseBeforeRetry) {
-        releaseAccount(accountPool, entryId, undefined, released);
+        releaseAccount(accountPool, entryId, compactImageFailedUsage, released);
       }
 
       const retry = acquireAccount(accountPool, modelId, triedEntryIds, TAG);

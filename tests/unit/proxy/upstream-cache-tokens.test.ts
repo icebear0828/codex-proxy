@@ -158,6 +158,34 @@ describe("AnthropicUpstream — cache_tokens extraction", () => {
     expect((usage?.input_tokens_details as Record<string, unknown>).cached_tokens).toBe(320);
   });
 
+  it("preserves message_start cache value when message_delta re-emits zero (Math.max guard)", async () => {
+    // Defensive: if a future Anthropic API change causes message_delta to emit
+    // cache_read_input_tokens: 0 after message_start reported a real hit, we
+    // must not lose the start value.
+    const sse = [
+      "event: message_start",
+      "data: " + JSON.stringify({
+        type: "message_start",
+        message: { id: "msg_g", usage: { input_tokens: 600, cache_read_input_tokens: 480 } },
+      }),
+      "",
+      "event: message_delta",
+      "data: " + JSON.stringify({
+        type: "message_delta",
+        usage: { output_tokens: 18, cache_read_input_tokens: 0 },
+      }),
+      "",
+      "event: message_stop",
+      "data: " + JSON.stringify({ type: "message_stop" }),
+      "",
+    ].join("\n");
+
+    const upstream = new AnthropicUpstream("fake-key");
+    const events = await collect(upstream.parseStream(makeResponse(sse)));
+    const usage = findCompleted(events);
+    expect((usage?.input_tokens_details as Record<string, unknown>).cached_tokens).toBe(480);
+  });
+
   it("emits empty input_tokens_details when no cache field is present", async () => {
     const sse = [
       "event: message_start",
