@@ -80,11 +80,23 @@ export function extractResponseUsage(usage: Record<string, unknown>): { input_to
   return result;
 }
 
+/** Extract image_generation tool tokens from a response payload's tool_usage.image_gen
+ *  block. Returns undefined when no image generation occurred (or counts are zero). */
+export function extractImageGenUsage(response: Record<string, unknown>): { image_input_tokens: number; image_output_tokens: number } | undefined {
+  if (!isRecord(response.tool_usage)) return undefined;
+  const img = response.tool_usage.image_gen;
+  if (!isRecord(img)) return undefined;
+  const image_input_tokens = typeof img.input_tokens === "number" ? img.input_tokens : 0;
+  const image_output_tokens = typeof img.output_tokens === "number" ? img.output_tokens : 0;
+  if (image_input_tokens === 0 && image_output_tokens === 0) return undefined;
+  return { image_input_tokens, image_output_tokens };
+}
+
 async function* streamPassthrough(
   api: UpstreamAdapter,
   response: Response,
   _model: string,
-  onUsage: (u: { input_tokens: number; output_tokens: number; cached_tokens?: number }) => void,
+  onUsage: (u: { input_tokens: number; output_tokens: number; cached_tokens?: number; image_input_tokens?: number; image_output_tokens?: number }) => void,
   onResponseId: (id: string) => void,
   tupleSchema?: Record<string, unknown> | null,
 ): AsyncGenerator<string> {
@@ -155,7 +167,8 @@ async function* streamPassthrough(
         const resp = data.response;
         if (typeof resp.id === "string") onResponseId(resp.id);
         if (raw.event === "response.completed" && isRecord(resp.usage)) {
-          onUsage(extractResponseUsage(resp.usage));
+          const imgUsage = extractImageGenUsage(resp);
+          onUsage({ ...extractResponseUsage(resp.usage), ...(imgUsage ?? {}) });
         }
       }
     }
@@ -171,11 +184,11 @@ export async function collectPassthrough(
   tupleSchema?: Record<string, unknown> | null,
 ): Promise<{
   response: unknown;
-  usage: { input_tokens: number; output_tokens: number; cached_tokens?: number };
+  usage: { input_tokens: number; output_tokens: number; cached_tokens?: number; image_input_tokens?: number; image_output_tokens?: number };
   responseId: string | null;
 }> {
   let finalResponse: unknown = null;
-  let usage: { input_tokens: number; output_tokens: number; cached_tokens?: number } = { input_tokens: 0, output_tokens: 0 };
+  let usage: { input_tokens: number; output_tokens: number; cached_tokens?: number; image_input_tokens?: number; image_output_tokens?: number } = { input_tokens: 0, output_tokens: 0 };
   let responseId: string | null = null;
   const outputItems: unknown[] = [];
   let textDeltas = "";
@@ -219,7 +232,8 @@ export async function collectPassthrough(
         finalResponse = resp;
         if (typeof resp.id === "string") responseId = resp.id;
         if (isRecord(resp.usage)) {
-          usage = extractResponseUsage(resp.usage);
+          const imgUsage = extractImageGenUsage(resp);
+          usage = { ...extractResponseUsage(resp.usage), ...(imgUsage ?? {}) };
         }
       }
 

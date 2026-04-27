@@ -22,6 +22,8 @@
 
 ### Added
 
+- 图像生成 token 独立计数：上游 `tool_usage.image_gen.{input_tokens, output_tokens}`（`gpt-image-2` 单独账）从前一直被丢弃，现在贯穿全链路 —— `parseResponseData` / `extractImageGenUsage` 解析、`AccountUsage` 累加（含 window 维度）、`UsageSnapshot` / `UsageBaseline` 持久化、`/admin/usage-stats/summary` 暴露 `total_image_input_tokens` / `total_image_output_tokens`、Dashboard 用量页新增「Image Tokens (in/out)」卡片，AccountCard 在该账号有图像消费时多显示一行窗口图像 token；老 `usage-history.json` 缺新字段以 0 兜底，向后兼容
+- 图像生成真实压测：`tests/real/image-generation.test.ts`（vitest, `npm run test:real`）跑 `{gpt-5.4-mini, gpt-5.5} × {1024×1024, 3840×2160}` 矩阵，每组合 2 并发 × 2 轮断言 SSE 完整事件链 + 图片 base64 长度阈值 + `tool_usage.image_gen.output_tokens > 0`，最后校验 `/admin/usage-stats/summary` 的 image token 增量；`tests/bench/image-gen-bench.ts` 提供同矩阵的 p50/p95/min/max + 图像与主模型 token 均值 markdown 表
 - Dashboard 用量统计新增「缓存命中率」卡片：聚合所有账号 `cached_tokens / input_tokens` 比例，附带绝对值提示。后端 `AccountUsage` 与 `UsageSnapshot` 持久化 cached tokens（含 window 维度），`/admin/usage-stats/summary` 与 `/history` 同步暴露 `total_cached_tokens` / `cached_tokens` 字段；老数据以 0 兜底
 - 发版流程引入 `dev` 分支 + beta channel：`bump-electron-beta.yml` 在 dev push 时打 `vX.Y.Z-beta.SHA` tag 出预发布包；`promote-dev-to-master.yml` 每天 14:00 UTC 检查 dev soak ≥24h + CI 绿后 fast-forward 到 master，再由现有 `bump-electron.yml` 出 stable tag (`.github/workflows/`)
 - `update.allow_prerelease` 配置项（默认 `false`）：开启后本地 Electron 通过 electron-updater 接收 beta channel 推送的预发布版本，便于自己的安装实测 dev 改动 (`src/config-schema.ts`、`packages/electron/electron/auto-updater.ts`、`config/default.yaml`)

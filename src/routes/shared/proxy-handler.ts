@@ -69,7 +69,7 @@ export interface FormatAdapter {
     api: UpstreamAdapter,
     response: Response,
     model: string,
-    onUsage: (u: { input_tokens: number; output_tokens: number; cached_tokens?: number; reasoning_tokens?: number }) => void,
+    onUsage: (u: { input_tokens: number; output_tokens: number; cached_tokens?: number; reasoning_tokens?: number; image_input_tokens?: number; image_output_tokens?: number }) => void,
     onResponseId: (id: string) => void,
     tupleSchema?: Record<string, unknown> | null,
     usageHint?: UsageHint,
@@ -84,7 +84,7 @@ export interface FormatAdapter {
     onResponseMetadata?: (metadata: ResponseMetadata) => void,
   ) => Promise<{
     response: unknown;
-    usage: { input_tokens: number; output_tokens: number; cached_tokens?: number; reasoning_tokens?: number };
+    usage: { input_tokens: number; output_tokens: number; cached_tokens?: number; reasoning_tokens?: number; image_input_tokens?: number; image_output_tokens?: number };
     responseId: string | null;
   }>;
 }
@@ -433,11 +433,14 @@ export async function handleProxyRequest(
               const uncached = usageInfo.cached_tokens
                 ? usageInfo.input_tokens - usageInfo.cached_tokens
                 : usageInfo.input_tokens;
+              const imgIn = usageInfo.image_input_tokens ?? 0;
+              const imgOut = usageInfo.image_output_tokens ?? 0;
               console.log(
                 `[${fmt.tag}] Account ${capturedEntryId} | Usage: in=${usageInfo.input_tokens}` +
                 (usageInfo.cached_tokens ? ` (cached=${usageInfo.cached_tokens} uncached=${uncached})` : "") +
                 ` out=${usageInfo.output_tokens}` +
-                (usageInfo.reasoning_tokens ? ` reasoning=${usageInfo.reasoning_tokens}` : ""),
+                (usageInfo.reasoning_tokens ? ` reasoning=${usageInfo.reasoning_tokens}` : "") +
+                (imgIn || imgOut ? ` image=${imgIn}/${imgOut}` : ""),
               );
               if (usageInfo.input_tokens > 10_000) {
                 console.warn(

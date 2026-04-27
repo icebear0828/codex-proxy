@@ -71,7 +71,13 @@ export class AccountPool {
 
   release(
     entryId: string,
-    usage?: { input_tokens?: number; output_tokens?: number; cached_tokens?: number },
+    usage?: {
+      input_tokens?: number;
+      output_tokens?: number;
+      cached_tokens?: number;
+      image_input_tokens?: number;
+      image_output_tokens?: number;
+    },
   ): void {
     this.lifecycle.release(entryId, usage);
   }

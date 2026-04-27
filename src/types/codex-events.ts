@@ -16,6 +16,9 @@ export interface CodexResponseData {
     output_tokens: number;
     cached_tokens?: number;
     reasoning_tokens?: number;
+    /** Tokens billed for the image_generation tool (gpt-image-2). Tracked separately from host-model tokens. */
+    image_input_tokens?: number;
+    image_output_tokens?: number;
   };
   [key: string]: unknown;
 }
@@ -278,6 +281,17 @@ function parseResponseData(data: unknown): CodexResponseData | undefined {
     const outputDetails = isRecord(resp.usage.output_tokens_details) ? resp.usage.output_tokens_details : undefined;
     if (outputDetails && typeof outputDetails.reasoning_tokens === "number") {
       result.usage.reasoning_tokens = outputDetails.reasoning_tokens;
+    }
+  }
+  // Extract image_generation tokens from tool_usage.image_gen (separate from host-model usage).
+  if (isRecord(resp.tool_usage) && isRecord(resp.tool_usage.image_gen)) {
+    const img = resp.tool_usage.image_gen;
+    const imgIn = typeof img.input_tokens === "number" ? img.input_tokens : 0;
+    const imgOut = typeof img.output_tokens === "number" ? img.output_tokens : 0;
+    if (imgIn > 0 || imgOut > 0) {
+      if (!result.usage) result.usage = { input_tokens: 0, output_tokens: 0 };
+      result.usage.image_input_tokens = imgIn;
+      result.usage.image_output_tokens = imgOut;
     }
   }
   return result;

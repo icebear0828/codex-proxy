@@ -29,6 +29,9 @@ export interface UsageSnapshot {
     output_tokens: number;
     /** Cached prompt tokens (subset of input_tokens). */
     cached_tokens?: number;
+    /** image_generation tool tokens (gpt-image-2). Tracked separately from host-model tokens. */
+    image_input_tokens?: number;
+    image_output_tokens?: number;
     request_count: number;
     active_accounts: number;
   };
@@ -39,6 +42,8 @@ export interface UsageBaseline {
   output_tokens: number;
   request_count: number;
   cached_tokens?: number;
+  image_input_tokens?: number;
+  image_output_tokens?: number;
 }
 
 interface UsageHistoryFile {
@@ -52,6 +57,8 @@ export interface UsageDataPoint {
   input_tokens: number;
   output_tokens: number;
   cached_tokens: number;
+  image_input_tokens: number;
+  image_output_tokens: number;
   request_count: number;
 }
 
@@ -59,6 +66,8 @@ export interface UsageSummary {
   total_input_tokens: number;
   total_output_tokens: number;
   total_cached_tokens: number;
+  total_image_input_tokens: number;
+  total_image_output_tokens: number;
   total_request_count: number;
   total_accounts: number;
   active_accounts: number;
@@ -122,8 +131,10 @@ export class UsageStatsStore {
     this.persistence = persistence ?? createFsUsageStatsPersistence();
     const loaded = this.persistence.load();
     this.snapshots = loaded.snapshots;
-    this.baseline = loaded.baseline ?? { input_tokens: 0, output_tokens: 0, request_count: 0, cached_tokens: 0 };
+    this.baseline = loaded.baseline ?? { input_tokens: 0, output_tokens: 0, request_count: 0, cached_tokens: 0, image_input_tokens: 0, image_output_tokens: 0 };
     if (this.baseline.cached_tokens == null) this.baseline.cached_tokens = 0;
+    if (this.baseline.image_input_tokens == null) this.baseline.image_input_tokens = 0;
+    if (this.baseline.image_output_tokens == null) this.baseline.image_output_tokens = 0;
 
     // Recover baseline from last snapshot if it was never persisted.
     // This handles the case where usage-history.json has correct snapshot
@@ -135,6 +146,8 @@ export class UsageStatsStore {
         output_tokens: last.output_tokens,
         request_count: last.request_count,
         cached_tokens: last.cached_tokens ?? 0,
+        image_input_tokens: last.image_input_tokens ?? 0,
+        image_output_tokens: last.image_output_tokens ?? 0,
       };
     }
   }
@@ -152,18 +165,22 @@ export class UsageStatsStore {
       output_tokens: Math.max(0, this._pendingRecovery.output_tokens - live.output_tokens),
       request_count: Math.max(0, this._pendingRecovery.request_count - live.request_count),
       cached_tokens: Math.max(0, (this._pendingRecovery.cached_tokens ?? 0) - live.cached_tokens),
+      image_input_tokens: Math.max(0, (this._pendingRecovery.image_input_tokens ?? 0) - live.image_input_tokens),
+      image_output_tokens: Math.max(0, (this._pendingRecovery.image_output_tokens ?? 0) - live.image_output_tokens),
     };
     this._pendingRecovery = undefined;
     this.persistence.save({ version: 1, snapshots: this.snapshots, baseline: this.baseline });
-    console.log(`[UsageStats] Recovered baseline: ${this.baseline.input_tokens} in / ${this.baseline.output_tokens} out / ${this.baseline.request_count} req / ${this.baseline.cached_tokens ?? 0} cached`);
+    console.log(`[UsageStats] Recovered baseline: ${this.baseline.input_tokens} in / ${this.baseline.output_tokens} out / ${this.baseline.request_count} req / ${this.baseline.cached_tokens ?? 0} cached / ${this.baseline.image_input_tokens ?? 0} image_in / ${this.baseline.image_output_tokens ?? 0} image_out`);
   }
 
   /** Sum current live usage from all accounts in the pool. */
-  private poolTotals(pool: AccountPool): { input_tokens: number; output_tokens: number; cached_tokens: number; request_count: number; active_accounts: number; total_accounts: number } {
+  private poolTotals(pool: AccountPool): { input_tokens: number; output_tokens: number; cached_tokens: number; image_input_tokens: number; image_output_tokens: number; request_count: number; active_accounts: number; total_accounts: number } {
     const entries = pool.getAllEntries();
     let input_tokens = 0;
     let output_tokens = 0;
     let cached_tokens = 0;
+    let image_input_tokens = 0;
+    let image_output_tokens = 0;
     let request_count = 0;
     let active_accounts = 0;
 
@@ -171,11 +188,13 @@ export class UsageStatsStore {
       input_tokens += entry.usage.input_tokens;
       output_tokens += entry.usage.output_tokens;
       cached_tokens += entry.usage.cached_tokens ?? 0;
+      image_input_tokens += entry.usage.image_input_tokens ?? 0;
+      image_output_tokens += entry.usage.image_output_tokens ?? 0;
       request_count += entry.usage.request_count;
       if (entry.status === "active") active_accounts++;
     }
 
-    return { input_tokens, output_tokens, cached_tokens, request_count, active_accounts, total_accounts: entries.length };
+    return { input_tokens, output_tokens, cached_tokens, image_input_tokens, image_output_tokens, request_count, active_accounts, total_accounts: entries.length };
   }
 
   /** Take a snapshot of current cumulative usage across all accounts. */
@@ -188,22 +207,32 @@ export class UsageStatsStore {
     const lastSnapshot = this.snapshots.length > 0 ? this.snapshots[this.snapshots.length - 1] : null;
     if (lastSnapshot) {
       const baselineCached = this.baseline.cached_tokens ?? 0;
+      const baselineImgIn = this.baseline.image_input_tokens ?? 0;
+      const baselineImgOut = this.baseline.image_output_tokens ?? 0;
       const lastCached = lastSnapshot.totals.cached_tokens ?? 0;
+      const lastImgIn = lastSnapshot.totals.image_input_tokens ?? 0;
+      const lastImgOut = lastSnapshot.totals.image_output_tokens ?? 0;
       const prevLive = {
         input_tokens: lastSnapshot.totals.input_tokens - this.baseline.input_tokens,
         output_tokens: lastSnapshot.totals.output_tokens - this.baseline.output_tokens,
         request_count: lastSnapshot.totals.request_count - this.baseline.request_count,
         cached_tokens: lastCached - baselineCached,
+        image_input_tokens: lastImgIn - baselineImgIn,
+        image_output_tokens: lastImgOut - baselineImgOut,
       };
       if (live.input_tokens < prevLive.input_tokens ||
           live.output_tokens < prevLive.output_tokens ||
           live.request_count < prevLive.request_count ||
-          live.cached_tokens < prevLive.cached_tokens) {
+          live.cached_tokens < prevLive.cached_tokens ||
+          live.image_input_tokens < prevLive.image_input_tokens ||
+          live.image_output_tokens < prevLive.image_output_tokens) {
         this.baseline = {
           input_tokens: this.baseline.input_tokens + Math.max(0, prevLive.input_tokens - live.input_tokens),
           output_tokens: this.baseline.output_tokens + Math.max(0, prevLive.output_tokens - live.output_tokens),
           request_count: this.baseline.request_count + Math.max(0, prevLive.request_count - live.request_count),
           cached_tokens: baselineCached + Math.max(0, prevLive.cached_tokens - live.cached_tokens),
+          image_input_tokens: baselineImgIn + Math.max(0, prevLive.image_input_tokens - live.image_input_tokens),
+          image_output_tokens: baselineImgOut + Math.max(0, prevLive.image_output_tokens - live.image_output_tokens),
         };
       }
     }
@@ -215,6 +244,8 @@ export class UsageStatsStore {
         input_tokens: this.baseline.input_tokens + live.input_tokens,
         output_tokens: this.baseline.output_tokens + live.output_tokens,
         cached_tokens: (this.baseline.cached_tokens ?? 0) + live.cached_tokens,
+        image_input_tokens: (this.baseline.image_input_tokens ?? 0) + live.image_input_tokens,
+        image_output_tokens: (this.baseline.image_output_tokens ?? 0) + live.image_output_tokens,
         request_count: this.baseline.request_count + live.request_count,
         active_accounts: live.active_accounts,
       },
@@ -237,6 +268,8 @@ export class UsageStatsStore {
       total_input_tokens: this.baseline.input_tokens + live.input_tokens,
       total_output_tokens: this.baseline.output_tokens + live.output_tokens,
       total_cached_tokens: (this.baseline.cached_tokens ?? 0) + live.cached_tokens,
+      total_image_input_tokens: (this.baseline.image_input_tokens ?? 0) + live.image_input_tokens,
+      total_image_output_tokens: (this.baseline.image_output_tokens ?? 0) + live.image_output_tokens,
       total_request_count: this.baseline.request_count + live.request_count,
       total_accounts: live.total_accounts,
       active_accounts: live.active_accounts,
@@ -269,6 +302,8 @@ export class UsageStatsStore {
         input_tokens: Math.max(0, curr.input_tokens - prev.input_tokens),
         output_tokens: Math.max(0, curr.output_tokens - prev.output_tokens),
         cached_tokens: Math.max(0, (curr.cached_tokens ?? 0) - (prev.cached_tokens ?? 0)),
+        image_input_tokens: Math.max(0, (curr.image_input_tokens ?? 0) - (prev.image_input_tokens ?? 0)),
+        image_output_tokens: Math.max(0, (curr.image_output_tokens ?? 0) - (prev.image_output_tokens ?? 0)),
         request_count: Math.max(0, curr.request_count - prev.request_count),
       });
     }
@@ -305,6 +340,8 @@ function bucketize(deltas: UsageDataPoint[], bucketMs: number): UsageDataPoint[]
       existing.input_tokens += d.input_tokens;
       existing.output_tokens += d.output_tokens;
       existing.cached_tokens += d.cached_tokens;
+      existing.image_input_tokens += d.image_input_tokens;
+      existing.image_output_tokens += d.image_output_tokens;
       existing.request_count += d.request_count;
     } else {
       buckets.set(bucketKey, {
@@ -312,6 +349,8 @@ function bucketize(deltas: UsageDataPoint[], bucketMs: number): UsageDataPoint[]
         input_tokens: d.input_tokens,
         output_tokens: d.output_tokens,
         cached_tokens: d.cached_tokens,
+        image_input_tokens: d.image_input_tokens,
+        image_output_tokens: d.image_output_tokens,
         request_count: d.request_count,
       });
     }

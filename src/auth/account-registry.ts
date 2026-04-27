@@ -321,7 +321,13 @@ export class AccountRegistry {
   /** Record request usage on release (called by lifecycle). */
   recordUsage(
     entryId: string,
-    usage?: { input_tokens?: number; output_tokens?: number; cached_tokens?: number },
+    usage?: {
+      input_tokens?: number;
+      output_tokens?: number;
+      cached_tokens?: number;
+      image_input_tokens?: number;
+      image_output_tokens?: number;
+    },
   ): void {
     const entry = this.accounts.get(entryId);
     if (!entry) return;
@@ -332,12 +338,16 @@ export class AccountRegistry {
       entry.usage.input_tokens += usage.input_tokens ?? 0;
       entry.usage.output_tokens += usage.output_tokens ?? 0;
       entry.usage.cached_tokens = (entry.usage.cached_tokens ?? 0) + (usage.cached_tokens ?? 0);
+      entry.usage.image_input_tokens = (entry.usage.image_input_tokens ?? 0) + (usage.image_input_tokens ?? 0);
+      entry.usage.image_output_tokens = (entry.usage.image_output_tokens ?? 0) + (usage.image_output_tokens ?? 0);
     }
     entry.usage.window_request_count = (entry.usage.window_request_count ?? 0) + 1;
     if (usage) {
       entry.usage.window_input_tokens = (entry.usage.window_input_tokens ?? 0) + (usage.input_tokens ?? 0);
       entry.usage.window_output_tokens = (entry.usage.window_output_tokens ?? 0) + (usage.output_tokens ?? 0);
       entry.usage.window_cached_tokens = (entry.usage.window_cached_tokens ?? 0) + (usage.cached_tokens ?? 0);
+      entry.usage.window_image_input_tokens = (entry.usage.window_image_input_tokens ?? 0) + (usage.image_input_tokens ?? 0);
+      entry.usage.window_image_output_tokens = (entry.usage.window_image_output_tokens ?? 0) + (usage.image_output_tokens ?? 0);
     }
     this.schedulePersist();
   }
