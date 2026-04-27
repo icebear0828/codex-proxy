@@ -29,7 +29,7 @@ function UsageContent({ t, summary, summaryLoading, granularity, setGranularity,
   return (
     <>
       {/* Summary cards */}
-      <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3 mb-6">
+      <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3 mb-6">
         <SummaryCard
           label={t("totalInputTokens")}
           value={summaryLoading ? "—" : formatNumber(summary?.total_input_tokens ?? 0)}
@@ -48,6 +48,15 @@ function UsageContent({ t, summary, summaryLoading, granularity, setGranularity,
                   .replace("{cached}", formatNumber(summary?.total_cached_tokens ?? 0))
                   .replace("{input}", formatNumber(summary?.total_input_tokens ?? 0))
           }
+        />
+        <SummaryCard
+          label={t("imageTokens")}
+          value={
+            summaryLoading
+              ? "—"
+              : `${formatNumber(summary?.total_image_input_tokens ?? 0)} / ${formatNumber(summary?.total_image_output_tokens ?? 0)}`
+          }
+          hint={summaryLoading ? undefined : t("imageTokensHint")}
         />
         <SummaryCard
           label={t("totalRequestCount")}

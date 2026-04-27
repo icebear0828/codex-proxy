@@ -78,6 +78,8 @@ describe("UsageStatsStore", () => {
         input_tokens: 1800,
         output_tokens: 350,
         cached_tokens: 0,
+        image_input_tokens: 0,
+        image_output_tokens: 0,
         request_count: 10,
         active_accounts: 2,
       });
@@ -92,6 +94,8 @@ describe("UsageStatsStore", () => {
         input_tokens: 0,
         output_tokens: 0,
         cached_tokens: 0,
+        image_input_tokens: 0,
+        image_output_tokens: 0,
         request_count: 0,
         active_accounts: 0,
       });
@@ -121,6 +125,8 @@ describe("UsageStatsStore", () => {
         total_input_tokens: 1500,
         total_output_tokens: 300,
         total_cached_tokens: 0,
+        total_image_input_tokens: 0,
+        total_image_output_tokens: 0,
         total_request_count: 8,
         total_accounts: 2,
         active_accounts: 1,
@@ -186,6 +192,8 @@ describe("UsageStatsStore", () => {
         output_tokens: 1950,
         request_count: 95,
         cached_tokens: 0,
+        image_input_tokens: 0,
+        image_output_tokens: 0,
       });
 
       const lastSnapshot = persistence.saved[persistence.saved.length - 1];
@@ -246,6 +254,8 @@ describe("UsageStatsStore", () => {
         output_tokens: 0,
         request_count: 0,
         cached_tokens: 0,
+        image_input_tokens: 0,
+        image_output_tokens: 0,
       });
     });
 
@@ -272,6 +282,8 @@ describe("UsageStatsStore", () => {
         output_tokens: 490,
         request_count: 49,
         cached_tokens: 0,
+        image_input_tokens: 0,
+        image_output_tokens: 0,
       });
     });
 
@@ -285,7 +297,8 @@ describe("UsageStatsStore", () => {
       persistence = createMockPersistence([], baseline);
       store = new UsageStatsStore(persistence);
 
-      expect(store.currentBaseline).toEqual(baseline);
+      // Constructor backfills missing image/cached fields with 0.
+      expect(store.currentBaseline).toEqual({ ...baseline, cached_tokens: 0, image_input_tokens: 0, image_output_tokens: 0 });
 
       const pool = createMockPool([
         { status: "active", input_tokens: 100, output_tokens: 10, request_count: 1 },
@@ -469,6 +482,8 @@ describe("UsageStatsStore", () => {
         output_tokens: 1_998_000,
         request_count: 4950,
         cached_tokens: 0,
+        image_input_tokens: 0,
+        image_output_tokens: 0,
       });
     });
 

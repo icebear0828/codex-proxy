@@ -8,6 +8,9 @@ export interface UsageSummary {
   total_input_tokens: number;
   total_output_tokens: number;
   total_cached_tokens: number;
+  /** image_generation tool tokens (gpt-image-2). Tracked separately from host-model tokens. */
+  total_image_input_tokens: number;
+  total_image_output_tokens: number;
   total_request_count: number;
   total_accounts: number;
   active_accounts: number;
@@ -18,6 +21,8 @@ export interface UsageDataPoint {
   input_tokens: number;
   output_tokens: number;
   cached_tokens: number;
+  image_input_tokens: number;
+  image_output_tokens: number;
   request_count: number;
 }
 

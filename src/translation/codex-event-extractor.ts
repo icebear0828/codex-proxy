@@ -17,6 +17,9 @@ export interface UsageInfo {
   output_tokens: number;
   cached_tokens?: number;
   reasoning_tokens?: number;
+  /** Tokens billed by the image_generation tool (gpt-image-2). Separate from host-model usage. */
+  image_input_tokens?: number;
+  image_output_tokens?: number;
 }
 
 export interface FunctionCallStart {
