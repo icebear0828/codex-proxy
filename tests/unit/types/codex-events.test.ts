@@ -105,3 +105,105 @@ describe("parseCodexEvent — error events", () => {
     }
   });
 });
+
+describe("parseCodexEvent — tool_usage.image_gen extraction", () => {
+  it("extracts image_input_tokens / image_output_tokens from response.completed", () => {
+    const raw = makeRaw("response.completed", {
+      type: "response.completed",
+      response: {
+        id: "resp_1",
+        usage: { input_tokens: 1200, output_tokens: 30 },
+        tool_usage: {
+          image_gen: {
+            input_tokens: 31,
+            input_tokens_details: { image_tokens: 0, text_tokens: 31 },
+            output_tokens: 196,
+            output_tokens_details: { image_tokens: 196, text_tokens: 0 },
+            total_tokens: 227,
+          },
+          web_search: { num_requests: 0 },
+        },
+      },
+    });
+    const result = parseCodexEvent(raw);
+    expect(result.type).toBe("response.completed");
+    if (result.type === "response.completed") {
+      expect(result.response.usage?.input_tokens).toBe(1200);
+      expect(result.response.usage?.output_tokens).toBe(30);
+      expect(result.response.usage?.image_input_tokens).toBe(31);
+      expect(result.response.usage?.image_output_tokens).toBe(196);
+    }
+  });
+
+  it("omits image fields when both image_gen counts are zero (no image generated)", () => {
+    const raw = makeRaw("response.completed", {
+      type: "response.completed",
+      response: {
+        id: "resp_1",
+        usage: { input_tokens: 100, output_tokens: 20 },
+        tool_usage: {
+          image_gen: { input_tokens: 0, output_tokens: 0, total_tokens: 0 },
+        },
+      },
+    });
+    const result = parseCodexEvent(raw);
+    if (result.type === "response.completed") {
+      expect(result.response.usage?.image_input_tokens).toBeUndefined();
+      expect(result.response.usage?.image_output_tokens).toBeUndefined();
+    }
+  });
+
+  it("omits image fields entirely when tool_usage is missing", () => {
+    const raw = makeRaw("response.completed", {
+      type: "response.completed",
+      response: {
+        id: "resp_1",
+        usage: { input_tokens: 100, output_tokens: 20 },
+      },
+    });
+    const result = parseCodexEvent(raw);
+    if (result.type === "response.completed") {
+      expect(result.response.usage?.image_input_tokens).toBeUndefined();
+      expect(result.response.usage?.image_output_tokens).toBeUndefined();
+    }
+  });
+
+  it("ignores non-numeric image_gen token values", () => {
+    const raw = makeRaw("response.completed", {
+      type: "response.completed",
+      response: {
+        id: "resp_1",
+        usage: { input_tokens: 100, output_tokens: 20 },
+        tool_usage: {
+          image_gen: { input_tokens: "31", output_tokens: null },
+        },
+      },
+    });
+    const result = parseCodexEvent(raw);
+    if (result.type === "response.completed") {
+      expect(result.response.usage?.image_input_tokens).toBeUndefined();
+      expect(result.response.usage?.image_output_tokens).toBeUndefined();
+    }
+  });
+
+  it("populates image fields even when host-model usage is absent", () => {
+    // Defensive: if upstream emits image_gen without a top-level usage block,
+    // we still surface image tokens (with input/output zeroed for host model).
+    const raw = makeRaw("response.completed", {
+      type: "response.completed",
+      response: {
+        id: "resp_1",
+        tool_usage: {
+          image_gen: { input_tokens: 31, output_tokens: 196 },
+        },
+      },
+    });
+    const result = parseCodexEvent(raw);
+    if (result.type === "response.completed") {
+      expect(result.response.usage?.input_tokens).toBe(0);
+      expect(result.response.usage?.output_tokens).toBe(0);
+      expect(result.response.usage?.image_input_tokens).toBe(31);
+      expect(result.response.usage?.image_output_tokens).toBe(196);
+    }
+  });
+});

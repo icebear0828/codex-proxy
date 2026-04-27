@@ -19,7 +19,7 @@ vi.mock("@src/paths.js", () => ({
   getConfigDir: vi.fn(() => "/tmp/test-config"),
 }));
 
-import { extractResponseUsage } from "@src/routes/responses.js";
+import { extractResponseUsage, extractImageGenUsage } from "@src/routes/responses.js";
 
 describe("/v1/responses extractResponseUsage", () => {
   it("extracts cached_tokens from input_tokens_details", () => {
@@ -69,5 +69,46 @@ describe("/v1/responses extractResponseUsage", () => {
       output_tokens: 0,
       cached_tokens: 50,
     });
+  });
+});
+
+describe("/v1/responses extractImageGenUsage", () => {
+  it("extracts image_input_tokens / image_output_tokens from tool_usage.image_gen", () => {
+    expect(extractImageGenUsage({
+      tool_usage: {
+        image_gen: {
+          input_tokens: 31,
+          output_tokens: 196,
+          total_tokens: 227,
+        },
+      },
+    })).toEqual({ image_input_tokens: 31, image_output_tokens: 196 });
+  });
+
+  it("returns undefined when tool_usage is missing", () => {
+    expect(extractImageGenUsage({})).toBeUndefined();
+    expect(extractImageGenUsage({ usage: { input_tokens: 100 } })).toBeUndefined();
+  });
+
+  it("returns undefined when image_gen sub-block is missing", () => {
+    expect(extractImageGenUsage({ tool_usage: { web_search: { num_requests: 0 } } })).toBeUndefined();
+  });
+
+  it("returns undefined when both image counts are zero (no image generated)", () => {
+    expect(extractImageGenUsage({
+      tool_usage: { image_gen: { input_tokens: 0, output_tokens: 0 } },
+    })).toBeUndefined();
+  });
+
+  it("treats non-numeric token fields as zero (and so omits the entry when both are zero)", () => {
+    expect(extractImageGenUsage({
+      tool_usage: { image_gen: { input_tokens: "31", output_tokens: null } },
+    })).toBeUndefined();
+  });
+
+  it("returns partial counts when only one side is non-zero", () => {
+    expect(extractImageGenUsage({
+      tool_usage: { image_gen: { input_tokens: 0, output_tokens: 196 } },
+    })).toEqual({ image_input_tokens: 0, image_output_tokens: 196 });
   });
 });

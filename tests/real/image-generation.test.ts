@@ -45,6 +45,10 @@ interface ImageRequestResult {
   status: number;
   events: Set<string>;
   resultBase64Length: number;
+  /** First few decoded bytes of the result. Used to detect SVG-text fallbacks
+   *  that Free-tier accounts get when the image_generation tool is silently
+   *  stripped upstream — those come back as `<svg ...>` text, not PNG/JPEG/WebP. */
+  resultPrefix: string;
   imageInputTokens: number;
   imageOutputTokens: number;
   hostInputTokens: number;
@@ -74,6 +78,7 @@ async function generateImage(model: string, size: string): Promise<ImageRequestR
       status: res.status,
       events: new Set(),
       resultBase64Length: 0,
+      resultPrefix: "",
       imageInputTokens: 0,
       imageOutputTokens: 0,
       hostInputTokens: 0,
@@ -85,6 +90,7 @@ async function generateImage(model: string, size: string): Promise<ImageRequestR
 
   const events = new Set<string>();
   let resultBase64Length = 0;
+  let resultPrefix = "";
   let imageInputTokens = 0;
   let imageOutputTokens = 0;
   let hostInputTokens = 0;
@@ -107,6 +113,12 @@ async function generateImage(model: string, size: string): Promise<ImageRequestR
       const item = payload.item as Record<string, unknown> | undefined;
       if (item && item.type === "image_generation_call" && typeof item.result === "string") {
         resultBase64Length = item.result.length;
+        // Decode the first ~12 bytes to inspect the file magic. PNG starts
+        // with "\x89PNG", JPEG with "\xff\xd8\xff", WebP with "RIFF....WEBP".
+        // Free-tier downgrades come back as base64 of literal "<svg ..." text.
+        try {
+          resultPrefix = Buffer.from(item.result.slice(0, 16), "base64").toString("binary").slice(0, 8);
+        } catch { /* leave empty */ }
       }
     }
     if (eventName === "response.completed") {
@@ -151,12 +163,23 @@ async function generateImage(model: string, size: string): Promise<ImageRequestR
     status: res.status,
     events,
     resultBase64Length,
+    resultPrefix,
     imageInputTokens,
     imageOutputTokens,
     hostInputTokens,
     hostOutputTokens,
     elapsedMs: Date.now() - start,
   };
+}
+
+/** Returns true when the first decoded bytes match a real raster image
+ *  (PNG / JPEG / WebP) rather than a plain-text fallback (e.g. SVG). */
+function isRealImage(prefix: string): boolean {
+  if (prefix.startsWith("\x89PNG")) return true;
+  if (prefix.startsWith("\xff\xd8\xff")) return true; // JPEG SOI
+  if (prefix.startsWith("RIFF")) return true; // WebP / other RIFF
+  if (prefix.startsWith("GIF8")) return true;
+  return false;
 }
 
 interface UsageSummary {
@@ -177,7 +200,10 @@ async function fetchSummary(): Promise<UsageSummary> {
 describe("real: image_generation matrix", () => {
   for (const model of MODELS) {
     for (const size of SIZES) {
-      const minBytes = size === "1024x1024" ? 200_000 : 1_500_000;
+      // Lower bound is intentionally generous — a flat-color PNG can compress
+      // surprisingly well. The hard correctness check is the file-magic test
+      // (isRealImage) which rejects SVG-text fallbacks regardless of size.
+      const minBytes = size === "1024x1024" ? 50_000 : 500_000;
 
       it(`${model} × ${size}: ${CONCURRENCY} concurrent × ${ROUNDS} rounds all produce non-empty images`, async () => {
         if (skip()) return;
@@ -200,8 +226,10 @@ describe("real: image_generation matrix", () => {
           expect(r.events.has("response.completed"), "saw response.completed").toBe(true);
           expect(r.events.has("response.image_generation_call.generating"), "saw image_generation_call.generating").toBe(true);
           expect(r.events.has("response.output_item.done"), "saw output_item.done").toBe(true);
-          // base64-encoded PNG: 1024 PNG ≈ 1MB raw → ~1.3MB base64; 4K PNG ≈ 8MB → ~10MB base64.
-          // Rough lower-bound to confirm the model didn't degrade to a tiny SVG payload.
+          // The hard check: file magic must match PNG / JPEG / WebP / GIF, not SVG text.
+          // Free accounts get the image_generation tool silently stripped and the model
+          // returns base64-of-SVG-text, which would otherwise pass the size threshold.
+          expect(isRealImage(r.resultPrefix), `result is a real raster image (got prefix ${JSON.stringify(r.resultPrefix)})`).toBe(true);
           expect(r.resultBase64Length, "image result base64 length").toBeGreaterThan(minBytes);
           expect(r.imageOutputTokens, "tool_usage.image_gen.output_tokens > 0").toBeGreaterThan(0);
         }
@@ -227,6 +255,7 @@ describe("real: image_generation matrix", () => {
     const before = await fetchSummary();
     const r = await generateImage("gpt-5.4-mini", "1024x1024");
     expect(r.status).toBe(200);
+    expect(isRealImage(r.resultPrefix), "result is a real raster image (account is Plus+)").toBe(true);
     expect(r.imageOutputTokens).toBeGreaterThan(0);
 
     // Allow up to 2 polls — release happens in a finally{} after the SSE stream closes.
