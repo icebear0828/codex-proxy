@@ -121,6 +121,34 @@ describe("createWebSocketResponse — early-stream error rejection", () => {
     }
   });
 
+  it("rejects with CodexApiError(400) when first frame is previous_response_not_found", async () => {
+    // The proxy maintains a per-response affinity map in memory. When the map
+    // is lost (process restart, 4h TTL expiry) or a request is forced onto a
+    // different account (rate-limit / ban / quota), the upstream rejects with
+    // `previous_response_not_found`. We treat this as rotatable so the
+    // proxy-handler can strip the stale ID and retry.
+    const promise = createWebSocketResponse("wss://test/ws", {}, BASE_REQUEST);
+    promise.catch(() => { /* asserted below */ });
+    const ws = await waitForOpen();
+
+    ws.emit("message", JSON.stringify({
+      type: "error",
+      error: {
+        code: "previous_response_not_found",
+        message: "Previous response with id 'resp_xxx' not found.",
+      },
+    }));
+
+    try {
+      await promise;
+      throw new Error("expected rejection");
+    } catch (err) {
+      expect(err).toBeInstanceOf(CodexApiError);
+      expect((err as CodexApiError).status).toBe(400);
+      expect((err as CodexApiError).body).toContain("previous_response_not_found");
+    }
+  });
+
   it("rejects with CodexApiError(402) when first frame is response.failed quota_exhausted", async () => {
     const promise = createWebSocketResponse("wss://test/ws", {}, BASE_REQUEST);
     promise.catch(() => { /* asserted below */ });
