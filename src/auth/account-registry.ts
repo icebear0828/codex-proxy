@@ -327,6 +327,13 @@ export class AccountRegistry {
       cached_tokens?: number;
       image_input_tokens?: number;
       image_output_tokens?: number;
+      /** True when the request declared `tools: [{type: "image_generation"}]`.
+       *  Used to drive the success/failure split below. */
+      image_request_attempted?: boolean;
+      /** Only meaningful when image_request_attempted=true. True iff upstream
+       *  returned non-zero image output tokens (i.e. an image was actually
+       *  generated, not silently stripped). */
+      image_request_succeeded?: boolean;
     },
   ): void {
     const entry = this.accounts.get(entryId);
@@ -340,6 +347,13 @@ export class AccountRegistry {
       entry.usage.cached_tokens = (entry.usage.cached_tokens ?? 0) + (usage.cached_tokens ?? 0);
       entry.usage.image_input_tokens = (entry.usage.image_input_tokens ?? 0) + (usage.image_input_tokens ?? 0);
       entry.usage.image_output_tokens = (entry.usage.image_output_tokens ?? 0) + (usage.image_output_tokens ?? 0);
+      if (usage.image_request_attempted) {
+        if (usage.image_request_succeeded) {
+          entry.usage.image_request_count = (entry.usage.image_request_count ?? 0) + 1;
+        } else {
+          entry.usage.image_request_failed_count = (entry.usage.image_request_failed_count ?? 0) + 1;
+        }
+      }
     }
     entry.usage.window_request_count = (entry.usage.window_request_count ?? 0) + 1;
     if (usage) {
@@ -348,6 +362,13 @@ export class AccountRegistry {
       entry.usage.window_cached_tokens = (entry.usage.window_cached_tokens ?? 0) + (usage.cached_tokens ?? 0);
       entry.usage.window_image_input_tokens = (entry.usage.window_image_input_tokens ?? 0) + (usage.image_input_tokens ?? 0);
       entry.usage.window_image_output_tokens = (entry.usage.window_image_output_tokens ?? 0) + (usage.image_output_tokens ?? 0);
+      if (usage.image_request_attempted) {
+        if (usage.image_request_succeeded) {
+          entry.usage.window_image_request_count = (entry.usage.window_image_request_count ?? 0) + 1;
+        } else {
+          entry.usage.window_image_request_failed_count = (entry.usage.window_image_request_failed_count ?? 0) + 1;
+        }
+      }
     }
     this.schedulePersist();
   }

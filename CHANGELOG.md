@@ -22,6 +22,7 @@
 
 ### Added
 
+- 图像生成请求计数（成功 / 失败分流）：`AccountUsage` 新增 `image_request_count` / `image_request_failed_count`（含 window 维度）。请求时检测 `tools[].type === "image_generation"`，release 时按 `tool_usage.image_gen.output_tokens` 是否 > 0 分流到成功 / 失败计数；Free 账号被静默剥工具、上游 4xx/5xx、EmptyResponse 等失败路径也会写入 failed 计数。`/admin/usage-stats/summary` 新增 `total_image_request_count` / `total_image_request_failed_count`，Dashboard 用量页新增「Image Requests」卡片显示 `N ok · M failed`，AccountCard 在有图像活动时显示窗口请求成功 / 失败行
 - 图像生成 token 独立计数：上游 `tool_usage.image_gen.{input_tokens, output_tokens}`（`gpt-image-2` 单独账）从前一直被丢弃，现在贯穿全链路 —— `parseResponseData` / `extractImageGenUsage` 解析、`AccountUsage` 累加（含 window 维度）、`UsageSnapshot` / `UsageBaseline` 持久化、`/admin/usage-stats/summary` 暴露 `total_image_input_tokens` / `total_image_output_tokens`、Dashboard 用量页新增「Image Tokens (in/out)」卡片，AccountCard 在该账号有图像消费时多显示一行窗口图像 token；老 `usage-history.json` 缺新字段以 0 兜底，向后兼容
 - 图像生成真实压测：`tests/real/image-generation.test.ts`（vitest, `npm run test:real`）跑 `{gpt-5.4-mini, gpt-5.5} × {1024×1024, 3840×2160}` 矩阵，每组合 2 并发 × 2 轮断言 SSE 完整事件链 + 图片 base64 长度阈值 + `tool_usage.image_gen.output_tokens > 0`，最后校验 `/admin/usage-stats/summary` 的 image token 增量；`tests/bench/image-gen-bench.ts` 提供同矩阵的 p50/p95/min/max + 图像与主模型 token 均值 markdown 表
 - Dashboard 用量统计新增「缓存命中率」卡片：聚合所有账号 `cached_tokens / input_tokens` 比例，附带绝对值提示。后端 `AccountUsage` 与 `UsageSnapshot` 持久化 cached tokens（含 window 维度），`/admin/usage-stats/summary` 与 `/history` 同步暴露 `total_cached_tokens` / `cached_tokens` 字段；老数据以 0 兜底
@@ -38,7 +39,9 @@
 
 ### Fixed
 
-- 上游返回 `previous_response_not_found`（response 由别的账号创建 / `SessionAffinityMap` 过期或重启丢失 / 跨账号轮转）时端到端恢复：
+- 多后端流量的 cache 命中率被低估到 0%：`OpenAI` / `Anthropic` / `Gemini` 上游适配器在合成 `response.completed` 时全都硬编码 `input_tokens_details: {}`,丢掉了上游原本返回的缓存字段。`openai-upstream.ts` 现在抽 `usage.prompt_tokens_details.cached_tokens`,`anthropic-upstream.ts` 抽 `message_start.usage.cache_read_input_tokens`(也兜底从 `message_delta.usage` 读),`gemini-upstream.ts` 抽 `usageMetadata.cachedContentTokenCount`。修复后 `/admin/usage-stats/summary` 的 `total_cached_tokens` 在多后端模式下不再常驻 0,Dashboard 缓存命中率卡片可以正常工作
+- Dashboard 缓存命中率显示精度自适应:`formatHitRate` 在 < 1% 时切两位小数(`0.02%`),< 0.01% 显 `<0.01%`,= 0 显 `0%` —— 以前 `pct.toFixed(1)` 把 < 0.05% 全压成 "0.0%",看不到真实值
+- 上游返回 `previous_response_not_found`(response 由别的账号创建 / `SessionAffinityMap` 过期或重启丢失 / 跨账号轮转)时端到端恢复:
   - `ws-transport.ts:36` `ROTATABLE_ERROR_CODES` 增补 `previous_response_not_found: 400`，让 WS 首帧 in-stream error 转成 `CodexApiError` reject —— 之前因为不在白名单里直接被流式透传到客户端，绕过了 catch
   - `proxy-handler.ts` catch 块新增 strip-and-retry：剥掉 `previous_response_id` + `turnState`，在同一账号上重试一次，并把 ID 从 affinity map 清掉防止后续请求继续命中错路由；重试仍失败时降级返回原错误
   - 隐式续链场景通过已有的 `restoreImplicitResumeRequest()` 路径回放完整 input，无损恢复；显式续链（客户端传 `previous_response_id`）会丢服务端历史，但请求仍能完成

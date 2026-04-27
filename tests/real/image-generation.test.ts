@@ -185,6 +185,8 @@ function isRealImage(prefix: string): boolean {
 interface UsageSummary {
   total_image_input_tokens: number;
   total_image_output_tokens: number;
+  total_image_request_count: number;
+  total_image_request_failed_count: number;
   total_request_count: number;
   [key: string]: unknown;
 }
@@ -247,7 +249,7 @@ describe("real: image_generation matrix", () => {
     }
   }
 
-  it("end-to-end: total_image_output_tokens increased after the matrix run", async () => {
+  it("end-to-end: total_image_output_tokens + image_request_count increased after the matrix run", async () => {
     if (skip()) return;
     // Light single shot to ensure at least one summary delta even if other tests were skipped
     // (real-world: snapshot recording is on a timer, so summary is computed live from pool entries
@@ -267,5 +269,10 @@ describe("real: image_generation matrix", () => {
     expect(after.total_image_output_tokens).toBeGreaterThan(before.total_image_output_tokens);
     expect(after.total_image_input_tokens).toBeGreaterThanOrEqual(before.total_image_input_tokens);
     expect(typeof after.total_image_input_tokens).toBe("number");
+
+    // Counter should tick by exactly 1 (this single successful image gen).
+    // Failed counter should not move on a successful Plus+ call.
+    expect(after.total_image_request_count - before.total_image_request_count).toBe(1);
+    expect(after.total_image_request_failed_count).toBe(before.total_image_request_failed_count);
   }, TIMEOUT * 4);
 });

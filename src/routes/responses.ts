@@ -631,6 +631,12 @@ export function createResponsesRoutes(
       codexRequest.tool_choice = body.tool_choice as CodexResponsesRequest["tool_choice"];
     }
 
+    // Detect image_generation tool at request time so we can classify the
+    // outcome on release (success / failed / silently stripped) regardless
+    // of whether the response actually arrived.
+    const expectsImageGen = Array.isArray(body.tools)
+      && body.tools.some((t): t is Record<string, unknown> => isRecord(t) && t.type === "image_generation");
+
     // Text format (JSON mode / structured outputs)
     let tupleSchema: Record<string, unknown> | null = null;
     if (
@@ -664,6 +670,7 @@ export function createResponsesRoutes(
       model: displayModel,
       isStreaming: clientWantsStream,
       tupleSchema,
+      expectsImageGen,
     };
 
     const requestId = c.get("requestId") ?? randomUUID().slice(0, 8);

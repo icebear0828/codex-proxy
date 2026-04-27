@@ -70,6 +70,9 @@ export class AnthropicUpstream implements UpstreamAdapter {
     let messageId = fallbackId;
     let inputTokens = 0;
     let outputTokens = 0;
+    // Anthropic surfaces cache hits as `cache_read_input_tokens`. They appear
+    // in message_start.usage and (for some flows) again in message_delta.usage.
+    let cachedTokens = 0;
 
     // Track tool_use content blocks by index → { id, name, argBuffer }
     const toolBlocks = new Map<number, { id: string; name: string; argBuffer: string }>();
@@ -88,6 +91,9 @@ export class AnthropicUpstream implements UpstreamAdapter {
             const usage = isRecord(msg.usage) ? msg.usage : null;
             if (usage && typeof usage.input_tokens === "number") {
               inputTokens = usage.input_tokens;
+            }
+            if (usage && typeof usage.cache_read_input_tokens === "number") {
+              cachedTokens = usage.cache_read_input_tokens;
             }
           }
           yield {
@@ -166,6 +172,10 @@ export class AnthropicUpstream implements UpstreamAdapter {
           if (usage && typeof usage.output_tokens === "number") {
             outputTokens = usage.output_tokens;
           }
+          if (usage && typeof usage.cache_read_input_tokens === "number") {
+            // message_delta sometimes re-emits cache info; prefer the last value seen.
+            cachedTokens = usage.cache_read_input_tokens;
+          }
           break;
         }
 
@@ -179,7 +189,7 @@ export class AnthropicUpstream implements UpstreamAdapter {
                 usage: {
                   input_tokens: inputTokens,
                   output_tokens: outputTokens,
-                  input_tokens_details: {},
+                  input_tokens_details: cachedTokens > 0 ? { cached_tokens: cachedTokens } : {},
                   output_tokens_details: {},
                 },
               },

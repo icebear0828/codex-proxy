@@ -120,6 +120,14 @@ The proxy passes both through verbatim, and tracks them as separate counters
 on the dashboard (`total_image_input_tokens` / `total_image_output_tokens`) so
 image-gen usage doesn't pollute host-model token charts.
 
+**Request accounting**: the proxy also counts each `image_generation` request
+as success or failure. `total_image_request_count` increments when the upstream
+returned a real image (non-zero `tool_usage.image_gen.output_tokens`);
+`total_image_request_failed_count` increments when the tool was silently
+stripped (Free plan), the upstream returned an error, or the response came
+back empty. Both surfaces in `/admin/usage-stats/summary` and the Dashboard's
+"Image Requests" card.
+
 **Edit mode** (supply a reference image): put an `input_image` block in the user
 message content. `data:` URLs and HTTPS URLs both work.
 

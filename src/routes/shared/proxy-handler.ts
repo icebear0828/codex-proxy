@@ -48,6 +48,10 @@ export interface ProxyRequest {
   tupleSchema?: Record<string, unknown> | null;
   /** Whether this is a new conversation (no previous_response_id) — used for cache reporting. */
   isNewConversation?: boolean;
+  /** True iff the request declared `tools: [{type: "image_generation"}]`.
+   *  Used to attribute success/failure to the image_generation request counters
+   *  even when the upstream call fails before any SSE arrives. */
+  expectsImageGen?: boolean;
 }
 
 export interface UsageHint {
@@ -93,6 +97,26 @@ const MAX_EMPTY_RETRIES = 2;
 
 function normalizeInstructions(instructions: string | null | undefined): string {
   return instructions ?? "";
+}
+
+/** Annotate a usage payload with image_generation attempt outcome before
+ *  releasing the account, so `recordUsage` can split it into success vs failed
+ *  counters. Synthesizes a usage object when the failure path has none. */
+function annotateImageGenOutcome(
+  usage: UsageInfo | undefined,
+  expectsImageGen: boolean | undefined,
+): UsageInfo | undefined {
+  if (!expectsImageGen) return usage;
+  const succeeded = (usage?.image_output_tokens ?? 0) > 0;
+  if (usage) {
+    return { ...usage, image_request_attempted: true, image_request_succeeded: succeeded };
+  }
+  return {
+    input_tokens: 0,
+    output_tokens: 0,
+    image_request_attempted: true,
+    image_request_succeeded: false,
+  };
 }
 
 export function shouldActivateImplicitResume(opts: {
@@ -449,7 +473,7 @@ export async function handleProxyRequest(
                 );
               }
             }
-            releaseAccount(accountPool, capturedEntryId, usageInfo, released);
+            releaseAccount(accountPool, capturedEntryId, annotateImageGenOutcome(usageInfo, req.expectsImageGen), released);
           }
         });
       }
@@ -476,7 +500,7 @@ export async function handleProxyRequest(
       );
     } catch (err) {
       if (!(err instanceof CodexApiError)) {
-        releaseAccount(accountPool, entryId, undefined, released);
+        releaseAccount(accountPool, entryId, annotateImageGenOutcome(undefined, req.expectsImageGen), released);
         throw err;
       }
 
@@ -511,13 +535,13 @@ export async function handleProxyRequest(
       );
 
       if (decision.action === "respond") {
-        releaseAccount(accountPool, entryId, undefined, released);
+        releaseAccount(accountPool, entryId, annotateImageGenOutcome(undefined, req.expectsImageGen), released);
         c.status(decision.status as StatusCode);
         return c.json(fmt.formatError(decision.status, decision.message));
       }
 
       if (decision.releaseBeforeRetry) {
-        releaseAccount(accountPool, entryId, undefined, released);
+        releaseAccount(accountPool, entryId, annotateImageGenOutcome(undefined, req.expectsImageGen), released);
       }
       restoreImplicitResumeRequest();
       if (decision.markModelRetried) {
@@ -629,7 +653,7 @@ async function handleNonStreaming(
           console.warn(`[${fmt.tag}] ⚠ High input token count: ${u.input_tokens} tokens`);
         }
       }
-      releaseAccount(accountPool, currentEntryId, result.usage, released);
+      releaseAccount(accountPool, currentEntryId, annotateImageGenOutcome(result.usage, req.expectsImageGen), released);
       return c.json(result.response);
     } catch (collectErr) {
       if (collectErr instanceof EmptyResponseError && attempt <= MAX_EMPTY_RETRIES) {
@@ -638,7 +662,7 @@ async function handleNonStreaming(
           `[${fmt.tag}] Account ${currentEntryId} (${email}) | Empty response (attempt ${attempt}/${MAX_EMPTY_RETRIES + 1}), switching account...`,
         );
         accountPool.recordEmptyResponse(currentEntryId);
-        releaseAccount(accountPool, currentEntryId, collectErr.usage, released);
+        releaseAccount(accountPool, currentEntryId, annotateImageGenOutcome(collectErr.usage, req.expectsImageGen), released);
         restoreImplicitResumeRequest?.();
 
         const newAcquired = acquireAccount(accountPool, req.codexRequest.model, undefined, fmt.tag);
@@ -672,7 +696,7 @@ async function handleNonStreaming(
             },
           });
         } catch (retryErr) {
-          releaseAccount(accountPool, currentEntryId, undefined, released);
+          releaseAccount(accountPool, currentEntryId, annotateImageGenOutcome(undefined, req.expectsImageGen), released);
           const msg = retryErr instanceof Error ? retryErr.message : "Upstream request failed";
           enqueueLogEntry({
             requestId,
@@ -701,7 +725,7 @@ async function handleNonStreaming(
         continue;
       }
 
-      releaseAccount(accountPool, currentEntryId, undefined, released);
+      releaseAccount(accountPool, currentEntryId, annotateImageGenOutcome(undefined, req.expectsImageGen), released);
       if (collectErr instanceof EmptyResponseError) {
         const email = accountPool.getEntry(currentEntryId)?.email ?? "?";
         console.warn(

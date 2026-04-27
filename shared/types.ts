@@ -32,11 +32,16 @@ export interface Account {
     /** image_generation tool tokens (gpt-image-2). */
     image_input_tokens?: number;
     image_output_tokens?: number;
+    /** image_generation request counters (success vs failed). */
+    image_request_count?: number;
+    image_request_failed_count?: number;
     window_request_count?: number;
     window_input_tokens?: number;
     window_output_tokens?: number;
     window_image_input_tokens?: number;
     window_image_output_tokens?: number;
+    window_image_request_count?: number;
+    window_image_request_failed_count?: number;
   };
   quota?: AccountQuota;
   quotaFetchedAt?: string | null;
