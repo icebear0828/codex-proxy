@@ -106,6 +106,11 @@ export class SessionAffinityMap {
     return entry?.functionCallIds ? [...entry.functionCallIds] : [];
   }
 
+  /** Drop a response ID — called after upstream rejects it as not-found. */
+  forget(responseId: string): void {
+    this.map.delete(responseId);
+  }
+
   private getEntry(responseId: string): AffinityEntry | null {
     const entry = this.map.get(responseId);
     if (!entry) return null;

@@ -26,6 +26,7 @@ import type { ProxyPool } from "../../proxy/proxy-pool.js";
 import { withRetry } from "../../utils/retry.js";
 import { acquireAccount, releaseAccount } from "./account-acquisition.js";
 import { handleCodexApiError, toErrorStatus } from "./proxy-error-handler.js";
+import { isPreviousResponseNotFoundError } from "../../proxy/error-classification.js";
 import { streamResponse } from "./response-processor.js";
 import type { UsageInfo } from "../../translation/codex-event-extractor.js";
 import { parseRateLimitHeaders, rateLimitToQuota, type ParsedRateLimit } from "../../proxy/rate-limit-headers.js";
@@ -251,6 +252,7 @@ export async function handleProxyRequest(
   let codexApi = buildCodexApi(acquired.token, acquired.accountId, cookieJar, entryId, proxyPool);
   const triedEntryIds: string[] = [entryId];
   let modelRetried = false;
+  let prevRespNotFoundRetried = false;
   let usageInfo: UsageInfo | undefined;
   let capturedResponseId: string | null = null;
   const responseFunctionCallIds = new Set<string>();
@@ -480,6 +482,24 @@ export async function handleProxyRequest(
           `[${fmt.tag}] 隐式续链 WebSocket 失败，回退为完整历史重放：${err.causeMessage}`,
         );
         restoreImplicitResumeRequest();
+        continue;
+      }
+
+      // previous_response_id stale (account doesn't recognise it / map lost on
+      // restart / cross-account routing): drop the ID and retry once on the
+      // same account. For implicit-resume requests this also restores the
+      // full input history; for explicit ones the client's own input is sent
+      // verbatim (server-side history is lost but the request still completes).
+      if (!prevRespNotFoundRetried && isPreviousResponseNotFoundError(err)) {
+        prevRespNotFoundRetried = true;
+        const staleId = req.codexRequest.previous_response_id;
+        console.warn(
+          `[${fmt.tag}] Account ${entryId} | previous_response_not_found (id=${staleId ?? "?"}), stripping and retrying same account`,
+        );
+        if (staleId) affinityMap.forget(staleId);
+        restoreImplicitResumeRequest();
+        req.codexRequest.previous_response_id = undefined;
+        req.codexRequest.turnState = undefined;
         continue;
       }
 

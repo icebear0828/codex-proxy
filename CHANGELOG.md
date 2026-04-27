@@ -35,6 +35,11 @@
 
 ### Fixed
 
+- 上游返回 `previous_response_not_found`（response 由别的账号创建 / `SessionAffinityMap` 过期或重启丢失 / 跨账号轮转）时端到端恢复：
+  - `ws-transport.ts:36` `ROTATABLE_ERROR_CODES` 增补 `previous_response_not_found: 400`，让 WS 首帧 in-stream error 转成 `CodexApiError` reject —— 之前因为不在白名单里直接被流式透传到客户端，绕过了 catch
+  - `proxy-handler.ts` catch 块新增 strip-and-retry：剥掉 `previous_response_id` + `turnState`，在同一账号上重试一次，并把 ID 从 affinity map 清掉防止后续请求继续命中错路由；重试仍失败时降级返回原错误
+  - 隐式续链场景通过已有的 `restoreImplicitResumeRequest()` 路径回放完整 input，无损恢复；显式续链（客户端传 `previous_response_id`）会丢服务端历史，但请求仍能完成
+  - 新增分类器 `isPreviousResponseNotFoundError` + `SessionAffinityMap.forget()`（`src/proxy/error-classification.ts`、`src/auth/session-affinity.ts`、`src/routes/shared/proxy-handler.ts`、`src/proxy/ws-transport.ts`）
 - `release.yml` 让 electron-builder 用 tag 名当版本（`--config.extraMetadata.version="${TAG#v}"`），不再依赖 `package.json`。修复 `bump-electron-beta.yml` 故意不写 `package.json` 时 beta 包被跳过上传的问题（"existing type not compatible with publishing type"）；同步在 `release` job 给 prerelease tag 兜底 `--prerelease` flag (#413)
 - `release.yml` 的 `Pack` 步骤强制 `shell: bash`，让 Windows runner（默认 pwsh）正确解析 bash 多行续行符 `\` (#414)
 - WebSocket 路径首帧若为上游 `usage_limit_reached` / `rate_limit*` / `quota_exhausted` / 鉴权类终止错误，转换为 `CodexApiError` 抛出，复用 HTTP 路径已有的账号轮转逻辑；恢复 2.0.62 的"智能切换"行为（`src/proxy/ws-transport.ts`）。错误若发生在已有内容流出之后，仍按当前行为透传给客户端

@@ -50,6 +50,9 @@ const ROTATABLE_ERROR_CODES: Readonly<Record<string, number>> = {
   forbidden: 403,
   account_banned: 403,
   banned: 403,
+  // 400 — stale previous_response_id (account doesn't recognise it; let
+  // proxy-handler strip the ID and retry on the same account)
+  previous_response_not_found: 400,
 };
 
 function classifyWsErrorEvent(msg: Record<string, unknown>): { status: number } | null {

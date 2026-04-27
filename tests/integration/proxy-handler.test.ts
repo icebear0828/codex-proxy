@@ -636,7 +636,91 @@ describe("proxy-handler integration", () => {
     expect(message).toContain("2 rate-limited");
   });
 
-  // 16. 403 ban with mixed pool states → descriptive error
+  // 17. previous_response_not_found: should strip previous_response_id and retry
+  // Reproduces the bug: when upstream returns previous_response_not_found
+  // (because the response was created on a different account or is unknown to
+  // this account), the proxy currently passes the error straight through with
+  // no recovery. Desired behavior: strip previous_response_id and replay.
+  it("recovers from previous_response_not_found by stripping ID and retrying", async () => {
+    const notFoundBody = JSON.stringify({
+      error: {
+        type: "invalid_request_error",
+        code: "previous_response_not_found",
+        message: "Previous response with id 'resp_0e2e6e7917486cfd0069eec8532d988194a3da6379c70abe68' not found.",
+      },
+    });
+
+    let createCount = 0;
+    const seenPrevIds: Array<string | undefined> = [];
+    mockCreateResponse = () => {
+      // The mock-CodexApi instance receives the *current* codexRequest by
+      // reference. We capture the previous_response_id at the moment of call.
+      createCount++;
+      if (createCount === 1) return Promise.reject(new CodexApiError(400, notFoundBody));
+      return Promise.resolve(new Response("data: {}\n\n"));
+    };
+
+    // Wrap createResponse to capture the previous_response_id seen on each call.
+    // (Re-mock CodexApi inline so we can observe the request mutation.)
+    const accountPool = createMockAccountPool();
+    const fmt = createMockFormatAdapter();
+    const req: ProxyRequest = {
+      ...createDefaultRequest(),
+      codexRequest: {
+        ...createDefaultRequest().codexRequest,
+        previous_response_id: "resp_0e2e6e7917486cfd0069eec8532d988194a3da6379c70abe68",
+      },
+    };
+
+    // Spy: snapshot previous_response_id before the upstream is called.
+    const origMock = mockCreateResponse;
+    mockCreateResponse = () => {
+      seenPrevIds.push(req.codexRequest.previous_response_id);
+      return origMock!();
+    };
+
+    const { app } = buildTestApp({ accountPool, fmt, req });
+    const res = await app.request("/test", { method: "POST" });
+
+    // Desired: proxy retries after stripping previous_response_id, returns 200
+    expect(res.status).toBe(200);
+    // Desired: 2 upstream calls — first with the stale ID, second without it
+    expect(createCount).toBe(2);
+    expect(seenPrevIds[0]).toBe("resp_0e2e6e7917486cfd0069eec8532d988194a3da6379c70abe68");
+    expect(seenPrevIds[1]).toBeUndefined();
+  });
+
+  // 17b. previous_response_not_found loop guard — only retry once
+  it("does not loop forever when previous_response_not_found persists after strip", async () => {
+    const notFoundBody = JSON.stringify({
+      error: { type: "invalid_request_error", code: "previous_response_not_found",
+        message: "Previous response with id 'resp_xxx' not found." },
+    });
+    let createCount = 0;
+    mockCreateResponse = () => {
+      createCount++;
+      return Promise.reject(new CodexApiError(400, notFoundBody));
+    };
+
+    const accountPool = createMockAccountPool();
+    const fmt = createMockFormatAdapter();
+    const req: ProxyRequest = {
+      ...createDefaultRequest(),
+      codexRequest: {
+        ...createDefaultRequest().codexRequest,
+        previous_response_id: "resp_xxx",
+      },
+    };
+    const { app } = buildTestApp({ accountPool, fmt, req });
+
+    const res = await app.request("/test", { method: "POST" });
+    // After the strip+retry attempt also fails, fall through to generic error
+    expect(res.status).toBe(400);
+    // Exactly 2 upstream calls — strip-retry happens once, no further retries
+    expect(createCount).toBe(2);
+  });
+
+  // 18. 403 ban with mixed pool states → descriptive error
   it("returns descriptive error when banned and remaining accounts disabled/expired", async () => {
     mockCreateResponse = () =>
       Promise.reject(new CodexApiError(403, '{"detail": "Account suspended"}'));
