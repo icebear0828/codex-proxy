@@ -10,6 +10,7 @@
 
 ### Changed
 
+- `bump-electron-beta.yml` 触发改为定时 cron（每天 04:00 / 12:00 UTC，北京 12:00 / 20:00），不再随每次 dev push 即时打 beta tag。聚合多个 PR 进同一 beta，避免 beta channel 一天弹多次更新；紧急可手动 `gh workflow run bump-electron-beta.yml`
 - Ollama bridge cleanup（#403 review followups, closes #405 #406 #407）：
   - `src/ollama/bridge.ts` 不再重复实现 `normalizeHostname` / `isLoopbackHostname`，统一从 `src/utils/host.ts` 引入；`shared/utils/host.ts` 改为薄 re-export 以兼容前端的现有 import (#405)
   - `proxyOpenAIRequest` 转发头扩展到 `Content-Type` / `Accept` / `User-Agent` / `X-Request-Id` / `traceparent` / `tracestate`（#403 review #2）；`/v1/*` 路径剥离改用 `path.replace(/^\/v1/, "")` 替代 `slice(3)`
