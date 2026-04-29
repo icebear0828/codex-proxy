@@ -105,36 +105,40 @@ describe("Ollama bridge routes", () => {
     expect(body.models[0].digest).toMatch(/^[a-f0-9]{64}$/);
   });
 
-  it("returns model show metadata and can suppress vision capability", async () => {
-    fetchMock.mockResolvedValueOnce(json({
-      id: "gpt-5.4-mini",
-      displayName: "GPT 5.4 mini",
-      inputModalities: ["text", "image"],
-      supportedReasoningEfforts: [{ reasoningEffort: "medium" }],
-      defaultReasoningEffort: "medium",
-    }));
-    const app = createApp(true);
+  it.each(["gpt-5.5", "gpt-5.4-mini"])(
+    "returns 400k context metadata for %s and can suppress vision capability",
+    async (model) => {
+      fetchMock.mockResolvedValueOnce(json({
+        id: model,
+        displayName: model,
+        inputModalities: ["text", "image"],
+        supportedReasoningEfforts: [{ reasoningEffort: "medium" }],
+        defaultReasoningEffort: "medium",
+      }));
+      const app = createApp(true);
 
-    const res = await app.request("/api/show", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ model: "gpt-5.4-mini" }),
-    });
+      const res = await app.request("/api/show", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ model }),
+      });
 
-    expect(res.status).toBe(200);
-    expect(fetchMock).toHaveBeenCalledWith(
-      "http://upstream.test/v1/models/gpt-5.4-mini/info",
-      expect.any(Object),
-    );
-    const body = await res.json() as Record<string, unknown>;
-    expect(body.capabilities).toEqual(["completion", "tools", "thinking"]);
-    expect(body.parameters).toBe("num_ctx 272000\nreasoning medium");
-    expect(body.model_info).toMatchObject({
-      "gpt-5.4.context_length": 272000,
-      upstream_id: "gpt-5.4-mini",
-      input_modalities: ["text", "image"],
+      expect(res.status).toBe(200);
+      expect(fetchMock).toHaveBeenCalledWith(
+        `http://upstream.test/v1/models/${model}/info`,
+        expect.any(Object),
+      );
+      const body = await res.json() as Record<string, unknown>;
+      expect(body.capabilities).toEqual(["completion", "tools", "thinking"]);
+      expect(body.parameters).toBe("num_ctx 400000\nreasoning medium");
+      const architecture = model.startsWith("gpt-5.4") ? "gpt-5.4" : model;
+      expect(body.model_info).toMatchObject({
+        [`${architecture}.context_length`]: 400000,
+        context_length: 400000,
+        upstream_id: model,
+        input_modalities: ["text", "image"],
+      });
     });
-  });
 
   it("converts non-streaming Ollama chat requests and responses", async () => {
     fetchMock.mockResolvedValueOnce(json({
