@@ -44,12 +44,21 @@ jobs:
             exit 0
           fi
 
-          # Next patch + short SHA suffix (semver prerelease)
           CURRENT="${LAST_STABLE#v}"
-          IFS='.' read -r MAJOR MINOR PATCH <<< "$CURRENT"
-          NEXT_PATCH=$((PATCH + 1))
+          NEXT_BASE=$(node -e "
+            const pkgVer = require('./package.json').version;
+            const [pM, pm, pp] = pkgVer.split('.').map(Number);
+            const [cM, cm, cp] = '$CURRENT'.split('.').map(Number);
+            
+            const isPkgGreater = pM > cM || (pM === cM && pm > cm) || (pM === cM && pm === cm && pp > cp);
+            if (isPkgGreater) {
+              console.log(pkgVer);
+            } else {
+              console.log(\`\${cM}.\${cm}.\${cp + 1}\`);
+            }
+          ")
           SHORT_SHA=$(git rev-parse --short=7 HEAD)
-          NEW_TAG="v${MAJOR}.${MINOR}.${NEXT_PATCH}-beta.${SHORT_SHA}"
+          NEW_TAG="v${NEXT_BASE}-beta.${SHORT_SHA}"
 
           # SHA suffix makes collisions impossible unless we redo the same commit
           if git rev-parse "$NEW_TAG" >/dev/null 2>&1; then
