@@ -2,12 +2,6 @@
   "name": "codex-proxy",
   "version": "2.0.67",
   "description": "Reverse proxy that exposes Codex Desktop Responses API as OpenAI-compatible /v1/chat/completions",
-  "contributors": [
-    {
-      "name": "Huangcoolbo",
-      "url": "https://github.com/Huangcoolbo"
-    }
-  ],
   "type": "module",
   "workspaces": [
     "packages/*"

@@ -18,10 +18,31 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-tags: true
 
-      - name: Read version from package.json
+      - name: Read version
         id: version
-        run: echo "version=$(node -p "require('./package.json').version")" >> "$GITHUB_OUTPUT"
+        run: |
+          PKG_VERSION=$(node -p "require('./package.json').version")
+
+          # Find latest stable tag (exclude prerelease like -beta.xxx)
+          LATEST_STABLE=$(git tag --sort=-v:refname | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | head -1 | sed 's/^v//' || echo "0.0.0")
+
+          # Pick the greater of package.json vs latest stable tag
+          FINAL=$(node -e "
+            const [a, b] = ['$PKG_VERSION', '$LATEST_STABLE'];
+            const cmp = (x, y) => {
+              const pa = x.split('.').map(Number);
+              const pb = y.split('.').map(Number);
+              for (let i = 0; i < 3; i++) {
+                if (pa[i] !== pb[i]) return pa[i] - pb[i];
+              }
+              return 0;
+            };
+            console.log(cmp(a, b) >= 0 ? a : b);
+          ")
+          echo "version=$FINAL" >> "$GITHUB_OUTPUT"
 
       - uses: docker/setup-qemu-action@v3
 
@@ -36,7 +57,7 @@ jobs:
       - uses: docker/metadata-action@v5
         id: meta
         with:
-          images: ghcr.io/icebear0828/codex-proxy
+          images: ghcr.io/${{ github.repository }}
           tags: |
             type=raw,value=latest
             type=raw,value=v${{ steps.version.outputs.version }}
