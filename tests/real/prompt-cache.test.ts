@@ -79,7 +79,7 @@ describe("real: prompt cache via Codex /v1/responses", () => {
       method: "POST",
       headers: headers(),
       body: JSON.stringify({
-        model: "codex",
+        model: "gpt-5.4",
         instructions: LONG_INSTRUCTIONS,
         input: [{ role: "user", content: [{ type: "input_text", text: "What is 2 + 2?" }] }],
         stream: true,
@@ -102,7 +102,7 @@ describe("real: prompt cache via Codex /v1/responses", () => {
       method: "POST",
       headers: headers(),
       body: JSON.stringify({
-        model: "codex",
+        model: "gpt-5.4",
         instructions: LONG_INSTRUCTIONS,
         input: [{ role: "user", content: [{ type: "input_text", text: "Now what is 3 + 3?" }] }],
         previous_response_id: responseId1,
@@ -138,7 +138,7 @@ describe("real: cached_tokens in OpenAI format", () => {
       method: "POST",
       headers: headers(),
       body: JSON.stringify({
-        model: "codex",
+        model: "gpt-5.4",
         messages: [
           { role: "system", content: LONG_INSTRUCTIONS },
           { role: "user", content: "What is 7 * 8?" },
@@ -162,7 +162,7 @@ describe("real: cached_tokens in OpenAI format", () => {
       method: "POST",
       headers: headers(),
       body: JSON.stringify({
-        model: "codex",
+        model: "gpt-5.4",
         messages: [
           { role: "system", content: LONG_INSTRUCTIONS },
           { role: "user", content: "What is 7 * 8?" },
@@ -197,7 +197,7 @@ describe("real: cached_tokens in Anthropic format", () => {
       method: "POST",
       headers: anthropicHeaders(),
       body: JSON.stringify({
-        model: "codex",
+        model: "gpt-5.4",
         max_tokens: 200,
         system: LONG_INSTRUCTIONS,
         messages: [{ role: "user", content: "What is 10 + 15?" }],
@@ -219,7 +219,7 @@ describe("real: cached_tokens in Anthropic format", () => {
       method: "POST",
       headers: anthropicHeaders(),
       body: JSON.stringify({
-        model: "codex",
+        model: "gpt-5.4",
         max_tokens: 200,
         system: LONG_INSTRUCTIONS,
         messages: [
@@ -252,7 +252,7 @@ describe("real: cached_tokens in Gemini format", () => {
     if (skip()) return;
 
     // Turn 1
-    const res1 = await fetch(`${PROXY_URL}/v1beta/models/codex:generateContent`, {
+    const res1 = await fetch(`${PROXY_URL}/v1beta/models/gpt-5.4:generateContent`, {
       method: "POST",
       headers: headers(),
       body: JSON.stringify({
@@ -274,7 +274,7 @@ describe("real: cached_tokens in Gemini format", () => {
       (body1.candidates as Array<{ content: { parts: Array<{ text: string }> } }>)[0]
         .content.parts[0].text
     );
-    const res2 = await fetch(`${PROXY_URL}/v1beta/models/codex:generateContent`, {
+    const res2 = await fetch(`${PROXY_URL}/v1beta/models/gpt-5.4:generateContent`, {
       method: "POST",
       headers: headers(),
       body: JSON.stringify({

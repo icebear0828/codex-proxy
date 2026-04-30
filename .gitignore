@@ -12,7 +12,8 @@ bin/*
 *.log
 .asar-out/
 tmp/
-.claude/
+.claude/*
+!.claude/skills/
 native/target/
 native/codex-tls.linux-*.node
 

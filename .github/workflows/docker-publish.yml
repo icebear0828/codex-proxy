@@ -19,9 +19,16 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Read version from package.json
+      - name: Read version
         id: version
-        run: echo "version=$(node -p "require('./package.json').version")" >> "$GITHUB_OUTPUT"
+        run: |
+          if [[ $GITHUB_REF == refs/tags/* ]]; then
+            # Extract version directly from the tag, removing the 'v' prefix
+            TAG_VERSION="${GITHUB_REF#refs/tags/v}"
+            echo "version=${TAG_VERSION}" >> "$GITHUB_OUTPUT"
+          else
+            echo "version=$(node -p "require('./package.json').version")" >> "$GITHUB_OUTPUT"
+          fi
 
       - uses: docker/setup-qemu-action@v3
 
