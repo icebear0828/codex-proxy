@@ -295,6 +295,49 @@ export PROXY_API_KEY=your-api-key
 codex
 ```
 
+### Claude Desktop
+
+1. **开启开发者模式**：点击菜单栏 **Help** → **Troubleshooting** → **Enable Developer Mode**。
+2. **配置第三方推理**：点击菜单栏新出现的 **Developer** → **Configure Third-Party Inference...**。
+3. **填写配置**：
+   - **Endpoint**: `http://localhost:8080`
+   - **API Key**: 你的 API Key
+   - **Model**: `gpt-5.4` (或 `anthropic/claude-3-5-sonnet-20241022` 这种 Anthropic 格式 ID)
+
+> 或手动修改配置文件（Windows 下路径通常在 `%APPDATA%\Claude-3p\configLibrary\` 目录下的 JSON 文件，Mac 为 `~/Library/Application Support/Claude-3p/configLibrary/`），添加如下字段：
+```json
+ {
+   "inferenceProvider": "gateway",
+   "inferenceGatewayBaseUrl": "http://localhost:8080",
+   "inferenceGatewayApiKey": "your-api-key",
+   "inferenceGatewayAuthScheme": "bearer",
+   "inferenceModels": [
+     { "name": "gpt-5.4" },
+     { "name": "gpt-5.3-codex" },
+     { "name": "gpt-5.4-mini" }
+   ]
+ }
+```
+
+### Codex Desktop (官方应用)
+
+官方客户端与 CLI 共用配置文件，修改后需重启客户端生效。
+
+`~/.codex/config.toml`:
+```toml
+[model_providers.proxy_codex]
+name = "Codex Proxy"
+base_url = "http://localhost:8080/v1"
+wire_api = "responses"
+env_key = "PROXY_API_KEY"
+
+[profiles.default]
+model = "gpt-5.4"
+model_provider = "proxy_codex"
+```
+
+> ⚠️ 如果你是通过“登录 ChatGPT 账号”方式使用的，客户端可能会忽略此配置。建议在环境变量中设置 `PROXY_API_KEY` 后启动。
+
 ### Claude for VSCode / JetBrains
 
 打开 Claude 扩展设置，找到 **API Configuration**：

@@ -264,6 +264,47 @@ export PROXY_API_KEY=your-api-key
 codex
 ```
 
+### Claude Desktop
+
+1. **Enable Developer Mode**: Click menu **Help** → **Troubleshooting** → **Enable Developer Mode**.
+2. **Configure Third-Party Inference**: Click the new **Developer** menu → **Configure Third-Party Inference...**.
+3. **Fill in details**:
+   - **Endpoint**: `http://localhost:8080`
+   - **API Key**: your-api-key
+   - **Model**: `gpt-5.4` (or an Anthropic-formatted ID like `anthropic/claude-3-5-sonnet-20241022`)
+
+> Alternatively, edit the config file (usually a JSON file in `%APPDATA%\Claude-3p\configLibrary\` on Windows, or `~/Library/Application Support/Claude-3p/configLibrary/` on Mac), adding the following fields:
+> ```json
+> {
+>   "inferenceProvider": "gateway",
+>   "inferenceGatewayBaseUrl": "http://localhost:8080",
+>   "inferenceGatewayApiKey": "your-api-key",
+>   "inferenceGatewayAuthScheme": "bearer",
+>   "inferenceModels": [
+>     { "name": "gpt-5.4" }
+>   ]
+> }
+> ```
+
+### Codex Desktop (Official App)
+
+The official client shares configuration with the CLI. Restart the app after editing.
+
+`~/.codex/config.toml`:
+```toml
+[model_providers.proxy_codex]
+name = "Codex Proxy"
+base_url = "http://localhost:8080/v1"
+wire_api = "responses"
+env_key = "PROXY_API_KEY"
+
+[profiles.default]
+model = "gpt-5.4"
+model_provider = "proxy_codex"
+```
+
+> ⚠️ If you are logged in via "ChatGPT account", the client might ignore this config. Launching with `PROXY_API_KEY` environment variable set is recommended.
+
 ### Claude for VSCode / JetBrains
 
 Open Claude extension settings → **API Configuration**:
