@@ -300,7 +300,7 @@ codex
 1. **开启开发者模式**：点击菜单栏 **Help** → **Troubleshooting** → **Enable Developer Mode**。
 2. **配置第三方推理**：点击菜单栏新出现的 **Developer** → **Configure Third-Party Inference...**。
 3. **填写配置**：
-   - **Endpoint**: `http://localhost:8080`
+   - **Endpoint**: `http://127.0.0.1:8080`
    - **API Key**: 你的 API Key
    - **Model**: `gpt-5.4` (或 `anthropic/claude-3-5-sonnet-20241022` 这种 Anthropic 格式 ID)
 
@@ -308,7 +308,7 @@ codex
 ```json
  {
    "inferenceProvider": "gateway",
-   "inferenceGatewayBaseUrl": "http://localhost:8080",
+   "inferenceGatewayBaseUrl": "http://127.0.0.1:8080",
    "inferenceGatewayApiKey": "your-api-key",
    "inferenceGatewayAuthScheme": "bearer",
    "inferenceModels": [

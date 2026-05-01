@@ -269,7 +269,7 @@ codex
 1. **Enable Developer Mode**: Click menu **Help** → **Troubleshooting** → **Enable Developer Mode**.
 2. **Configure Third-Party Inference**: Click the new **Developer** menu → **Configure Third-Party Inference...**.
 3. **Fill in details**:
-   - **Endpoint**: `http://localhost:8080`
+   - **Endpoint**: `http://127.0.0.1:8080`
    - **API Key**: your-api-key
    - **Model**: `gpt-5.4` (or an Anthropic-formatted ID like `anthropic/claude-3-5-sonnet-20241022`)
 
@@ -277,7 +277,7 @@ codex
 > ```json
 > {
 >   "inferenceProvider": "gateway",
->   "inferenceGatewayBaseUrl": "http://localhost:8080",
+>   "inferenceGatewayBaseUrl": "http://127.0.0.1:8080",
 >   "inferenceGatewayApiKey": "your-api-key",
 >   "inferenceGatewayAuthScheme": "bearer",
 >   "inferenceModels": [
