@@ -25,6 +25,7 @@ import {
   handleProxyRequest,
   handleDirectRequest,
   type FormatAdapter,
+  type ProxyRequest,
 } from "./shared/proxy-handler.js";
 import type { UpstreamRouter } from "../proxy/upstream-router.js";
 
@@ -159,10 +160,11 @@ export function createGeminiRoutes(
       `[Gemini] Model: ${geminiModel} → ${codexRequest.model}`,
     );
 
-    const proxyReq = {
+    const proxyReq: ProxyRequest = {
       codexRequest,
       model: geminiModel,
       isStreaming,
+      clientConversationId: c.req.header("x-conversation-id") || c.req.header("x-session-id"),
       tupleSchema,
     };
 

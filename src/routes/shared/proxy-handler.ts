@@ -221,12 +221,14 @@ export async function handleProxyRequest(
   const promptCacheKey = derivedConversationId ?? req.clientConversationId ?? crypto.randomUUID();
   const continuationInputStart = explicitPrevRespId ? 0 : getContinuationInputStartIndex(req.codexRequest.input);
   const explicitConversationId = explicitPrevRespId ? affinityMap.lookupConversationId(explicitPrevRespId) : null;
-  const chainConversationId = explicitConversationId ?? req.clientConversationId ?? promptCacheKey;
+  // effectiveConversationId: client explicit ID > content hash derived ID > promptCacheKey
+  const effectiveConversationId = req.clientConversationId || derivedConversationId || promptCacheKey;
+  const chainConversationId = explicitConversationId ?? effectiveConversationId;
   const implicitPrevRespId =
     !explicitPrevRespId &&
     continuationInputStart > 0 &&
-    req.clientConversationId
-      ? affinityMap.lookupLatestResponseIdByConversationId(req.clientConversationId)
+    effectiveConversationId
+      ? affinityMap.lookupLatestResponseIdByConversationId(effectiveConversationId)
       : null;
   const prevRespId = explicitPrevRespId ?? implicitPrevRespId;
   const implicitStoredInstructions = implicitPrevRespId

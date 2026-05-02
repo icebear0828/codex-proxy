@@ -21,6 +21,7 @@ import {
   handleProxyRequest,
   handleDirectRequest,
   type FormatAdapter,
+  type ProxyRequest,
 } from "./shared/proxy-handler.js";
 import type { UpstreamRouter } from "../proxy/upstream-router.js";
 import { summarizeRequestForLog } from "../logs/request-summary.js";
@@ -122,10 +123,11 @@ export function createChatRoutes(
     const fmt = makeOpenAIFormat(wantReasoning);
     const { codexRequest, tupleSchema } = translateToCodexRequest(req);
     const displayModel = buildDisplayModelName(parseModelName(req.model));
-    const proxyReq = {
+    const proxyReq: ProxyRequest = {
       codexRequest,
       model: displayModel,
-      isStreaming: req.stream,
+      isStreaming: req.stream ?? false,
+      clientConversationId: req.user,
       tupleSchema,
     };
 
