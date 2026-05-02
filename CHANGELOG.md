@@ -8,6 +8,10 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- `bump-electron.yml`：checkout 时显式 `ref: master`。default branch 切到 `dev` 之后，schedule 触发的 stable bump 落到 dev 工作树，`git push origin master --follow-tags` 报 `src refspec master does not match any` 连续 fail，stable 卡在 v2.0.66（2026-04-24）补不上来。修复后下一次 16:00 UTC 自动续上
+
 ### Changed
 
 - `bump-electron-beta.yml` 触发改为定时 cron（每天 04:00 / 12:00 UTC，北京 12:00 / 20:00），不再随每次 dev push 即时打 beta tag。聚合多个 PR 进同一 beta，避免 beta channel 一天弹多次更新；紧急可手动 `gh workflow run bump-electron-beta.yml`

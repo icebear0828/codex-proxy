@@ -295,6 +295,55 @@ export PROXY_API_KEY=your-api-key
 codex
 ```
 
+### Claude Desktop
+
+1. **开启开发者模式**：点击菜单栏 **Help** → **Troubleshooting** → **Enable Developer Mode**。
+2. **配置第三方推理**：点击菜单栏新出现的 **Developer** → **Configure Third-Party Inference...**。
+3. **填写配置**：
+   - **Endpoint**: `http://127.0.0.1:8080`
+   - **API Key**: 你的 API Key
+   - **Model**: `gpt-5.4` (或 `anthropic/claude-3-5-sonnet-20241022` 这种 Anthropic 格式 ID)
+
+> 或手动修改配置文件（Windows 下路径通常在 `%APPDATA%\Claude-3p\configLibrary\` 目录下的 JSON 文件，Mac 为 `~/Library/Application Support/Claude-3p/configLibrary/`），添加如下字段：
+```json
+ {
+   "inferenceProvider": "gateway",
+   "inferenceGatewayBaseUrl": "http://127.0.0.1:8080",
+   "inferenceGatewayApiKey": "your-api-key",
+   "inferenceGatewayAuthScheme": "bearer",
+   "inferenceModels": [
+     { "name": "gpt-5.4" },
+     { "name": "gpt-5.3-codex" },
+     { "name": "gpt-5.4-mini" }
+   ]
+ }
+```
+
+> 💡 **排查提示 (Windows)**: 如果使用 `127.0.0.1` 时 Claude Desktop 提示 `ERR_CONNECTION_REFUSED`（而使用 `localhost` 提示 URL 格式错误），说明 Node.js 在你的系统上默认只绑定了 IPv6。请进入 Codex Proxy 控制面板的设置页面，将 **Host** 修改为 `127.0.0.1`，或在 `data/local.yaml` 中添加 `server: { host: "127.0.0.1" }` 后重启代理。
+> 
+> 💡 **局域网使用提示 (LAN)**: Claude Desktop 强制校验 API 地址，**只允许** `https://` 开头或 `http://127.0.0.1`。如果你将 Codex Proxy 部署在局域网另一台机器（如 `192.168.x.x`），直接填入会报错。解决方法：
+> 1. **SSH 隧道 (最简单)**：在客户端机器运行 `ssh -L 8080:127.0.0.1:8080 user@192.168.x.x`，然后在 Claude 里填 `http://127.0.0.1:8080`。
+> 2. **反向代理**：使用 Caddy 或 Nginx 配置局域网 HTTPS 证书。
+
+### Codex Desktop (官方应用)
+
+官方客户端与 CLI 共用配置文件，修改后需重启客户端生效。
+
+`~/.codex/config.toml`:
+```toml
+[model_providers.proxy_codex]
+name = "Codex Proxy"
+base_url = "http://localhost:8080/v1"
+wire_api = "responses"
+env_key = "PROXY_API_KEY"
+
+[profiles.default]
+model = "gpt-5.4"
+model_provider = "proxy_codex"
+```
+
+> ⚠️ 如果你是通过“登录 ChatGPT 账号”方式使用的，客户端可能会忽略此配置。建议在环境变量中设置 `PROXY_API_KEY` 后启动。
+
 ### Claude for VSCode / JetBrains
 
 打开 Claude 扩展设置，找到 **API Configuration**：

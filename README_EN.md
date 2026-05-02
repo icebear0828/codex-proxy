@@ -264,6 +264,53 @@ export PROXY_API_KEY=your-api-key
 codex
 ```
 
+### Claude Desktop
+
+1. **Enable Developer Mode**: Click menu **Help** → **Troubleshooting** → **Enable Developer Mode**.
+2. **Configure Third-Party Inference**: Click the new **Developer** menu → **Configure Third-Party Inference...**.
+3. **Fill in details**:
+   - **Endpoint**: `http://127.0.0.1:8080`
+   - **API Key**: your-api-key
+   - **Model**: `gpt-5.4` (or an Anthropic-formatted ID like `anthropic/claude-3-5-sonnet-20241022`)
+
+> Alternatively, edit the config file (usually a JSON file in `%APPDATA%\Claude-3p\configLibrary\` on Windows, or `~/Library/Application Support/Claude-3p/configLibrary/` on Mac), adding the following fields:
+> ```json
+> {
+>   "inferenceProvider": "gateway",
+>   "inferenceGatewayBaseUrl": "http://127.0.0.1:8080",
+>   "inferenceGatewayApiKey": "your-api-key",
+>   "inferenceGatewayAuthScheme": "bearer",
+>   "inferenceModels": [
+>     { "name": "gpt-5.4" }
+>   ]
+> }
+> ```
+>
+> 💡 **Troubleshooting (Windows)**: If Claude Desktop shows `ERR_CONNECTION_REFUSED` when using `127.0.0.1` (and `must use https` when using `localhost`), it means Node.js is only binding to IPv6 by default. Go to the Codex Proxy dashboard settings, change **Host** to `127.0.0.1`, or add `server: { host: "127.0.0.1" }` to `data/local.yaml` and restart the proxy.
+>
+> 💡 **LAN Usage Tip**: Claude Desktop strictly validates the endpoint and **only allows** `https://` or exactly `http://127.0.0.1`. If your proxy is on another machine in the LAN (e.g. `192.168.x.x`), you cannot use it directly via HTTP. Workarounds:
+> 1. **SSH Tunnel (Easiest)**: Run `ssh -L 8080:127.0.0.1:8080 user@192.168.x.x` on your client machine, then use `http://127.0.0.1:8080` in Claude.
+> 2. **Reverse Proxy**: Setup Caddy or Nginx with a valid HTTPS certificate for your LAN IP.
+
+### Codex Desktop (Official App)
+
+The official client shares configuration with the CLI. Restart the app after editing.
+
+`~/.codex/config.toml`:
+```toml
+[model_providers.proxy_codex]
+name = "Codex Proxy"
+base_url = "http://localhost:8080/v1"
+wire_api = "responses"
+env_key = "PROXY_API_KEY"
+
+[profiles.default]
+model = "gpt-5.4"
+model_provider = "proxy_codex"
+```
+
+> ⚠️ If you are logged in via "ChatGPT account", the client might ignore this config. Launching with `PROXY_API_KEY` environment variable set is recommended.
+
 ### Claude for VSCode / JetBrains
 
 Open Claude extension settings → **API Configuration**:
