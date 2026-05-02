@@ -25,6 +25,7 @@ import {
   handleProxyRequest,
   handleDirectRequest,
   type FormatAdapter,
+  type ProxyRequest,
 } from "./shared/proxy-handler.js";
 import type { UpstreamRouter } from "../proxy/upstream-router.js";
 

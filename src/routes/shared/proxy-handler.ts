@@ -222,7 +222,7 @@ export async function handleProxyRequest(
   const continuationInputStart = explicitPrevRespId ? 0 : getContinuationInputStartIndex(req.codexRequest.input);
   const explicitConversationId = explicitPrevRespId ? affinityMap.lookupConversationId(explicitPrevRespId) : null;
   // effectiveConversationId: client explicit ID > content hash derived ID > promptCacheKey
-  const effectiveConversationId = req.clientConversationId ?? derivedConversationId ?? promptCacheKey;
+  const effectiveConversationId = req.clientConversationId || derivedConversationId || promptCacheKey;
   const chainConversationId = explicitConversationId ?? effectiveConversationId;
   const implicitPrevRespId =
     !explicitPrevRespId &&
