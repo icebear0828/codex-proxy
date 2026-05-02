@@ -287,6 +287,10 @@ codex
 > ```
 >
 > 💡 **Troubleshooting (Windows)**: If Claude Desktop shows `ERR_CONNECTION_REFUSED` when using `127.0.0.1` (and `must use https` when using `localhost`), it means Node.js is only binding to IPv6 by default. Go to the Codex Proxy dashboard settings, change **Host** to `127.0.0.1`, or add `server: { host: "127.0.0.1" }` to `data/local.yaml` and restart the proxy.
+>
+> 💡 **LAN Usage Tip**: Claude Desktop strictly validates the endpoint and **only allows** `https://` or exactly `http://127.0.0.1`. If your proxy is on another machine in the LAN (e.g. `192.168.x.x`), you cannot use it directly via HTTP. Workarounds:
+> 1. **SSH Tunnel (Easiest)**: Run `ssh -L 8080:127.0.0.1:8080 user@192.168.x.x` on your client machine, then use `http://127.0.0.1:8080` in Claude.
+> 2. **Reverse Proxy**: Setup Caddy or Nginx with a valid HTTPS certificate for your LAN IP.
 
 ### Codex Desktop (Official App)
 
