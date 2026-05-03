@@ -467,6 +467,98 @@ describe("anthropicToolsToCodex additional edge cases", () => {
     expect(result[0].parameters).toEqual({ type: "object", properties: {} });
   });
 });
+// ── Read tool `pages` field hint injection ───────────────────────
+
+describe("anthropicToolsToCodex Read tool pages hint", () => {
+  const baseRead = {
+    name: "Read",
+    description: "Reads a file",
+    input_schema: {
+      type: "object",
+      properties: {
+        file_path: { type: "string", description: "Absolute path" },
+        pages: { type: "string", description: "Page range for PDF files." },
+      },
+      required: ["file_path"],
+    },
+  };
+
+  it("appends omit-when-empty hint to Read tool's pages description", () => {
+    const result = anthropicToolsToCodex([baseRead]);
+    const params = result[0].parameters as {
+      properties: { pages: { description: string } };
+    };
+    expect(params.properties.pages.description).toBe(
+      "Page range for PDF files. Omit this field entirely for non-PDF files; do not pass an empty string.",
+    );
+  });
+
+  it("is idempotent when conversion is applied twice", () => {
+    const once = anthropicToolsToCodex([baseRead])[0].parameters as {
+      properties: { pages: { description: string } };
+    };
+    const twice = anthropicToolsToCodex([
+      {
+        name: "Read",
+        input_schema: {
+          type: "object",
+          properties: {
+            pages: { type: "string", description: once.properties.pages.description },
+          },
+        },
+      },
+    ])[0].parameters as { properties: { pages: { description: string } } };
+    expect(twice.properties.pages.description).toBe(once.properties.pages.description);
+  });
+
+  it("does not modify non-Read tools that happen to have a pages field", () => {
+    const result = anthropicToolsToCodex([
+      {
+        name: "OtherTool",
+        input_schema: {
+          type: "object",
+          properties: {
+            pages: { type: "string", description: "Some pages thing" },
+          },
+        },
+      },
+    ]);
+    const params = result[0].parameters as {
+      properties: { pages: { description: string } };
+    };
+    expect(params.properties.pages.description).toBe("Some pages thing");
+  });
+
+  it("leaves Read tool alone when pages property is absent", () => {
+    const result = anthropicToolsToCodex([
+      {
+        name: "Read",
+        input_schema: {
+          type: "object",
+          properties: { file_path: { type: "string" } },
+          required: ["file_path"],
+        },
+      },
+    ]);
+    const params = result[0].parameters as {
+      properties: Record<string, unknown>;
+    };
+    expect(params.properties).not.toHaveProperty("pages");
+  });
+
+  it("preserves other fields when augmenting", () => {
+    const result = anthropicToolsToCodex([baseRead]);
+    const params = result[0].parameters as {
+      type: string;
+      required: string[];
+      properties: { file_path: { description: string }; pages: unknown };
+    };
+    expect(params.type).toBe("object");
+    expect(params.required).toEqual(["file_path"]);
+    expect(params.properties.file_path.description).toBe("Absolute path");
+  });
+});
+
 // ── hosted web_search tool conversion ───────────────────────────────
 
 describe("hosted web_search tool conversion", () => {

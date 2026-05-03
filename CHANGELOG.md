@@ -10,6 +10,7 @@
 
 ### Fixed
 
+- Anthropic → Codex 工具 schema 转换：检测到 `name === "Read"` 时，在 `pages` 字段的 description 末尾追加 "Omit this field entirely for non-PDF files; do not pass an empty string."。上游 gpt-5.x 在生成 Read tool_use 时倾向于把可选 string 字段填成 `""` 而非省略，Claude Code harness 把 `pages: ""` 当作"已传入"走到 PDF 分支报错；改 description 是最轻量的引导（不破坏忠实转发原则、对其他工具零影响），幂等可重复调用
 - `bump-electron.yml`：checkout 时显式 `ref: master`。default branch 切到 `dev` 之后，schedule 触发的 stable bump 落到 dev 工作树，`git push origin master --follow-tags` 报 `src refspec master does not match any` 连续 fail，stable 卡在 v2.0.66（2026-04-24）补不上来。修复后下一次 16:00 UTC 自动续上
 
 ### Changed

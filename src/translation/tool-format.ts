@@ -175,6 +175,29 @@ export function openAIFunctionsToCodex(
 
 // ── Anthropic → Codex ───────────────────────────────────────────
 
+// Upstream models tend to fill optional string fields with `""` rather than
+// omit them. Claude Code's Read tool then routes `pages: ""` into its PDF
+// branch and errors. Nudge the model via the property description.
+const READ_PAGES_HINT =
+  " Omit this field entirely for non-PDF files; do not pass an empty string.";
+
+function augmentReadToolSchema(
+  schema: Record<string, unknown>,
+): Record<string, unknown> {
+  if (!isRecord(schema.properties)) return schema;
+  const pages = schema.properties.pages;
+  if (!isRecord(pages)) return schema;
+  const desc = typeof pages.description === "string" ? pages.description : "";
+  if (desc.endsWith(READ_PAGES_HINT)) return schema;
+  return {
+    ...schema,
+    properties: {
+      ...schema.properties,
+      pages: { ...pages, description: desc + READ_PAGES_HINT },
+    },
+  };
+}
+
 export function anthropicToolsToCodex(
   tools: NonNullable<AnthropicMessagesRequest["tools"]>,
   options?: AnthropicToolConversionOptions,
@@ -192,7 +215,10 @@ export function anthropicToolsToCodex(
       name: t.name,
     };
     if (isRecord(t) && typeof t.description === "string") def.description = t.description;
-    if (isRecord(t) && isRecord(t.input_schema)) def.parameters = normalizeSchema(t.input_schema);
+    if (isRecord(t) && isRecord(t.input_schema)) {
+      const schema = t.name === "Read" ? augmentReadToolSchema(t.input_schema) : t.input_schema;
+      def.parameters = normalizeSchema(schema);
+    }
     defs.push(def);
   }
   return defs;
