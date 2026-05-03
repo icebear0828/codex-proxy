@@ -354,24 +354,78 @@ describe("self-update", () => {
   // ── applyProxySelfUpdate ──────────────────────────────────────────
 
   describe("applyProxySelfUpdate", () => {
-    it("runs git checkout + git pull + npm install + npm run build", async () => {
-      _execFileAsync.mockResolvedValue({ stdout: "", stderr: "" });
+    // Default mock for the happy path: branch=master, clean tree, then any
+    // subsequent git/npm calls succeed silently.
+    function mockCleanMaster(): void {
+      _execFileAsync.mockReset();
+      _execFileAsync
+        .mockResolvedValueOnce({ stdout: "master\n", stderr: "" }) // rev-parse --abbrev-ref HEAD
+        .mockResolvedValueOnce({ stdout: "", stderr: "" })          // status --porcelain
+        .mockResolvedValue({ stdout: "", stderr: "" });             // remaining steps
+    }
+
+    it("runs git pull + npm install + npm run build on clean master", async () => {
+      mockCleanMaster();
 
       const { applyProxySelfUpdate } = await importFresh();
       const result = await applyProxySelfUpdate();
       expect(result.started).toBe(true);
       expect(result.error).toBeUndefined();
 
-      // 4 sequential calls: git checkout -- ., git pull, npm install, npm run build
-      expect(_execFileAsync).toHaveBeenCalledTimes(4);
+      // 5 sequential calls: rev-parse, status, git pull, npm install, npm run build
+      expect(_execFileAsync).toHaveBeenCalledTimes(5);
+      // Critically: no `git checkout -- .` should be invoked
+      const checkoutCalls = _execFileAsync.mock.calls.filter(
+        (c) => c[0] === "git" && Array.isArray(c[1]) && c[1][0] === "checkout",
+      );
+      expect(checkoutCalls).toHaveLength(0);
     });
 
-    it("returns error when step fails", async () => {
-      // First call is "git checkout -- ." which has .catch(() => {}), so it swallows errors.
-      // Reject the second call (git pull) to trigger the error path.
+    it("refuses to update when on a non-master branch", async () => {
+      _execFileAsync.mockReset();
+      _execFileAsync.mockResolvedValueOnce({ stdout: "dev\n", stderr: "" }); // branch=dev
+
+      const { applyProxySelfUpdate } = await importFresh();
+      const result = await applyProxySelfUpdate();
+      expect(result.started).toBe(false);
+      expect(result.error).toContain("dev");
+      expect(result.error).toContain("master/main");
+      // Only the branch check should have run — no destructive ops attempted
+      expect(_execFileAsync).toHaveBeenCalledTimes(1);
+    });
+
+    it("accepts 'main' as well as 'master'", async () => {
+      _execFileAsync.mockReset();
       _execFileAsync
-        .mockResolvedValueOnce({ stdout: "", stderr: "" })   // git checkout -- .
-        .mockRejectedValueOnce(new Error("git pull failed")); // git pull
+        .mockResolvedValueOnce({ stdout: "main\n", stderr: "" }) // branch=main
+        .mockResolvedValueOnce({ stdout: "", stderr: "" })        // clean tree
+        .mockResolvedValue({ stdout: "", stderr: "" });
+
+      const { applyProxySelfUpdate } = await importFresh();
+      const result = await applyProxySelfUpdate();
+      expect(result.started).toBe(true);
+    });
+
+    it("refuses to update when working tree has uncommitted changes", async () => {
+      _execFileAsync.mockReset();
+      _execFileAsync
+        .mockResolvedValueOnce({ stdout: "master\n", stderr: "" })          // branch=master
+        .mockResolvedValueOnce({ stdout: " M src/foo.ts\n", stderr: "" });  // dirty
+
+      const { applyProxySelfUpdate } = await importFresh();
+      const result = await applyProxySelfUpdate();
+      expect(result.started).toBe(false);
+      expect(result.error).toContain("uncommitted changes");
+      // Branch + status checks only — no pull attempted
+      expect(_execFileAsync).toHaveBeenCalledTimes(2);
+    });
+
+    it("returns error when git pull fails", async () => {
+      _execFileAsync.mockReset();
+      _execFileAsync
+        .mockResolvedValueOnce({ stdout: "master\n", stderr: "" })
+        .mockResolvedValueOnce({ stdout: "", stderr: "" })
+        .mockRejectedValueOnce(new Error("git pull failed"));
 
       const { applyProxySelfUpdate } = await importFresh();
       const result = await applyProxySelfUpdate();
@@ -380,27 +434,24 @@ describe("self-update", () => {
     });
 
     it("returns error when already in progress", async () => {
-      // Make first call hang
+      // Make the first call (rev-parse) hang so the in-progress guard trips.
       let resolveFirst: (() => void) | undefined;
       _execFileAsync.mockImplementationOnce(
         () => new Promise<{ stdout: string; stderr: string }>((resolve) => {
-          resolveFirst = () => resolve({ stdout: "", stderr: "" });
+          resolveFirst = () => resolve({ stdout: "master\n", stderr: "" });
         }),
       );
 
       const { applyProxySelfUpdate } = await importFresh();
 
-      // Start first update (will hang on git pull)
       const first = applyProxySelfUpdate();
-
-      // Second call while first is in progress
       const second = await applyProxySelfUpdate();
       expect(second.started).toBe(false);
       expect(second.error).toContain("already in progress");
 
-      // Cleanup: resolve the hanging promise
+      // Resolving the hung call doesn't matter for this assertion — cleanup
       resolveFirst?.();
-      await first;
+      await first.catch(() => {});
     });
   });
 });

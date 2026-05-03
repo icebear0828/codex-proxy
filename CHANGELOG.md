@@ -10,6 +10,7 @@
 
 ### Fixed
 
+- Self-update 双重安全护栏（`src/self-update.ts`）：`applyProxySelfUpdate` 之前会无条件 `git checkout -- .` + `git pull origin master`，导致 ① 工作目录任何未提交改动被静默丢弃；② 在 `dev` 等非 master 分支上把 master 合进来，破坏 dev→master promote 流程。本地 dev 服跑着的时候每次 tsx watch 重启都会触发：新进程启动 → 10s 后 update check → `auto_update: true` → 把开发者刚保存的代码当垃圾扫掉。修复：进入 `applyProxySelfUpdate` 先校验 ① 当前分支必须是 `master`/`main`，② `git status --porcelain` 必须为空；任一失败立刻 abort 并返回错误，**不再调用** `git checkout -- .`
 - Anthropic → Codex 工具 schema 转换：检测到 `name === "Read"` 时，在 `pages` 字段的 description 末尾追加 "Omit this field entirely for non-PDF files; do not pass an empty string."。上游 gpt-5.x 在生成 Read tool_use 时倾向于把可选 string 字段填成 `""` 而非省略，Claude Code harness 把 `pages: ""` 当作"已传入"走到 PDF 分支报错；改 description 是最轻量的引导（不破坏忠实转发原则、对其他工具零影响），幂等可重复调用
 - `bump-electron.yml`：checkout 时显式 `ref: master`。default branch 切到 `dev` 之后，schedule 触发的 stable bump 落到 dev 工作树，`git push origin master --follow-tags` 报 `src refspec master does not match any` 连续 fail，stable 卡在 v2.0.66（2026-04-24）补不上来。修复后下一次 16:00 UTC 自动续上
 

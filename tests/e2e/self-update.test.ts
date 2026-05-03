@@ -357,7 +357,11 @@ describe("E2E: self-update routes", () => {
 
   describe("POST /admin/apply-update", () => {
     it("streams SSE progress: pull → install → build → restart", async () => {
-      _execFileAsync.mockResolvedValue({ stdout: "", stderr: "" });
+      _execFileAsync.mockReset();
+      _execFileAsync
+        .mockResolvedValueOnce({ stdout: "master\n", stderr: "" }) // branch
+        .mockResolvedValueOnce({ stdout: "", stderr: "" })          // clean tree
+        .mockResolvedValue({ stdout: "", stderr: "" });
 
       const app = await buildApp();
       const res = await app.request("/admin/apply-update", { method: "POST" });
@@ -387,9 +391,11 @@ describe("E2E: self-update routes", () => {
     });
 
     it("reports error when git pull fails", async () => {
+      _execFileAsync.mockReset();
       _execFileAsync
-        .mockResolvedValueOnce({ stdout: "", stderr: "" })    // git checkout -- .
-        .mockRejectedValueOnce(new Error("git pull failed")); // git pull
+        .mockResolvedValueOnce({ stdout: "master\n", stderr: "" }) // branch
+        .mockResolvedValueOnce({ stdout: "", stderr: "" })          // clean tree
+        .mockRejectedValueOnce(new Error("git pull failed"));       // git pull
 
       const app = await buildApp();
       const res = await app.request("/admin/apply-update", { method: "POST" });
@@ -403,10 +409,12 @@ describe("E2E: self-update routes", () => {
     });
 
     it("reports error when npm install fails", async () => {
+      _execFileAsync.mockReset();
       _execFileAsync
-        .mockResolvedValueOnce({ stdout: "", stderr: "" })        // git checkout
-        .mockResolvedValueOnce({ stdout: "", stderr: "" })        // git pull
-        .mockRejectedValueOnce(new Error("npm ERR! ERESOLVE"));   // npm install
+        .mockResolvedValueOnce({ stdout: "master\n", stderr: "" }) // branch
+        .mockResolvedValueOnce({ stdout: "", stderr: "" })          // clean tree
+        .mockResolvedValueOnce({ stdout: "", stderr: "" })          // git pull
+        .mockRejectedValueOnce(new Error("npm ERR! ERESOLVE"));     // npm install
 
       const app = await buildApp();
       const res = await app.request("/admin/apply-update", { method: "POST" });
@@ -425,11 +433,13 @@ describe("E2E: self-update routes", () => {
     });
 
     it("reports error when build fails", async () => {
+      _execFileAsync.mockReset();
       _execFileAsync
-        .mockResolvedValueOnce({ stdout: "", stderr: "" })             // git checkout
-        .mockResolvedValueOnce({ stdout: "", stderr: "" })             // git pull
-        .mockResolvedValueOnce({ stdout: "", stderr: "" })             // npm install
-        .mockRejectedValueOnce(new Error("tsc: error TS2345"));        // npm run build
+        .mockResolvedValueOnce({ stdout: "master\n", stderr: "" })     // branch
+        .mockResolvedValueOnce({ stdout: "", stderr: "" })              // clean tree
+        .mockResolvedValueOnce({ stdout: "", stderr: "" })              // git pull
+        .mockResolvedValueOnce({ stdout: "", stderr: "" })              // npm install
+        .mockRejectedValueOnce(new Error("tsc: error TS2345"));         // npm run build
 
       const app = await buildApp();
       const res = await app.request("/admin/apply-update", { method: "POST" });
@@ -450,7 +460,11 @@ describe("E2E: self-update routes", () => {
       _spawn.mockClear();
       exitSpy.mockClear();
 
-      _execFileAsync.mockResolvedValue({ stdout: "", stderr: "" });
+      _execFileAsync.mockReset();
+      _execFileAsync
+        .mockResolvedValueOnce({ stdout: "master\n", stderr: "" })
+        .mockResolvedValueOnce({ stdout: "", stderr: "" })
+        .mockResolvedValue({ stdout: "", stderr: "" });
 
       const app = await buildApp();
       await app.request("/admin/apply-update", { method: "POST" });

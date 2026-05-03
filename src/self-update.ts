@@ -453,9 +453,35 @@ export async function applyProxySelfUpdate(
   const report = onProgress ?? (() => {});
 
   try {
+    // Safety: refuse to auto-update on a non-master branch. Pulling master
+    // into dev (or any other branch) corrupts the branch model and breaks
+    // the dev→master promote workflow.
+    const { stdout: branchOut } = await execFileAsync(
+      "git", ["rev-parse", "--abbrev-ref", "HEAD"], { cwd, timeout: 5000 },
+    );
+    const currentBranch = branchOut.trim();
+    if (currentBranch !== "master" && currentBranch !== "main") {
+      _proxyUpdateInProgress = false;
+      const msg = `Refusing to auto-update on branch '${currentBranch}' — only master/main are eligible. Switch branches or update manually.`;
+      console.warn(`[SelfUpdate] ${msg}`);
+      return { started: false, error: msg };
+    }
+
+    // Safety: refuse to overwrite uncommitted local changes. The previous
+    // implementation ran `git checkout -- .` which silently discarded them;
+    // that destroyed in-flight edits whenever the dev server restarted.
+    const { stdout: statusOut } = await execFileAsync(
+      "git", ["status", "--porcelain"], { cwd, timeout: 5000 },
+    );
+    if (statusOut.trim()) {
+      _proxyUpdateInProgress = false;
+      const msg = "Refusing to auto-update with uncommitted changes in working tree. Commit, stash, or discard them first.";
+      console.warn(`[SelfUpdate] ${msg}`);
+      return { started: false, error: msg };
+    }
+
     report("pull", "running");
     console.log("[SelfUpdate] Pulling latest code...");
-    await execFileAsync("git", ["checkout", "--", "."], { cwd, timeout: 10000 }).catch(() => {});
     await execFileAsync("git", ["pull", "origin", "master"], { cwd, timeout: 60000 });
     report("pull", "done");
 
