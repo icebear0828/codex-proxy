@@ -55,6 +55,7 @@ export const ChatCompletionRequestSchema = z.object({
         name: z.string(),
         description: z.string().optional(),
         parameters: z.record(z.unknown()).optional(),
+        strict: z.boolean().optional(),
       }),
     }),
     z.object({
@@ -83,6 +84,7 @@ export const ChatCompletionRequestSchema = z.object({
     name: z.string(),
     description: z.string().optional(),
     parameters: z.record(z.unknown()).optional(),
+    strict: z.boolean().optional(),
   })).optional(),
   function_call: z.union([
     z.enum(["none", "auto"]),

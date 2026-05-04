@@ -131,6 +131,7 @@ export function openAIToolsToCodex(
     const def: CodexToolDefinition = {
       type: "function",
       name: t.function.name,
+      strict: t.function.strict ?? false,
     };
     if (t.function.description) def.description = t.function.description;
     if (t.function.parameters) def.parameters = normalizeSchema(t.function.parameters);
@@ -166,6 +167,7 @@ export function openAIFunctionsToCodex(
     const def: CodexToolDefinition = {
       type: "function",
       name: f.name,
+      strict: f.strict ?? false,
     };
     if (f.description) def.description = f.description;
     if (f.parameters) def.parameters = normalizeSchema(f.parameters);
