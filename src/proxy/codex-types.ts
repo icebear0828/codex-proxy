@@ -30,6 +30,10 @@ export interface CodexResponsesRequest {
   previous_response_id?: string;
   /** Prompt cache key — stable per-conversation UUID for backend prompt caching. */
   prompt_cache_key?: string;
+  /** Per-installation routing/affinity hints (e.g. x-codex-installation-id).
+   *  Real Codex CLI sends this in every body so the upstream LB can pin the
+   *  client to a single backend instance, keeping the prompt cache warm. */
+  client_metadata?: Record<string, string>;
   /** Include additional response data (e.g. "reasoning.encrypted_content"). */
   include?: string[];
   /** When true, use WebSocket transport (enables previous_response_id and server-side storage). */

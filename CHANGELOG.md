@@ -17,7 +17,9 @@
 
 ### Changed
 
-- `src/routes/shared/proxy-handler.ts` 入口与 Usage 日志补充诊断字段：入口行新增 `rid` / `conv` / `key` / `prev=<src>:<tail8>` / `tools=N`（其中 `prev` 区分 explicit / implicit / none），Usage 行带 `rid` 与 `hit=X.X%`，便于对照 prompt-cache 命中率为何偏低、或同一会话请求是否落到同一 cache key
+- `src/routes/shared/proxy-handler.ts` 入口与 Usage 日志补充诊断字段：入口行新增 `rid` / `conv` / `key` / `prev=<src>:<tail8>` / `tools=N` / `resume=on|off:<reason>`（reason 含 `no_pref_entry`/`acct_mismatch`/`instr_diff`/`missing_tool_calls`/`cont_start_eq_len`），Usage 行带 `rid` 与 `hit=X.X%`，便于对照 prompt-cache 命中率为何偏低、或同一会话请求是否落到同一 cache key
+- 上游请求补 `x-codex-installation-id` header 与 body 内 `client_metadata: { "x-codex-installation-id": <uuid> }`（HTTP + WS + compact 三条路径）：对齐真实 Codex CLI（`core/src/client.rs:874`），让上游 LB 能拿到稳定客户端身份做粘性路由提示。优先复用 `~/.codex/installation_id`，没有则在 `data/installation_id` 持久化新生成的 UUID（`src/proxy/installation-id.ts`、`src/proxy/codex-api.ts`、`src/proxy/codex-types.ts`、`src/proxy/ws-transport.ts`、`config/fingerprint.yaml`）
+- `evaluateImplicitResume()` 取代 `shouldActivateImplicitResume()` 内部判定：返回 `{ active, reason }`，便于在拒绝时给出具体原因（`src/routes/shared/proxy-handler.ts`）。原 `shouldActivateImplicitResume()` 保持向后兼容，作为 `.active` 的薄包装
 
 ### Fixed
 

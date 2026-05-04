@@ -119,7 +119,7 @@ function annotateImageGenOutcome(
   };
 }
 
-export function shouldActivateImplicitResume(opts: {
+export interface ImplicitResumeOpts {
   implicitPrevRespId: string | null;
   continuationInputStart: number;
   inputLength: number;
@@ -129,21 +129,35 @@ export function shouldActivateImplicitResume(opts: {
   storedInstructions: string | null;
   requiredFunctionCallOutputIds?: string[];
   storedFunctionCallIds?: string[];
-}): boolean {
+}
+
+/** Reason why implicit resume was rejected, or null if it would activate.
+ *  Returns "no_implicit_prev" when there's no candidate at all (caller can
+ *  treat this as "not applicable"). */
+export function evaluateImplicitResume(opts: ImplicitResumeOpts):
+  | { active: true; reason: null }
+  | { active: false; reason: string } {
+  if (!opts.implicitPrevRespId) return { active: false, reason: "no_implicit_prev" };
+  if (opts.continuationInputStart >= opts.inputLength) {
+    return { active: false, reason: "cont_start_eq_len" };
+  }
+  if (!opts.preferredEntryId) return { active: false, reason: "no_pref_entry" };
+  if (opts.acquiredEntryId !== opts.preferredEntryId) {
+    return { active: false, reason: "acct_mismatch" };
+  }
+  if (normalizeInstructions(opts.currentInstructions) !== normalizeInstructions(opts.storedInstructions)) {
+    return { active: false, reason: "instr_diff" };
+  }
   const storedFunctionCallIds = new Set(opts.storedFunctionCallIds ?? []);
   const requiredFunctionCallOutputIds = opts.requiredFunctionCallOutputIds ?? [];
-  const hasAllRequiredToolCalls = requiredFunctionCallOutputIds.every((callId) =>
-    storedFunctionCallIds.has(callId),
-  );
+  if (!requiredFunctionCallOutputIds.every((callId) => storedFunctionCallIds.has(callId))) {
+    return { active: false, reason: "missing_tool_calls" };
+  }
+  return { active: true, reason: null };
+}
 
-  return Boolean(
-    opts.implicitPrevRespId &&
-    opts.continuationInputStart < opts.inputLength &&
-    opts.preferredEntryId &&
-    opts.acquiredEntryId === opts.preferredEntryId &&
-    normalizeInstructions(opts.currentInstructions) === normalizeInstructions(opts.storedInstructions) &&
-    hasAllRequiredToolCalls,
-  );
+export function shouldActivateImplicitResume(opts: ImplicitResumeOpts): boolean {
+  return evaluateImplicitResume(opts).active;
 }
 
 export function shouldReplayFullInputAfterImplicitResumeError(
@@ -294,7 +308,7 @@ export async function handleProxyRequest(
     );
   }
 
-  if (shouldActivateImplicitResume({
+  const resumeEval = evaluateImplicitResume({
     implicitPrevRespId,
     continuationInputStart,
     inputLength: req.codexRequest.input.length,
@@ -304,7 +318,8 @@ export async function handleProxyRequest(
     storedInstructions: implicitStoredInstructions,
     requiredFunctionCallOutputIds,
     storedFunctionCallIds: implicitStoredFunctionCallIds,
-  })) {
+  });
+  if (resumeEval.active) {
     req.codexRequest.previous_response_id = implicitPrevRespId!;
     req.codexRequest.useWebSocket = true;
     req.codexRequest.input = req.codexRequest.input.slice(continuationInputStart);
@@ -346,8 +361,15 @@ export async function handleProxyRequest(
       : "none";
     const convField = chainConversationId ? chainConversationId.slice(0, 8) : "none";
     const keyField = promptCacheKey.slice(0, 8);
+    // explicit prev is always honoured; implicit prev's activation is gated by evaluateImplicitResume.
+    const resumeField = explicitPrevRespId
+      ? "explicit"
+      : implicitPrevRespId
+        ? (resumeEval.active ? "on" : `off:${resumeEval.reason}`)
+        : null;
     console.log(
       `[${fmt.tag}] Account ${entryId} | model=${req.model} | rid=${requestId.slice(0, 8)} conv=${convField} key=${keyField} prev=${prevField}` +
+      (resumeField ? ` resume=${resumeField}` : "") +
       ` | input_items=${inputItems} tools=${toolsCount} instr=${instrLen}B payload=${reqJson.length}B reasoning=[${reasoningField}]` +
       (prevRespId ? ` | affinity=${affinityHit ? "hit" : "miss"}` : ""),
     );

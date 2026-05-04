@@ -17,6 +17,7 @@ import {
 } from "../fingerprint/manager.js";
 import { createWebSocketResponse, type WsCreateRequest } from "./ws-transport.js";
 import type { ParsedRateLimit } from "./rate-limit-headers.js";
+import { getInstallationId } from "./installation-id.js";
 import { parseSSEBlock, parseSSEStream } from "./codex-sse.js";
 import { fetchUsage } from "./codex-usage.js";
 import { fetchModels, probeEndpoint as probeEndpointFn } from "./codex-models.js";
@@ -220,6 +221,8 @@ export class CodexApi {
     headers["OpenAI-Beta"] = "responses_websockets=2026-02-06";
     headers["x-openai-internal-codex-residency"] = "us";
     headers["x-client-request-id"] = crypto.randomUUID();
+    const installationId = getInstallationId();
+    headers["x-codex-installation-id"] = installationId;
     if (request.turnState) headers["x-codex-turn-state"] = request.turnState;
 
     const wsRequest: WsCreateRequest = {
@@ -238,6 +241,10 @@ export class CodexApi {
     // service_tier is stripped — Codex backend rejects it ("Unsupported service_tier")
     if (request.prompt_cache_key) wsRequest.prompt_cache_key = request.prompt_cache_key;
     if (request.include?.length) wsRequest.include = request.include;
+    wsRequest.client_metadata = {
+      ...(request.client_metadata ?? {}),
+      "x-codex-installation-id": installationId,
+    };
 
     return createWebSocketResponse(wsUrl, headers, wsRequest, signal, this.proxyUrl, onRateLimits);
   }
@@ -261,10 +268,19 @@ export class CodexApi {
     headers["OpenAI-Beta"] = "responses_websockets=2026-02-06";
     headers["x-openai-internal-codex-residency"] = "us";
     headers["x-client-request-id"] = crypto.randomUUID();
+    const installationId = getInstallationId();
+    headers["x-codex-installation-id"] = installationId;
     if (request.turnState) headers["x-codex-turn-state"] = request.turnState;
 
     const { previous_response_id: _pid, useWebSocket: _ws, turnState: _ts, service_tier: _st, ...bodyFields } = request;
-    const body = JSON.stringify(bodyFields);
+    const bodyWithMetadata = {
+      ...bodyFields,
+      client_metadata: {
+        ...(bodyFields.client_metadata ?? {}),
+        "x-codex-installation-id": installationId,
+      },
+    };
+    const body = JSON.stringify(bodyWithMetadata);
 
     let transportRes;
     try {
@@ -326,6 +342,7 @@ export class CodexApi {
     headers["OpenAI-Beta"] = "responses_websockets=2026-02-06";
     headers["x-openai-internal-codex-residency"] = "us";
     headers["x-client-request-id"] = crypto.randomUUID();
+    headers["x-codex-installation-id"] = getInstallationId();
 
     const body = JSON.stringify(request);
 

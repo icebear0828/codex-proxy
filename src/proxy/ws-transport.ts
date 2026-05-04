@@ -104,6 +104,7 @@ export interface WsCreateRequest {
     };
   };
   prompt_cache_key?: string;
+  client_metadata?: Record<string, string>;
   include?: string[];
   // NOTE: `store` and `stream` are intentionally omitted.
   // The backend defaults to storing via WebSocket and always streams.
