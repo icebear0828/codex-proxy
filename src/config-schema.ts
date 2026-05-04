@@ -72,6 +72,18 @@ export const ConfigSchema = z.object({
     auto_download: z.boolean().default(false),
     allow_prerelease: z.boolean().default(false),
   }).default({}),
+  /** WebSocket connection pool — pins same (entryId, conversationId) to the
+   *  same physical WS so the upstream LB keeps prompt cache warm across
+   *  turns. See `src/proxy/ws-pool.ts` for the rationale. */
+  ws_pool: z.object({
+    enabled: z.boolean().default(true),
+    /** Hard upper bound per connection. Server enforces a 60-min cap; we
+     *  close 5 min early to avoid disrupting in-flight requests. */
+    max_age_ms: z.number().int().positive().default(3_300_000),
+    /** Cap on concurrent pooled connections per account, to bound memory
+     *  when a user opens many parallel conversations. */
+    max_per_account: z.number().int().positive().default(8),
+  }).default({}),
   ollama: z.object({
     enabled: z.boolean().default(false),
     host: z.string().default("127.0.0.1"),

@@ -15,9 +15,11 @@ import {
   buildHeaders,
   buildHeadersWithContentType,
 } from "../fingerprint/manager.js";
-import { createWebSocketResponse, type WsCreateRequest } from "./ws-transport.js";
+import { createWebSocketResponse, type WsCreateRequest, type WsPoolContext } from "./ws-transport.js";
 import type { ParsedRateLimit } from "./rate-limit-headers.js";
 import { getInstallationId } from "./installation-id.js";
+
+export type { WsPoolContext };
 import { parseSSEBlock, parseSSEStream } from "./codex-sse.js";
 import { fetchUsage } from "./codex-usage.js";
 import { fetchModels, probeEndpoint as probeEndpointFn } from "./codex-models.js";
@@ -175,10 +177,11 @@ export class CodexApi {
     request: CodexResponsesRequest,
     signal?: AbortSignal,
     onRateLimits?: (rl: ParsedRateLimit) => void,
+    poolCtx?: WsPoolContext,
   ): Promise<Response> {
     if (request.useWebSocket) {
       try {
-        return await this.createResponseViaWebSocket(request, signal, onRateLimits);
+        return await this.createResponseViaWebSocket(request, signal, onRateLimits, poolCtx);
       } catch (err) {
         // Real upstream API errors classified by ws-transport (e.g.
         // usage_limit_reached → CodexApiError(429)) must reach the
@@ -211,6 +214,7 @@ export class CodexApi {
     request: CodexResponsesRequest,
     signal?: AbortSignal,
     onRateLimits?: (rl: ParsedRateLimit) => void,
+    poolCtx?: WsPoolContext,
   ): Promise<Response> {
     const baseUrl = this.resolveBaseUrl();
     const wsUrl = baseUrl.replace(/^https?:/, "wss:") + "/codex/responses";
@@ -246,7 +250,7 @@ export class CodexApi {
       "x-codex-installation-id": installationId,
     };
 
-    return createWebSocketResponse(wsUrl, headers, wsRequest, signal, this.proxyUrl, onRateLimits);
+    return createWebSocketResponse(wsUrl, headers, wsRequest, signal, this.proxyUrl, onRateLimits, poolCtx);
   }
 
   /**

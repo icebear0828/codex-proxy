@@ -36,6 +36,8 @@ import { getSessionAffinityMap, type SessionAffinityMap } from "../../auth/sessi
 import { enqueueLogEntry } from "../../logs/entry.js";
 import { randomUUID } from "crypto";
 import { deriveStableConversationKey } from "./stable-conversation-key.js";
+import { getWsPool } from "../../proxy/ws-pool.js";
+import type { WsPoolContext } from "../../proxy/codex-api.js";
 
 /** Data prepared by each route after parsing and translating the request. */
 export interface ProxyRequest {
@@ -393,6 +395,28 @@ export async function handleProxyRequest(
 
   await staggerIfNeeded(acquired.prevSlotMs);
 
+  /** Build a per-request WS pool context. Only attached when the request is
+   *  going to take the WS path AND we have a stable conversation id — empty
+   *  conversationId would degenerate the pool key and break affinity. */
+  const buildPoolCtx = (forEntryId: string = entryId): WsPoolContext | undefined => {
+    if (!req.codexRequest.useWebSocket) return undefined;
+    if (!chainConversationId) return undefined;
+    return {
+      pool: getWsPool(),
+      poolKey: `${forEntryId}:${chainConversationId}`,
+      entryId: forEntryId,
+      onDecision: (decision) => {
+        const ridShort = requestId.slice(0, 8);
+        const tag = decision.kind === "bypass"
+          ? `bypass(${decision.reason})`
+          : decision.kind === "retry-after-stale-reuse"
+            ? `retry-after-stale-reuse:${decision.wsId}`
+            : `${decision.kind}:${decision.wsId}`;
+        console.log(`[${fmt.tag}] Account ${forEntryId} | rid=${ridShort} | ws=${tag}`);
+      },
+    };
+  };
+
   for (;;) {
     try {
       // Apply parsed rate-limit data to the account pool (shared by header + WS event paths)
@@ -415,7 +439,7 @@ export async function handleProxyRequest(
 
       const startMs = Date.now();
       const rawResponse = await withRetry(
-        () => codexApi.createResponse(req.codexRequest, abortController.signal, applyRateLimits),
+        () => codexApi.createResponse(req.codexRequest, abortController.signal, applyRateLimits, buildPoolCtx()),
         { tag: fmt.tag },
       );
       const status: number | null = rawResponse.status;
@@ -537,6 +561,7 @@ export async function handleProxyRequest(
         upstreamTurnState,
         () => activeUsageHint,
         restoreImplicitResumeRequest,
+        buildPoolCtx,
       );
     } catch (err) {
       if (!(err instanceof CodexApiError)) {
@@ -649,6 +674,7 @@ async function handleNonStreaming(
   turnState?: string,
   getUsageHint?: () => UsageHint | undefined,
   restoreImplicitResumeRequest?: () => void,
+  buildPoolCtx?: (forEntryId: string) => WsPoolContext | undefined,
 ): Promise<Response> {
   let currentEntryId = initialEntryId;
   let currentApi = initialApi;
@@ -720,7 +746,7 @@ async function handleNonStreaming(
         const retryStartMs = Date.now();
         try {
           currentRawResponse = await withRetry(
-            () => currentApi.createResponse(req.codexRequest, abortController.signal),
+            () => currentApi.createResponse(req.codexRequest, abortController.signal, undefined, buildPoolCtx?.(currentEntryId)),
             { tag: fmt.tag },
           );
           enqueueLogEntry({
