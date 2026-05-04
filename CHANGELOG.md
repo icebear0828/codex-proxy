@@ -8,6 +8,17 @@
 
 ## [Unreleased]
 
+### Added
+
+- Dashboard 用量页新增「时段命中率（Range Hit Rate）」卡片：基于当前选中时间窗口聚合 `cached_tokens / input_tokens`，与原本的全局累计「Cache Hit Rate」卡并列，方便对比近窗口与历史命中率（`web/src/pages/UsageStats.tsx`、`shared/i18n/translations.ts`）
+- Dashboard 用量页新增独立的「Hit Rate Over Time」图：每个 bucket 渲染命中率折线 + 数据点 dot，hover 可见 `cached / input`；`input=0` 的 bucket 自动跳过（不渲染 0% 假命中），单数据点也用 dot 保证可见性（`web/src/components/UsageChart.tsx`）
+- Usage history `five_min` granularity（5 分钟桶）+ Dashboard 新增「5 min」粒度选项与「Last 1h / 6h」时间窗：snapshot 默认 5 分钟一记，新粒度等同于一桶一快照，方便排查刚发生的请求；旧的 hourly/daily 不变，按 granularity 自动收敛兼容窗口（`src/auth/usage-stats.ts`、`src/routes/admin/usage-stats.ts`、`shared/hooks/use-usage-stats.ts`、`web/src/pages/UsageStats.tsx`）
+- 共享纯函数 `formatHitRate` / `sumWindow` / `formatUsageNumber` 抽到 `shared/utils/usage-stats.ts`，配套 vitest 单测覆盖边界（input=0 → "—"、<0.01% 截断、windowed 求和等），UsageChart 与 UsageStats 复用同一份格式化逻辑（`shared/utils/usage-stats.ts`、`shared/utils/__tests__/usage-stats.test.ts`）
+
+### Changed
+
+- `src/routes/shared/proxy-handler.ts` 入口与 Usage 日志补充诊断字段：入口行新增 `rid` / `conv` / `key` / `prev=<src>:<tail8>` / `tools=N`（其中 `prev` 区分 explicit / implicit / none），Usage 行带 `rid` 与 `hit=X.X%`，便于对照 prompt-cache 命中率为何偏低、或同一会话请求是否落到同一 cache key
+
 ### Fixed
 
 - Anthropic → Codex 工具 schema 转换：检测到 `name === "Read"` 时，在 `pages` 字段的 description 末尾追加 "Omit this field entirely for non-PDF files; do not pass an empty string."。上游 gpt-5.x 在生成 Read tool_use 时倾向于把可选 string 字段填成 `""` 而非省略，Claude Code harness 把 `pages: ""` 当作"已传入"走到 PDF 分支报错；改 description 是最轻量的引导（不破坏忠实转发原则、对其他工具零影响），幂等可重复调用

@@ -107,6 +107,37 @@ describe("usage stats routes", () => {
       expect(body.data_points[0].input_tokens).toBe(400);
     });
 
+    it("accepts five_min granularity", async () => {
+      const now = Date.now();
+      const snapshots: UsageSnapshot[] = [
+        {
+          timestamp: new Date(now - 600_000).toISOString(),
+          totals: { input_tokens: 100, output_tokens: 10, request_count: 1, active_accounts: 1 },
+        },
+        {
+          timestamp: new Date(now - 300_000).toISOString(),
+          totals: { input_tokens: 300, output_tokens: 30, request_count: 3, active_accounts: 1 },
+        },
+        {
+          timestamp: new Date(now).toISOString(),
+          totals: { input_tokens: 500, output_tokens: 50, request_count: 5, active_accounts: 1 },
+        },
+      ];
+
+      const pool = createMockPool({ input_tokens: 500, output_tokens: 50, request_count: 5 });
+      const store = createStore(snapshots);
+      const app = new Hono();
+      app.route("/", createUsageStatsRoutes(pool, store));
+
+      const res = await app.request("/admin/usage-stats/history?granularity=five_min&hours=1");
+      expect(res.status).toBe(200);
+
+      const body = await res.json();
+      expect(body.granularity).toBe("five_min");
+      // Two deltas (100→300=200, 300→500=200) at 5min apart land in two buckets.
+      expect(body.data_points).toHaveLength(2);
+    });
+
     it("rejects invalid granularity", async () => {
       const pool = createMockPool({ input_tokens: 0, output_tokens: 0, request_count: 0 });
       const store = createStore();

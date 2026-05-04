@@ -331,12 +331,24 @@ export async function handleProxyRequest(
     const reqJson = JSON.stringify(req.codexRequest);
     const inputItems = req.codexRequest.input?.length ?? 0;
     const instrLen = req.codexRequest.instructions?.length ?? 0;
+    const toolsCount = req.codexRequest.tools?.length ?? 0;
     const affinityHit = preferredEntryId && entryId === preferredEntryId;
     const reasoningField = req.codexRequest.reasoning
       ? `effort=${req.codexRequest.reasoning.effort ?? "none"} summary=${req.codexRequest.reasoning.summary ?? "none"}`
       : "off";
+    const prevSrc = explicitPrevRespId
+      ? "explicit"
+      : implicitPrevRespId
+        ? "implicit"
+        : null;
+    const prevField = prevSrc && prevRespId
+      ? `${prevSrc}:${prevRespId.slice(-8)}`
+      : "none";
+    const convField = chainConversationId ? chainConversationId.slice(0, 8) : "none";
+    const keyField = promptCacheKey.slice(0, 8);
     console.log(
-      `[${fmt.tag}] Account ${entryId} | model=${req.model} | input_items=${inputItems} instr=${instrLen}B payload=${reqJson.length}B reasoning=[${reasoningField}]` +
+      `[${fmt.tag}] Account ${entryId} | model=${req.model} | rid=${requestId.slice(0, 8)} conv=${convField} key=${keyField} prev=${prevField}` +
+      ` | input_items=${inputItems} tools=${toolsCount} instr=${instrLen}B payload=${reqJson.length}B reasoning=[${reasoningField}]` +
       (prevRespId ? ` | affinity=${affinityHit ? "hit" : "miss"}` : ""),
     );
     if (reqJson.length > 50_000) {
@@ -461,12 +473,16 @@ export async function handleProxyRequest(
                 : usageInfo.input_tokens;
               const imgIn = usageInfo.image_input_tokens ?? 0;
               const imgOut = usageInfo.image_output_tokens ?? 0;
+              const hitPct = usageInfo.input_tokens > 0
+                ? `${((usageInfo.cached_tokens ?? 0) / usageInfo.input_tokens * 100).toFixed(1)}%`
+                : "n/a";
               console.log(
-                `[${fmt.tag}] Account ${capturedEntryId} | Usage: in=${usageInfo.input_tokens}` +
+                `[${fmt.tag}] Account ${capturedEntryId} | rid=${requestId.slice(0, 8)} | Usage: in=${usageInfo.input_tokens}` +
                 (usageInfo.cached_tokens ? ` (cached=${usageInfo.cached_tokens} uncached=${uncached})` : "") +
                 ` out=${usageInfo.output_tokens}` +
                 (usageInfo.reasoning_tokens ? ` reasoning=${usageInfo.reasoning_tokens}` : "") +
-                (imgIn || imgOut ? ` image=${imgIn}/${imgOut}` : ""),
+                (imgIn || imgOut ? ` image=${imgIn}/${imgOut}` : "") +
+                ` | hit=${hitPct}`,
               );
               if (usageInfo.input_tokens > 10_000) {
                 console.warn(
@@ -645,11 +661,15 @@ async function handleNonStreaming(
       if (result.usage) {
         const u = result.usage;
         const uncached = u.cached_tokens ? u.input_tokens - u.cached_tokens : u.input_tokens;
+        const hitPct = u.input_tokens > 0
+          ? `${((u.cached_tokens ?? 0) / u.input_tokens * 100).toFixed(1)}%`
+          : "n/a";
         console.log(
-          `[${fmt.tag}] Account ${currentEntryId} | Usage: in=${u.input_tokens}` +
+          `[${fmt.tag}] Account ${currentEntryId} | rid=${requestId.slice(0, 8)} | Usage: in=${u.input_tokens}` +
           (u.cached_tokens ? ` (cached=${u.cached_tokens} uncached=${uncached})` : "") +
           ` out=${u.output_tokens}` +
-          (u.reasoning_tokens ? ` reasoning=${u.reasoning_tokens}` : ""),
+          (u.reasoning_tokens ? ` reasoning=${u.reasoning_tokens}` : "") +
+          ` | hit=${hitPct}`,
         );
         if (u.input_tokens > 10_000) {
           console.warn(`[${fmt.tag}] ⚠ High input token count: ${u.input_tokens} tokens`);

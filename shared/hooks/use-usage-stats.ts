@@ -33,7 +33,7 @@ export interface UsageDataPoint {
   request_count: number;
 }
 
-export type Granularity = "raw" | "hourly" | "daily";
+export type Granularity = "raw" | "five_min" | "hourly" | "daily";
 
 /** 15 s fetch hard timeout — stops the dashboard from showing "—" forever
  *  when an extension, service worker, or upstream stall blackholes the
