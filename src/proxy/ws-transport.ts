@@ -123,7 +123,16 @@ export interface WsPoolContext {
   pool: WsConnectionPool;
   poolKey: string;
   entryId: string;
+  /** Optional observer fired once with the pool's dispatch decision. Useful
+   *  for logging without coupling the caller to the pool's internal state. */
+  onDecision?: (decision: WsDispatchDecision) => void;
 }
+
+export type WsDispatchDecision =
+  | { kind: "reuse"; wsId: string }
+  | { kind: "new"; wsId: string }
+  | { kind: "bypass"; reason: string }
+  | { kind: "retry-after-stale-reuse"; wsId: string };
 
 async function buildWsConstructorOpts(
   WS: typeof import("ws").default,
@@ -225,24 +234,31 @@ export async function createWebSocketResponse(
           }),
       );
       if ("ws" in acquired) {
+        poolCtx.onDecision?.({
+          kind: acquired.reused ? "reuse" : "new",
+          wsId: acquired.ws.id,
+        });
         try {
           return await acquired.ws.send({ request, signal, onRateLimits, reused: acquired.reused });
         } catch (err) {
           if (err instanceof WsReusedConnectionError) {
             // Stale-reuse: open a fresh one-shot WS for this single request.
             // The pool's onDead hook has already evicted the dead entry.
+            poolCtx.onDecision?.({ kind: "retry-after-stale-reuse", wsId: acquired.ws.id });
             return openOneShotWs(wsUrl, headers, request, signal, proxyUrl, onRateLimits);
           }
           throw err;
         }
       }
       // Bypass (busy / cap / dead / no_key / disabled) → fall through to one-shot.
+      poolCtx.onDecision?.({ kind: "bypass", reason: acquired.bypass });
     } catch (err) {
       // Pool itself failed (e.g. factory could not connect). Don't punish the
       // caller — fall back to the legacy one-shot path. The error is still
       // visible in the one-shot path if the underlying issue persists.
       const msg = err instanceof Error ? err.message : String(err);
       console.warn(`[ws-pool] acquire failed, using one-shot fallback: ${msg}`);
+      poolCtx.onDecision?.({ kind: "bypass", reason: "factory_error" });
     }
   }
 

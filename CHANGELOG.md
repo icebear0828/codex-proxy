@@ -15,6 +15,18 @@
 - Usage history `five_min` granularity（5 分钟桶）+ Dashboard 新增「5 min」粒度选项与「Last 1h / 6h」时间窗：snapshot 默认 5 分钟一记，新粒度等同于一桶一快照，方便排查刚发生的请求；旧的 hourly/daily 不变，按 granularity 自动收敛兼容窗口（`src/auth/usage-stats.ts`、`src/routes/admin/usage-stats.ts`、`shared/hooks/use-usage-stats.ts`、`web/src/pages/UsageStats.tsx`）
 - 共享纯函数 `formatHitRate` / `sumWindow` / `formatUsageNumber` 抽到 `shared/utils/usage-stats.ts`，配套 vitest 单测覆盖边界（input=0 → "—"、<0.01% 截断、windowed 求和等），UsageChart 与 UsageStats 复用同一份格式化逻辑（`shared/utils/usage-stats.ts`、`shared/utils/__tests__/usage-stats.test.ts`）
 
+### Fixed
+
+- **WebSocket 连接池**（`src/proxy/ws-pool.ts` + `src/proxy/ws-transport.ts` + `src/routes/shared/proxy-handler.ts`）：上游 chatgpt.com 的 WS gateway 按"连接 ID"做负载均衡 hash，过去 codex-proxy 对每个 WS 请求都 `new WebSocket(url)`，导致同一会话同一账号的 prompt cache 命中率在 5%~99% 之间剧烈抖动（同一逻辑会话被路由到不同 backend，每个 backend 各自缓存了不同长度的前缀；实测 cached_tokens 反复出现 1920/2432/24448/40320/47488 等离散"checkpoint"）。引入 per-`(entryId, conversationId)` 的持久 WS 连接池：
+  - 单 WS 上 strict request/response 串行（codex 协议要求），busy 时旁路开新一次性 WS 而非排队（避免死锁）
+  - 无 idle TTL，连接保持开放直到自然死亡 / `max_age_ms`（默认 55 min，留 5 min 缓冲，比 server 60 min 硬限制提前关）/ 账号状态变化（`evictByEntryId`）级联清理
+  - 复用失败（pre-response close）抛 `WsReusedConnectionError`，自动单次 fallback 到一次性新连接；流中段失败保持原语义抛给客户端（不重试，client 已收到部分数据）
+  - account-pool 在 `markRateLimited` / `markStatus(non-active)` / `removeAccount` / `updateToken`（refresh 完成）时级联 `evictByEntryId`，避免老 WS 携带的 access_token 被复用
+  - 新增配置 `ws_pool: { enabled: true, max_age_ms: 3300000, max_per_account: 8 }`；可 `enabled: false` + 重启回滚到旧行为
+  - SIGTERM/SIGINT 进程退出钩子追加 `wsPool.shutdown()` 优雅关闭所有池中连接
+  - 入口日志加 `ws=reuse:<id>` / `ws=new:<id>` / `ws=bypass(<reason>)` / `ws=retry-after-stale-reuse:<id>` 字段，配合 `rid` 可对照 cache 命中率
+  - 集成测：`tests/integration/ws-pool-reuse.test.ts` 起本地 `ws.Server` 验证 5 turn 同会话只触发 1 次 `connection`
+
 ### Changed
 
 - `src/routes/shared/proxy-handler.ts` 入口与 Usage 日志补充诊断字段：入口行新增 `rid` / `conv` / `key` / `prev=<src>:<tail8>` / `tools=N` / `resume=on|off:<reason>`（reason 含 `no_pref_entry`/`acct_mismatch`/`instr_diff`/`missing_tool_calls`/`cont_start_eq_len`），Usage 行带 `rid` 与 `hit=X.X%`，便于对照 prompt-cache 命中率为何偏低、或同一会话请求是否落到同一 cache key

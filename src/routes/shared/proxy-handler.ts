@@ -405,6 +405,15 @@ export async function handleProxyRequest(
       pool: getWsPool(),
       poolKey: `${forEntryId}:${chainConversationId}`,
       entryId: forEntryId,
+      onDecision: (decision) => {
+        const ridShort = requestId.slice(0, 8);
+        const tag = decision.kind === "bypass"
+          ? `bypass(${decision.reason})`
+          : decision.kind === "retry-after-stale-reuse"
+            ? `retry-after-stale-reuse:${decision.wsId}`
+            : `${decision.kind}:${decision.wsId}`;
+        console.log(`[${fmt.tag}] Account ${forEntryId} | rid=${ridShort} | ws=${tag}`);
+      },
     };
   };
 
