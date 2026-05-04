@@ -21,6 +21,7 @@ import { createModelRoutes } from "./routes/models.js";
 import { createWebRoutes } from "./routes/web.js";
 import { CookieJar } from "./proxy/cookie-jar.js";
 import { ProxyPool } from "./proxy/proxy-pool.js";
+import { setWsPoolConfig, getWsPool } from "./proxy/ws-pool.js";
 import { createProxyRoutes } from "./routes/proxies.js";
 import { createResponsesRoutes } from "./routes/responses.js";
 import { startUpdateChecker, stopUpdateChecker } from "./update-checker.js";
@@ -110,6 +111,15 @@ export async function startServer(options?: StartOptions): Promise<ServerHandle>
 
   // Build upstream router from config
   const cfg = getConfig();
+
+  // Wire WS connection pool to user config (defaults to enabled). Without
+  // this call `getWsPool()` would always use DEFAULT_WS_POOL_CONFIG and
+  // ignore `ws_pool.enabled: false` overrides — breaking the rollback path.
+  setWsPoolConfig({
+    enabled: cfg.ws_pool.enabled,
+    maxAgeMs: cfg.ws_pool.max_age_ms,
+    maxPerAccount: cfg.ws_pool.max_per_account,
+  });
   const adapters = new Map<string, UpstreamAdapter>();
   if (cfg.providers.openai) {
     adapters.set(
@@ -301,12 +311,9 @@ async function main() {
 
     handle.close().then(async () => {
       getTransport().destroy?.();
-      // Close any pooled WS connections (lazy import to avoid pulling the
-      // proxy layer into bootstrap when ws-pool is unused).
       try {
-        const { getWsPool } = await import("./proxy/ws-pool.js");
         await getWsPool().shutdown();
-      } catch { /* pool not initialised — nothing to drain */ }
+      } catch { /* never throws today, but defend against future regressions */ }
       console.log("[Shutdown] Server closed, cleanup complete.");
       clearTimeout(forceExit);
       process.exit(0);

@@ -4,6 +4,9 @@ import {
   PersistentWs,
   WsConnectionPool,
   WsReusedConnectionError,
+  setWsPoolConfig,
+  getWsPool,
+  _resetWsPoolForTests,
   type PersistentWsHooks,
   type WsLike,
 } from "@src/proxy/ws-pool.js";
@@ -452,5 +455,40 @@ describe("WsConnectionPool", () => {
     expect(pool.size()).toBe(0);
     const after = await pool.acquire("entry-A", "entry-A:conv-2", factory);
     expect(after).toEqual({ bypass: "disabled" });
+  });
+});
+
+describe("singleton wiring (setWsPoolConfig + getWsPool)", () => {
+  beforeEach(() => _resetWsPoolForTests());
+  afterEach(() => _resetWsPoolForTests());
+
+  it("setWsPoolConfig({enabled:false}) makes getWsPool() reject acquires", async () => {
+    setWsPoolConfig({ enabled: false });
+    const pool = getWsPool();
+    const factory = vi.fn(async () => {
+      throw new Error("factory should never run when pool is disabled");
+    });
+    const result = await pool.acquire("entry-A", "entry-A:conv-1", factory);
+    expect(result).toEqual({ bypass: "disabled" });
+    expect(factory).not.toHaveBeenCalled();
+  });
+
+  it("getWsPool() returns a default-enabled singleton when setWsPoolConfig was never called", async () => {
+    const pool = getWsPool();
+    const factory = vi.fn(async (deps: { entryId: string; poolKey: string; hooks: PersistentWsHooks }) => {
+      const ws = new MockWs();
+      return new PersistentWs({ ws, entryId: deps.entryId, poolKey: deps.poolKey, hooks: deps.hooks });
+    });
+    const result = await pool.acquire("entry-A", "entry-A:conv-1", factory);
+    expect(result).toMatchObject({ reused: false });
+    expect(factory).toHaveBeenCalledTimes(1);
+  });
+
+  it("setWsPoolConfig replaces an existing singleton (later override wins)", async () => {
+    setWsPoolConfig({ enabled: true });
+    setWsPoolConfig({ enabled: false });
+    const pool = getWsPool();
+    const factory = vi.fn(async () => { throw new Error("unreachable"); });
+    expect(await pool.acquire("e", "k", factory)).toEqual({ bypass: "disabled" });
   });
 });
