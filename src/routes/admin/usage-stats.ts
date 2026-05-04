@@ -21,9 +21,14 @@ export function createUsageStatsRoutes(
 
   app.get("/admin/usage-stats/history", (c) => {
     const granularity = c.req.query("granularity") ?? "hourly";
-    if (granularity !== "raw" && granularity !== "hourly" && granularity !== "daily") {
+    if (
+      granularity !== "raw" &&
+      granularity !== "five_min" &&
+      granularity !== "hourly" &&
+      granularity !== "daily"
+    ) {
       c.status(400);
-      return c.json({ error: "Invalid granularity. Must be raw, hourly, or daily." });
+      return c.json({ error: "Invalid granularity. Must be raw, five_min, hourly, or daily." });
     }
 
     const hoursStr = c.req.query("hours") ?? "24";

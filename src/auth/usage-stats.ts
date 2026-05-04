@@ -316,11 +316,11 @@ export class UsageStatsStore {
   /**
    * Get usage history as delta data points, aggregated by granularity.
    * @param hours - how many hours of history to return
-   * @param granularity - "raw" | "hourly" | "daily"
+   * @param granularity - "raw" | "five_min" | "hourly" | "daily"
    */
   getHistory(
     hours: number,
-    granularity: "raw" | "hourly" | "daily",
+    granularity: "raw" | "five_min" | "hourly" | "daily",
   ): UsageDataPoint[] {
     const cutoff = Date.now() - hours * 60 * 60 * 1000;
     const filtered = this.snapshots.filter(
@@ -350,7 +350,10 @@ export class UsageStatsStore {
     if (granularity === "raw") return deltas;
 
     // Bucket into time intervals
-    const bucketMs = granularity === "hourly" ? 3600_000 : 86400_000;
+    const bucketMs =
+      granularity === "five_min" ? 300_000 :
+      granularity === "hourly" ? 3600_000 :
+      86400_000;
     return bucketize(deltas, bucketMs);
   }
 

@@ -8,6 +8,19 @@
 
 ## [Unreleased]
 
+### Added
+
+- Dashboard 用量页新增「时段命中率（Range Hit Rate）」卡片：基于当前选中时间窗口聚合 `cached_tokens / input_tokens`，与原本的全局累计「Cache Hit Rate」卡并列，方便对比近窗口与历史命中率（`web/src/pages/UsageStats.tsx`、`shared/i18n/translations.ts`）
+- Dashboard 用量页新增独立的「Hit Rate Over Time」图：每个 bucket 渲染命中率折线 + 数据点 dot，hover 可见 `cached / input`；`input=0` 的 bucket 自动跳过（不渲染 0% 假命中），单数据点也用 dot 保证可见性（`web/src/components/UsageChart.tsx`）
+- Usage history `five_min` granularity（5 分钟桶）+ Dashboard 新增「5 min」粒度选项与「Last 1h / 6h」时间窗：snapshot 默认 5 分钟一记，新粒度等同于一桶一快照，方便排查刚发生的请求；旧的 hourly/daily 不变，按 granularity 自动收敛兼容窗口（`src/auth/usage-stats.ts`、`src/routes/admin/usage-stats.ts`、`shared/hooks/use-usage-stats.ts`、`web/src/pages/UsageStats.tsx`）
+- 共享纯函数 `formatHitRate` / `sumWindow` / `formatUsageNumber` 抽到 `shared/utils/usage-stats.ts`，配套 vitest 单测覆盖边界（input=0 → "—"、<0.01% 截断、windowed 求和等），UsageChart 与 UsageStats 复用同一份格式化逻辑（`shared/utils/usage-stats.ts`、`shared/utils/__tests__/usage-stats.test.ts`）
+
+### Changed
+
+- `src/routes/shared/proxy-handler.ts` 入口与 Usage 日志补充诊断字段：入口行新增 `rid` / `conv` / `key` / `prev=<src>:<tail8>` / `tools=N` / `resume=on|off:<reason>`（reason 含 `no_pref_entry`/`acct_mismatch`/`instr_diff`/`missing_tool_calls`/`cont_start_eq_len`），Usage 行带 `rid` 与 `hit=X.X%`，便于对照 prompt-cache 命中率为何偏低、或同一会话请求是否落到同一 cache key
+- 上游请求补 `x-codex-installation-id` header 与 body 内 `client_metadata: { "x-codex-installation-id": <uuid> }`（HTTP + WS + compact 三条路径）：对齐真实 Codex CLI（`core/src/client.rs:874`），让上游 LB 能拿到稳定客户端身份做粘性路由提示。优先复用 `~/.codex/installation_id`，没有则在 `data/installation_id` 持久化新生成的 UUID（`src/proxy/installation-id.ts`、`src/proxy/codex-api.ts`、`src/proxy/codex-types.ts`、`src/proxy/ws-transport.ts`、`config/fingerprint.yaml`）
+- `evaluateImplicitResume()` 取代 `shouldActivateImplicitResume()` 内部判定：返回 `{ active, reason }`，便于在拒绝时给出具体原因（`src/routes/shared/proxy-handler.ts`）。原 `shouldActivateImplicitResume()` 保持向后兼容，作为 `.active` 的薄包装
+
 ### Fixed
 
 - Self-update 双重安全护栏（`src/self-update.ts`）：`applyProxySelfUpdate` 之前会无条件 `git checkout -- .` + `git pull origin master`，导致 ① 工作目录任何未提交改动被静默丢弃；② 在 `dev` 等非 master 分支上把 master 合进来，破坏 dev→master promote 流程。本地 dev 服跑着的时候每次 tsx watch 重启都会触发：新进程启动 → 10s 后 update check → `auto_update: true` → 把开发者刚保存的代码当垃圾扫掉。修复：进入 `applyProxySelfUpdate` 先校验 ① 当前分支必须是 `master`/`main`，② `git status --porcelain` 必须为空；任一失败立刻 abort 并返回错误，**不再调用** `git checkout -- .`

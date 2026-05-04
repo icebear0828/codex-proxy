@@ -7,6 +7,7 @@ header_order:
   - "originator"
   - "x-openai-internal-codex-residency"
   - "x-client-request-id"
+  - "x-codex-installation-id"
   - "x-codex-turn-state"
   - "OpenAI-Beta"
   - "User-Agent"

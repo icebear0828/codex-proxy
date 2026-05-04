@@ -1,15 +1,18 @@
 import { useState } from "preact/hooks";
 import { useT } from "../../../shared/i18n/context";
 import { useUsageSummary, useUsageHistory, type Granularity } from "../../../shared/hooks/use-usage-stats";
-import { UsageChart, formatNumber } from "../components/UsageChart";
+import { UsageChart, formatNumber, formatHitRate, sumWindow } from "../components/UsageChart";
 import type { TranslationKey } from "../../../shared/i18n/translations";
 
 const granularityOptions: Array<{ value: Granularity; label: TranslationKey }> = [
+  { value: "five_min", label: "granularityFiveMin" },
   { value: "hourly", label: "granularityHourly" },
   { value: "daily", label: "granularityDaily" },
 ];
 
 const rangeOptions: Array<{ hours: number; label: TranslationKey }> = [
+  { hours: 1, label: "last1h" },
+  { hours: 6, label: "last6h" },
   { hours: 24, label: "last24h" },
   { hours: 72, label: "last3d" },
   { hours: 168, label: "last7d" },
@@ -26,10 +29,18 @@ function UsageContent({ t, summary, summaryLoading, granularity, setGranularity,
   dataPoints: ReturnType<typeof useUsageHistory>["dataPoints"];
   historyLoading: boolean;
 }) {
+  const rangeWindow = sumWindow(dataPoints);
+  const rangeHitRate = historyLoading ? "—" : formatHitRate(rangeWindow.cached, rangeWindow.input);
+  const rangeHint = historyLoading
+    ? undefined
+    : t("cacheHitRateHint")
+        .replace("{cached}", formatNumber(rangeWindow.cached))
+        .replace("{input}", formatNumber(rangeWindow.input));
+
   return (
     <>
       {/* Summary cards */}
-      <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-7 gap-3 mb-6">
+      <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-8 gap-3 mb-6">
         <SummaryCard
           label={t("totalInputTokens")}
           value={summaryLoading ? "—" : formatNumber(summary?.total_input_tokens ?? 0)}
@@ -48,6 +59,11 @@ function UsageContent({ t, summary, summaryLoading, granularity, setGranularity,
                   .replace("{cached}", formatNumber(summary?.total_cached_tokens ?? 0))
                   .replace("{input}", formatNumber(summary?.total_input_tokens ?? 0))
           }
+        />
+        <SummaryCard
+          label={t("rangeHitRate")}
+          value={rangeHitRate}
+          hint={rangeHint ?? t("rangeHitRateHint")}
         />
         <SummaryCard
           label={t("imageTokens")}
@@ -90,8 +106,12 @@ function UsageContent({ t, summary, summaryLoading, granularity, setGranularity,
             key={value}
             onClick={() => {
               setGranularity(value);
-              // Daily with 24h produces a single bucket — auto-switch to 3d
+              // Daily with ≤24h produces a single bucket — auto-switch to 3d.
               if (value === "daily" && hours <= 24) setHours(72);
+              // Hourly with <6h has too few buckets — bump to 24h.
+              if (value === "hourly" && hours < 6) setHours(24);
+              // 5-min with >24h is a lot of buckets — clamp to 24h.
+              if (value === "five_min" && hours > 24) setHours(24);
             }}
             class={`px-3 py-1 text-xs font-medium rounded-full border transition-colors ${
               granularity === value
@@ -104,7 +124,12 @@ function UsageContent({ t, summary, summaryLoading, granularity, setGranularity,
         ))}
         <div class="w-px h-5 bg-gray-200 dark:bg-border-dark self-center" />
         {rangeOptions
-          .filter(({ hours: h }) => !(granularity === "daily" && h <= 24))
+          .filter(({ hours: h }) => {
+            if (granularity === "daily" && h <= 24) return false;
+            if (granularity === "hourly" && h < 6) return false;
+            if (granularity === "five_min" && h > 24) return false;
+            return true;
+          })
           .map(({ hours: h, label }) => (
           <button
             key={h}
@@ -182,11 +207,3 @@ function SummaryCard({ label, value, hint }: { label: string; value: string; hin
   );
 }
 
-function formatHitRate(cached: number, input: number): string {
-  if (input <= 0) return "—";
-  const pct = (cached / input) * 100;
-  if (pct === 0) return "0%";
-  if (pct < 0.01) return "<0.01%";
-  if (pct < 1) return `${pct.toFixed(2)}%`;
-  return `${pct.toFixed(1)}%`;
-}

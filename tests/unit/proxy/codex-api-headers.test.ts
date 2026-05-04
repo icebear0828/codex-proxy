@@ -18,6 +18,11 @@ vi.mock("@src/config.js", () => ({
   }),
 }));
 
+// Mock installation_id (deterministic value)
+vi.mock("@src/proxy/installation-id.js", () => ({
+  getInstallationId: () => "11111111-2222-3333-4444-555555555555",
+}));
+
 // Capture createWebSocketResponse calls
 const mockCreateWebSocketResponse = vi.fn<
   (...args: unknown[]) => Promise<Response>
@@ -121,6 +126,30 @@ describe("codex-api headers", () => {
       expect(body.turnState).toBeUndefined();
       expect(body.service_tier).toBeUndefined();
     });
+
+    it("sends x-codex-installation-id header and inside body.client_metadata", async () => {
+      const api = await createApi();
+      await api.createResponse(makeRequest());
+      expect(transport.lastHeaders!["x-codex-installation-id"]).toBe(
+        "11111111-2222-3333-4444-555555555555",
+      );
+      const body = JSON.parse(transport.lastBody!) as { client_metadata: Record<string, string> };
+      expect(body.client_metadata).toMatchObject({
+        "x-codex-installation-id": "11111111-2222-3333-4444-555555555555",
+      });
+    });
+
+    it("preserves caller-provided client_metadata fields and only injects installation id", async () => {
+      const api = await createApi();
+      await api.createResponse(
+        makeRequest({ client_metadata: { "x-custom": "v1" } }),
+      );
+      const body = JSON.parse(transport.lastBody!) as { client_metadata: Record<string, string> };
+      expect(body.client_metadata).toMatchObject({
+        "x-custom": "v1",
+        "x-codex-installation-id": "11111111-2222-3333-4444-555555555555",
+      });
+    });
   });
 
   describe("WebSocket path", () => {
@@ -147,6 +176,15 @@ describe("codex-api headers", () => {
         /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/,
       );
       expect(headers["x-codex-turn-state"]).toBe("ws_turn_abc");
+      expect(headers["x-codex-installation-id"]).toBe(
+        "11111111-2222-3333-4444-555555555555",
+      );
+      const wsRequest = mockCreateWebSocketResponse.mock.calls[0][2] as {
+        client_metadata?: Record<string, string>;
+      };
+      expect(wsRequest.client_metadata).toMatchObject({
+        "x-codex-installation-id": "11111111-2222-3333-4444-555555555555",
+      });
     });
 
     it("previous_response_id 场景下 WebSocket 失败不会降级成 HTTP delta-only", async () => {
