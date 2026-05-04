@@ -114,11 +114,30 @@ export class AccountPool {
 
   removeAccount(id: string): boolean {
     this.lifecycle.clearLock(id);
+    this.evictWsPool(id);
     return this.registry.removeAccount(id);
   }
 
   updateToken(entryId: string, newToken: string, refreshToken?: string): void {
     this.registry.updateToken(entryId, newToken, refreshToken);
+    // The new access_token doesn't take effect on already-open WebSocket
+    // sessions (the upstream auth header is captured at handshake), so any
+    // pooled WS for this entry is now using a stale credential. Evict so the
+    // next request opens a fresh WS with the refreshed token.
+    this.evictWsPool(entryId);
+  }
+
+  /** Drop any pooled WebSocket connections for `entryId`. Used by status
+   *  mutations and token refresh to prevent in-flight reuse from carrying
+   *  stale auth or routing into a backend the account is no longer welcome
+   *  on. Lazy-imports ws-pool so this module doesn't pull the proxy layer
+   *  into bootstrap when the pool isn't otherwise reachable. */
+  private evictWsPool(entryId: string): void {
+    // Avoid hard import: account-pool is also exercised in unit tests that
+    // never touch the WS layer, and dynamic resolution keeps that contract.
+    void import("../proxy/ws-pool.js")
+      .then((mod) => mod.getWsPool().evictByEntryId(entryId))
+      .catch(() => { /* pool unavailable in this build/test context — ignore */ });
   }
 
   setLabel(entryId: string, label: string | null): boolean {
@@ -135,6 +154,10 @@ export class AccountPool {
   markStatus(entryId: string, status: AccountEntry["status"]): void {
     if (this.registry.markStatus(entryId, status)) {
       this.lifecycle.clearLock(entryId);
+      // Status transitions to expired/banned/disabled make the account
+      // unusable; reusing a pooled WS would just hit the same wall on the
+      // upstream side. Evict so the pool doesn't hold a doomed connection.
+      if (status !== "active") this.evictWsPool(entryId);
     }
     if (status === "expired" && this._onExpired) {
       this._onExpired(entryId);
@@ -147,6 +170,7 @@ export class AccountPool {
   ): void {
     if (this.registry.markRateLimited(entryId, this.rateLimitBackoffSeconds, options)) {
       this.lifecycle.clearLock(entryId);
+      this.evictWsPool(entryId);
     }
   }
 

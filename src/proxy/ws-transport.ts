@@ -18,6 +18,12 @@ import type { CodexInputItem } from "./codex-api.js";
 import type { ParsedRateLimit } from "./rate-limit-headers.js";
 import { parseRateLimitsEvent } from "./rate-limit-headers.js";
 import { CodexApiError } from "./codex-types.js";
+import {
+  PersistentWs,
+  WsReusedConnectionError,
+  type PersistentWsHooks,
+  type WsConnectionPool,
+} from "./ws-pool.js";
 
 /**
  * Map an upstream WS terminal error frame (`type: "error"` or
@@ -110,24 +116,20 @@ export interface WsCreateRequest {
   // The backend defaults to storing via WebSocket and always streams.
 }
 
-/**
- * Open a WebSocket to the Codex backend, send `response.create`,
- * and return a Response whose body is an SSE-formatted ReadableStream.
- *
- * The SSE format matches what parseStream() expects:
- *   event: <type>\ndata: <json>\n\n
- */
-export async function createWebSocketResponse(
-  wsUrl: string,
-  headers: Record<string, string>,
-  request: WsCreateRequest,
-  signal?: AbortSignal,
-  proxyUrl?: string | null,
-  onRateLimits?: (rl: ParsedRateLimit) => void,
-): Promise<Response> {
-  const WS = await getWS();
+/** Optional pool routing context. When provided, `createWebSocketResponse`
+ *  tries to reuse a pooled WS for `(entryId, poolKey)` before falling back
+ *  to opening a fresh one-shot connection. */
+export interface WsPoolContext {
+  pool: WsConnectionPool;
+  poolKey: string;
+  entryId: string;
+}
 
-  // Lazy-import proxy agent only when needed; cache by URL to reuse connections
+async function buildWsConstructorOpts(
+  WS: typeof import("ws").default,
+  headers: Record<string, string>,
+  proxyUrl: string | null | undefined,
+): Promise<ConstructorParameters<typeof WS>[2]> {
   const wsOpts: ConstructorParameters<typeof WS>[2] = { headers };
   if (proxyUrl) {
     let agent = _agentCache.get(proxyUrl);
@@ -138,6 +140,125 @@ export async function createWebSocketResponse(
     }
     wsOpts.agent = agent;
   }
+  return wsOpts;
+}
+
+/** Factory used by the pool to construct a brand-new persistent connection.
+ *  Connects + waits for OPEN before returning so callers can immediately
+ *  send. The PersistentWs is constructed up-front so its `upgrade` listener
+ *  catches the initial response headers (which carry rate-limit data). */
+async function createPersistentWsConnection(opts: {
+  wsUrl: string;
+  headers: Record<string, string>;
+  proxyUrl: string | null | undefined;
+  entryId: string;
+  poolKey: string;
+  hooks: PersistentWsHooks;
+}): Promise<PersistentWs> {
+  const WS = await getWS();
+  const wsOpts = await buildWsConstructorOpts(WS, opts.headers, opts.proxyUrl);
+  const ws = new WS(opts.wsUrl, wsOpts);
+
+  // Construct PersistentWs first so its upgrade/error/close handlers attach
+  // before the WebSocket handshake completes.
+  const persistent = new PersistentWs({
+    ws,
+    entryId: opts.entryId,
+    poolKey: opts.poolKey,
+    hooks: opts.hooks,
+  });
+
+  await new Promise<void>((resolve, reject) => {
+    if (ws.readyState === ws.OPEN) {
+      resolve();
+      return;
+    }
+    const cleanup = () => {
+      ws.removeListener("open", onOpen);
+      ws.removeListener("error", onErr);
+      ws.removeListener("close", onClose);
+    };
+    const onOpen = () => { cleanup(); resolve(); };
+    const onErr = (err: Error) => { cleanup(); reject(err); };
+    const onClose = () => { cleanup(); reject(new Error("WebSocket closed before open")); };
+    ws.once("open", onOpen);
+    ws.once("error", onErr);
+    ws.once("close", onClose);
+  });
+
+  return persistent;
+}
+
+/**
+ * Open a WebSocket to the Codex backend, send `response.create`,
+ * and return a Response whose body is an SSE-formatted ReadableStream.
+ *
+ * The SSE format matches what parseStream() expects:
+ *   event: <type>\ndata: <json>\n\n
+ *
+ * When `poolCtx` is provided the call first tries to reuse a pooled WS for
+ * `(entryId, poolKey)`; on a `WsReusedConnectionError` (stale-reuse failure)
+ * it falls back to a fresh one-shot connection exactly once.
+ */
+export async function createWebSocketResponse(
+  wsUrl: string,
+  headers: Record<string, string>,
+  request: WsCreateRequest,
+  signal?: AbortSignal,
+  proxyUrl?: string | null,
+  onRateLimits?: (rl: ParsedRateLimit) => void,
+  poolCtx?: WsPoolContext,
+): Promise<Response> {
+  if (poolCtx) {
+    try {
+      const acquired = await poolCtx.pool.acquire(
+        poolCtx.entryId,
+        poolCtx.poolKey,
+        (deps) =>
+          createPersistentWsConnection({
+            wsUrl,
+            headers,
+            proxyUrl,
+            entryId: deps.entryId,
+            poolKey: deps.poolKey,
+            hooks: deps.hooks,
+          }),
+      );
+      if ("ws" in acquired) {
+        try {
+          return await acquired.ws.send({ request, signal, onRateLimits, reused: acquired.reused });
+        } catch (err) {
+          if (err instanceof WsReusedConnectionError) {
+            // Stale-reuse: open a fresh one-shot WS for this single request.
+            // The pool's onDead hook has already evicted the dead entry.
+            return openOneShotWs(wsUrl, headers, request, signal, proxyUrl, onRateLimits);
+          }
+          throw err;
+        }
+      }
+      // Bypass (busy / cap / dead / no_key / disabled) → fall through to one-shot.
+    } catch (err) {
+      // Pool itself failed (e.g. factory could not connect). Don't punish the
+      // caller — fall back to the legacy one-shot path. The error is still
+      // visible in the one-shot path if the underlying issue persists.
+      const msg = err instanceof Error ? err.message : String(err);
+      console.warn(`[ws-pool] acquire failed, using one-shot fallback: ${msg}`);
+    }
+  }
+
+  return openOneShotWs(wsUrl, headers, request, signal, proxyUrl, onRateLimits);
+}
+
+async function openOneShotWs(
+  wsUrl: string,
+  headers: Record<string, string>,
+  request: WsCreateRequest,
+  signal: AbortSignal | undefined,
+  proxyUrl: string | null | undefined,
+  onRateLimits: ((rl: ParsedRateLimit) => void) | undefined,
+): Promise<Response> {
+  const WS = await getWS();
+  const wsOpts = await buildWsConstructorOpts(WS, headers, proxyUrl);
 
   return new Promise<Response>((resolve, reject) => {
     if (signal?.aborted) {

@@ -299,8 +299,14 @@ async function main() {
     }, 10_000);
     if (forceExit.unref) forceExit.unref();
 
-    handle.close().then(() => {
+    handle.close().then(async () => {
       getTransport().destroy?.();
+      // Close any pooled WS connections (lazy import to avoid pulling the
+      // proxy layer into bootstrap when ws-pool is unused).
+      try {
+        const { getWsPool } = await import("./proxy/ws-pool.js");
+        await getWsPool().shutdown();
+      } catch { /* pool not initialised — nothing to drain */ }
       console.log("[Shutdown] Server closed, cleanup complete.");
       clearTimeout(forceExit);
       process.exit(0);
