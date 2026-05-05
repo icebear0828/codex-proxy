@@ -57,7 +57,7 @@ class MockWs extends EventEmitter implements WsLike {
   }
 }
 
-function newPersistentWs(opts: { hooks?: Partial<PersistentWsHooks>; entryId?: string; poolKey?: string; pingIntervalMs?: number } = {}) {
+function newPersistentWs(opts: { hooks?: Partial<PersistentWsHooks>; entryId?: string; poolKey?: string; pingIntervalMs?: number; livenessTimeoutMs?: number } = {}) {
   const ws = new MockWs();
   const onDead = vi.fn();
   const persistent = new PersistentWs({
@@ -66,6 +66,7 @@ function newPersistentWs(opts: { hooks?: Partial<PersistentWsHooks>; entryId?: s
     poolKey: opts.poolKey ?? "entry-A:conv-1",
     hooks: { onDead, ...opts.hooks },
     pingIntervalMs: opts.pingIntervalMs,
+    livenessTimeoutMs: opts.livenessTimeoutMs,
   });
   return { ws, persistent, onDead };
 }
@@ -378,6 +379,73 @@ describe("PersistentWs", () => {
       await vi.advanceTimersByTimeAsync(0); // let send() start
       vi.advanceTimersByTime(3_500);
       expect(ws.pingCount).toBe(0); // busy → no pings while streaming
+    });
+  });
+
+  describe("liveness check (silent connection death)", () => {
+    beforeEach(() => { vi.useFakeTimers(); });
+    afterEach(() => { vi.useRealTimers(); });
+
+    it("marks ws dead once upstream stays silent past livenessTimeoutMs", () => {
+      const { ws, persistent, onDead } = newPersistentWs({
+        pingIntervalMs: 1_000,
+        livenessTimeoutMs: 2_500,
+      });
+      // No pong, no message: lastActivity stays at construction time.
+      vi.advanceTimersByTime(3_000);
+      expect(persistent.isAlive()).toBe(false);
+      expect(onDead).toHaveBeenCalledTimes(1);
+      expect(ws.closed).toBe(true);
+    });
+
+    it("pong frame from upstream resets the liveness clock", () => {
+      const { ws, persistent } = newPersistentWs({
+        pingIntervalMs: 1_000,
+        livenessTimeoutMs: 2_500,
+      });
+      vi.advanceTimersByTime(2_000);
+      ws.emit("pong"); // pong arrives just before the deadline
+      vi.advanceTimersByTime(2_000); // would have crossed 4s without reset
+      expect(persistent.isAlive()).toBe(true);
+    });
+
+    it("data message from upstream also counts as proof of life", async () => {
+      const { ws, persistent } = newPersistentWs({
+        pingIntervalMs: 1_000,
+        livenessTimeoutMs: 2_500,
+      });
+      persistent.tryAcquire();
+      void persistent.send({
+        request: { type: "response.create", model: "m", instructions: "", input: [] },
+        signal: undefined,
+        onRateLimits: undefined,
+        reused: false,
+      });
+      await vi.advanceTimersByTimeAsync(0);
+      vi.advanceTimersByTime(2_000);
+      ws.pushMessage({ type: "response.created" });
+      vi.advanceTimersByTime(2_000);
+      expect(persistent.isAlive()).toBe(true);
+    });
+
+    it("disabled when livenessTimeoutMs=0 (escape hatch matches pingIntervalMs=0)", () => {
+      const { persistent } = newPersistentWs({
+        pingIntervalMs: 1_000,
+        livenessTimeoutMs: 0,
+      });
+      vi.advanceTimersByTime(60_000);
+      expect(persistent.isAlive()).toBe(true);
+    });
+
+    it("livenessTimeoutMs defaults to a multiple of pingIntervalMs (no surprise dead WS in healthy state)", () => {
+      // Default is 2.5x ping interval. With 1s ping and one pong arriving each
+      // cycle, liveness must hold across many cycles.
+      const { ws, persistent } = newPersistentWs({ pingIntervalMs: 1_000 });
+      for (let i = 0; i < 10; i++) {
+        vi.advanceTimersByTime(1_000);
+        ws.emit("pong");
+      }
+      expect(persistent.isAlive()).toBe(true);
     });
   });
 });
