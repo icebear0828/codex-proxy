@@ -18,10 +18,16 @@ class MockWs extends EventEmitter implements WsLike {
   public closed = false;
   public closeCode: number | undefined;
   public closeReason: string | undefined;
+  public pingCount = 0;
 
   send(data: string): void {
     if (this.closed) throw new Error("send after close");
     this.sent.push(data);
+  }
+
+  ping(): void {
+    if (this.closed) throw new Error("ping after close");
+    this.pingCount += 1;
   }
 
   close(code?: number, reason?: string): void {
@@ -51,7 +57,7 @@ class MockWs extends EventEmitter implements WsLike {
   }
 }
 
-function newPersistentWs(opts: { hooks?: Partial<PersistentWsHooks>; entryId?: string; poolKey?: string } = {}) {
+function newPersistentWs(opts: { hooks?: Partial<PersistentWsHooks>; entryId?: string; poolKey?: string; pingIntervalMs?: number } = {}) {
   const ws = new MockWs();
   const onDead = vi.fn();
   const persistent = new PersistentWs({
@@ -59,6 +65,7 @@ function newPersistentWs(opts: { hooks?: Partial<PersistentWsHooks>; entryId?: s
     entryId: opts.entryId ?? "entry-A",
     poolKey: opts.poolKey ?? "entry-A:conv-1",
     hooks: { onDead, ...opts.hooks },
+    pingIntervalMs: opts.pingIntervalMs,
   });
   return { ws, persistent, onDead };
 }
@@ -309,6 +316,51 @@ describe("PersistentWs", () => {
     ws.pushMessage({ type: "response.created" });
     const resp = await promise;
     expect(resp.headers.get("x-codex-primary-used-percent")).toBe("42");
+  });
+
+  describe("keepalive ping", () => {
+    beforeEach(() => { vi.useFakeTimers(); });
+    afterEach(() => { vi.useRealTimers(); });
+
+    it("emits ping frames at the configured interval to keep middlebox NAT alive", () => {
+      const { ws } = newPersistentWs({ pingIntervalMs: 1_000 });
+      expect(ws.pingCount).toBe(0);
+      vi.advanceTimersByTime(2_500);
+      expect(ws.pingCount).toBe(2);
+    });
+
+    it("stops pinging once the WS is dead", () => {
+      const { ws } = newPersistentWs({ pingIntervalMs: 1_000 });
+      vi.advanceTimersByTime(1_500);
+      expect(ws.pingCount).toBe(1);
+      ws.pushClose(1006, "tcp rst");
+      vi.advanceTimersByTime(5_000);
+      expect(ws.pingCount).toBe(1);
+    });
+
+    it("skips ping when the underlying ws is no longer OPEN", () => {
+      const { ws } = newPersistentWs({ pingIntervalMs: 1_000 });
+      ws.readyState = 2; // CLOSING — close event hasn't fired yet
+      vi.advanceTimersByTime(3_500);
+      expect(ws.pingCount).toBe(0);
+    });
+
+    it("pingIntervalMs=0 disables the keepalive timer entirely", () => {
+      const { ws } = newPersistentWs({ pingIntervalMs: 0 });
+      vi.advanceTimersByTime(60_000);
+      expect(ws.pingCount).toBe(0);
+    });
+
+    it("swallows ping errors so transient send failures don't crash the timer loop", () => {
+      const { ws } = newPersistentWs({ pingIntervalMs: 1_000 });
+      const original = ws.ping.bind(ws);
+      let throwOnce = true;
+      ws.ping = () => {
+        if (throwOnce) { throwOnce = false; throw new Error("transient"); }
+        original();
+      };
+      expect(() => vi.advanceTimersByTime(2_500)).not.toThrow();
+    });
   });
 });
 

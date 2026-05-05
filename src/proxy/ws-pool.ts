@@ -88,6 +88,7 @@ interface InFlightSession {
 export interface WsLike {
   readonly readyState: number;
   send(data: string): void;
+  ping(): void;
   close(code?: number, reason?: string): void;
   on(event: "open", listener: () => void): void;
   on(event: "message", listener: (data: Buffer | string) => void): void;
@@ -141,6 +142,11 @@ export interface PersistentWsHooks {
   onDead(): void;
 }
 
+/** Default keepalive cadence. 25s sits comfortably under the typical 30-60s
+ *  idle timeouts of upstream LBs / NAT middleboxes that have been observed to
+ *  silently RST otherwise-healthy pooled WSes mid-session (close code 1006). */
+export const DEFAULT_PING_INTERVAL_MS = 25_000;
+
 export class PersistentWs {
   readonly id: string;
   readonly entryId: string;
@@ -156,6 +162,7 @@ export class PersistentWs {
   private upgradeHeaders: Record<string, string | string[]> = {};
   private hooks: PersistentWsHooks;
   private readonly encoder = new TextEncoder();
+  private pingTimer: ReturnType<typeof setInterval> | undefined;
 
   constructor(opts: {
     ws: WsLike;
@@ -163,6 +170,8 @@ export class PersistentWs {
     poolKey: string;
     hooks: PersistentWsHooks;
     now?: () => number;
+    /** 0 disables the keepalive timer. Omit to use {@link DEFAULT_PING_INTERVAL_MS}. */
+    pingIntervalMs?: number;
   }) {
     this.id = randomUUID().slice(0, 8);
     this.ws = opts.ws;
@@ -181,6 +190,17 @@ export class PersistentWs {
     this.ws.on("error", (err) => this.handleTransportError(err));
 
     this.ws.on("close", (code, reason) => this.handleClose(code, reason));
+
+    const pingMs = opts.pingIntervalMs ?? DEFAULT_PING_INTERVAL_MS;
+    if (pingMs > 0) {
+      this.pingTimer = setInterval(() => this.sendKeepalivePing(), pingMs);
+      this.pingTimer.unref?.();
+    }
+  }
+
+  private sendKeepalivePing(): void {
+    if (this.dead || this.ws.readyState !== WS_OPEN) return;
+    try { this.ws.ping(); } catch { /* transient send failure — next tick will retry */ }
   }
 
   /** Atomic-ish acquire (single-threaded JS, so just a boolean check).
@@ -288,6 +308,10 @@ export class PersistentWs {
   private markDead(reason: string): void {
     if (this.dead) return;
     this.dead = true;
+    if (this.pingTimer) {
+      clearInterval(this.pingTimer);
+      this.pingTimer = undefined;
+    }
     try { this.ws.close(1000, reason.slice(0, 120)); } catch { /* already closing */ }
     if (this.currentSession && !this.currentSession.streamClosed) {
       try { this.currentSession.controller.close(); } catch { /* already closed */ }

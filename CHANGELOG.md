@@ -14,6 +14,7 @@
 - Dashboard 用量页新增独立的「Hit Rate Over Time」图：每个 bucket 渲染命中率折线 + 数据点 dot，hover 可见 `cached / input`；`input=0` 的 bucket 自动跳过（不渲染 0% 假命中），单数据点也用 dot 保证可见性（`web/src/components/UsageChart.tsx`）
 - Usage history `five_min` granularity（5 分钟桶）+ Dashboard 新增「5 min」粒度选项与「Last 1h / 6h」时间窗：snapshot 默认 5 分钟一记，新粒度等同于一桶一快照，方便排查刚发生的请求；旧的 hourly/daily 不变，按 granularity 自动收敛兼容窗口（`src/auth/usage-stats.ts`、`src/routes/admin/usage-stats.ts`、`shared/hooks/use-usage-stats.ts`、`web/src/pages/UsageStats.tsx`）
 - 共享纯函数 `formatHitRate` / `sumWindow` / `formatUsageNumber` 抽到 `shared/utils/usage-stats.ts`，配套 vitest 单测覆盖边界（input=0 → "—"、<0.01% 截断、windowed 求和等），UsageChart 与 UsageStats 复用同一份格式化逻辑（`shared/utils/usage-stats.ts`、`shared/utils/__tests__/usage-stats.test.ts`）
+- WebSocket 连接池新增 keepalive ping（`src/proxy/ws-pool.ts`）：每个 `PersistentWs` 默认 25 s 发一次 WS ping 帧（`DEFAULT_PING_INTERVAL_MS`），抵消上游 LB / NAT / 防火墙的 idle timeout 静默 RST。诊断观测到 healthy 池里的 WS 在 mid-session 出现 `closed code=1006` → 强制下次请求重新冷启动 prompt cache（5-9% hit）；25 s 卡在常见 30-60 s 中间链路超时之下。`pingIntervalMs: 0` 可禁用，构造期初始化、`markDead` 时 `clearInterval`（`tests/unit/proxy/ws-pool.test.ts` 5 个新单测覆盖：节奏、dead 后停、readyState 守卫、禁用、错误吞咽）
 
 ### Fixed
 
