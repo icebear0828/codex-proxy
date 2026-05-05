@@ -4,6 +4,11 @@ on:
   schedule:
     - cron: "0 14 * * *"   # UTC 14:00 = PRC 22:00 (2h before bump-electron stable run)
   workflow_dispatch:
+    inputs:
+      force_skip_soak:
+        description: "Skip the 24h soak check. Only set true when promoting a sync-back / merge commit that is timestamp-fresh but content-stable."
+        type: boolean
+        default: false
 
 concurrency:
   group: promote-dev
@@ -70,7 +75,10 @@ jobs:
           AGE=$(( NOW - DEV_TS ))
           MIN_AGE=86400
           echo "dev HEAD age: ${AGE}s (need >= ${MIN_AGE}s)"
-          if [ "$AGE" -lt "$MIN_AGE" ]; then
+          if [ "${{ inputs.force_skip_soak }}" = "true" ]; then
+            echo "::notice::Soak skipped via workflow_dispatch input (age=${AGE}s)"
+            echo "ok=true" >> "$GITHUB_OUTPUT"
+          elif [ "$AGE" -lt "$MIN_AGE" ]; then
             REMAIN=$(( MIN_AGE - AGE ))
             echo "::notice::Soak: ${REMAIN}s remaining before dev is eligible for promotion"
             echo "ok=false" >> "$GITHUB_OUTPUT"
