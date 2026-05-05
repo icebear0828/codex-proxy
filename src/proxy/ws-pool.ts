@@ -88,6 +88,8 @@ interface InFlightSession {
 export interface WsLike {
   readonly readyState: number;
   send(data: string): void;
+  // Real ws.WebSocket.ping accepts (data?, mask?, callback?); we intentionally
+  // narrow to no-arg since the keepalive use case never needs a payload.
   ping(): void;
   close(code?: number, reason?: string): void;
   on(event: "open", listener: () => void): void;
@@ -199,8 +201,10 @@ export class PersistentWs {
   }
 
   private sendKeepalivePing(): void {
-    if (this.dead || this.ws.readyState !== WS_OPEN) return;
-    try { this.ws.ping(); } catch { /* transient send failure — next tick will retry */ }
+    // Skip when busy: the active stream's data frames already keep the LB /
+    // NAT idle timers fresh, so a ping would be redundant bandwidth.
+    if (this.dead || this.busy || this.ws.readyState !== WS_OPEN) return;
+    try { this.ws.ping(); } catch { /* skip this tick; next interval will try again */ }
   }
 
   /** Atomic-ish acquire (single-threaded JS, so just a boolean check).

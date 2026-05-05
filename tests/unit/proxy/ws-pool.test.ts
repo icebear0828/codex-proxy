@@ -351,7 +351,7 @@ describe("PersistentWs", () => {
       expect(ws.pingCount).toBe(0);
     });
 
-    it("swallows ping errors so transient send failures don't crash the timer loop", () => {
+    it("swallows ping errors AND keeps firing on subsequent ticks", () => {
       const { ws } = newPersistentWs({ pingIntervalMs: 1_000 });
       const original = ws.ping.bind(ws);
       let throwOnce = true;
@@ -360,6 +360,24 @@ describe("PersistentWs", () => {
         original();
       };
       expect(() => vi.advanceTimersByTime(2_500)).not.toThrow();
+      // Tick 1 threw and was swallowed; tick 2 must have fired and incremented.
+      // Asserts the timer loop survived the throw — a bare not.toThrow() would
+      // miss a regression that crashes the interval after one bad ping.
+      expect(ws.pingCount).toBe(1);
+    });
+
+    it("skips ping while a request is in-flight (active stream keeps the LB alive)", async () => {
+      const { ws, persistent } = newPersistentWs({ pingIntervalMs: 1_000 });
+      persistent.tryAcquire();
+      void persistent.send({
+        request: { type: "response.create", model: "m", instructions: "", input: [] },
+        signal: undefined,
+        onRateLimits: undefined,
+        reused: false,
+      });
+      await vi.advanceTimersByTimeAsync(0); // let send() start
+      vi.advanceTimersByTime(3_500);
+      expect(ws.pingCount).toBe(0); // busy → no pings while streaming
     });
   });
 });
