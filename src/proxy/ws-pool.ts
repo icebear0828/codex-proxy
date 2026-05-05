@@ -88,12 +88,18 @@ interface InFlightSession {
 export interface WsLike {
   readonly readyState: number;
   send(data: string): void;
+  // Real ws.WebSocket.ping accepts (data?, mask?, callback?); we intentionally
+  // narrow to no-arg since the keepalive use case never needs a payload.
+  ping(): void;
   close(code?: number, reason?: string): void;
   on(event: "open", listener: () => void): void;
   on(event: "message", listener: (data: Buffer | string) => void): void;
   on(event: "upgrade", listener: (response: { headers: Record<string, string | string[]> }) => void): void;
   on(event: "error", listener: (err: Error) => void): void;
   on(event: "close", listener: (code: number, reason: Buffer) => void): void;
+  // ws emits "pong" when the peer replies to our ping(); used as a liveness
+  // signal to detect silently-broken connections middlebox-side.
+  on(event: "pong", listener: () => void): void;
 }
 
 const WS_OPEN = 1;
@@ -141,6 +147,17 @@ export interface PersistentWsHooks {
   onDead(): void;
 }
 
+/** Default keepalive cadence. 25s sits comfortably under the typical 30-60s
+ *  idle timeouts of upstream LBs / NAT middleboxes that have been observed to
+ *  silently RST otherwise-healthy pooled WSes mid-session (close code 1006). */
+export const DEFAULT_PING_INTERVAL_MS = 25_000;
+
+/** Multiplier applied to pingIntervalMs when livenessTimeoutMs is omitted.
+ *  2.5x means we tolerate one missed pong (network blip) but evict before a
+ *  third would tick — at which point the connection is almost certainly dead
+ *  and re-using it would cost a real-request cache miss. */
+export const DEFAULT_LIVENESS_TIMEOUT_MULTIPLIER = 2.5;
+
 export class PersistentWs {
   readonly id: string;
   readonly entryId: string;
@@ -156,6 +173,12 @@ export class PersistentWs {
   private upgradeHeaders: Record<string, string | string[]> = {};
   private hooks: PersistentWsHooks;
   private readonly encoder = new TextEncoder();
+  private pingTimer: ReturnType<typeof setInterval> | undefined;
+  /** Last moment we received any signal from the peer (pong or data frame).
+   *  Used by the keepalive tick to detect silently-broken connections that
+   *  would otherwise eat a fresh-WS cache miss on the next real request. */
+  private lastActivityAt: number;
+  private readonly livenessTimeoutMs: number;
 
   constructor(opts: {
     ws: WsLike;
@@ -163,6 +186,12 @@ export class PersistentWs {
     poolKey: string;
     hooks: PersistentWsHooks;
     now?: () => number;
+    /** 0 disables the keepalive timer. Omit to use {@link DEFAULT_PING_INTERVAL_MS}. */
+    pingIntervalMs?: number;
+    /** Max ms without any pong/message before the WS is treated as silently dead.
+     *  0 disables the liveness check entirely. Omit to default to
+     *  {@link DEFAULT_LIVENESS_TIMEOUT_MULTIPLIER} × pingIntervalMs. */
+    livenessTimeoutMs?: number;
   }) {
     this.id = randomUUID().slice(0, 8);
     this.ws = opts.ws;
@@ -171,16 +200,46 @@ export class PersistentWs {
     this.hooks = opts.hooks;
     this.now = opts.now ?? Date.now;
     this.createdAt = this.now();
+    this.lastActivityAt = this.createdAt;
 
     this.ws.on("upgrade", (response) => {
       this.upgradeHeaders = response.headers;
     });
 
-    this.ws.on("message", (data) => this.handleMessage(data));
+    this.ws.on("message", (data) => {
+      this.lastActivityAt = this.now();
+      this.handleMessage(data);
+    });
+
+    this.ws.on("pong", () => {
+      this.lastActivityAt = this.now();
+    });
 
     this.ws.on("error", (err) => this.handleTransportError(err));
 
     this.ws.on("close", (code, reason) => this.handleClose(code, reason));
+
+    const pingMs = opts.pingIntervalMs ?? DEFAULT_PING_INTERVAL_MS;
+    this.livenessTimeoutMs = opts.livenessTimeoutMs ?? Math.round(pingMs * DEFAULT_LIVENESS_TIMEOUT_MULTIPLIER);
+    if (pingMs > 0) {
+      this.pingTimer = setInterval(() => this.sendKeepalivePing(), pingMs);
+      this.pingTimer.unref?.();
+    }
+  }
+
+  private sendKeepalivePing(): void {
+    // Skip when busy: the active stream's data frames already keep the LB /
+    // NAT idle timers fresh, so a ping would be redundant bandwidth.
+    if (this.dead || this.busy || this.ws.readyState !== WS_OPEN) return;
+    // Liveness check: if the peer hasn't produced ANY signal (pong or message)
+    // for too long, the connection is silently broken (middlebox dropped it
+    // without sending FIN/RST). Evicting now beats eating a real-request cache
+    // miss when the next acquire would otherwise reuse this dead-but-OPEN ws.
+    if (this.livenessTimeoutMs > 0 && this.now() - this.lastActivityAt > this.livenessTimeoutMs) {
+      this.markDead(`liveness timeout (no upstream activity for ${this.now() - this.lastActivityAt}ms)`);
+      return;
+    }
+    try { this.ws.ping(); } catch { /* skip this tick; next interval will try again */ }
   }
 
   /** Atomic-ish acquire (single-threaded JS, so just a boolean check).
@@ -288,6 +347,10 @@ export class PersistentWs {
   private markDead(reason: string): void {
     if (this.dead) return;
     this.dead = true;
+    if (this.pingTimer) {
+      clearInterval(this.pingTimer);
+      this.pingTimer = undefined;
+    }
     try { this.ws.close(1000, reason.slice(0, 120)); } catch { /* already closing */ }
     if (this.currentSession && !this.currentSession.streamClosed) {
       try { this.currentSession.controller.close(); } catch { /* already closed */ }

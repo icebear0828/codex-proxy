@@ -18,10 +18,16 @@ class MockWs extends EventEmitter implements WsLike {
   public closed = false;
   public closeCode: number | undefined;
   public closeReason: string | undefined;
+  public pingCount = 0;
 
   send(data: string): void {
     if (this.closed) throw new Error("send after close");
     this.sent.push(data);
+  }
+
+  ping(): void {
+    if (this.closed) throw new Error("ping after close");
+    this.pingCount += 1;
   }
 
   close(code?: number, reason?: string): void {
@@ -51,7 +57,7 @@ class MockWs extends EventEmitter implements WsLike {
   }
 }
 
-function newPersistentWs(opts: { hooks?: Partial<PersistentWsHooks>; entryId?: string; poolKey?: string } = {}) {
+function newPersistentWs(opts: { hooks?: Partial<PersistentWsHooks>; entryId?: string; poolKey?: string; pingIntervalMs?: number; livenessTimeoutMs?: number } = {}) {
   const ws = new MockWs();
   const onDead = vi.fn();
   const persistent = new PersistentWs({
@@ -59,6 +65,8 @@ function newPersistentWs(opts: { hooks?: Partial<PersistentWsHooks>; entryId?: s
     entryId: opts.entryId ?? "entry-A",
     poolKey: opts.poolKey ?? "entry-A:conv-1",
     hooks: { onDead, ...opts.hooks },
+    pingIntervalMs: opts.pingIntervalMs,
+    livenessTimeoutMs: opts.livenessTimeoutMs,
   });
   return { ws, persistent, onDead };
 }
@@ -309,6 +317,136 @@ describe("PersistentWs", () => {
     ws.pushMessage({ type: "response.created" });
     const resp = await promise;
     expect(resp.headers.get("x-codex-primary-used-percent")).toBe("42");
+  });
+
+  describe("keepalive ping", () => {
+    beforeEach(() => { vi.useFakeTimers(); });
+    afterEach(() => { vi.useRealTimers(); });
+
+    it("emits ping frames at the configured interval to keep middlebox NAT alive", () => {
+      const { ws } = newPersistentWs({ pingIntervalMs: 1_000 });
+      expect(ws.pingCount).toBe(0);
+      vi.advanceTimersByTime(2_500);
+      expect(ws.pingCount).toBe(2);
+    });
+
+    it("stops pinging once the WS is dead", () => {
+      const { ws } = newPersistentWs({ pingIntervalMs: 1_000 });
+      vi.advanceTimersByTime(1_500);
+      expect(ws.pingCount).toBe(1);
+      ws.pushClose(1006, "tcp rst");
+      vi.advanceTimersByTime(5_000);
+      expect(ws.pingCount).toBe(1);
+    });
+
+    it("skips ping when the underlying ws is no longer OPEN", () => {
+      const { ws } = newPersistentWs({ pingIntervalMs: 1_000 });
+      ws.readyState = 2; // CLOSING — close event hasn't fired yet
+      vi.advanceTimersByTime(3_500);
+      expect(ws.pingCount).toBe(0);
+    });
+
+    it("pingIntervalMs=0 disables the keepalive timer entirely", () => {
+      const { ws } = newPersistentWs({ pingIntervalMs: 0 });
+      vi.advanceTimersByTime(60_000);
+      expect(ws.pingCount).toBe(0);
+    });
+
+    it("swallows ping errors AND keeps firing on subsequent ticks", () => {
+      const { ws } = newPersistentWs({ pingIntervalMs: 1_000 });
+      const original = ws.ping.bind(ws);
+      let throwOnce = true;
+      ws.ping = () => {
+        if (throwOnce) { throwOnce = false; throw new Error("transient"); }
+        original();
+      };
+      expect(() => vi.advanceTimersByTime(2_500)).not.toThrow();
+      // Tick 1 threw and was swallowed; tick 2 must have fired and incremented.
+      // Asserts the timer loop survived the throw — a bare not.toThrow() would
+      // miss a regression that crashes the interval after one bad ping.
+      expect(ws.pingCount).toBe(1);
+    });
+
+    it("skips ping while a request is in-flight (active stream keeps the LB alive)", async () => {
+      const { ws, persistent } = newPersistentWs({ pingIntervalMs: 1_000 });
+      persistent.tryAcquire();
+      void persistent.send({
+        request: { type: "response.create", model: "m", instructions: "", input: [] },
+        signal: undefined,
+        onRateLimits: undefined,
+        reused: false,
+      });
+      await vi.advanceTimersByTimeAsync(0); // let send() start
+      vi.advanceTimersByTime(3_500);
+      expect(ws.pingCount).toBe(0); // busy → no pings while streaming
+    });
+  });
+
+  describe("liveness check (silent connection death)", () => {
+    beforeEach(() => { vi.useFakeTimers(); });
+    afterEach(() => { vi.useRealTimers(); });
+
+    it("marks ws dead once upstream stays silent past livenessTimeoutMs", () => {
+      const { ws, persistent, onDead } = newPersistentWs({
+        pingIntervalMs: 1_000,
+        livenessTimeoutMs: 2_500,
+      });
+      // No pong, no message: lastActivity stays at construction time.
+      vi.advanceTimersByTime(3_000);
+      expect(persistent.isAlive()).toBe(false);
+      expect(onDead).toHaveBeenCalledTimes(1);
+      expect(ws.closed).toBe(true);
+    });
+
+    it("pong frame from upstream resets the liveness clock", () => {
+      const { ws, persistent } = newPersistentWs({
+        pingIntervalMs: 1_000,
+        livenessTimeoutMs: 2_500,
+      });
+      vi.advanceTimersByTime(2_000);
+      ws.emit("pong"); // pong arrives just before the deadline
+      vi.advanceTimersByTime(2_000); // would have crossed 4s without reset
+      expect(persistent.isAlive()).toBe(true);
+    });
+
+    it("data message from upstream also counts as proof of life", async () => {
+      const { ws, persistent } = newPersistentWs({
+        pingIntervalMs: 1_000,
+        livenessTimeoutMs: 2_500,
+      });
+      persistent.tryAcquire();
+      void persistent.send({
+        request: { type: "response.create", model: "m", instructions: "", input: [] },
+        signal: undefined,
+        onRateLimits: undefined,
+        reused: false,
+      });
+      await vi.advanceTimersByTimeAsync(0);
+      vi.advanceTimersByTime(2_000);
+      ws.pushMessage({ type: "response.created" });
+      vi.advanceTimersByTime(2_000);
+      expect(persistent.isAlive()).toBe(true);
+    });
+
+    it("disabled when livenessTimeoutMs=0 (escape hatch matches pingIntervalMs=0)", () => {
+      const { persistent } = newPersistentWs({
+        pingIntervalMs: 1_000,
+        livenessTimeoutMs: 0,
+      });
+      vi.advanceTimersByTime(60_000);
+      expect(persistent.isAlive()).toBe(true);
+    });
+
+    it("livenessTimeoutMs defaults to a multiple of pingIntervalMs (no surprise dead WS in healthy state)", () => {
+      // Default is 2.5x ping interval. With 1s ping and one pong arriving each
+      // cycle, liveness must hold across many cycles.
+      const { ws, persistent } = newPersistentWs({ pingIntervalMs: 1_000 });
+      for (let i = 0; i < 10; i++) {
+        vi.advanceTimersByTime(1_000);
+        ws.emit("pong");
+      }
+      expect(persistent.isAlive()).toBe(true);
+    });
   });
 });
 
