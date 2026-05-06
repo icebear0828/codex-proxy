@@ -42,7 +42,7 @@ describe("shouldActivateImplicitResume", () => {
     })).toBe(false);
   });
 
-  it("tool_result 里的 call_id 属于上一轮 response 时允许隐式续链", () => {
+  it("tool_result 与上一轮 function_call 完全配对时允许隐式续链", () => {
     expect(shouldActivateImplicitResume({
       implicitPrevRespId: "resp_prev",
       continuationInputStart: 2,
@@ -51,8 +51,8 @@ describe("shouldActivateImplicitResume", () => {
       acquiredEntryId: "entry_1",
       currentInstructions: "system-a",
       storedInstructions: "system-a",
-      requiredFunctionCallOutputIds: ["call_ok"],
-      storedFunctionCallIds: ["call_ok", "call_other"],
+      requiredFunctionCallOutputIds: ["call_a", "call_b"],
+      storedFunctionCallIds: ["call_a", "call_b"],
     })).toBe(true);
   });
 
@@ -67,6 +67,20 @@ describe("shouldActivateImplicitResume", () => {
       storedInstructions: "system-a",
       requiredFunctionCallOutputIds: ["call_missing"],
       storedFunctionCallIds: ["call_ok"],
+    })).toBe(false);
+  });
+
+  it("上一轮 function_call 未被全部回复时禁止隐式续链（防 No tool output 上游错误）", () => {
+    expect(shouldActivateImplicitResume({
+      implicitPrevRespId: "resp_prev",
+      continuationInputStart: 2,
+      inputLength: 3,
+      preferredEntryId: "entry_1",
+      acquiredEntryId: "entry_1",
+      currentInstructions: "system-a",
+      storedInstructions: "system-a",
+      requiredFunctionCallOutputIds: ["call_a"],
+      storedFunctionCallIds: ["call_a", "call_b_unanswered"],
     })).toBe(false);
   });
 

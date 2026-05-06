@@ -51,9 +51,15 @@ export async function streamResponse(
       }
     }
   } catch (err) {
+    const errMsg = err instanceof Error ? err.message : "Stream interrupted";
+    const errBody = (err as { body?: unknown })?.body;
+    const errStatus = (err as { status?: unknown })?.status;
+    console.warn(
+      `[stream-error] status=${errStatus ?? "?"} msg=${errMsg}` +
+        (typeof errBody === "string" ? ` body=${errBody.slice(0, 1000)}` : ""),
+    );
     // Send error SSE event to client before closing
     try {
-      const errMsg = err instanceof Error ? err.message : "Stream interrupted";
       await s.write(
         `data: ${JSON.stringify({ error: { message: errMsg, type: "stream_error" } })}\n\n`,
       );

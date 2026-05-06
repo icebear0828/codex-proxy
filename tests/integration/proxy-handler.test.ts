@@ -720,6 +720,45 @@ describe("proxy-handler integration", () => {
     expect(createCount).toBe(2);
   });
 
+  // 17c. unanswered function_call: upstream "No tool output found for function
+  // call call_X" means a stored function_call from the previous response was
+  // not answered. Recovery: strip previous_response_id, retry once on the same
+  // account (full input replay covers the missing context).
+  it("recovers from unanswered function_call by stripping ID and retrying", async () => {
+    const unansweredBody = JSON.stringify({
+      error: {
+        type: "invalid_request_error",
+        message: "No tool output found for function call call_8vO7oqvintBWH5bAoAz3vPh5.",
+      },
+    });
+
+    let createCount = 0;
+    const seenPrevIds: Array<string | undefined> = [];
+    const req: ProxyRequest = {
+      ...createDefaultRequest(),
+      codexRequest: {
+        ...createDefaultRequest().codexRequest,
+        previous_response_id: "resp_unanswered_chain",
+      },
+    };
+    mockCreateResponse = () => {
+      seenPrevIds.push(req.codexRequest.previous_response_id);
+      createCount++;
+      if (createCount === 1) return Promise.reject(new CodexApiError(400, unansweredBody));
+      return Promise.resolve(new Response("data: {}\n\n"));
+    };
+
+    const accountPool = createMockAccountPool();
+    const fmt = createMockFormatAdapter();
+    const { app } = buildTestApp({ accountPool, fmt, req });
+    const res = await app.request("/test", { method: "POST" });
+
+    expect(res.status).toBe(200);
+    expect(createCount).toBe(2);
+    expect(seenPrevIds[0]).toBe("resp_unanswered_chain");
+    expect(seenPrevIds[1]).toBeUndefined();
+  });
+
   // 18. 403 ban with mixed pool states → descriptive error
   it("returns descriptive error when banned and remaining accounts disabled/expired", async () => {
     mockCreateResponse = () =>

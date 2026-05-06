@@ -80,6 +80,21 @@ export function isPreviousResponseNotFoundError(err: unknown): boolean {
     || (lower.includes("previous response with id") && lower.includes("not found"));
 }
 
+/**
+ * Check if an error indicates a stored function_call from the previous response
+ * was not answered with a function_call_output in the current request. Upstream
+ * surfaces this as 400 with message "No tool output found for function call call_X".
+ *
+ * Recovered the same way as previous_response_not_found: drop previous_response_id,
+ * resend full input history, retry on the same account.
+ */
+export function isUnansweredFunctionCallError(err: unknown): boolean {
+  if (!isCodexLike(err)) return false;
+  if (err.status !== 400) return false;
+  const haystack = (err.body + " " + err.message).toLowerCase();
+  return haystack.includes("no tool output found for function call");
+}
+
 /** Check if a CodexApiError indicates the model is not supported on the account's plan. */
 export function isModelNotSupportedError(err: CodexLikeError): boolean {
   if (err.status < 400 || err.status >= 500 || err.status === 429) return false;

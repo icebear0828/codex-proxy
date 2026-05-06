@@ -18,6 +18,7 @@ import type {
   AnthropicUsage,
 } from "../types/anthropic.js";
 import { iterateCodexEvents, EmptyResponseError, type UsageInfo } from "./codex-event-extractor.js";
+import { codexApiErrorFromEvent } from "./codex-api-error-from-event.js";
 
 interface CacheUsageHint {
   reusedInputTokensUpperBound?: number;
@@ -330,7 +331,7 @@ export async function collectCodexToAnthropicResponse(
   for await (const evt of iterateCodexEvents(codexApi, rawResponse)) {
     if (evt.responseId) responseId = evt.responseId;
     if (evt.error) {
-      throw new Error(`Codex API error: ${evt.error.code}: ${evt.error.message}`);
+      throw codexApiErrorFromEvent(evt.error);
     }
     if (evt.textDelta) fullText += evt.textDelta;
     if (evt.reasoningDelta) fullReasoning += evt.reasoningDelta;

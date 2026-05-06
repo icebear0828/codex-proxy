@@ -85,7 +85,10 @@ describe("real: tool use via /v1/chat/completions", () => {
       method: "POST",
       headers: headers(),
       body: JSON.stringify({
-        model: "codex",
+        // /v1/chat/completions strictly gates on isRecognizedModelName
+        // (chat.ts:113); the historical "codex" alias was removed on
+        // 2026-04-23, so use the catalog default explicitly here.
+        model: "gpt-5.4",
         messages: [{ role: "user", content: TOOL_PROMPT }],
         tools: [WEATHER_TOOL_OPENAI],
         tool_choice: "auto",
@@ -129,7 +132,7 @@ describe("real: tool use via /v1/chat/completions", () => {
       method: "POST",
       headers: headers(),
       body: JSON.stringify({
-        model: "codex",
+        model: "gpt-5.4",
         messages: [{ role: "user", content: TOOL_PROMPT }],
         tools: [WEATHER_TOOL_OPENAI],
         tool_choice: "auto",
