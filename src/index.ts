@@ -104,6 +104,17 @@ export async function startServer(options?: StartOptions): Promise<ServerHandle>
   // Create Hono app
   const app = new Hono();
 
+  app.options("*", (c) => {
+    const origin = c.req.header("Origin") ?? "*";
+    const requestHeaders = c.req.header("Access-Control-Request-Headers");
+    c.header("Access-Control-Allow-Origin", origin);
+    c.header("Access-Control-Allow-Methods", "GET,POST,PUT,PATCH,DELETE,OPTIONS");
+    c.header("Access-Control-Allow-Headers", requestHeaders ?? "Authorization, Content-Type");
+    c.header("Access-Control-Max-Age", "86400");
+    if (origin !== "*") c.header("Vary", "Origin, Access-Control-Request-Headers");
+    return c.body(null, 204);
+  });
+
   // Global middleware
   app.use("*", requestId);
   app.use("*", logger);
