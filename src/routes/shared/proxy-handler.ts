@@ -306,7 +306,7 @@ export async function handleProxyRequest(
   let codexApi = buildCodexApi(acquired.token, acquired.accountId, cookieJar, entryId, proxyPool);
   const triedEntryIds: string[] = [entryId];
   let modelRetried = false;
-  let prevRespNotFoundRetried = false;
+  let stripAndRetryDone = false;
   let usageInfo: UsageInfo | undefined;
   let capturedResponseId: string | null = null;
   const responseFunctionCallIds = new Set<string>();
@@ -600,8 +600,8 @@ export async function handleProxyRequest(
       // same account. For implicit-resume requests this also restores the
       // full input history; for explicit ones the client's own input is sent
       // verbatim (server-side history is lost but the request still completes).
-      if (!prevRespNotFoundRetried && isPreviousResponseNotFoundError(err)) {
-        prevRespNotFoundRetried = true;
+      if (!stripAndRetryDone && isPreviousResponseNotFoundError(err)) {
+        stripAndRetryDone = true;
         const staleId = req.codexRequest.previous_response_id;
         console.warn(
           `[${fmt.tag}] Account ${entryId} | previous_response_not_found (id=${staleId ?? "?"}), stripping and retrying same account`,
@@ -617,8 +617,8 @@ export async function handleProxyRequest(
       // response was not answered with a function_call_output. Recovery is the
       // same as previous_response_not_found: drop previous_response_id, replay
       // full history, retry once on the same account.
-      if (!prevRespNotFoundRetried && isUnansweredFunctionCallError(err)) {
-        prevRespNotFoundRetried = true;
+      if (!stripAndRetryDone && isUnansweredFunctionCallError(err)) {
+        stripAndRetryDone = true;
         const staleId = req.codexRequest.previous_response_id;
         console.warn(
           `[${fmt.tag}] Account ${entryId} | unanswered_function_call (id=${staleId ?? "?"}): ${err.message.slice(0, 200)}, stripping and retrying same account`,
@@ -840,15 +840,15 @@ async function handleNonStreaming(
         c.status(502);
         return c.json(fmt.formatError(502, "Codex returned empty responses across all available accounts"));
       }
-      // Surface upstream HTTP errors with their actual status so the caller
-      // sees a structured 4xx instead of an opaque 502 fallback.
+      // Mid-SSE upstream errors (e.g. "No tool output found for function call",
+      // "previous_response_not_found") need the same strip+retry recovery as
+      // HTTP-time errors. Rethrow so the outer handleProxyRequest catch runs
+      // its unified classification once, instead of duplicating logic here.
       if (collectErr instanceof CodexApiError) {
-        const code = toErrorStatus(collectErr.status);
         console.warn(
           `[${fmt.tag}] Account ${currentEntryId} | upstream ${collectErr.status} during collect: ${collectErr.message.slice(0, 200)}`,
         );
-        c.status(code);
-        return c.json(fmt.formatError(code, collectErr.message));
+        throw collectErr;
       }
       const msg = collectErr instanceof Error ? collectErr.message : "Unknown error";
       const statusMatch = msg.match(/HTTP\/[\d.]+ (\d{3})/);

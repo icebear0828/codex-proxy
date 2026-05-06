@@ -5,6 +5,7 @@
  */
 
 import type { UpstreamAdapter } from "../../proxy/upstream-adapter.js";
+import { CodexApiError } from "../../proxy/codex-types.js";
 import type { FormatAdapter, ResponseMetadata, UsageHint } from "./proxy-handler.js";
 import type { UsageInfo } from "../../translation/codex-event-extractor.js";
 
@@ -52,11 +53,11 @@ export async function streamResponse(
     }
   } catch (err) {
     const errMsg = err instanceof Error ? err.message : "Stream interrupted";
-    const errBody = (err as { body?: unknown })?.body;
-    const errStatus = (err as { status?: unknown })?.status;
+    const errStatus = err instanceof CodexApiError ? err.status : "?";
+    const errBody = err instanceof CodexApiError ? err.body : undefined;
     console.warn(
-      `[stream-error] status=${errStatus ?? "?"} msg=${errMsg}` +
-        (typeof errBody === "string" ? ` body=${errBody.slice(0, 1000)}` : ""),
+      `[stream-error] status=${errStatus} msg=${errMsg}` +
+        (errBody ? ` body=${errBody.slice(0, 1000)}` : ""),
     );
     // Send error SSE event to client before closing
     try {

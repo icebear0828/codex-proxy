@@ -16,7 +16,7 @@
 
 import { describe, it, expect, beforeAll } from "vitest";
 import {
-  PROXY_URL, TIMEOUT,
+  PROXY_URL,
   checkProxy, skip, anthropicHeaders,
 } from "./_helpers.js";
 
@@ -166,17 +166,16 @@ describe("real: partial tool_result triggers proxy recovery path", () => {
       },
     ]);
 
-    // Either:
-    //  - 200 (proxy recovered via reverse-check + full replay if upstream tolerates
-    //    a single missing pair on resubmit), or
-    //  - 4xx with a structured error body (proxy surfaced upstream's complaint
-    //    cleanly). Either is acceptable; what's NOT acceptable is a 5xx, hang,
-    //    or stream crash — and the proxy log must contain the diagnostic warn.
-    expect([200, 400, 422]).toContain(turn2.status);
-    if (turn2.status !== 200) {
-      const errBody = turn2.body as { error?: { message?: string } };
-      const msg = errBody.error?.message ?? "";
-      expect(msg.length).toBeGreaterThan(0);
-    }
+    // Layer 1 reverse-check disables implicit resume → full replay still has
+    // the orphan function_call → upstream rejects with 400 "No tool output
+    // found...". Layer 2 strip+retry can't fabricate the missing tool_result,
+    // so the final outcome is a structured 4xx surfaced to the client (NOT a
+    // 502 fallback or a stream crash). 5xx indicates the proxy lost the real
+    // upstream status somewhere in the SSE/collect path.
+    expect(turn2.status).toBeGreaterThanOrEqual(400);
+    expect(turn2.status).toBeLessThan(500);
+    const errBody = turn2.body as { error?: { message?: string } };
+    const msg = errBody.error?.message ?? "";
+    expect(msg.toLowerCase()).toContain("no tool output found for function call");
   }, TOOL_TIMEOUT * 4);
 });
