@@ -283,17 +283,17 @@ claude
 name = "Codex Proxy"
 base_url = "http://localhost:8080/v1"
 wire_api = "responses"
-env_key = "PROXY_API_KEY"
+
+# 直接把 API Key 写进 config（推荐：本地单用户场景）
+[model_providers.proxy_codex.http_headers]
+Authorization = "Bearer your-api-key"
 
 [profiles.default]
 model = "gpt-5.4"
 model_provider = "proxy_codex"
 ```
 
-```bash
-export PROXY_API_KEY=your-api-key
-codex
-```
+> 💡 也可以改用环境变量：把 `[model_providers.proxy_codex.http_headers]` 这两行删掉，换成 `env_key = "PROXY_API_KEY"`，然后 `export PROXY_API_KEY=your-api-key && codex`。需要避免密钥落到 config 文件（多人共享 / 开源仓库）时用这个。
 
 ### Claude Desktop
 
@@ -335,14 +335,18 @@ codex
 name = "Codex Proxy"
 base_url = "http://localhost:8080/v1"
 wire_api = "responses"
-env_key = "PROXY_API_KEY"
+
+[model_providers.proxy_codex.http_headers]
+Authorization = "Bearer your-api-key"
 
 [profiles.default]
 model = "gpt-5.4"
 model_provider = "proxy_codex"
 ```
 
-> ⚠️ 如果你是通过“登录 ChatGPT 账号”方式使用的，客户端可能会忽略此配置。建议在环境变量中设置 `PROXY_API_KEY` 后启动。
+> 💡 **为什么不用 `env_key`？** macOS / Windows 的 GUI 应用不读 shell 的 `~/.zshrc` / `.bashrc`，光 `export PROXY_API_KEY=...` 在终端里 GUI 进程根本看不到，启动会直接报 `Missing environment variable`。`http_headers` 把 Authorization 写在 config 里，重启 Codex 就能用，不用折腾 `launchctl setenv` 或 LaunchAgent。需要密钥从配置文件解耦时（共享机器 / 仓库提交）再换回 `env_key = "PROXY_API_KEY"` 走环境变量。
+>
+> ⚠️ 如果你是通过"登录 ChatGPT 账号"方式使用的，客户端可能会忽略此配置——只要 `[model_providers.proxy_codex]` 配上、`profiles.default.model_provider = "proxy_codex"`，新会话就会走 proxy；登录会话仍可能直接走官方上游。
 
 ### Claude for VSCode / JetBrains
 
