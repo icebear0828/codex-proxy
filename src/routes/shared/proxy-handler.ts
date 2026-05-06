@@ -101,6 +101,12 @@ function normalizeInstructions(instructions: string | null | undefined): string 
   return instructions ?? "";
 }
 
+/** Strip CodexApiError's "Codex API error (NNN): " prefix so log warns that
+ *  already include status= don't duplicate it inside the message body. */
+function stripCodexErrorPrefix(msg: string): string {
+  return msg.replace(/^Codex API error \(\d+\): /, "");
+}
+
 /** Annotate a usage payload with image_generation attempt outcome before
  *  releasing the account, so `recordUsage` can split it into success vs failed
  *  counters. Synthesizes a usage object when the failure path has none. */
@@ -135,10 +141,14 @@ export interface ImplicitResumeOpts {
 
 /** Reason why implicit resume was rejected, or null if it would activate.
  *  Returns "no_implicit_prev" when there's no candidate at all (caller can
- *  treat this as "not applicable"). */
+ *  treat this as "not applicable").
+ *
+ *  When rejected with `missing_tool_calls` or `unanswered_tool_calls`, also
+ *  returns the offending call_ids so the caller can surface them in logs
+ *  without recomputing the same set difference. */
 export function evaluateImplicitResume(opts: ImplicitResumeOpts):
   | { active: true; reason: null }
-  | { active: false; reason: string } {
+  | { active: false; reason: string; missingCallIds?: string[]; unansweredCallIds?: string[] } {
   if (!opts.implicitPrevRespId) return { active: false, reason: "no_implicit_prev" };
   if (opts.continuationInputStart >= opts.inputLength) {
     return { active: false, reason: "cont_start_eq_len" };
@@ -152,16 +162,16 @@ export function evaluateImplicitResume(opts: ImplicitResumeOpts):
   }
   const storedFunctionCallIds = new Set(opts.storedFunctionCallIds ?? []);
   const requiredFunctionCallOutputIds = opts.requiredFunctionCallOutputIds ?? [];
-  if (!requiredFunctionCallOutputIds.every((callId) => storedFunctionCallIds.has(callId))) {
-    return { active: false, reason: "missing_tool_calls" };
+  const missingCallIds = requiredFunctionCallOutputIds.filter((id) => !storedFunctionCallIds.has(id));
+  if (missingCallIds.length > 0) {
+    return { active: false, reason: "missing_tool_calls", missingCallIds };
   }
   // Reverse check: every stored function_call must be answered in this continuation.
   // Otherwise upstream rejects with "No tool output found for function call call_X".
   const requiredSet = new Set(requiredFunctionCallOutputIds);
-  for (const callId of storedFunctionCallIds) {
-    if (!requiredSet.has(callId)) {
-      return { active: false, reason: "unanswered_tool_calls" };
-    }
+  const unansweredCallIds = [...storedFunctionCallIds].filter((id) => !requiredSet.has(id));
+  if (unansweredCallIds.length > 0) {
+    return { active: false, reason: "unanswered_tool_calls", unansweredCallIds };
   }
   return { active: true, reason: null };
 }
@@ -265,14 +275,6 @@ export async function handleProxyRequest(
   const implicitStoredFunctionCallIds = implicitPrevRespId
     ? affinityMap.lookupFunctionCallIds(implicitPrevRespId)
     : [];
-  const missingFunctionCallOutputIds = requiredFunctionCallOutputIds.filter(
-    (callId) => !implicitStoredFunctionCallIds.includes(callId),
-  );
-  const requiredOutputIdSet = new Set(requiredFunctionCallOutputIds);
-  const unansweredStoredCallIds = implicitPrevRespId
-    ? implicitStoredFunctionCallIds.filter((id) => !requiredOutputIdSet.has(id))
-    : [];
-
   // Session affinity: prefer the account that created the previous response
   const preferredEntryId =
     explicitPrevRespId
@@ -315,19 +317,6 @@ export async function handleProxyRequest(
   // Idempotent-release guard: prevents double-release across retry branches
   const released = new Set<string>();
 
-  if (implicitPrevRespId && missingFunctionCallOutputIds.length > 0) {
-    console.warn(
-      `[${fmt.tag}] 隐式续链跳过：上一轮 response 未记录 tool_result 对应的 call_id=` +
-      missingFunctionCallOutputIds.slice(0, 3).join(","),
-    );
-  }
-  if (implicitPrevRespId && unansweredStoredCallIds.length > 0) {
-    console.warn(
-      `[${fmt.tag}] 隐式续链跳过：上一轮 function_call 未被全部回复，缺 call_id=` +
-      unansweredStoredCallIds.slice(0, 3).join(","),
-    );
-  }
-
   const resumeEval = evaluateImplicitResume({
     implicitPrevRespId,
     continuationInputStart,
@@ -339,6 +328,18 @@ export async function handleProxyRequest(
     requiredFunctionCallOutputIds,
     storedFunctionCallIds: implicitStoredFunctionCallIds,
   });
+  if (!resumeEval.active && resumeEval.missingCallIds && resumeEval.missingCallIds.length > 0) {
+    console.warn(
+      `[${fmt.tag}] 隐式续链跳过：上一轮 response 未记录 tool_result 对应的 call_id=` +
+      resumeEval.missingCallIds.slice(0, 3).join(","),
+    );
+  }
+  if (!resumeEval.active && resumeEval.unansweredCallIds && resumeEval.unansweredCallIds.length > 0) {
+    console.warn(
+      `[${fmt.tag}] 隐式续链跳过：上一轮 function_call 未被全部回复，缺 call_id=` +
+      resumeEval.unansweredCallIds.slice(0, 3).join(","),
+    );
+  }
   if (resumeEval.active) {
     req.codexRequest.previous_response_id = implicitPrevRespId!;
     req.codexRequest.useWebSocket = true;
@@ -621,7 +622,7 @@ export async function handleProxyRequest(
         stripAndRetryDone = true;
         const staleId = req.codexRequest.previous_response_id;
         console.warn(
-          `[${fmt.tag}] Account ${entryId} | unanswered_function_call (id=${staleId ?? "?"}): ${err.message.slice(0, 200)}, stripping and retrying same account`,
+          `[${fmt.tag}] Account ${entryId} | unanswered_function_call (id=${staleId ?? "?"}): ${stripCodexErrorPrefix(err.message).slice(0, 200)}, stripping and retrying same account`,
         );
         if (staleId) affinityMap.forget(staleId);
         restoreImplicitResumeRequest();
@@ -840,7 +841,7 @@ async function handleNonStreaming(
       // released Set guards against double-release on terminal paths).
       if (collectErr instanceof CodexApiError) {
         console.warn(
-          `[${fmt.tag}] Account ${currentEntryId} | upstream ${collectErr.status} during collect: ${collectErr.message.slice(0, 200)}`,
+          `[${fmt.tag}] Account ${currentEntryId} | upstream ${collectErr.status} during collect: ${stripCodexErrorPrefix(collectErr.message).slice(0, 200)}`,
         );
         throw collectErr;
       }
