@@ -323,7 +323,7 @@ export async function handleProxyRequest(
   });
   if (resumeEval.active) {
     req.codexRequest.previous_response_id = implicitPrevRespId!;
-    if (!config.tls.disable_websocket) {
+    if (!getConfig().tls.disable_websocket) {
       req.codexRequest.useWebSocket = true;
     }
     req.codexRequest.input = req.codexRequest.input.slice(continuationInputStart);
