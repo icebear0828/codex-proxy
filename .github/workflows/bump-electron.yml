@@ -147,3 +147,13 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           NEW_TAG: ${{ steps.bump.outputs.new_tag }}
+
+      - name: Trigger docker publish
+        # GITHUB_TOKEN-driven pushes do not fire downstream workflows, so the bump
+        # commit + tag won't trip docker-publish.yml's push trigger on its own.
+        # Dispatching workflow_run here ensures ghcr.io/.../codex-proxy:vX.Y.Z
+        # exists for the version we just tagged.
+        if: steps.bump.outputs.new_tag
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh workflow run docker-publish.yml --ref master

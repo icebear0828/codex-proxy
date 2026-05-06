@@ -8,6 +8,10 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- `promote-dev-to-master.yml` 与 `bump-electron.yml` 末尾各补一步 `gh workflow run docker-publish.yml --ref master`：GitHub Actions 安全策略禁止默认 `GITHUB_TOKEN` 触发的 push 事件再触发其他 workflow（防递归），导致 promote 把 dev fast-forward 到 master、bump 提交版本号 commit + tag 之后，`docker-publish.yml` 的 `on: push: branches: [master]` 全部静默不跑——表象就是 ghcr.io 上的 `:latest` / `:vX.Y.Z` 长期停留在最后一次"人手 push master"的时刻（最近一次是 2026-04-30，期间 master 已经吃下 4 天的 promote）。`workflow_dispatch` 是 GITHUB_TOKEN 允许触发的少数事件之一，所以两条管道收尾各 dispatch 一次即可衔接；docker-publish 已有 `concurrency: cancel-in-progress: true`，promote + bump 两次 dispatch 在窗口期重叠时后者直接接管，最终镜像反映 bump 后的新版本号。配套把 promote 的 `permissions: actions` 从 `read` 升到 `write`（dispatch 需要）
+
 ### Added
 
 - Dashboard 用量页新增「时段命中率（Range Hit Rate）」卡片：基于当前选中时间窗口聚合 `cached_tokens / input_tokens`，与原本的全局累计「Cache Hit Rate」卡并列，方便对比近窗口与历史命中率（`web/src/pages/UsageStats.tsx`、`shared/i18n/translations.ts`）
