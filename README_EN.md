@@ -252,17 +252,17 @@ claude
 name = "Codex Proxy"
 base_url = "http://localhost:8080/v1"
 wire_api = "responses"
-env_key = "PROXY_API_KEY"
+
+# Inline the API Key (recommended for local single-user setups)
+[model_providers.proxy_codex.http_headers]
+Authorization = "Bearer your-api-key"
 
 [profiles.default]
 model = "gpt-5.4"
 model_provider = "proxy_codex"
 ```
 
-```bash
-export PROXY_API_KEY=your-api-key
-codex
-```
+> 💡 To keep the key out of the config file (shared machine / open-source repo), drop the `http_headers` block and use `env_key = "PROXY_API_KEY"` instead, then `export PROXY_API_KEY=your-api-key && codex`.
 
 ### Claude Desktop
 
@@ -302,14 +302,18 @@ The official client shares configuration with the CLI. Restart the app after edi
 name = "Codex Proxy"
 base_url = "http://localhost:8080/v1"
 wire_api = "responses"
-env_key = "PROXY_API_KEY"
+
+[model_providers.proxy_codex.http_headers]
+Authorization = "Bearer your-api-key"
 
 [profiles.default]
 model = "gpt-5.4"
 model_provider = "proxy_codex"
 ```
 
-> ⚠️ If you are logged in via "ChatGPT account", the client might ignore this config. Launching with `PROXY_API_KEY` environment variable set is recommended.
+> 💡 **Why not `env_key`?** macOS/Windows GUI apps do not inherit env vars from your shell rc files — `export PROXY_API_KEY=...` in your terminal is invisible to the GUI process and Codex Desktop will fail with `Missing environment variable`. Inlining `Authorization` via `http_headers` avoids `launchctl setenv` / LaunchAgent gymnastics. Switch back to `env_key = "PROXY_API_KEY"` only when you need the key out of the config file.
+>
+> ⚠️ When logged in via "ChatGPT account", existing sessions might bypass this config and hit the official upstream directly. New sessions started after `[model_providers.proxy_codex]` is wired up + `profiles.default.model_provider = "proxy_codex"` will route through the proxy.
 
 ### Claude for VSCode / JetBrains
 

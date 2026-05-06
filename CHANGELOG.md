@@ -8,6 +8,10 @@
 
 ## [Unreleased]
 
+### Changed
+
+- README / README_EN 的 Codex CLI + Codex Desktop 两节示例从 `env_key = "PROXY_API_KEY"` 改成 `[model_providers.proxy_codex.http_headers]` 内嵌 `Authorization = "Bearer ..."`：原写法在 GUI 客户端启动时会因为 macOS / Windows GUI 进程不继承 shell rc 的环境变量而报 `Missing environment variable: PROXY_API_KEY`，普通用户得额外学 `launchctl setenv` 或 LaunchAgent 才能让 Codex Desktop 看到环境变量；http_headers 把 key 直接写在 config 文件里，重启 Codex 即用。`env_key` 写法作为「需要密钥从配置文件解耦」（多人共享 / 仓库提交）场景的备选保留在文档说明里
+
 ### Fixed
 
 - `promote-dev-to-master.yml` 与 `bump-electron.yml` 末尾各补一步 `gh workflow run docker-publish.yml --ref master`：GitHub Actions 安全策略禁止默认 `GITHUB_TOKEN` 触发的 push 事件再触发其他 workflow（防递归），导致 promote 把 dev fast-forward 到 master、bump 提交版本号 commit + tag 之后，`docker-publish.yml` 的 `on: push: branches: [master]` 全部静默不跑——表象就是 ghcr.io 上的 `:latest` / `:vX.Y.Z` 长期停留在最后一次"人手 push master"的时刻（最近一次是 2026-04-30，期间 master 已经吃下 4 天的 promote）。`workflow_dispatch` 是 GITHUB_TOKEN 允许触发的少数事件之一，所以两条管道收尾各 dispatch 一次即可衔接；docker-publish 已有 `concurrency: cancel-in-progress: true`，promote + bump 两次 dispatch 在窗口期重叠时后者直接接管，最终镜像反映 bump 后的新版本号。配套把 promote 的 `permissions: actions` 从 `read` 升到 `write`（dispatch 需要）
