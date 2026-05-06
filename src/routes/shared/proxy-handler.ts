@@ -830,6 +830,20 @@ async function handleNonStreaming(
         continue;
       }
 
+      // Mid-SSE upstream errors (e.g. "No tool output found for function call",
+      // "previous_response_not_found") need the same strip+retry recovery as
+      // HTTP-time errors. Rethrow so the outer handleProxyRequest catch runs
+      // its unified classification once. Critically, do NOT release the slot
+      // here — outer catch's strip+retry continues on the same entryId and
+      // would race another acquirer if we released early. Outer catch is
+      // responsible for the release on the final respond/retry decision (the
+      // released Set guards against double-release on terminal paths).
+      if (collectErr instanceof CodexApiError) {
+        console.warn(
+          `[${fmt.tag}] Account ${currentEntryId} | upstream ${collectErr.status} during collect: ${collectErr.message.slice(0, 200)}`,
+        );
+        throw collectErr;
+      }
       releaseAccount(accountPool, currentEntryId, annotateImageGenOutcome(undefined, req.expectsImageGen), released);
       if (collectErr instanceof EmptyResponseError) {
         const email = accountPool.getEntry(currentEntryId)?.email ?? "?";
@@ -839,16 +853,6 @@ async function handleNonStreaming(
         accountPool.recordEmptyResponse(currentEntryId);
         c.status(502);
         return c.json(fmt.formatError(502, "Codex returned empty responses across all available accounts"));
-      }
-      // Mid-SSE upstream errors (e.g. "No tool output found for function call",
-      // "previous_response_not_found") need the same strip+retry recovery as
-      // HTTP-time errors. Rethrow so the outer handleProxyRequest catch runs
-      // its unified classification once, instead of duplicating logic here.
-      if (collectErr instanceof CodexApiError) {
-        console.warn(
-          `[${fmt.tag}] Account ${currentEntryId} | upstream ${collectErr.status} during collect: ${collectErr.message.slice(0, 200)}`,
-        );
-        throw collectErr;
       }
       const msg = collectErr instanceof Error ? collectErr.message : "Unknown error";
       const statusMatch = msg.match(/HTTP\/[\d.]+ (\d{3})/);
