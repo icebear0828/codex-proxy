@@ -10,6 +10,7 @@
 
 ### Added
 
+- Dev 默认把 stdout/stderr tee 到 `logs/dev-YYYY-MM-DD.log`（`src/utils/log-file.ts` + `src/utils/install-dev-logger.ts`，`src/index.ts` 顶部 side-effect 引入）：之前 dev 日志只活在 `tsx watch` terminal 的 scrollback 里，关窗或滚出去就找不到，排查上游偶发 422 之类的错误拿不到证据。新模块按天打开 append fd，patch `process.stdout.write` / `process.stderr.write` 同步写入文件 + 调原函数；prod (`NODE_ENV=production`) / 测试 (`VITEST` / `NODE_ENV=test`) / `CODEX_PROXY_FILE_LOG=0` 三档 opt-out，`logs/` 已被 `*.log` gitignore 覆盖。`tests/unit/utils/log-file.test.ts` 7 个用例覆盖 stdout/stderr tee、目录递归创建、uninstall 还原、append 不截断、默认文件名格式
 - Dashboard 用量页新增「时段命中率（Range Hit Rate）」卡片：基于当前选中时间窗口聚合 `cached_tokens / input_tokens`，与原本的全局累计「Cache Hit Rate」卡并列，方便对比近窗口与历史命中率（`web/src/pages/UsageStats.tsx`、`shared/i18n/translations.ts`）
 - Dashboard 用量页新增独立的「Hit Rate Over Time」图：每个 bucket 渲染命中率折线 + 数据点 dot，hover 可见 `cached / input`；`input=0` 的 bucket 自动跳过（不渲染 0% 假命中），单数据点也用 dot 保证可见性（`web/src/components/UsageChart.tsx`）
 - Usage history `five_min` granularity（5 分钟桶）+ Dashboard 新增「5 min」粒度选项与「Last 1h / 6h」时间窗：snapshot 默认 5 分钟一记，新粒度等同于一桶一快照，方便排查刚发生的请求；旧的 hourly/daily 不变，按 granularity 自动收敛兼容窗口（`src/auth/usage-stats.ts`、`src/routes/admin/usage-stats.ts`、`shared/hooks/use-usage-stats.ts`、`web/src/pages/UsageStats.tsx`）

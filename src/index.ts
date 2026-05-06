@@ -1,3 +1,5 @@
+import "./utils/install-dev-logger.js";
+
 import { Hono } from "hono";
 import { serve } from "@hono/node-server";
 import { loadConfig, loadFingerprint, getConfig, hasLocalOverride } from "./config.js";
