@@ -57,6 +57,7 @@ export const ConfigSchema = z.object({
   tls: z.object({
     proxy_url: z.string().nullable().default(null),
     force_http11: z.boolean().default(false),
+    disable_websocket: z.boolean().default(false),
   }).default({}),
   quota: z.object({
     refresh_interval_minutes: z.number().min(0).default(5),

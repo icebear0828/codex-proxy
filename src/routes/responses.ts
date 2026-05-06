@@ -601,7 +601,9 @@ export function createResponsesRoutes(
       store: false,
     };
 
-    codexRequest.useWebSocket = true;
+    if (!config.tls.disable_websocket) {
+      codexRequest.useWebSocket = true;
+    }
     if (typeof body.previous_response_id === "string") {
       codexRequest.previous_response_id = body.previous_response_id;
     }

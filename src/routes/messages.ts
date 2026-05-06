@@ -134,7 +134,7 @@ export function createMessagesRoutes(
       injectHostedWebSearch: !allowUnauthenticated,
       mapClaudeCodeWebSearch: !allowUnauthenticated && clientConversationId !== null,
     });
-    if (!allowUnauthenticated) {
+    if (!allowUnauthenticated && !config.tls.disable_websocket) {
       codexRequest.useWebSocket = true;
     }
     const wantThinking = req.thinking?.type === "enabled" || req.thinking?.type === "adaptive";

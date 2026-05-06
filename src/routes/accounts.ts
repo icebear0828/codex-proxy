@@ -142,7 +142,31 @@ export function createAccountRoutes(pool: AccountPool, scheduler: RefreshSchedul
       c.status(404);
       return c.json({ error: "Account not found" });
     }
-    return c.json(result);
+
+    // If token refresh succeeded, also fetch quota from upstream
+    let quota = null;
+    if (result.result === "alive") {
+      const entry = pool.getEntry(id);
+      if (entry?.token) {
+        try {
+          const usage = await new CodexApi(
+            entry.token,
+            entry.accountId,
+            cookieJar,
+            id,
+            proxyPool?.resolveProxyUrl(id),
+          ).getUsage();
+          quota = toQuota(usage);
+          // Cache the quota data in the pool
+          pool.updateCachedQuota(id, quota);
+        } catch (err) {
+          // Quota fetch failure shouldn't block the refresh response
+          console.warn(`[AccountRefresh] Failed to fetch quota for ${id}:`, err instanceof Error ? err.message : err);
+        }
+      }
+    }
+
+    return c.json({ ...result, quota });
   });
 
   app.patch("/auth/accounts/:id/label", async (c) => {
@@ -155,6 +179,30 @@ export function createAccountRoutes(pool: AccountPool, scheduler: RefreshSchedul
   });
 
   app.get("/auth/accounts", async (c) => {
+    const quotaParam = c.req.query("quota");
+
+    // If quota=fresh, actively fetch quota from upstream for all active accounts
+    if (quotaParam === "fresh") {
+      const entries = pool.getAllEntries().filter((e) => e.status === "active" && e.token);
+      await Promise.allSettled(
+        entries.map(async (entry) => {
+          try {
+            const usage = await new CodexApi(
+              entry.token,
+              entry.accountId,
+              cookieJar,
+              entry.id,
+              proxyPool?.resolveProxyUrl(entry.id),
+            ).getUsage();
+            pool.updateCachedQuota(entry.id, toQuota(usage));
+          } catch (err) {
+            // Silently ignore per-account failures
+            console.warn(`[AccountList] Failed to refresh quota for ${entry.id}:`, err instanceof Error ? err.message : err);
+          }
+        }),
+      );
+    }
+
     const accounts = querySvc.listFresh();
     return c.json({ accounts });
   });
