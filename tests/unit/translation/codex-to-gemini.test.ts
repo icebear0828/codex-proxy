@@ -71,12 +71,9 @@ describe("streamCodexToGemini", () => {
     expect(parsed.candidates[0].content.parts[0].functionCall.name).toBe("get_weather");
   });
 
-  it("handles error events", async () => {
-    const chunks = await collectStreamOutput(errorStream());
-    const dataChunks = chunks.filter((c) => c.startsWith("data: "));
-    expect(dataChunks.length).toBeGreaterThan(0);
-    const parsed = JSON.parse(dataChunks[0].slice(6));
-    expect(parsed.candidates[0].finishReason).toBe("OTHER");
+  it("throws CodexApiError on upstream error events", async () => {
+    await expect(collectStreamOutput(errorStream()))
+      .rejects.toMatchObject({ status: 429 });
   });
 
   it("injects error text for empty response", async () => {
@@ -145,12 +142,9 @@ describe("streamCodexToGemini — additional details", () => {
     expect(lastData.usageMetadata?.cachedContentTokenCount).toBe(30);
   });
 
-  it("emits correct finishReason OTHER with error text for error events", async () => {
-    const chunks = await collectStreamOutput(errorStream());
-    const dataChunks = chunks.filter((c) => c.startsWith("data: "));
-    const parsed = JSON.parse(dataChunks[0].slice(6));
-    expect(parsed.candidates[0].finishReason).toBe("OTHER");
-    expect(parsed.candidates[0].content.parts[0].text).toContain("[Error]");
+  it("throws CodexApiError with status for error events", async () => {
+    await expect(collectStreamOutput(errorStream()))
+      .rejects.toMatchObject({ status: 429 });
   });
 });
 

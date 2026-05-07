@@ -26,7 +26,7 @@ import type { ProxyPool } from "../../proxy/proxy-pool.js";
 import { withRetry } from "../../utils/retry.js";
 import { acquireAccount, releaseAccount } from "./account-acquisition.js";
 import { handleCodexApiError, toErrorStatus } from "./proxy-error-handler.js";
-import { isPreviousResponseNotFoundError } from "../../proxy/error-classification.js";
+import { isPreviousResponseNotFoundError, isUnansweredFunctionCallError } from "../../proxy/error-classification.js";
 import { streamResponse } from "./response-processor.js";
 import type { UsageInfo } from "../../translation/codex-event-extractor.js";
 import { parseRateLimitHeaders, rateLimitToQuota, type ParsedRateLimit } from "../../proxy/rate-limit-headers.js";
@@ -101,6 +101,12 @@ function normalizeInstructions(instructions: string | null | undefined): string 
   return instructions ?? "";
 }
 
+/** Strip CodexApiError's "Codex API error (NNN): " prefix so log warns that
+ *  already include status= don't duplicate it inside the message body. */
+function stripCodexErrorPrefix(msg: string): string {
+  return msg.replace(/^Codex API error \(\d+\): /, "");
+}
+
 /** Annotate a usage payload with image_generation attempt outcome before
  *  releasing the account, so `recordUsage` can split it into success vs failed
  *  counters. Synthesizes a usage object when the failure path has none. */
@@ -135,10 +141,14 @@ export interface ImplicitResumeOpts {
 
 /** Reason why implicit resume was rejected, or null if it would activate.
  *  Returns "no_implicit_prev" when there's no candidate at all (caller can
- *  treat this as "not applicable"). */
+ *  treat this as "not applicable").
+ *
+ *  When rejected with `missing_tool_calls` or `unanswered_tool_calls`, also
+ *  returns the offending call_ids so the caller can surface them in logs
+ *  without recomputing the same set difference. */
 export function evaluateImplicitResume(opts: ImplicitResumeOpts):
   | { active: true; reason: null }
-  | { active: false; reason: string } {
+  | { active: false; reason: string; missingCallIds?: string[]; unansweredCallIds?: string[] } {
   if (!opts.implicitPrevRespId) return { active: false, reason: "no_implicit_prev" };
   if (opts.continuationInputStart >= opts.inputLength) {
     return { active: false, reason: "cont_start_eq_len" };
@@ -152,8 +162,16 @@ export function evaluateImplicitResume(opts: ImplicitResumeOpts):
   }
   const storedFunctionCallIds = new Set(opts.storedFunctionCallIds ?? []);
   const requiredFunctionCallOutputIds = opts.requiredFunctionCallOutputIds ?? [];
-  if (!requiredFunctionCallOutputIds.every((callId) => storedFunctionCallIds.has(callId))) {
-    return { active: false, reason: "missing_tool_calls" };
+  const missingCallIds = requiredFunctionCallOutputIds.filter((id) => !storedFunctionCallIds.has(id));
+  if (missingCallIds.length > 0) {
+    return { active: false, reason: "missing_tool_calls", missingCallIds };
+  }
+  // Reverse check: every stored function_call must be answered in this continuation.
+  // Otherwise upstream rejects with "No tool output found for function call call_X".
+  const requiredSet = new Set(requiredFunctionCallOutputIds);
+  const unansweredCallIds = [...storedFunctionCallIds].filter((id) => !requiredSet.has(id));
+  if (unansweredCallIds.length > 0) {
+    return { active: false, reason: "unanswered_tool_calls", unansweredCallIds };
   }
   return { active: true, reason: null };
 }
@@ -257,10 +275,6 @@ export async function handleProxyRequest(
   const implicitStoredFunctionCallIds = implicitPrevRespId
     ? affinityMap.lookupFunctionCallIds(implicitPrevRespId)
     : [];
-  const missingFunctionCallOutputIds = requiredFunctionCallOutputIds.filter(
-    (callId) => !implicitStoredFunctionCallIds.includes(callId),
-  );
-
   // Session affinity: prefer the account that created the previous response
   const preferredEntryId =
     explicitPrevRespId
@@ -294,7 +308,7 @@ export async function handleProxyRequest(
   let codexApi = buildCodexApi(acquired.token, acquired.accountId, cookieJar, entryId, proxyPool);
   const triedEntryIds: string[] = [entryId];
   let modelRetried = false;
-  let prevRespNotFoundRetried = false;
+  let stripAndRetryDone = false;
   let usageInfo: UsageInfo | undefined;
   let capturedResponseId: string | null = null;
   const responseFunctionCallIds = new Set<string>();
@@ -302,13 +316,6 @@ export async function handleProxyRequest(
   let implicitResumeActive = false;
   // Idempotent-release guard: prevents double-release across retry branches
   const released = new Set<string>();
-
-  if (implicitPrevRespId && missingFunctionCallOutputIds.length > 0) {
-    console.warn(
-      `[${fmt.tag}] 隐式续链跳过：上一轮 response 未记录 tool_result 对应的 call_id=` +
-      missingFunctionCallOutputIds.slice(0, 3).join(","),
-    );
-  }
 
   const resumeEval = evaluateImplicitResume({
     implicitPrevRespId,
@@ -321,6 +328,18 @@ export async function handleProxyRequest(
     requiredFunctionCallOutputIds,
     storedFunctionCallIds: implicitStoredFunctionCallIds,
   });
+  if (!resumeEval.active && resumeEval.missingCallIds && resumeEval.missingCallIds.length > 0) {
+    console.warn(
+      `[${fmt.tag}] 隐式续链跳过：上一轮 response 未记录 tool_result 对应的 call_id=` +
+      resumeEval.missingCallIds.slice(0, 3).join(","),
+    );
+  }
+  if (!resumeEval.active && resumeEval.unansweredCallIds && resumeEval.unansweredCallIds.length > 0) {
+    console.warn(
+      `[${fmt.tag}] 隐式续链跳过：上一轮 function_call 未被全部回复，缺 call_id=` +
+      resumeEval.unansweredCallIds.slice(0, 3).join(","),
+    );
+  }
   if (resumeEval.active) {
     req.codexRequest.previous_response_id = implicitPrevRespId!;
     req.codexRequest.useWebSocket = true;
@@ -562,6 +581,11 @@ export async function handleProxyRequest(
         () => activeUsageHint,
         restoreImplicitResumeRequest,
         buildPoolCtx,
+        (nextEntryId, nextApi) => {
+          entryId = nextEntryId;
+          codexApi = nextApi;
+          if (!triedEntryIds.includes(nextEntryId)) triedEntryIds.push(nextEntryId);
+        },
       );
     } catch (err) {
       if (!(err instanceof CodexApiError)) {
@@ -582,11 +606,28 @@ export async function handleProxyRequest(
       // same account. For implicit-resume requests this also restores the
       // full input history; for explicit ones the client's own input is sent
       // verbatim (server-side history is lost but the request still completes).
-      if (!prevRespNotFoundRetried && isPreviousResponseNotFoundError(err)) {
-        prevRespNotFoundRetried = true;
+      if (!stripAndRetryDone && isPreviousResponseNotFoundError(err)) {
+        stripAndRetryDone = true;
         const staleId = req.codexRequest.previous_response_id;
         console.warn(
           `[${fmt.tag}] Account ${entryId} | previous_response_not_found (id=${staleId ?? "?"}), stripping and retrying same account`,
+        );
+        if (staleId) affinityMap.forget(staleId);
+        restoreImplicitResumeRequest();
+        req.codexRequest.previous_response_id = undefined;
+        req.codexRequest.turnState = undefined;
+        continue;
+      }
+
+      // Upstream rejected because a stored function_call from the previous
+      // response was not answered with a function_call_output. Recovery is the
+      // same as previous_response_not_found: drop previous_response_id, replay
+      // full history, retry once on the same account.
+      if (!stripAndRetryDone && isUnansweredFunctionCallError(err)) {
+        stripAndRetryDone = true;
+        const staleId = req.codexRequest.previous_response_id;
+        console.warn(
+          `[${fmt.tag}] Account ${entryId} | unanswered_function_call (id=${staleId ?? "?"}): ${stripCodexErrorPrefix(err.message).slice(0, 200)}, stripping and retrying same account`,
         );
         if (staleId) affinityMap.forget(staleId);
         restoreImplicitResumeRequest();
@@ -675,6 +716,7 @@ async function handleNonStreaming(
   getUsageHint?: () => UsageHint | undefined,
   restoreImplicitResumeRequest?: () => void,
   buildPoolCtx?: (forEntryId: string) => WsPoolContext | undefined,
+  setActiveAccount?: (entryId: string, api: CodexApi) => void,
 ): Promise<Response> {
   let currentEntryId = initialEntryId;
   let currentApi = initialApi;
@@ -743,6 +785,7 @@ async function handleNonStreaming(
 
         currentEntryId = newAcquired.entryId;
         currentApi = buildCodexApi(newAcquired.token, newAcquired.accountId, cookieJar, newAcquired.entryId, proxyPool);
+        setActiveAccount?.(currentEntryId, currentApi);
         const retryStartMs = Date.now();
         try {
           currentRawResponse = await withRetry(
@@ -795,6 +838,20 @@ async function handleNonStreaming(
         continue;
       }
 
+      // Mid-SSE upstream errors (e.g. "No tool output found for function call",
+      // "previous_response_not_found") need the same strip+retry recovery as
+      // HTTP-time errors. Rethrow so the outer handleProxyRequest catch runs
+      // its unified classification once. Critically, do NOT release the slot
+      // here — outer catch's strip+retry continues on the same entryId and
+      // would race another acquirer if we released early. Outer catch is
+      // responsible for the release on the final respond/retry decision (the
+      // released Set guards against double-release on terminal paths).
+      if (collectErr instanceof CodexApiError) {
+        console.warn(
+          `[${fmt.tag}] Account ${currentEntryId} | upstream ${collectErr.status} during collect: ${stripCodexErrorPrefix(collectErr.message).slice(0, 200)}`,
+        );
+        throw collectErr;
+      }
       releaseAccount(accountPool, currentEntryId, annotateImageGenOutcome(undefined, req.expectsImageGen), released);
       if (collectErr instanceof EmptyResponseError) {
         const email = accountPool.getEntry(currentEntryId)?.email ?? "?";

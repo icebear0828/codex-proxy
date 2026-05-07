@@ -110,6 +110,11 @@ describe("streamCodexToAnthropic", () => {
     const msgDelta = events.find((e) => e.event === "message_delta");
     expect((msgDelta?.data.delta as Record<string, unknown>)?.stop_reason).toBe("end_turn");
   });
+
+  it("throws CodexApiError on upstream error events", async () => {
+    await expect(collectStreamOutput(errorStream()))
+      .rejects.toMatchObject({ status: 429 });
+  });
 });
 
 describe("collectCodexToAnthropicResponse", () => {

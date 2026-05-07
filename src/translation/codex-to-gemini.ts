@@ -17,6 +17,7 @@ import type {
 } from "../types/gemini.js";
 import { iterateCodexEvents, EmptyResponseError, type UsageInfo } from "./codex-event-extractor.js";
 import { reconvertTupleValues } from "./tuple-schema.js";
+import { codexApiErrorFromEvent } from "./codex-api-error-from-event.js";
 
 /**
  * Stream Codex Responses API events as Gemini SSE.
@@ -41,21 +42,7 @@ export async function* streamCodexToGemini(
 
     // Handle upstream error events
     if (evt.error) {
-      const errorChunk: GeminiGenerateContentResponse = {
-        candidates: [
-          {
-            content: {
-              parts: [{ text: `[Error] ${evt.error.code}: ${evt.error.message}` }],
-              role: "model",
-            },
-            finishReason: "OTHER",
-            index: 0,
-          },
-        ],
-        modelVersion: model,
-      };
-      yield `data: ${JSON.stringify(errorChunk)}\n\n`;
-      return;
+      throw codexApiErrorFromEvent(evt.error);
     }
 
     // Function call done → emit as a candidate with functionCall part
@@ -208,7 +195,7 @@ export async function collectCodexToGeminiResponse(
   for await (const evt of iterateCodexEvents(codexApi, rawResponse)) {
     if (evt.responseId) responseId = evt.responseId;
     if (evt.error) {
-      throw new Error(`Codex API error: ${evt.error.code}: ${evt.error.message}`);
+      throw codexApiErrorFromEvent(evt.error);
     }
     if (evt.textDelta) fullText += evt.textDelta;
     if (evt.usage) {

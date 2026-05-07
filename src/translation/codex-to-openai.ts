@@ -20,6 +20,7 @@ import type {
 } from "../types/openai.js";
 import { iterateCodexEvents, EmptyResponseError, type UsageInfo } from "./codex-event-extractor.js";
 import { reconvertTupleValues } from "./tuple-schema.js";
+import { codexApiErrorFromEvent } from "./codex-api-error-from-event.js";
 
 /** Format an SSE chunk for streaming output */
 function formatSSE(chunk: ChatCompletionChunk): string {
@@ -72,34 +73,7 @@ export async function* streamCodexToOpenAI(
 
     // Handle upstream error events
     if (evt.error) {
-      yield formatSSE({
-        id: chunkId,
-        object: "chat.completion.chunk",
-        created,
-        model,
-        choices: [
-          {
-            index: 0,
-            delta: { content: `[Error] ${evt.error.code}: ${evt.error.message}` },
-            finish_reason: null,
-          },
-        ],
-      });
-      yield formatSSE({
-        id: chunkId,
-        object: "chat.completion.chunk",
-        created,
-        model,
-        choices: [
-          {
-            index: 0,
-            delta: {},
-            finish_reason: "stop",
-          },
-        ],
-      });
-      yield "data: [DONE]\n\n";
-      return;
+      throw codexApiErrorFromEvent(evt.error);
     }
 
     // Handle function call events
@@ -347,7 +321,7 @@ export async function collectCodexResponse(
   for await (const evt of iterateCodexEvents(codexApi, rawResponse)) {
     if (evt.responseId) responseId = evt.responseId;
     if (evt.error) {
-      throw new Error(`Codex API error: ${evt.error.code}: ${evt.error.message}`);
+      throw codexApiErrorFromEvent(evt.error);
     }
     if (evt.textDelta) fullText += evt.textDelta;
     if (evt.reasoningDelta) fullReasoning += evt.reasoningDelta;

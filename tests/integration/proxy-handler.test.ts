@@ -453,6 +453,45 @@ describe("proxy-handler integration", () => {
     });
   });
 
+  it("attributes collect CodexApiError after EmptyResponseError retry to the new account", async () => {
+    let acquireCount = 0;
+    const accountPool = createMockAccountPool({
+      acquire: vi.fn(() => {
+        acquireCount++;
+        if (acquireCount === 1) return { entryId: "e1", token: "tok1", accountId: "acc1" };
+        return { entryId: "e2", token: "tok2", accountId: "acc2" };
+      }),
+    });
+
+    let collectCallCount = 0;
+    const fmt = createMockFormatAdapter({
+      collectTranslator: vi.fn(async () => {
+        collectCallCount++;
+        if (collectCallCount === 1) {
+          throw new EmptyResponseError(
+            "resp_empty",
+            { input_tokens: 1, output_tokens: 0 },
+          );
+        }
+        throw new CodexApiError(422, JSON.stringify({
+          error: { type: "invalid_request_error", message: "bad retry collect" },
+        }));
+      }),
+    });
+
+    const { app } = buildTestApp({ accountPool, fmt });
+
+    const res = await app.request("/test", { method: "POST" });
+    expect(res.status).toBe(422);
+
+    expect(accountPool.recordEmptyResponse).toHaveBeenCalledWith("e1");
+    expect(accountPool.release).toHaveBeenCalledWith("e1", {
+      input_tokens: 1,
+      output_tokens: 0,
+    });
+    expect(accountPool.release).toHaveBeenCalledWith("e2", undefined);
+  });
+
   // 9. Empty response retries exhausted → 502
   it("returns 502 when all empty response retries are exhausted", async () => {
     const emptyUsage = { input_tokens: 0, output_tokens: 0 };
@@ -718,6 +757,45 @@ describe("proxy-handler integration", () => {
     expect(res.status).toBe(400);
     // Exactly 2 upstream calls — strip-retry happens once, no further retries
     expect(createCount).toBe(2);
+  });
+
+  // 17c. unanswered function_call: upstream "No tool output found for function
+  // call call_X" means a stored function_call from the previous response was
+  // not answered. Recovery: strip previous_response_id, retry once on the same
+  // account (full input replay covers the missing context).
+  it("recovers from unanswered function_call by stripping ID and retrying", async () => {
+    const unansweredBody = JSON.stringify({
+      error: {
+        type: "invalid_request_error",
+        message: "No tool output found for function call call_8vO7oqvintBWH5bAoAz3vPh5.",
+      },
+    });
+
+    let createCount = 0;
+    const seenPrevIds: Array<string | undefined> = [];
+    const req: ProxyRequest = {
+      ...createDefaultRequest(),
+      codexRequest: {
+        ...createDefaultRequest().codexRequest,
+        previous_response_id: "resp_unanswered_chain",
+      },
+    };
+    mockCreateResponse = () => {
+      seenPrevIds.push(req.codexRequest.previous_response_id);
+      createCount++;
+      if (createCount === 1) return Promise.reject(new CodexApiError(400, unansweredBody));
+      return Promise.resolve(new Response("data: {}\n\n"));
+    };
+
+    const accountPool = createMockAccountPool();
+    const fmt = createMockFormatAdapter();
+    const { app } = buildTestApp({ accountPool, fmt, req });
+    const res = await app.request("/test", { method: "POST" });
+
+    expect(res.status).toBe(200);
+    expect(createCount).toBe(2);
+    expect(seenPrevIds[0]).toBe("resp_unanswered_chain");
+    expect(seenPrevIds[1]).toBeUndefined();
   });
 
   // 18. 403 ban with mixed pool states → descriptive error
