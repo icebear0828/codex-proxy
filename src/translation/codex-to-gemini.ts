@@ -42,21 +42,7 @@ export async function* streamCodexToGemini(
 
     // Handle upstream error events
     if (evt.error) {
-      const errorChunk: GeminiGenerateContentResponse = {
-        candidates: [
-          {
-            content: {
-              parts: [{ text: `[Error] ${evt.error.code}: ${evt.error.message}` }],
-              role: "model",
-            },
-            finishReason: "OTHER",
-            index: 0,
-          },
-        ],
-        modelVersion: model,
-      };
-      yield `data: ${JSON.stringify(errorChunk)}\n\n`;
-      return;
+      throw codexApiErrorFromEvent(evt.error);
     }
 
     // Function call done → emit as a candidate with functionCall part

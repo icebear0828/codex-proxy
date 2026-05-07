@@ -581,6 +581,11 @@ export async function handleProxyRequest(
         () => activeUsageHint,
         restoreImplicitResumeRequest,
         buildPoolCtx,
+        (nextEntryId, nextApi) => {
+          entryId = nextEntryId;
+          codexApi = nextApi;
+          if (!triedEntryIds.includes(nextEntryId)) triedEntryIds.push(nextEntryId);
+        },
       );
     } catch (err) {
       if (!(err instanceof CodexApiError)) {
@@ -711,6 +716,7 @@ async function handleNonStreaming(
   getUsageHint?: () => UsageHint | undefined,
   restoreImplicitResumeRequest?: () => void,
   buildPoolCtx?: (forEntryId: string) => WsPoolContext | undefined,
+  setActiveAccount?: (entryId: string, api: CodexApi) => void,
 ): Promise<Response> {
   let currentEntryId = initialEntryId;
   let currentApi = initialApi;
@@ -779,6 +785,7 @@ async function handleNonStreaming(
 
         currentEntryId = newAcquired.entryId;
         currentApi = buildCodexApi(newAcquired.token, newAcquired.accountId, cookieJar, newAcquired.entryId, proxyPool);
+        setActiveAccount?.(currentEntryId, currentApi);
         const retryStartMs = Date.now();
         try {
           currentRawResponse = await withRetry(

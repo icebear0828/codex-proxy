@@ -453,6 +453,45 @@ describe("proxy-handler integration", () => {
     });
   });
 
+  it("attributes collect CodexApiError after EmptyResponseError retry to the new account", async () => {
+    let acquireCount = 0;
+    const accountPool = createMockAccountPool({
+      acquire: vi.fn(() => {
+        acquireCount++;
+        if (acquireCount === 1) return { entryId: "e1", token: "tok1", accountId: "acc1" };
+        return { entryId: "e2", token: "tok2", accountId: "acc2" };
+      }),
+    });
+
+    let collectCallCount = 0;
+    const fmt = createMockFormatAdapter({
+      collectTranslator: vi.fn(async () => {
+        collectCallCount++;
+        if (collectCallCount === 1) {
+          throw new EmptyResponseError(
+            "resp_empty",
+            { input_tokens: 1, output_tokens: 0 },
+          );
+        }
+        throw new CodexApiError(422, JSON.stringify({
+          error: { type: "invalid_request_error", message: "bad retry collect" },
+        }));
+      }),
+    });
+
+    const { app } = buildTestApp({ accountPool, fmt });
+
+    const res = await app.request("/test", { method: "POST" });
+    expect(res.status).toBe(422);
+
+    expect(accountPool.recordEmptyResponse).toHaveBeenCalledWith("e1");
+    expect(accountPool.release).toHaveBeenCalledWith("e1", {
+      input_tokens: 1,
+      output_tokens: 0,
+    });
+    expect(accountPool.release).toHaveBeenCalledWith("e2", undefined);
+  });
+
   // 9. Empty response retries exhausted → 502
   it("returns 502 when all empty response retries are exhausted", async () => {
     const emptyUsage = { input_tokens: 0, output_tokens: 0 };

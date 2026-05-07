@@ -83,10 +83,9 @@ describe("streamCodexToOpenAI", () => {
     expect(reasoningChunks.length).toBeGreaterThan(0);
   });
 
-  it("handles error events", async () => {
-    const chunks = await collectStreamOutput(errorStream());
-    const errorChunks = chunks.filter((c) => c.includes("[Error]"));
-    expect(errorChunks.length).toBeGreaterThan(0);
+  it("throws CodexApiError on upstream error events", async () => {
+    await expect(collectStreamOutput(errorStream()))
+      .rejects.toMatchObject({ status: 429 });
   });
 
   it("injects error text for empty response", async () => {

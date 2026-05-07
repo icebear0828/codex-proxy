@@ -142,20 +142,7 @@ export async function* streamCodexToAnthropic(
 
     // Handle upstream error events
     if (evt.error) {
-      yield* closeThinkingIfOpen();
-      yield* ensureTextBlock();
-      yield formatSSE("content_block_delta", {
-        type: "content_block_delta",
-        index: contentIndex,
-        delta: { type: "text_delta", text: `[Error] ${evt.error.code}: ${evt.error.message}` },
-      });
-      yield* closeBlock("text");
-      yield formatSSE("error", {
-        type: "error",
-        error: { type: "api_error", message: `${evt.error.code}: ${evt.error.message}` },
-      });
-      yield formatSSE("message_stop", { type: "message_stop" });
-      return;
+      throw codexApiErrorFromEvent(evt.error);
     }
 
     // Handle reasoning delta → thinking block (only if client wants thinking)

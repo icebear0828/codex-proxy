@@ -73,34 +73,7 @@ export async function* streamCodexToOpenAI(
 
     // Handle upstream error events
     if (evt.error) {
-      yield formatSSE({
-        id: chunkId,
-        object: "chat.completion.chunk",
-        created,
-        model,
-        choices: [
-          {
-            index: 0,
-            delta: { content: `[Error] ${evt.error.code}: ${evt.error.message}` },
-            finish_reason: null,
-          },
-        ],
-      });
-      yield formatSSE({
-        id: chunkId,
-        object: "chat.completion.chunk",
-        created,
-        model,
-        choices: [
-          {
-            index: 0,
-            delta: {},
-            finish_reason: "stop",
-          },
-        ],
-      });
-      yield "data: [DONE]\n\n";
-      return;
+      throw codexApiErrorFromEvent(evt.error);
     }
 
     // Handle function call events
