@@ -140,12 +140,18 @@ async function buildWsConstructorOpts(
   proxyUrl: string | null | undefined,
 ): Promise<ConstructorParameters<typeof WS>[2]> {
   const wsOpts: ConstructorParameters<typeof WS>[2] = { headers };
-  if (proxyUrl) {
-    let agent = _agentCache.get(proxyUrl);
+  // Fall back to HTTPS_PROXY env when caller passes undefined ("global" pool
+  // assignment). The native (rustls) transport already does this for HTTPS
+  // POST; without the same fallback here, WS connects go direct and TLS to
+  // chatgpt.com fails from within a container with only proxied egress.
+  const effectiveProxyUrl =
+    proxyUrl || process.env.HTTPS_PROXY || process.env.https_proxy;
+  if (effectiveProxyUrl) {
+    let agent = _agentCache.get(effectiveProxyUrl);
     if (!agent) {
       const { HttpsProxyAgent } = await import("https-proxy-agent");
-      agent = new HttpsProxyAgent(proxyUrl);
-      _agentCache.set(proxyUrl, agent);
+      agent = new HttpsProxyAgent(effectiveProxyUrl);
+      _agentCache.set(effectiveProxyUrl, agent);
     }
     wsOpts.agent = agent;
   }
