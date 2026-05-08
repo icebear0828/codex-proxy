@@ -74,6 +74,15 @@ describe("translateToCodexRequest", () => {
     expect(result.store).toBe(false);
   });
 
+  it("does not forward max token compatibility fields to Codex", () => {
+    const result = translateToCodexRequest(makeRequest({
+      max_tokens: 4096,
+      max_completion_tokens: 8192,
+      max_output_tokens: 16384,
+    }));
+    expect(result).not.toHaveProperty("max_output_tokens");
+  });
+
   it("extracts system messages as instructions", () => {
     const result = translateToCodexRequest(makeRequest({
       messages: [

@@ -57,6 +57,26 @@ describe("ChatCompletionRequestSchema", () => {
     expect(result.success).toBe(true);
   });
 
+  it("parses native image_generation tools", () => {
+    const result = ChatCompletionRequestSchema.safeParse({
+      model: "gpt-5.5",
+      messages: [{ role: "user", content: "Draw a red circle." }],
+      tools: [{ type: "image_generation", size: "1024x1024" }],
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it("parses max token compatibility fields", () => {
+    const result = ChatCompletionRequestSchema.safeParse({
+      model: "gpt-5.4",
+      messages: [{ role: "user", content: "Write a long answer." }],
+      max_tokens: 4096,
+      max_completion_tokens: 8192,
+      max_output_tokens: 16384,
+    });
+    expect(result.success).toBe(true);
+  });
+
   it("parses request with legacy functions", () => {
     const result = ChatCompletionRequestSchema.safeParse({
       model: "gpt-5.4",

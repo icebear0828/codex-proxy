@@ -25,6 +25,7 @@ OpenAI 兼容的聊天补全接口。
 - 流式：SSE，事件包含 `choice.delta`
 - 非流式：`{ id, choices, usage }`
 - 错误格式：`{ error: { message, type, code } }`
+- `max_tokens`、`max_completion_tokens`、`max_output_tokens` 仅做客户端兼容解析，不会转发给 Codex。
 
 ### POST /v1/messages
 Anthropic Messages API 兼容接口。
@@ -77,6 +78,7 @@ Google Gemini 兼容接口。
 
 - 流式：SSE 事件 `response.created`、`response.output_text.delta`、`response.completed`
 - 非流式：`{ response, usage, responseId }`
+- 不要向原生 Codex 发送 `max_output_tokens`。代理只兼容解析并剥离该字段，因为真实 Codex 后端会返回 `400 Unsupported parameter: max_output_tokens`。
 
 #### image_generation 工具
 
@@ -145,6 +147,10 @@ token 混到一起。
 合法 content-part 类型（由上游枚举校验回显）：`input_text`、`input_image`、
 `output_text`、`refusal`、`input_file`、`computer_screenshot`、`summary_text`。
 
+OpenAI Chat 兼容路径会接受 `tools: [{"type":"image_generation"}]`，但稳定的
+图像 payload 只会通过 `/v1/responses` 的 `image_generation_call.result` 暴露。
+需要拿到 base64 图片字节时，请使用 `/v1/responses`。
+
 ---
 
 ## 模型
@@ -157,6 +163,23 @@ token 混到一起。
 | GET | `/v1/models/:id/info` | 扩展模型信息 |
 | GET | `/v1beta/models` | 列出模型（Gemini 格式） |
 | POST | `/admin/refresh-models` | 强制从上游刷新模型列表 |
+
+模型目录条目可以包含 token 元数据：
+
+| 字段 | 含义 |
+|------|------|
+| `contextWindow` | 静态或上游提供的上下文窗口，用于展示和客户端参考 |
+| `maxContextWindow` | 上游提供的最大可扩展上下文窗口（如果返回） |
+| `maxOutputTokens` | 静态或上游提供的最大输出 token，用于展示和客户端参考 |
+| `truncationPolicyLimit` | 上游提供的截断策略限制（如果返回） |
+
+静态值定义在 `config/models.yaml`；同一模型 ID 如果从
+`/backend-api/codex/models` 拉到动态条目，则以上游动态值为准。实测
+2026-05-08 的 Codex 后端对 `gpt-5.5` 回传 `context_window=272000`、
+`max_context_window=272000`、`truncation_policy.limit=10000`，对 `gpt-5.4`
+回传 `context_window=272000`、`max_context_window=1000000`、
+`truncation_policy.limit=10000`。这些是 Codex 运行时限制，不代表请求级
+context 或 max-token 开关可用。
 
 ---
 
@@ -314,6 +337,16 @@ token 混到一起。
 | 方法 | 路径 | 说明 |
 |------|------|------|
 | GET | `/auth/quota/warnings` | 当前活跃的配额告警 |
+
+启用 `quota.skip_exhausted` 后，账号池会在获取账号时过滤缓存额度中
+`rate_limit.limit_reached === true` 或
+`secondary_rate_limit.limit_reached === true` 或
+`code_review_rate_limit.limit_reached === true` 的 active 账号。过滤发生在
+session affinity 之前，所以 `preferredEntryId` 不能把请求继续粘到已耗尽账号。
+如果只是 `used_percent=99` 这类临近满额，但上游还没标记 `limit_reached`，代理
+不会主动跳过；等上游返回 429 后，该账号会进入 `rate_limited` 退避并切换账号。
+secondary / code review 窗口自己的 `reset_at` 过期后会从缓存中清除，避免账号被
+永久跳过。
 
 ---
 

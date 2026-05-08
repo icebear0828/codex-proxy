@@ -26,6 +26,9 @@ vi.mock("@src/config.js", () => ({
       rate_limit_backoff_seconds: 60,
       max_concurrent_per_account: 3,
     },
+    quota: {
+      skip_exhausted: true,
+    },
   })),
 }));
 
@@ -50,6 +53,23 @@ vi.mock("@src/models/model-store.js", () => ({
 
 import { AccountPool } from "@src/auth/account-pool.js";
 import { isTokenExpired } from "@src/auth/jwt-utils.js";
+import type { CodexQuota } from "@src/auth/types.js";
+
+function makeQuota(overrides?: Partial<CodexQuota>): CodexQuota {
+  return {
+    plan_type: "plus",
+    rate_limit: {
+      allowed: true,
+      limit_reached: false,
+      used_percent: 25,
+      reset_at: Math.floor(Date.now() / 1000) + 3600,
+      limit_window_seconds: 3600,
+    },
+    secondary_rate_limit: null,
+    code_review_rate_limit: null,
+    ...overrides,
+  };
+}
 
 describe("AccountPool.hasAvailableAccounts", () => {
   let pool: AccountPool;
@@ -108,6 +128,46 @@ describe("AccountPool.hasAvailableAccounts", () => {
     const id1 = pool.addAccount("token-a");
     const id2 = pool.addAccount("token-b");
     expect(pool.hasAvailableAccounts([id1, id2])).toBe(false);
+  });
+
+  it("returns false when active accounts only have cached primary quota exhaustion", () => {
+    const id = pool.addAccount("token-a");
+    pool.updateCachedQuota(id, makeQuota({
+      rate_limit: {
+        allowed: false,
+        limit_reached: true,
+        used_percent: 100,
+        reset_at: Math.floor(Date.now() / 1000) + 3600,
+        limit_window_seconds: 3600,
+      },
+    }));
+    expect(pool.hasAvailableAccounts()).toBe(false);
+  });
+
+  it("returns false when active accounts only have cached secondary quota exhaustion", () => {
+    const id = pool.addAccount("token-a");
+    pool.updateCachedQuota(id, makeQuota({
+      secondary_rate_limit: {
+        limit_reached: true,
+        used_percent: 100,
+        reset_at: Math.floor(Date.now() / 1000) + 3600,
+        limit_window_seconds: 3600,
+      },
+    }));
+    expect(pool.hasAvailableAccounts()).toBe(false);
+  });
+
+  it("returns false when active accounts only have cached code review quota exhaustion", () => {
+    const id = pool.addAccount("token-a");
+    pool.updateCachedQuota(id, makeQuota({
+      code_review_rate_limit: {
+        allowed: false,
+        limit_reached: true,
+        used_percent: 100,
+        reset_at: Math.floor(Date.now() / 1000) + 3600,
+      },
+    }));
+    expect(pool.hasAvailableAccounts()).toBe(false);
   });
 
   it("refreshes rate_limit_until and counts expired accounts correctly", () => {

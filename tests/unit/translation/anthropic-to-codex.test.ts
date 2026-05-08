@@ -62,6 +62,13 @@ function makeRequest(overrides: Partial<AnthropicMessagesRequest> = {}): Anthrop
 }
 
 describe("translateAnthropicToCodexRequest", () => {
+  it("does not forward max_tokens to Codex", () => {
+    const result = translateAnthropicToCodexRequest(
+      makeRequest({ max_tokens: 8192 }),
+    );
+    expect(result).not.toHaveProperty("max_output_tokens");
+  });
+
   // ── System instructions ──────────────────────────────────────────────
 
   describe("system instructions", () => {

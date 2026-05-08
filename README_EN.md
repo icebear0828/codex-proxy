@@ -184,24 +184,26 @@ If you see streaming AI text, the setup is working. If you get 401, double-check
 
 ## 📦 Available Models
 
-| Model ID | Reasoning | Output | Description |
-|----------|-----------|--------|-------------|
-| `gpt-5.5` | low / medium / high / xhigh | text | General-purpose flagship (Plus+) |
-| `gpt-5.4` | low / medium / high / xhigh | text | Latest flagship (default) |
-| `gpt-5.4-mini` | low / medium / high / xhigh | text | 5.4 lightweight version |
-| `gpt-5.3-codex` | low / medium / high / xhigh | text | 5.3 coding-optimized model |
-| `gpt-5.2` | low / medium / high / xhigh | text | Professional work & long-running agents |
-| `gpt-5-codex` | low / medium / high | text | GPT-5 coding model |
-| `gpt-5-codex-mini` | medium / high | text | Lightweight coding model |
-| `gpt-oss-120b` | low / medium / high | text | Open-source 120B model |
-| `gpt-oss-20b` | low / medium / high | text | Open-source 20B model |
-| `gpt-image-2` | — | image | Image-generation backend (Plus+, invoked via the `image_generation` tool) |
+| Model ID | Reasoning | Current context | Max context | Max output | Output | Description |
+|----------|-----------|-----------------|-------------|------------|--------|-------------|
+| `gpt-5.5` | low / medium / high / xhigh | 272,000 | 272,000 | 128,000 | text | General-purpose flagship (Plus+) |
+| `gpt-5.4` | low / medium / high / xhigh | 272,000 | 1,000,000 | 128,000 | text | Latest flagship (default) |
+| `gpt-5.4-mini` | low / medium / high / xhigh | 400,000 | not published | 128,000 | text | 5.4 lightweight version |
+| `gpt-5.3-codex` | low / medium / high / xhigh | 400,000 | not published | 128,000 | text | 5.3 coding-optimized model |
+| `gpt-5.2` | low / medium / high / xhigh | 400,000 | not published | 128,000 | text | Professional work & long-running agents |
+| `gpt-5-codex` | low / medium / high | 400,000 | not published | 128,000 | text | GPT-5 coding model |
+| `gpt-5-codex-mini` | medium / high | not published | not published | not published | text | Lightweight coding model |
+| `gpt-oss-120b` | low / medium / high | 131,072 | not published | not published | text | Open-source 120B model |
+| `gpt-oss-20b` | low / medium / high | 131,072 | not published | not published | text | Open-source 20B model |
+| `gpt-image-2` | — | — | — | — | image | Image-generation backend (Plus+, invoked via the `image_generation` tool) |
 
 > **Suffixes**: Append `-fast` to any chat model for Fast mode, `-high`/`-low` for reasoning effort. E.g. `gpt-5.4-fast`, `gpt-5.4-high-fast`. The image model (`gpt-image-2`) does not take suffixes.
 >
 > **Plan Routing**: Accounts on different plans auto-route to their supported models. Models are dynamically fetched and auto-synced.
 >
 > **Dashboard model picker ≠ config file**: Changing the model in the Dashboard only affects the UI display and API examples — it does **not** modify `model.default` in `config/default.yaml` or `data/local.yaml`. The actual model used is determined by the `model` field in each client request (Cursor, Claude Code, etc.). The `model.default` config is only a fallback when the client omits the model field.
+>
+> **Max token note**: the table is Codex runtime model catalog metadata for display and client hints; runtime model data fetched from the Codex backend overrides static values and preserves `contextWindow`, `maxContextWindow`, `maxOutputTokens`, and `truncationPolicyLimit`. On 2026-05-08, real Codex backend metadata returned `context_window=272000`, `max_context_window=272000`, `truncation_policy.limit=10000` for `gpt-5.5`, and `context_window=272000`, `max_context_window=1000000`, `truncation_policy.limit=10000` for `gpt-5.4`, which can differ from public model pages. Request fields such as `context_window`, `max_context_window`, `truncation_policy`, and `max_output_tokens` are not usable switches; forwarding them to the native Codex API returns `400 Unsupported parameter`.
 
 ### 🖼️ Image Generation
 
@@ -226,6 +228,8 @@ Tunable fields: `size` (1024×1024 / 1024×1536 / 1536×1024 / 2048×2048 / 2048
 In the stream, the `image_generation_call` item's `result` field is a base64-encoded image; `revised_prompt` contains the final prompt used by the model.
 
 **Edit mode** (with a reference image): include `{"type":"input_image","image_url":"data:image/png;base64,..."}` in the user message `content` array.
+
+> The `/v1/chat/completions` compatibility path accepts the `image_generation` tool so OpenAI clients do not fail schema validation, but image payloads are only exposed reliably through `/v1/responses` as `image_generation_call.result`. Use `/v1/responses` when you need the image bytes.
 
 ## 🔗 Client Setup
 
@@ -445,6 +449,12 @@ All configuration in `config/default.yaml`:
 | `quota` | `refresh_interval_minutes`, `warning_thresholds`, `skip_exhausted` | Quota refresh and warnings |
 | `session` | `ttl_minutes`, `cleanup_interval_minutes` | Dashboard session management |
 | `ollama` | `enabled`, `host`, `port`, `version`, `disable_vision` | Ollama-compatible bridge |
+
+### Quota Rotation
+
+When `quota.skip_exhausted: true`, the account pool skips accounts whose cached quota is already exhausted before session affinity / `preferredEntryId` is applied. A long conversation therefore cannot force routing back to a cached-exhausted account.
+
+The skip condition is currently `rate_limit.limit_reached === true`, `secondary_rate_limit.limit_reached === true`, or `code_review_rate_limit.limit_reached === true` in cached quota. If `used_percent` is merely near 100, for example 99%, but upstream has not set `limit_reached`, the proxy may still use that account. Once upstream returns 429, the account is marked `rate_limited`, enters backoff, and the request is retried with another available account. Secondary and code-review windows are removed from cache after their own `reset_at` passes, so an account is not skipped forever on stale quota data.
 
 ### Ollama Bridge Configuration
 

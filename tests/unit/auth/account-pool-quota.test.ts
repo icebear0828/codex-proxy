@@ -179,5 +179,121 @@ describe("AccountPool quota methods", () => {
       const acquired = pool.acquire();
       expect(acquired).toBeNull();
     });
+
+    it("skips active accounts with cached primary quota limit_reached", () => {
+      const id1 = pool.addAccount(createValidJwt({ accountId: "d1" }));
+      const id2 = pool.addAccount(createValidJwt({ accountId: "d2" }));
+      pool.updateCachedQuota(id1, makeQuota({
+        rate_limit: {
+          allowed: false,
+          limit_reached: true,
+          used_percent: 100,
+          reset_at: Math.floor(Date.now() / 1000) + 7200,
+          limit_window_seconds: 7200,
+        },
+      }));
+
+      const acquired = pool.acquire({ preferredEntryId: id1 });
+      expect(acquired).not.toBeNull();
+      expect(acquired!.entryId).toBe(id2);
+      pool.release(acquired!.entryId);
+    });
+
+    it("skips active accounts with cached secondary quota limit_reached", () => {
+      const id1 = pool.addAccount(createValidJwt({ accountId: "e1" }));
+      const id2 = pool.addAccount(createValidJwt({ accountId: "e2" }));
+      pool.updateCachedQuota(id1, makeQuota({
+        secondary_rate_limit: {
+          limit_reached: true,
+          used_percent: 100,
+          reset_at: Math.floor(Date.now() / 1000) + 3600,
+          limit_window_seconds: 3600,
+        },
+      }));
+
+      const acquired = pool.acquire();
+      expect(acquired).not.toBeNull();
+      expect(acquired!.entryId).toBe(id2);
+      pool.release(acquired!.entryId);
+    });
+
+    it("skips active accounts with cached code review quota limit_reached", () => {
+      const id1 = pool.addAccount(createValidJwt({ accountId: "r1" }));
+      const id2 = pool.addAccount(createValidJwt({ accountId: "r2" }));
+      pool.updateCachedQuota(id1, makeQuota({
+        code_review_rate_limit: {
+          allowed: false,
+          limit_reached: true,
+          used_percent: 100,
+          reset_at: Math.floor(Date.now() / 1000) + 3600,
+        },
+      }));
+
+      const acquired = pool.acquire({ preferredEntryId: id1 });
+      expect(acquired).not.toBeNull();
+      expect(acquired!.entryId).toBe(id2);
+      pool.release(acquired!.entryId);
+    });
+
+    it("allows account after cached secondary quota reset time has passed", () => {
+      const id = pool.addAccount(createValidJwt({ accountId: "s1" }));
+      pool.updateCachedQuota(id, makeQuota({
+        secondary_rate_limit: {
+          limit_reached: true,
+          used_percent: 100,
+          reset_at: Math.floor(Date.now() / 1000) - 10,
+          limit_window_seconds: 3600,
+        },
+      }));
+
+      const acquired = pool.acquire({ preferredEntryId: id });
+      expect(acquired).not.toBeNull();
+      expect(acquired!.entryId).toBe(id);
+      pool.release(acquired!.entryId);
+
+      const entry = pool.getEntry(id);
+      expect(entry?.cachedQuota?.secondary_rate_limit).toBeNull();
+    });
+
+    it("allows account after cached code review quota reset time has passed", () => {
+      const id = pool.addAccount(createValidJwt({ accountId: "r3" }));
+      pool.updateCachedQuota(id, makeQuota({
+        code_review_rate_limit: {
+          allowed: false,
+          limit_reached: true,
+          used_percent: 100,
+          reset_at: Math.floor(Date.now() / 1000) - 10,
+        },
+      }));
+
+      const acquired = pool.acquire({ preferredEntryId: id });
+      expect(acquired).not.toBeNull();
+      expect(acquired!.entryId).toBe(id);
+      pool.release(acquired!.entryId);
+
+      const entry = pool.getEntry(id);
+      expect(entry?.cachedQuota?.code_review_rate_limit).toBeNull();
+    });
+
+    it("allows cached exhausted accounts when skip_exhausted is false", () => {
+      resetConfigForTesting();
+      setConfigForTesting(createMockConfig({ quota: { skip_exhausted: false } }));
+      pool = new AccountPool({ persistence: createMemoryPersistence() });
+      const id = pool.addAccount(createValidJwt({ accountId: "f1" }));
+      pool.updateCachedQuota(id, makeQuota({
+        rate_limit: {
+          allowed: false,
+          limit_reached: true,
+          used_percent: 100,
+          reset_at: Math.floor(Date.now() / 1000) + 7200,
+          limit_window_seconds: 7200,
+        },
+      }));
+
+      const acquired = pool.acquire();
+      expect(acquired).not.toBeNull();
+      expect(acquired!.entryId).toBe(id);
+      pool.release(acquired!.entryId);
+    });
   });
 });

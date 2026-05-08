@@ -108,6 +108,15 @@ describe("openAIToolsToCodex", () => {
     expect(result[1].name).toBe("b");
     expect(result[1].description).toBe("B tool");
   });
+
+  it("preserves image_generation tools for native Codex image generation", () => {
+    const result = openAIToolsToCodex([
+      { type: "image_generation", size: "1024x1024", quality: "high" },
+    ]);
+    expect(result).toEqual([
+      { type: "image_generation", size: "1024x1024", quality: "high" },
+    ]);
+  });
 });
 
 // ── openAIToolChoiceToCodex ─────────────────────────────────────

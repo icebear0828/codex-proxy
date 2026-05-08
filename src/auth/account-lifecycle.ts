@@ -7,6 +7,7 @@
 
 import { getConfig } from "../config.js";
 import { getModelPlanTypes, isPlanFetched } from "../models/model-store.js";
+import { hasReachedCachedQuota } from "./quota-skip.js";
 import { getRotationStrategy } from "./rotation-strategy.js";
 import type { RotationStrategy, RotationState, RotationStrategyName } from "./rotation-strategy.js";
 import type { AccountRegistry } from "./account-registry.js";
@@ -70,14 +71,16 @@ export class AccountLifecycle {
       }
     }
 
-    const maxConcurrent = getConfig().auth.max_concurrent_per_account ?? 3;
+    const config = getConfig();
+    const maxConcurrent = config.auth.max_concurrent_per_account ?? 3;
     const excludeSet = options?.excludeIds?.length ? new Set(options.excludeIds) : null;
 
     const available = entries.filter(
       (a) =>
         a.status === "active" &&
         this.slotCount(a.id) < maxConcurrent &&
-        (!excludeSet || !excludeSet.has(a.id)),
+        (!excludeSet || !excludeSet.has(a.id)) &&
+        (config.quota.skip_exhausted !== true || !hasReachedCachedQuota(a)),
     );
 
     if (available.length === 0) return null;
@@ -101,7 +104,7 @@ export class AccountLifecycle {
     }
 
     // Tier-based filtering: when configured, restrict to the highest available tier
-    const tierPriority = getConfig().auth.tier_priority;
+    const tierPriority = config.auth.tier_priority;
     if (tierPriority && tierPriority.length > 0) {
       const tierOrder = new Map(tierPriority.map((t, i) => [t, i]));
       let bestIdx = Infinity;
@@ -176,14 +179,19 @@ export class AccountLifecycle {
     accountId: string | null;
   }> {
     const now = new Date();
-    const maxConcurrent = getConfig().auth.max_concurrent_per_account ?? 3;
+    const config = getConfig();
+    const maxConcurrent = config.auth.max_concurrent_per_account ?? 3;
     const entries = this.registry.getAllEntries();
     for (const entry of entries) {
       this.registry.refreshStatus(entry, now);
     }
 
     const available = entries.filter(
-      (a: AccountEntry) => a.status === "active" && this.slotCount(a.id) < maxConcurrent && a.planType,
+      (a: AccountEntry) =>
+        a.status === "active" &&
+        this.slotCount(a.id) < maxConcurrent &&
+        a.planType &&
+        (config.quota.skip_exhausted !== true || !hasReachedCachedQuota(a)),
     );
 
     const byPlan = new Map<string, AccountEntry[]>();

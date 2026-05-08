@@ -25,6 +25,7 @@ OpenAI-compatible chat completion.
 - Streaming: SSE with `choice.delta` events
 - Non-streaming: `{ id, choices, usage }`
 - Errors: `{ error: { message, type, code } }`
+- `max_tokens`, `max_completion_tokens`, and `max_output_tokens` are accepted for client compatibility but are not forwarded to Codex.
 
 ### POST /v1/messages
 Anthropic Messages API compatible.
@@ -77,6 +78,7 @@ Native Codex Responses API passthrough (WebSocket transport).
 
 - Streaming: SSE with `response.created`, `response.output_text.delta`, `response.completed`
 - Non-streaming: `{ response, usage, responseId }`
+- Do not send `max_output_tokens` to native Codex. The proxy accepts it only for compatibility and strips it, because the real Codex backend rejects it with `400 Unsupported parameter: max_output_tokens`.
 
 #### image_generation tool
 
@@ -150,6 +152,11 @@ Legal content-part types (from upstream enum validation): `input_text`,
 `input_image`, `output_text`, `refusal`, `input_file`, `computer_screenshot`,
 `summary_text`.
 
+OpenAI Chat compatibility accepts `tools: [{"type":"image_generation"}]`, but
+the stable image payload is exposed by `/v1/responses` as
+`image_generation_call.result`. Use `/v1/responses` for clients that need the
+base64 image bytes.
+
 ### Ollama-Compatible Bridge
 
 The optional bridge runs on a separate listener, defaulting to `http://127.0.0.1:11434`.
@@ -205,6 +212,24 @@ Supported request mappings:
 | GET | `/v1/models/:id/info` | Extended model info |
 | GET | `/v1beta/models` | List models (Gemini format) |
 | POST | `/admin/refresh-models` | Force refresh from upstream |
+
+Model catalog entries can include token metadata:
+
+| Field | Meaning |
+|-------|---------|
+| `contextWindow` | Static or backend-provided context window for display and client hints |
+| `maxContextWindow` | Backend-provided maximum expandable context window, when reported |
+| `maxOutputTokens` | Static or backend-provided maximum output tokens for display and client hints |
+| `truncationPolicyLimit` | Backend-provided truncation policy limit, when reported |
+
+Static catalog values are defined in `config/models.yaml`; dynamic entries from
+`/backend-api/codex/models` win when the same model ID is returned by upstream.
+On 2026-05-08, real Codex backend metadata returned `context_window=272000`,
+`max_context_window=272000`, `truncation_policy.limit=10000` for `gpt-5.5`, and
+`context_window=272000`, `max_context_window=1000000`,
+`truncation_policy.limit=10000` for `gpt-5.4`. Treat these as runtime Codex
+limits, not as proof that request-level context or max-token switches are
+supported.
 
 ---
 
@@ -365,6 +390,16 @@ Supported request mappings:
 | Method | Path | Description |
 |--------|------|-------------|
 | GET | `/auth/quota/warnings` | Active quota warnings |
+
+When `quota.skip_exhausted` is enabled, account acquisition filters out active
+accounts whose cached quota has `rate_limit.limit_reached === true`,
+`secondary_rate_limit.limit_reached === true`, or
+`code_review_rate_limit.limit_reached === true`. This happens before session
+affinity, so `preferredEntryId` cannot keep a request on an exhausted account.
+Near-full quota such as `used_percent=99` is not skipped until upstream marks
+`limit_reached` or the account receives a 429 and enters `rate_limited` backoff.
+Secondary and code-review cache windows are cleared after their own `reset_at`
+passes.
 
 ---
 

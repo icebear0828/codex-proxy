@@ -23,6 +23,7 @@ import type {
   AccountInfo,
   CodexQuota,
 } from "./types.js";
+import { hasReachedCachedQuota } from "./quota-skip.js";
 
 export class AccountRegistry {
   private accounts: Map<string, AccountEntry> = new Map();
@@ -250,10 +251,15 @@ export class AccountRegistry {
   /** Fast check: is there at least one active account not in the exclude list? */
   hasAvailableAccounts(excludeIds?: string[]): boolean {
     const now = new Date();
+    const skipExhausted = getConfig().quota.skip_exhausted === true;
     const excludeSet = excludeIds?.length ? new Set(excludeIds) : null;
     for (const entry of this.accounts.values()) {
       this.refreshStatus(entry, now);
-      if (entry.status === "active" && (!excludeSet || !excludeSet.has(entry.id))) {
+      if (
+        entry.status === "active" &&
+        (!excludeSet || !excludeSet.has(entry.id)) &&
+        (!skipExhausted || !hasReachedCachedQuota(entry))
+      ) {
         return true;
       }
     }
@@ -474,12 +480,38 @@ export class AccountRegistry {
       this.schedulePersist();
     }
 
-    // Clear stale cached quota when its own reset time has passed
-    const quotaReset = entry.cachedQuota?.rate_limit?.reset_at;
+    // Clear stale cached quota windows when their own reset time has passed.
+    const quota = entry.cachedQuota;
+    const quotaReset = quota?.rate_limit?.reset_at;
     if (quotaReset != null && nowSec >= quotaReset) {
       entry.cachedQuota = null;
       entry.quotaFetchedAt = null;
       this.schedulePersist();
+    } else if (quota) {
+      let changed = false;
+      const secondaryReset = quota.secondary_rate_limit?.reset_at;
+      if (
+        quota.secondary_rate_limit?.limit_reached === true &&
+        secondaryReset != null &&
+        nowSec >= secondaryReset
+      ) {
+        quota.secondary_rate_limit = null;
+        changed = true;
+      }
+
+      const reviewReset = quota.code_review_rate_limit?.reset_at;
+      if (
+        quota.code_review_rate_limit?.limit_reached === true &&
+        reviewReset != null &&
+        nowSec >= reviewReset
+      ) {
+        quota.code_review_rate_limit = null;
+        changed = true;
+      }
+
+      if (changed) {
+        this.schedulePersist();
+      }
     }
   }
 

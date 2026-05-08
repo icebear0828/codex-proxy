@@ -7,7 +7,7 @@
 # Dynamic fetch merges with static; backend entries win for shared IDs.
 # Models endpoint now requires ?client_version= query parameter.
 #
-# Last updated: 2026-04-23 (added gpt-5.5, gpt-image-2; default → gpt-5.4; removed codex alias)
+# Last updated: 2026-05-08 (Codex runtime context metadata)
 
 models:
   # ── GPT-5.5 (newest general-purpose, Plus-only) ─────────────────────
@@ -23,6 +23,10 @@ models:
     defaultReasoningEffort: medium
     inputModalities: [text, image]
     outputModalities: [text]
+    contextWindow: 272000
+    maxContextWindow: 272000
+    maxOutputTokens: 128000
+    truncationPolicyLimit: 10000
     supportsPersonality: false
     upgrade: null
 
@@ -39,6 +43,10 @@ models:
     defaultReasoningEffort: medium
     inputModalities: [text, image]
     outputModalities: [text]
+    contextWindow: 272000
+    maxContextWindow: 1000000
+    maxOutputTokens: 128000
+    truncationPolicyLimit: 10000
     supportsPersonality: false
     upgrade: null
 
@@ -54,6 +62,8 @@ models:
     defaultReasoningEffort: medium
     inputModalities: [text, image]
     outputModalities: [text]
+    contextWindow: 400000
+    maxOutputTokens: 128000
     supportsPersonality: false
     upgrade: null
 
@@ -69,6 +79,8 @@ models:
       - { reasoningEffort: xhigh,  description: "Extra high reasoning depth" }
     defaultReasoningEffort: medium
     inputModalities: [text, image]
+    contextWindow: 400000
+    maxOutputTokens: 128000
     supportsPersonality: false
     upgrade: null
 
@@ -84,6 +96,8 @@ models:
       - { reasoningEffort: xhigh,  description: "Extra high reasoning" }
     defaultReasoningEffort: medium
     inputModalities: [text, image]
+    contextWindow: 400000
+    maxOutputTokens: 128000
     supportsPersonality: true
     upgrade: null
 
@@ -98,9 +112,12 @@ models:
       - { reasoningEffort: high,   description: "Deepest reasoning" }
     defaultReasoningEffort: medium
     inputModalities: [text, image]
+    contextWindow: 400000
+    maxOutputTokens: 128000
     supportsPersonality: false
     upgrade: null
 
+  # No exact official token-limit page found for id gpt-5-codex-mini on 2026-05-08.
   - id: gpt-5-codex-mini
     displayName: GPT-5 Codex Mini
     description: GPT-5 Codex Mini — lightweight
@@ -136,6 +153,7 @@ models:
       - { reasoningEffort: high,   description: "Deepest reasoning" }
     defaultReasoningEffort: medium
     inputModalities: [text]
+    contextWindow: 131072
     supportsPersonality: false
     upgrade: null
 
@@ -149,5 +167,6 @@ models:
       - { reasoningEffort: high,   description: "Deepest reasoning" }
     defaultReasoningEffort: medium
     inputModalities: [text]
+    contextWindow: 131072
     supportsPersonality: false
     upgrade: null

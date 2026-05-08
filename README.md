@@ -213,24 +213,26 @@ curl http://localhost:8080/v1/chat/completions \
 
 ## 📦 可用模型
 
-| 模型 ID | 推理等级 | 输出 | 说明 |
-|---------|---------|------|------|
-| `gpt-5.5` | low / medium / high / xhigh | 文本 | 通用旗舰（Plus+） |
-| `gpt-5.4` | low / medium / high / xhigh | 文本 | 最新旗舰模型（默认） |
-| `gpt-5.4-mini` | low / medium / high / xhigh | 文本 | 5.4 轻量版 |
-| `gpt-5.3-codex` | low / medium / high / xhigh | 文本 | 5.3 编程优化模型 |
-| `gpt-5.2` | low / medium / high / xhigh | 文本 | 专业工作 + 长时间代理 |
-| `gpt-5-codex` | low / medium / high | 文本 | GPT-5 编程模型 |
-| `gpt-5-codex-mini` | medium / high | 文本 | 轻量编程模型 |
-| `gpt-oss-120b` | low / medium / high | 文本 | 开源 120B 模型 |
-| `gpt-oss-20b` | low / medium / high | 文本 | 开源 20B 模型 |
-| `gpt-image-2` | — | 图像 | 图像生成后端（Plus+，通过 `image_generation` 工具调用） |
+| 模型 ID | 推理等级 | 当前上下文 | 最大上下文 | 最大输出 | 输出 | 说明 |
+|---------|---------|------------|------------|----------|------|------|
+| `gpt-5.5` | low / medium / high / xhigh | 272,000 | 272,000 | 128,000 | 文本 | 通用旗舰（Plus+） |
+| `gpt-5.4` | low / medium / high / xhigh | 272,000 | 1,000,000 | 128,000 | 文本 | 最新旗舰模型（默认） |
+| `gpt-5.4-mini` | low / medium / high / xhigh | 400,000 | 未公开 | 128,000 | 文本 | 5.4 轻量版 |
+| `gpt-5.3-codex` | low / medium / high / xhigh | 400,000 | 未公开 | 128,000 | 文本 | 5.3 编程优化模型 |
+| `gpt-5.2` | low / medium / high / xhigh | 400,000 | 未公开 | 128,000 | 文本 | 专业工作 + 长时间代理 |
+| `gpt-5-codex` | low / medium / high | 400,000 | 未公开 | 128,000 | 文本 | GPT-5 编程模型 |
+| `gpt-5-codex-mini` | medium / high | 未公开 | 未公开 | 未公开 | 文本 | 轻量编程模型 |
+| `gpt-oss-120b` | low / medium / high | 131,072 | 未公开 | 未公开 | 文本 | 开源 120B 模型 |
+| `gpt-oss-20b` | low / medium / high | 131,072 | 未公开 | 未公开 | 文本 | 开源 20B 模型 |
+| `gpt-image-2` | — | — | — | — | 图像 | 图像生成后端（Plus+，通过 `image_generation` 工具调用） |
 
 > **后缀**：任意 chat 模型名后追加 `-fast` 启用 Fast 模式，`-high`/`-low` 切换推理等级。例如：`gpt-5.4-fast`、`gpt-5.4-high-fast`。图像模型（`gpt-image-2`）不支持后缀。
 >
 > **Plan Routing**：不同 plan（free/plus/team/business）的账号自动路由到各自支持的模型。模型列表由后端动态获取，自动同步。
 >
 > **前端模型选择 ≠ 配置文件**：Dashboard 中切换模型只影响前端展示和 API 示例中的模型名，**不会修改** `config/default.yaml` 或 `data/local.yaml` 中的 `model.default`。实际使用哪个模型取决于客户端请求中的 `model` 字段（如 Cursor、Claude Code 等自行指定），配置文件中的 `model.default` 仅在客户端未指定模型时作为兜底。
+>
+> **Max token 说明**：上表是 Codex 运行时模型目录元数据，用于展示和客户端参考；运行时从 Codex 后端拉到的模型信息会覆盖静态值，并保留 `contextWindow`、`maxContextWindow`、`maxOutputTokens`、`truncationPolicyLimit`。实测 2026-05-08 的 Codex 后端对 `gpt-5.5` 回传 `context_window=272000`、`max_context_window=272000`、`truncation_policy.limit=10000`，对 `gpt-5.4` 回传 `context_window=272000`、`max_context_window=1000000`、`truncation_policy.limit=10000`，可能和公开模型页不同。请求体里的 `context_window` / `max_context_window` / `truncation_policy` / `max_output_tokens` 都不是可用开关；直接转发给 Codex 原生接口会返回 `400 Unsupported parameter`。
 
 ### 🖼️ 图像生成
 
@@ -255,6 +257,8 @@ curl -N http://localhost:8080/v1/responses \
 事件流里 `image_generation_call` item 的 `result` 字段即 base64 编码的图像；`revised_prompt` 是上游改写后的最终提示词。
 
 **编辑模式**（带参考图）：在 user message 的 `content` 里追加 `{"type":"input_image","image_url":"data:image/png;base64,..."}` 即可。
+
+> `/v1/chat/completions` 兼容路径会接受 `image_generation` 工具，避免 OpenAI 客户端因 schema 失败；但图像 payload 只有 `/v1/responses` 会稳定透出 `image_generation_call.result`。需要拿到图片字节时请使用 `/v1/responses`。
 
 ## 🔗 客户端接入
 
@@ -499,6 +503,12 @@ for await (const chunk of stream) {
 | `quota` | `refresh_interval_minutes`, `warning_thresholds`, `skip_exhausted` | 额度刷新与预警 |
 | `session` | `ttl_minutes`, `cleanup_interval_minutes` | Dashboard session 管理 |
 | `ollama` | `enabled`, `host`, `port`, `version`, `disable_vision` | Ollama 兼容桥接 |
+
+### 配额轮转
+
+`quota.skip_exhausted: true` 时，账号池会在选择账号前跳过缓存额度已经耗尽的账号；这个过滤发生在 session affinity / `preferredEntryId` 之前，所以长对话也不会强行粘到已耗尽账号上。
+
+当前跳过条件是缓存额度里的 `rate_limit.limit_reached === true`、`secondary_rate_limit.limit_reached === true` 或 `code_review_rate_limit.limit_reached === true`。如果只是 `used_percent` 接近 100（例如 99%）但上游还没标记 `limit_reached`，代理仍会继续使用该账号；真正打到上游 429 后，账号会进入 `rate_limited` 退避并切换到其他可用账号。secondary / code review 窗口自己的 `reset_at` 过期后会从缓存中清除，避免账号被永久跳过。
 
 ### 局域网访问
 

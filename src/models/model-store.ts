@@ -32,6 +32,14 @@ export interface CodexModelInfo {
   outputModalities?: string[];
   supportsPersonality: boolean;
   upgrade: string | null;
+  /** Maximum total context window in tokens, when known. */
+  contextWindow?: number;
+  /** Maximum expandable context window reported by the Codex backend, when known. */
+  maxContextWindow?: number;
+  /** Maximum configurable output token budget, when known. */
+  maxOutputTokens?: number;
+  /** Backend truncation policy limit, when reported. */
+  truncationPolicyLimit?: number;
   /** Where this model entry came from */
   source?: "static" | "backend";
 }
@@ -69,6 +77,17 @@ export interface BackendModelEntry {
   upgrade?: string | null;
   prefer_websockets?: boolean;
   context_window?: number;
+  contextWindow?: number;
+  max_context_window?: number;
+  maxContextWindow?: number;
+  max_output_tokens?: number;
+  maxOutputTokens?: number;
+  truncation_policy?: {
+    limit?: number;
+  };
+  truncationPolicy?: {
+    limit?: number;
+  };
   available_in_plans?: string[];
   priority?: number;
   visibility?: string;
@@ -414,6 +433,26 @@ function normalizeBackendModel(raw: BackendModelEntry): NormalizedModelWithMeta 
   // Only set outputModalities when backend provided it — otherwise the spread
   // in applyBackendModels would clobber the static catalog value with undefined.
   if (raw.output_modalities) out.outputModalities = raw.output_modalities;
+  if (typeof raw.context_window === "number") {
+    out.contextWindow = raw.context_window;
+  } else if (typeof raw.contextWindow === "number") {
+    out.contextWindow = raw.contextWindow;
+  }
+  if (typeof raw.max_context_window === "number") {
+    out.maxContextWindow = raw.max_context_window;
+  } else if (typeof raw.maxContextWindow === "number") {
+    out.maxContextWindow = raw.maxContextWindow;
+  }
+  if (typeof raw.max_output_tokens === "number") {
+    out.maxOutputTokens = raw.max_output_tokens;
+  } else if (typeof raw.maxOutputTokens === "number") {
+    out.maxOutputTokens = raw.maxOutputTokens;
+  }
+  if (typeof raw.truncation_policy?.limit === "number") {
+    out.truncationPolicyLimit = raw.truncation_policy.limit;
+  } else if (typeof raw.truncationPolicy?.limit === "number") {
+    out.truncationPolicyLimit = raw.truncationPolicy.limit;
+  }
   return out;
 }
 

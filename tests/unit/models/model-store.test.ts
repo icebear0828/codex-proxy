@@ -62,6 +62,10 @@ models:
       - { reasoningEffort: high, description: "High" }
     defaultReasoningEffort: medium
     inputModalities: [text, image]
+    contextWindow: 272000
+    maxContextWindow: 1000000
+    maxOutputTokens: 128000
+    truncationPolicyLimit: 10000
     supportsPersonality: true
     upgrade: null
   - id: gpt-5.3-codex
@@ -74,6 +78,8 @@ models:
       - { reasoningEffort: high, description: "High" }
     defaultReasoningEffort: medium
     inputModalities: [text]
+    contextWindow: 400000
+    maxOutputTokens: 128000
     supportsPersonality: false
     upgrade: null
   - id: gpt-5.3-codex-high
@@ -253,6 +259,15 @@ describe("ModelStore", () => {
       expect(info!.isDefault).toBe(true);
     });
 
+    it("returns static token limits by ID", () => {
+      const info = getModelInfo("gpt-5.4");
+      expect(info).toBeDefined();
+      expect(info!.contextWindow).toBe(272_000);
+      expect(info!.maxContextWindow).toBe(1_000_000);
+      expect(info!.maxOutputTokens).toBe(128_000);
+      expect(info!.truncationPolicyLimit).toBe(10_000);
+    });
+
     it("returns undefined for unknown ID", () => {
       expect(getModelInfo("nonexistent")).toBeUndefined();
     });
@@ -375,6 +390,36 @@ describe("ModelStore", () => {
         output_modalities: ["text", "audio"],
       }]);
       expect(getModelInfo("gpt-5.3-codex-spark")!.outputModalities).toEqual(["text", "audio"]);
+    });
+
+    it("lets backend override token limit metadata when present", () => {
+      loadStaticModels("/tmp/test-config");
+      applyBackendModels([{
+        slug: "gpt-5.4",
+        display_name: "Backend 5.4",
+        context_window: 2_000_000,
+        max_context_window: 2_500_000,
+        max_output_tokens: 256_000,
+        truncation_policy: { limit: 10_000 },
+      }]);
+      const info = getModelInfo("gpt-5.4");
+      expect(info!.contextWindow).toBe(2_000_000);
+      expect(info!.maxContextWindow).toBe(2_500_000);
+      expect(info!.maxOutputTokens).toBe(256_000);
+      expect(info!.truncationPolicyLimit).toBe(10_000);
+    });
+
+    it("preserves static token limit metadata when backend omits it", () => {
+      loadStaticModels("/tmp/test-config");
+      applyBackendModels([{
+        slug: "gpt-5.4",
+        display_name: "Backend 5.4",
+      }]);
+      const info = getModelInfo("gpt-5.4");
+      expect(info!.contextWindow).toBe(272_000);
+      expect(info!.maxContextWindow).toBe(1_000_000);
+      expect(info!.maxOutputTokens).toBe(128_000);
+      expect(info!.truncationPolicyLimit).toBe(10_000);
     });
   });
 

@@ -37,7 +37,12 @@ export interface CodexHostedWebSearchTool {
   user_location?: Record<string, unknown>;
 }
 
-export type CodexTool = CodexToolDefinition | CodexHostedWebSearchTool;
+export interface CodexImageGenerationTool {
+  type: "image_generation";
+  [key: string]: unknown;
+}
+
+export type CodexTool = CodexToolDefinition | CodexHostedWebSearchTool | CodexImageGenerationTool;
 
 export interface AnthropicToolConversionOptions {
   mapClaudeCodeWebSearch?: boolean;
@@ -124,6 +129,11 @@ export function openAIToolsToCodex(
     const hosted = normalizeHostedWebSearchTool(t);
     if (hosted) {
       defs.push(hosted);
+      continue;
+    }
+
+    if (t.type === "image_generation") {
+      defs.push(t);
       continue;
     }
 
