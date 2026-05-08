@@ -18,6 +18,7 @@ import type { CodexInputItem } from "./codex-api.js";
 import type { ParsedRateLimit } from "./rate-limit-headers.js";
 import { parseRateLimitsEvent } from "./rate-limit-headers.js";
 import { CodexApiError } from "./codex-types.js";
+import { getProxyUrl } from "../tls/proxy.js";
 import {
   PersistentWs,
   WsReusedConnectionError,
@@ -140,12 +141,10 @@ async function buildWsConstructorOpts(
   proxyUrl: string | null | undefined,
 ): Promise<ConstructorParameters<typeof WS>[2]> {
   const wsOpts: ConstructorParameters<typeof WS>[2] = { headers };
-  // Fall back to HTTPS_PROXY env when caller passes undefined ("global" pool
-  // assignment). The native (rustls) transport already does this for HTTPS
-  // POST; without the same fallback here, WS connects go direct and TLS to
-  // chatgpt.com fails from within a container with only proxied egress.
+  // Mirror native transport proxy semantics:
+  // undefined = global default, null = explicit direct, string = specific proxy.
   const effectiveProxyUrl =
-    proxyUrl || process.env.HTTPS_PROXY || process.env.https_proxy;
+    proxyUrl === undefined ? getProxyUrl() : proxyUrl;
   if (effectiveProxyUrl) {
     let agent = _agentCache.get(effectiveProxyUrl);
     if (!agent) {
