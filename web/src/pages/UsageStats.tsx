@@ -1,7 +1,7 @@
 import { useState } from "preact/hooks";
 import { useT } from "../../../shared/i18n/context";
 import { useUsageSummary, useUsageHistory, type Granularity, type UsageHistoryRange } from "../../../shared/hooks/use-usage-stats";
-import { UsageChart, formatNumber, formatHitRate, sumWindow } from "../components/UsageChart";
+import { UsageChart, formatNumber, formatHitRate, sumUsageWindow, sumWindow } from "../components/UsageChart";
 import type { TranslationKey } from "../../../shared/i18n/translations";
 
 const granularityOptions: Array<{ value: Granularity; label: TranslationKey }> = [
@@ -33,6 +33,7 @@ function UsageContent({ t, summary, summaryLoading, granularity, setGranularity,
   historyLoading: boolean;
 }) {
   const rangeWindow = sumWindow(dataPoints);
+  const usageWindow = sumUsageWindow(dataPoints);
   const rangeHitRate = historyLoading ? "—" : formatHitRate(rangeWindow.cached, rangeWindow.input);
   const rangeHint = historyLoading
     ? undefined
@@ -46,11 +47,11 @@ function UsageContent({ t, summary, summaryLoading, granularity, setGranularity,
       <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-8 gap-3 mb-6">
         <SummaryCard
           label={t("totalInputTokens")}
-          value={summaryLoading ? "—" : formatNumber(summary?.total_input_tokens ?? 0)}
+          value={historyLoading ? "—" : formatNumber(usageWindow.input_tokens)}
         />
         <SummaryCard
           label={t("totalOutputTokens")}
-          value={summaryLoading ? "—" : formatNumber(summary?.total_output_tokens ?? 0)}
+          value={historyLoading ? "—" : formatNumber(usageWindow.output_tokens)}
         />
         <SummaryCard
           label={t("cacheHitRate")}
@@ -71,30 +72,30 @@ function UsageContent({ t, summary, summaryLoading, granularity, setGranularity,
         <SummaryCard
           label={t("imageTokens")}
           value={
-            summaryLoading
+            historyLoading
               ? "—"
-              : `${formatNumber(summary?.total_image_input_tokens ?? 0)} / ${formatNumber(summary?.total_image_output_tokens ?? 0)}`
+              : `${formatNumber(usageWindow.image_input_tokens)} / ${formatNumber(usageWindow.image_output_tokens)}`
           }
-          hint={summaryLoading ? undefined : t("imageTokensHint")}
+          hint={historyLoading ? undefined : t("imageTokensHint")}
         />
         <SummaryCard
           label={t("imageRequests")}
           value={
-            summaryLoading
+            historyLoading
               ? "—"
-              : `${formatNumber(summary?.total_image_request_count ?? 0)} / ${formatNumber(summary?.total_image_request_failed_count ?? 0)}`
+              : `${formatNumber(usageWindow.image_request_count)} / ${formatNumber(usageWindow.image_request_failed_count)}`
           }
           hint={
-            summaryLoading
+            historyLoading
               ? undefined
               : t("imageRequestsHint")
-                  .replace("{ok}", formatNumber(summary?.total_image_request_count ?? 0))
-                  .replace("{failed}", formatNumber(summary?.total_image_request_failed_count ?? 0))
+                  .replace("{ok}", formatNumber(usageWindow.image_request_count))
+                  .replace("{failed}", formatNumber(usageWindow.image_request_failed_count))
           }
         />
         <SummaryCard
           label={t("totalRequestCount")}
-          value={summaryLoading ? "—" : formatNumber(summary?.total_request_count ?? 0)}
+          value={historyLoading ? "—" : formatNumber(usageWindow.request_count)}
         />
         <SummaryCard
           label={t("activeAccounts")}

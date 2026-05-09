@@ -34,6 +34,10 @@ export function createUsageStatsRoutes(
     const hoursStr = c.req.query("hours") ?? "24";
     let hours: UsageHistoryRange;
     if (hoursStr === "all") {
+      if (granularity === "raw") {
+        c.status(400);
+        return c.json({ error: "raw granularity cannot be used with hours=all." });
+      }
       hours = "all";
     } else {
       const parsedHours = Number(hoursStr);

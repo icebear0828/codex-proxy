@@ -107,7 +107,7 @@ describe("usage stats routes", () => {
       expect(body.data_points[0].input_tokens).toBe(400);
     });
 
-    it("accepts all history without clamping to seven days", async () => {
+    it("accepts all aggregated history without clamping to seven days", async () => {
       const now = Date.now();
       const snapshots: UsageSnapshot[] = [
         {
@@ -129,7 +129,7 @@ describe("usage stats routes", () => {
       const app = new Hono();
       app.route("/", createUsageStatsRoutes(pool, store));
 
-      const res = await app.request("/admin/usage-stats/history?granularity=raw&hours=all");
+      const res = await app.request("/admin/usage-stats/history?granularity=hourly&hours=all");
       expect(res.status).toBe(200);
 
       const body = await res.json();
@@ -137,6 +137,19 @@ describe("usage stats routes", () => {
       expect(body.data_points).toHaveLength(2);
       expect(body.data_points[0].input_tokens).toBe(400);
       expect(body.data_points[1].input_tokens).toBe(500);
+    });
+
+    it("rejects unbounded raw all history", async () => {
+      const pool = createMockPool({ input_tokens: 0, output_tokens: 0, request_count: 0 });
+      const store = createStore();
+      const app = new Hono();
+      app.route("/", createUsageStatsRoutes(pool, store));
+
+      const res = await app.request("/admin/usage-stats/history?granularity=raw&hours=all");
+
+      expect(res.status).toBe(400);
+      const body = await res.json();
+      expect(body.error).toContain("raw");
     });
 
     it("accepts numeric ranges above seven days", async () => {
