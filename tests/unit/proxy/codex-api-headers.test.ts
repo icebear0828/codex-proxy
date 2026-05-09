@@ -117,14 +117,21 @@ describe("codex-api headers", () => {
       expect(transport.lastHeaders!["x-codex-turn-state"]).toBeUndefined();
     });
 
-    it("excludes turnState and service_tier from JSON body", async () => {
+    it("excludes turnState from JSON body and maps fast service_tier to priority", async () => {
       const api = await createApi();
       await api.createResponse(
         makeRequest({ turnState: "abc", service_tier: "fast" }),
       );
       const body = JSON.parse(transport.lastBody!) as Record<string, unknown>;
       expect(body.turnState).toBeUndefined();
-      expect(body.service_tier).toBeUndefined();
+      expect(body.service_tier).toBe("priority");
+    });
+
+    it("preserves non-fast service_tier in JSON body", async () => {
+      const api = await createApi();
+      await api.createResponse(makeRequest({ service_tier: "flex" }));
+      const body = JSON.parse(transport.lastBody!) as Record<string, unknown>;
+      expect(body.service_tier).toBe("flex");
     });
 
     it("sends x-codex-installation-id header and inside body.client_metadata", async () => {
@@ -258,6 +265,27 @@ describe("codex-api headers", () => {
         "x-openai-subagent": "review",
         "x-codex-installation-id": "11111111-2222-3333-4444-555555555555",
       });
+    });
+
+    it("maps fast service_tier to priority on WebSocket requests", async () => {
+      mockCreateWebSocketResponse.mockResolvedValue(
+        new Response("data: {}\n\n", {
+          headers: { "content-type": "text/event-stream" },
+        }),
+      );
+
+      const api = await createApi();
+      await api.createResponse(
+        makeRequest({
+          useWebSocket: true,
+          service_tier: "fast",
+        }),
+      );
+
+      const wsRequest = mockCreateWebSocketResponse.mock.calls[0][2] as {
+        service_tier?: string;
+      };
+      expect(wsRequest.service_tier).toBe("priority");
     });
 
     it("uses prompt_cache_key as WebSocket conversation identity", async () => {
