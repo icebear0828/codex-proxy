@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { shouldAutoOpenUpdateModal } from "../../../web/src/update-modal-policy.js";
+import { getShowUpdateDialogPreference, shouldAutoOpenUpdateModal } from "../../../web/src/update-modal-policy.js";
 
 describe("update modal auto-open policy", () => {
   it("does not auto-open by default when update popup setting is off", () => {
@@ -27,5 +27,15 @@ describe("update modal auto-open policy", () => {
       mode: "electron",
       showUpdateDialog: true,
     })).toBe(false);
+  });
+});
+
+describe("update dialog preference", () => {
+  it("defaults to false when update status has no settings payload", () => {
+    expect(getShowUpdateDialogPreference({})).toBe(false);
+  });
+
+  it("reads show_update_dialog when present", () => {
+    expect(getShowUpdateDialogPreference({ settings: { show_update_dialog: true } })).toBe(true);
   });
 });

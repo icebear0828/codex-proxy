@@ -7,6 +7,16 @@ interface UpdateModalAutoOpenInput {
   showUpdateDialog: boolean;
 }
 
+interface UpdateDialogPreferenceStatus {
+  settings?: {
+    show_update_dialog?: boolean;
+  } | null;
+}
+
+export function getShowUpdateDialogPreference(status: UpdateDialogPreferenceStatus | null | undefined): boolean {
+  return status?.settings?.show_update_dialog ?? false;
+}
+
 export function shouldAutoOpenUpdateModal({
   hasUpdate,
   previousHasUpdate,

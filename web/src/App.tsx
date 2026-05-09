@@ -22,7 +22,7 @@ import { useUpdateStatus } from "../../shared/hooks/use-update-status";
 import { useI18n, useT } from "../../shared/i18n/context";
 import { useDashboardAuth } from "../../shared/hooks/use-dashboard-auth";
 import type { TranslationKey } from "../../shared/i18n/translations";
-import { shouldAutoOpenUpdateModal } from "./update-modal-policy";
+import { getShowUpdateDialogPreference, shouldAutoOpenUpdateModal } from "./update-modal-policy";
 
 export { shouldAutoOpenUpdateModal };
 
@@ -48,7 +48,7 @@ function useUpdateMessage() {
   } else if (!update.checking && update.error) { msg = update.error; color = "text-red-500"; }
 
   const hasUpdate = update.status?.proxy.update_available ?? false;
-  const showUpdateDialog = update.status?.settings.show_update_dialog ?? false;
+  const showUpdateDialog = getShowUpdateDialogPreference(update.status);
   const proxyUpdateInfo = hasUpdate
     ? { mode: update.status!.proxy.mode, commits: update.status!.proxy.commits, changelog: update.status!.proxy.changelog ?? null, release: update.status!.proxy.release }
     : null;
