@@ -145,16 +145,16 @@ curl http://localhost:8080/v1/chat/completions \
 - 自动完成 Chat Completions / Anthropic / Gemini ↔ Codex Responses API 双向协议转换
 - **Structured Outputs** — `response_format`（`json_object` / `json_schema`）和 Gemini `responseMimeType`
 - **Function Calling** — 原生 `function_call` / `tool_calls` 支持（所有协议）
-- 若使用自定义 API Keys，则仅兼容 OpenAI（`/v1/chat/completions`）格式。
+- **第三方 API Keys** — 支持 OpenAI / Anthropic / Gemini / OpenRouter / 自定义 OpenAI-compatible Provider，并按模型路由直通上游。
 
 ### 🔐 账号管理与智能轮换
 - **OAuth PKCE 登录** — 浏览器一键授权，无需手动复制 Token
 - **多账号轮换** — `least_used`（最少使用优先）、`round_robin`（轮询）、`sticky`（粘性）三种策略
 - **Plan Routing** — 不同 plan（free/plus/team/business）的账号自动路由到各自支持的模型
 - **Token 自动续期** — JWT 到期前自动刷新，指数退避重试
-- **配额自动刷新** — 后台每 5 分钟拉取各账号额度，达到阈值时弹出预警横幅；额度耗尽自动跳过
+- **配额被动采集** — 从上游响应头和 WebSocket rate limit 事件更新账号额度；`quota.refresh_interval_minutes` 仅控制用量快照记录，`0` 表示关闭快照定时器。
 - **封禁检测** — 上游 403 自动标记 banned；401 token 吊销自动过期并切换账号
-- **Relay 中转站** — 支持接入第三方 API 中转站（API Key + baseUrl），自动按 `format` 决定直通或翻译
+- **API Key Provider 池** — 支持通过 Dashboard 管理第三方 API Key、模型列表、导入导出和启停状态。
 - **Web 控制面板** — 账号管理、用量统计、批量操作，中英双语；远程访问需 Dashboard 登录门
 
 ### 🌐 代理池
@@ -195,8 +195,8 @@ curl http://localhost:8080/v1/chat/completions \
 │                                                          │
 │  ┌──────────┐  ┌───────────────┐  ┌──────────────────┐  │
 │  │   Auth   │  │  Fingerprint  │  │   Model Store    │  │
-│  │ OAuth/JWT│  │ Rust (rustls) │  │ Static + Dynamic │  │
-│  │  Relay   │  │  Headers/UA   │  │  Plan Routing    │  │
+│  │OAuth/API │  │ Rust (rustls) │  │ Static + Dynamic │  │
+│  │ API Keys │  │  Headers/UA   │  │  Plan Routing    │  │
 │  └──────────┘  └───────────────┘  └──────────────────┘  │
 │                                                          │
 └──────────────────────────────────────────────────────────┘
@@ -207,7 +207,7 @@ curl http://localhost:8080/v1/chat/completions \
                           │
                    ┌──────┴──────┐
                    ▼             ▼
-              chatgpt.com   Relay 中转站
+             chatgpt.com   第三方 Provider
          /backend-api/codex  (第三方 API)
 ```
 
@@ -509,7 +509,7 @@ for await (const chunk of stream) {
 | `model` | `default`, `default_reasoning_effort`, `inject_desktop_context` | 默认模型与推理配置 |
 | `auth` | `rotation_strategy`, `rate_limit_backoff_seconds` | 轮换策略与限流退避 |
 | `tls` | `proxy_url`, `force_http11` | TLS 代理与 HTTP 版本 |
-| `quota` | `refresh_interval_minutes`, `warning_thresholds`, `skip_exhausted` | 额度刷新与预警 |
+| `quota` | `refresh_interval_minutes`, `warning_thresholds`, `skip_exhausted` | 用量快照、阈值配置与耗尽账号跳过 |
 | `session` | `ttl_minutes`, `cleanup_interval_minutes` | Dashboard session 管理 |
 | `ollama` | `enabled`, `host`, `port`, `version`, `disable_vision` | Ollama 兼容桥接 |
 | `official_agent` | `enabled`, `app_server_url`, `auth` | 官方 Codex app-server 桥接，用于复用 Chrome/browser 插件 |
@@ -522,7 +522,14 @@ for await (const chunk of stream) {
 
 ### 局域网访问
 
-默认监听 `127.0.0.1`（仅本机）。如需局域网内其他设备访问，在 `data/local.yaml` 中添加：
+源码/容器默认配置监听 `::`（IPv6 unspecified，通常也覆盖本机访问）；Electron 启动时会传入 `127.0.0.1`，除非 `data/local.yaml` 显式覆盖。建议需要仅本机访问时写入：
+
+```yaml
+server:
+  host: "127.0.0.1"
+```
+
+如需局域网内其他设备访问，在 `data/local.yaml` 中添加：
 
 ```yaml
 server:
@@ -554,10 +561,10 @@ tls:
 ```yaml
 server:
   proxy_api_key: "pwd"    # 自定义密钥，客户端用 Bearer pwd 访问
-  # proxy_api_key: null   # null = 自动生成 codex-proxy-xxxx 格式密钥
+  # proxy_api_key: null   # null = 不配置全局密钥；已登录账号仍会生成 account-level codex-proxy-xxxx 密钥
 ```
 
-当前密钥始终显示在控制面板的 API Configuration 区域。
+首次启动如果缺少 `data/local.yaml`，程序会自动创建 `server.proxy_api_key: pwd`。当前可用密钥显示在控制面板的 API Configuration 区域。
 
 ### Ollama Bridge 配置
 
@@ -664,7 +671,7 @@ curl -N http://localhost:8080/official-agent/threads/{threadId}/turns \
 ## 📡 API 端点
 
 <details>
-<summary>点击展开完整端点列表</summary>
+<summary>点击展开主要端点列表</summary>
 
 **协议端点**
 
@@ -672,8 +679,13 @@ curl -N http://localhost:8080/official-agent/threads/{threadId}/turns \
 |------|------|------|
 | `/v1/chat/completions` | POST | OpenAI 格式聊天补全 |
 | `/v1/responses` | POST | Codex Responses API 直通 |
+| `/v1/responses/compact` | POST | Codex compact 响应代理 |
 | `/v1/messages` | POST | Anthropic 格式聊天补全 |
 | `/v1/models` | GET | 可用模型列表 |
+| `/v1/models/catalog` | GET | Dashboard 使用的完整模型目录 |
+| `/v1/models/:modelId/info` | GET | 单个模型的推理等级等详情 |
+| `/v1beta/models` | GET | Gemini 格式模型列表 |
+| `/v1beta/models/:modelAction` | POST | Gemini `generateContent` / `streamGenerateContent` |
 | `:11434/api/chat` | POST | Ollama 兼容聊天补全（需启用 Ollama Bridge） |
 
 **账号与认证**
@@ -685,9 +697,27 @@ curl -N http://localhost:8080/official-agent/threads/{threadId}/turns \
 | `/auth/accounts` | POST | 添加单个账号（token 或 refreshToken） |
 | `/auth/accounts/import` | POST | 批量导入账号 |
 | `/auth/accounts/export` | GET | 导出账号（`?format=minimal` 精简格式） |
-| `/auth/accounts/relay` | POST | 添加 Relay 中转站账号 |
 | `/auth/accounts/batch-delete` | POST | 批量删除账号 |
 | `/auth/accounts/batch-status` | POST | 批量修改账号状态 |
+| `/auth/accounts/health-check` | POST | 批量检测账号可用性 |
+| `/auth/accounts/:id/refresh` | POST | 刷新并探测单个账号 |
+| `/auth/accounts/:id/quota` | GET | 主动查询单个账号额度 |
+| `/auth/accounts/:id/cookies` | GET/POST/DELETE | 管理账号 Cloudflare cookies |
+| `/auth/quota/warnings` | GET | 当前额度预警状态 |
+
+**第三方 API Keys**
+
+| 端点 | 方法 | 说明 |
+|------|------|------|
+| `/auth/api-keys/catalog` | GET | 内置 Provider 与推荐模型目录 |
+| `/auth/api-keys` | GET/POST | API Key 列表 / 添加 |
+| `/auth/api-keys/models` | POST | 从自定义 OpenAI-compatible Provider 拉取模型 |
+| `/auth/api-keys/export` | GET | 导出 API Key 配置 |
+| `/auth/api-keys/import` | POST | 导入 API Key 配置 |
+| `/auth/api-keys/batch-delete` | POST | 批量删除 API Key |
+| `/auth/api-keys/:id` | DELETE | 删除单个 API Key |
+| `/auth/api-keys/:id/label` | PATCH | 修改 API Key 标签 |
+| `/auth/api-keys/:id/status` | PATCH | 启用或停用 API Key |
 
 **账号导入导出示例**
 
@@ -731,6 +761,11 @@ curl -X POST http://localhost:8080/auth/accounts/import \
 | `/admin/refresh-models` | POST | 手动刷新模型列表 |
 | `/admin/usage-stats/summary` | GET | 用量统计汇总 |
 | `/admin/usage-stats/history` | GET | 用量时间序列 |
+| `/admin/logs` | GET | 请求日志列表 |
+| `/admin/logs/state` | GET/POST | 日志采集开关与配置 |
+| `/admin/update-status` | GET | 自更新状态 |
+| `/admin/check-update` | POST | 检查更新 |
+| `/admin/apply-update` | POST | 执行自更新 |
 | `/health` | GET | 健康检查 |
 
 **代理池**
@@ -742,6 +777,11 @@ curl -X POST http://localhost:8080/auth/accounts/import \
 | `/api/proxies/:id/check` | POST | 健康检查单个代理 |
 | `/api/proxies/check-all` | POST | 全部代理健康检查 |
 | `/api/proxies/assign` | POST | 为账号分配代理 |
+| `/api/proxies/assignments` | GET | 查看账号代理分配 |
+| `/api/proxies/assign-bulk` | POST | 批量分配代理 |
+| `/api/proxies/assign-rule` | POST | 按规则分配代理 |
+| `/api/proxies/export` | GET | 导出代理池 YAML |
+| `/api/proxies/import` | POST | 导入代理池 YAML |
 
 </details>
 
@@ -776,7 +816,7 @@ curl -X POST http://localhost:8080/auth/accounts/import \
 **Changed**
 - Default model switched from `gpt-5.3-codex` → `gpt-5.4` (`config/default.yaml`, `config/models.yaml.isDefault`, Zod schema default in `src/config-schema.ts`). Removed the `codex` alias — clients must use full model IDs. Sonnet mapping in Anthropic preset/README 推荐表保持 `gpt-5.3-codex` 不变（编程场景更贴位）
 - Static `isDefault` and `outputModalities` on `config/models.yaml` entries now survive the backend dynamic fetch merge (previously the spread of normalized `undefined`/`false` silently clobbered YAML-declared values)
-- Dashboard session 默认 TTL 从 1 小时延长至 24 小时
+- Dashboard session TTL 由 `session.ttl_minutes` 控制；当前默认配置为 60 分钟
 **Fixed**
 - WebSocket 路径首帧若为上游 `usage_limit_reached` / `rate_limit*` / `quota_exhausted` / 鉴权类终止错误，转换为 `CodexApiError` 抛出，复用 HTTP 路径已有的账号轮转逻辑；恢复 2.0.62 的"智能切换"行为（`src/proxy/ws-transport.ts`）。错误若发生在已有内容流出之后，仍按当前行为透传给客户端
 - 无可用账号时不再执行无意义的重试，直接返回描述性错误信息（含各状态账号计数：rate-limited / expired / banned / disabled）(#362)

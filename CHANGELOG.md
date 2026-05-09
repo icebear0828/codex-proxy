@@ -114,7 +114,7 @@
 
 - Default model switched from `gpt-5.3-codex` → `gpt-5.4` (`config/default.yaml`, `config/models.yaml.isDefault`, Zod schema default in `src/config-schema.ts`). Removed the `codex` alias — clients must use full model IDs. Sonnet mapping in Anthropic preset/README 推荐表保持 `gpt-5.3-codex` 不变（编程场景更贴位）
 - Static `isDefault` and `outputModalities` on `config/models.yaml` entries now survive the backend dynamic fetch merge (previously the spread of normalized `undefined`/`false` silently clobbered YAML-declared values)
-- Dashboard session 默认 TTL 从 1 小时延长至 24 小时
+- Dashboard session TTL 由 `session.ttl_minutes` 控制；当前默认配置为 60 分钟
 
 ### Added
 
