@@ -114,7 +114,7 @@ export class CodexAppServerClient implements CodexAppServerBridge {
   private nextId = 1;
   private initialized = false;
   private readonly pending = new Map<number, PendingRequest>();
-  private readonly notifications = new AsyncNotificationQueue();
+  private notifications = new AsyncNotificationQueue();
 
   constructor(options: CodexAppServerClientOptions) {
     this.options = options;
@@ -150,6 +150,7 @@ export class CodexAppServerClient implements CodexAppServerBridge {
     this.pending.clear();
     const ws = this.ws;
     this.ws = null;
+    this.initialized = false;
     if (!ws) return;
     await new Promise<void>((resolve) => {
       if (ws.readyState === WebSocket.CLOSED) {
@@ -264,7 +265,9 @@ export class CodexAppServerClient implements CodexAppServerBridge {
     this.ws = ws;
     ws.on("message", (raw) => this.handleMessage(raw.toString()));
     ws.on("close", () => {
+      if (this.ws !== ws) return;
       this.notifications.close();
+      this.notifications = new AsyncNotificationQueue();
       for (const [id, pending] of this.pending) {
         clearTimeout(pending.timeout);
         pending.reject(new Error(`Codex app-server WebSocket closed before request ${id} completed`));

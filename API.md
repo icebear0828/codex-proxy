@@ -376,7 +376,8 @@ Optional bridge to a local official `codex app-server` instance. This is the
 path for using official Codex app plugins such as the Chrome/browser plugin.
 It is disabled by default with `official_agent.enabled: false`.
 
-All endpoints use the Codex Proxy API key when `server.proxy_api_key` is set.
+All endpoints require `server.proxy_api_key`; the bridge refuses requests when
+the proxy API key is not configured.
 
 | Method | Path | Purpose |
 |--------|------|---------|

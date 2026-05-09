@@ -323,7 +323,7 @@ context 或 max-token 开关可用。
 插件能力，例如 Chrome/browser 插件。默认关闭：`official_agent.enabled:
 false`。
 
-当配置了 `server.proxy_api_key` 时，以下端点同样要求 Codex Proxy API Key。
+以下端点强制要求 `server.proxy_api_key`；未配置 proxy API key 时，桥接会拒绝请求。
 
 | 方法 | 路径 | 说明 |
 |------|------|------|

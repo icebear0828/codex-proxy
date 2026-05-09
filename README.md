@@ -592,6 +592,9 @@ codex app-server --listen ws://127.0.0.1:4500
 然后在 `data/local.yaml` 启用：
 
 ```yaml
+server:
+  proxy_api_key: "your-api-key"
+
 official_agent:
   enabled: true
   app_server_url: ws://127.0.0.1:4500
@@ -610,6 +613,9 @@ codex app-server --listen ws://127.0.0.1:4500 \
 对应配置：
 
 ```yaml
+server:
+  proxy_api_key: "your-api-key"
+
 official_agent:
   enabled: true
   app_server_url: ws://127.0.0.1:4500

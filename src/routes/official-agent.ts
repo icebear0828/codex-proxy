@@ -39,7 +39,7 @@ function errorBody(code: string, message: string): { error: { code: string; mess
 }
 
 function isAuthorized(authHeader: string | undefined, expectedKey: string | null): boolean {
-  if (!expectedKey) return true;
+  if (!expectedKey) return false;
   const token = authHeader?.startsWith("Bearer ") ? authHeader.slice(7) : "";
   return token === expectedKey;
 }
@@ -99,6 +99,10 @@ export function createOfficialAgentRoutes(bridgeFactory: BridgeFactory = getShar
     if (!config.official_agent.enabled) {
       c.status(503);
       return c.json(errorBody("official_agent_disabled", "Official Codex app-server bridge is disabled"));
+    }
+    if (!config.server.proxy_api_key) {
+      c.status(403);
+      return c.json(errorBody("official_agent_requires_api_key", "Official Codex app-server bridge requires server.proxy_api_key"));
     }
     if (!isAuthorized(c.req.header("Authorization"), config.server.proxy_api_key)) {
       c.status(401);

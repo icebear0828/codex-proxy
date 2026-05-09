@@ -67,6 +67,23 @@ describe("official agent routes", () => {
     expect(res.status).toBe(401);
   });
 
+  it("rejects official agent requests when the proxy API key is not configured", async () => {
+    setConfigForTesting(ConfigSchema.parse({
+      api: {}, client: {}, model: {}, auth: {}, server: { proxy_api_key: null }, session: {},
+      official_agent: { enabled: true },
+    }));
+
+    const res = await makeApp(new FakeBridge()).request("/official-agent/apps");
+
+    expect(res.status).toBe(403);
+    expect(await res.json()).toEqual({
+      error: {
+        code: "official_agent_requires_api_key",
+        message: "Official Codex app-server bridge requires server.proxy_api_key",
+      },
+    });
+  });
+
   it("lists apps through the app-server bridge", async () => {
     setConfigForTesting(ConfigSchema.parse({
       api: {}, client: {}, model: {}, auth: {}, session: {},
@@ -87,14 +104,15 @@ describe("official agent routes", () => {
 
   it("starts a thread", async () => {
     setConfigForTesting(ConfigSchema.parse({
-      api: {}, client: {}, model: {}, auth: {}, server: {}, session: {},
+      api: {}, client: {}, model: {}, auth: {}, session: {},
+      server: { proxy_api_key: "proxy-key" },
       official_agent: { enabled: true },
     }));
 
     const res = await makeApp(new FakeBridge()).request("/official-agent/threads", {
       method: "POST",
       body: JSON.stringify({ model: "gpt-5.4" }),
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", Authorization: "Bearer proxy-key" },
     });
 
     expect(res.status).toBe(200);
@@ -103,7 +121,8 @@ describe("official agent routes", () => {
 
   it("starts a turn and streams app-server notifications as SSE", async () => {
     setConfigForTesting(ConfigSchema.parse({
-      api: {}, client: {}, model: {}, auth: {}, server: {}, session: {},
+      api: {}, client: {}, model: {}, auth: {}, session: {},
+      server: { proxy_api_key: "proxy-key" },
       official_agent: { enabled: true },
     }));
     const bridge = new FakeBridge();
@@ -111,7 +130,7 @@ describe("official agent routes", () => {
     const res = await makeApp(bridge).request("/official-agent/threads/thr_54/turns", {
       method: "POST",
       body: JSON.stringify({ text: "Open the dashboard", app: { id: "chrome", name: "Chrome" } }),
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", Authorization: "Bearer proxy-key" },
     });
 
     expect(res.status).toBe(200);

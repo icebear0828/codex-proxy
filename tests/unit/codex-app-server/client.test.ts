@@ -152,4 +152,46 @@ describe("CodexAppServerClient", () => {
     expect(received).toEqual(["item/agentMessage/delta", "turn/completed"]);
     await client.close();
   });
+
+  it("receives turn notifications after reconnecting from a closed WebSocket", async () => {
+    let turnStartCount = 0;
+    server = await startJsonRpcServer((socket, message) => {
+      if (message.method === "initialize" && message.id !== undefined) {
+        socket.send(JSON.stringify({ id: message.id, result: {} }));
+      }
+      if (message.method === "app/list" && message.id !== undefined) {
+        socket.send(JSON.stringify({ id: message.id, result: { data: [], nextCursor: null } }));
+        socket.close();
+      }
+      if (message.method === "turn/start" && message.id !== undefined) {
+        turnStartCount += 1;
+        socket.send(JSON.stringify({ id: message.id, result: { turn: { id: "turn_2", status: "inProgress" } } }));
+        setTimeout(() => {
+          socket.send(JSON.stringify({ method: "item/agentMessage/delta", params: { delta: "after reconnect" } }));
+          socket.send(JSON.stringify({ method: "turn/completed", params: { turn: { id: "turn_2", status: "completed" } } }));
+        }, 20);
+      }
+    });
+    const client = new CodexAppServerClient({
+      url: server.url,
+      auth: { type: "none" },
+      clientInfo: { name: "codex_proxy", title: "Codex Proxy", version: "test" },
+      requestTimeoutMs: 1000,
+    });
+
+    await client.listApps();
+    await new Promise((resolve) => setTimeout(resolve, 20));
+
+    const events = client.notificationsUntilTurnCompleted();
+    await client.startTurn({ threadId: "thr_1", text: "hello again" });
+
+    const received: string[] = [];
+    for await (const event of events) {
+      received.push(event.method);
+    }
+
+    expect(turnStartCount).toBe(1);
+    expect(received).toEqual(["item/agentMessage/delta", "turn/completed"]);
+    await client.close();
+  });
 });
