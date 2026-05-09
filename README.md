@@ -503,6 +503,7 @@ for await (const chunk of stream) {
 | `quota` | `refresh_interval_minutes`, `warning_thresholds`, `skip_exhausted` | 额度刷新与预警 |
 | `session` | `ttl_minutes`, `cleanup_interval_minutes` | Dashboard session 管理 |
 | `ollama` | `enabled`, `host`, `port`, `version`, `disable_vision` | Ollama 兼容桥接 |
+| `official_agent` | `enabled`, `app_server_url`, `auth` | 官方 Codex app-server 桥接，用于复用 Chrome/browser 插件 |
 
 ### 配额轮转
 
@@ -577,6 +578,65 @@ Docker 部署时，如果希望宿主机访问 `11434`：
 3. 保持宿主机绑定 `127.0.0.1`，除非你明确知道自己要把无鉴权 Ollama API 暴露到网络。
 
 浏览器 CORS 访问仅允许 `localhost`、`127.x.x.x`、`::1` 等 loopback origin；非本机网页来源不能读取桥接响应。Bridge 会为 `/v1/*` 直通请求注入已配置的 Codex Proxy API Key，因此暴露到 localhost 之外时，相当于也把主代理 API 以无鉴权方式暴露出去。
+
+### Official Agent Bridge 配置
+
+该桥接用于连接本机官方 `codex app-server`，从而复用 Codex app 的官方 Chrome/browser 插件、审批和 app mention 能力。默认关闭，不影响现有 `/v1/*` 模型代理。
+
+先启动官方 app-server：
+
+```bash
+codex app-server --listen ws://127.0.0.1:4500
+```
+
+然后在 `data/local.yaml` 启用：
+
+```yaml
+server:
+  proxy_api_key: "your-api-key"
+
+official_agent:
+  enabled: true
+  app_server_url: ws://127.0.0.1:4500
+  auth:
+    type: none
+```
+
+如果 app-server 使用 capability token：
+
+```bash
+codex app-server --listen ws://127.0.0.1:4500 \
+  --ws-auth capability-token \
+  --ws-token-file /absolute/path/to/token
+```
+
+对应配置：
+
+```yaml
+server:
+  proxy_api_key: "your-api-key"
+
+official_agent:
+  enabled: true
+  app_server_url: ws://127.0.0.1:4500
+  auth:
+    type: capability_token
+    token_file: /absolute/path/to/token
+```
+
+可用端点：
+
+```bash
+curl http://localhost:8080/official-agent/apps \
+  -H "Authorization: Bearer your-api-key"
+```
+
+```bash
+curl -N http://localhost:8080/official-agent/threads/{threadId}/turns \
+  -H "Authorization: Bearer your-api-key" \
+  -H "Content-Type: application/json" \
+  -d '{"text":"Open localhost:8080 and inspect the dashboard","app":{"id":"chrome","name":"Chrome"}}'
+```
 
 ### 环境变量覆盖
 

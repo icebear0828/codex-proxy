@@ -45,6 +45,7 @@ import { ApiKeyPool } from "./auth/api-key-pool.js";
 import { createApiKeyRoutes } from "./routes/api-keys.js";
 import { createAdapterForEntry } from "./proxy/adapter-factory.js";
 import { startOllamaBridge, stopOllamaBridge } from "./ollama/server.js";
+import { createOfficialAgentRoutes } from "./routes/official-agent.js";
 
 export interface ServerHandle {
   close: () => Promise<void>;
@@ -182,6 +183,7 @@ export async function startServer(options?: StartOptions): Promise<ServerHandle>
   app.route("/", messagesRoutes);
   app.route("/", geminiRoutes);
   app.route("/", responsesRoutes);
+  app.route("/", createOfficialAgentRoutes());
   app.route("/", proxyRoutes);
   app.route("/", createModelRoutes(apiKeyPool));
   app.route("/", webRoutes);

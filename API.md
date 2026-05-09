@@ -370,6 +370,34 @@ supported.
 | GET | `/debug/diagnostics` | System diagnostics (localhost only) |
 | GET | `/debug/models` | Model store internals |
 
+## Official Codex App Server Bridge
+
+Optional bridge to a local official `codex app-server` instance. This is the
+path for using official Codex app plugins such as the Chrome/browser plugin.
+It is disabled by default with `official_agent.enabled: false`.
+
+All endpoints require `server.proxy_api_key`; the bridge refuses requests when
+the proxy API key is not configured.
+
+| Method | Path | Purpose |
+|--------|------|---------|
+| GET | `/official-agent/apps` | List official Codex apps/connectors from `app/list` |
+| POST | `/official-agent/threads` | Start an app-server thread (`{ model?, cwd? }`) |
+| POST | `/official-agent/threads/:threadId/turns` | Start a turn and stream app-server notifications as SSE |
+
+Example turn using an official Chrome app mention:
+
+```json
+{
+  "text": "Open localhost:8080 and inspect the dashboard",
+  "app": { "id": "chrome", "name": "Chrome" }
+}
+```
+
+The bridge sends a text item plus a `mention` item with `path:
+"app://{id}"`. Use `/official-agent/apps` to discover the real app id before
+hard-coding one.
+
 ### Updates
 
 | Method | Path | Description |

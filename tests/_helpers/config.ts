@@ -15,6 +15,7 @@ export interface MockConfigOverrides {
   session?: Partial<AppConfig["session"]>;
   tls?: Partial<AppConfig["tls"]>;
   quota?: Partial<AppConfig["quota"]>;
+  official_agent?: Partial<AppConfig["official_agent"]>;
 }
 
 /**
@@ -82,6 +83,12 @@ export function createMockConfig(overrides?: MockConfigOverrides): AppConfig {
       },
       skip_exhausted: true,
     },
+    official_agent: {
+      enabled: false,
+      app_server_url: "ws://127.0.0.1:4500",
+      request_timeout_ms: 30000,
+      auth: { type: "none" },
+    },
   };
   return structuredClone({
     api:     { ...base.api,     ...overrides?.api },
@@ -92,6 +99,7 @@ export function createMockConfig(overrides?: MockConfigOverrides): AppConfig {
     session: { ...base.session, ...overrides?.session },
     tls:     { ...base.tls,     ...overrides?.tls },
     quota:   { ...base.quota,   ...overrides?.quota },
+    official_agent: { ...base.official_agent, ...overrides?.official_agent },
   });
 }
 
