@@ -10,6 +10,7 @@
 
 ### Fixed
 
+- 恢复模型名 `-fast` 后缀的上游出口语义：`gpt-5.4-high-fast` / `codex-fast` 仍先解析为标准模型名 + `service_tier=fast`，最终发往 Codex backend 时再映射成官方接受的 `service_tier="priority"`（HTTP SSE 与 WebSocket 路径一致）；补回单测和 `/v1/responses` E2E，防止 PR #453 的 review quota plumbing 再次把 `service_tier` 丢掉
 - Dashboard 更新状态兼容旧响应：`/admin/update-status` 尚未返回 `settings` 字段时，前端默认按 `show_update_dialog=false` 处理，避免读取 `settings.show_update_dialog` 抛错导致页面白屏
 - Official Codex app-server bridge 审计加固：首批并发请求现在复用同一个 WebSocket 连接与 `initialize` 流程，避免 CONNECTING 阶段重复建连/覆盖 `this.ws`；并发 turn SSE 改为串行执行，避免共享 notification queue 把 A/B 两个 turn 的 delta/completed 交叉发错；`/official-agent/*` 改用独立 `official_agent.api_key`，不再复用通用 `server.proxy_api_key`，并限制 `approvalPolicy` 只能是 `untrusted` / `on-request` / `on-failure` / `never`
 - 隐式续链反向校验缺失导致客户端持续看到上游 `invalid_request_error: No tool output found for function call call_X`：`evaluateImplicitResume` 此前只做 forward 检查（新输入里的 `function_call_output.call_id` 必须命中上一轮 stored function_call），漏了反向（上一轮 stored function_call 必须在新输入里有 output）。当上一轮模型并发吐 N 个 tool_use、客户端只回 N-1 个 tool_result 时，proxy 仍然 resume + `previous_response_id` 发出去，上游存的 context 里那个未回复的 function_call 触发 400。新增反向检查 → 走完整重放（`reason: "unanswered_tool_calls"`），同时 `error-classification.ts` 加 `isUnansweredFunctionCallError`，proxy-handler catch 块兜底：strip `previous_response_id` + 完整历史重放 + 同账号重试一次（与 `previous_response_not_found` 同款），避免 ws/sse 路径上的 400 静默吞掉变成 502

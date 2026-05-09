@@ -113,6 +113,7 @@ export interface WsCreateRequest {
       strict?: boolean;
     };
   };
+  service_tier?: string;
   prompt_cache_key?: string;
   client_metadata?: Record<string, string>;
   include?: string[];

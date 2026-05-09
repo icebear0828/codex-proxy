@@ -33,6 +33,11 @@ const X_RESPONSESAPI_INCLUDE_TIMING_METRICS_HEADER = "x-responsesapi-include-tim
 const X_CODEX_PARENT_THREAD_ID_HEADER = "x-codex-parent-thread-id";
 const X_CODEX_WINDOW_ID_HEADER = "x-codex-window-id";
 
+function normalizeServiceTierForUpstream(serviceTier: string | null | undefined): string | undefined {
+  if (!serviceTier) return undefined;
+  return serviceTier === "fast" ? "priority" : serviceTier;
+}
+
 // Re-export types from codex-types.ts for backward compatibility
 export type {
   CodexResponsesRequest,
@@ -327,7 +332,8 @@ export class CodexApi {
     wsRequest.tool_choice = request.tool_choice ?? "auto";
     wsRequest.parallel_tool_calls = request.parallel_tool_calls ?? true;
     if (request.text) wsRequest.text = request.text;
-    // service_tier is stripped — Codex backend rejects it ("Unsupported service_tier")
+    const serviceTier = normalizeServiceTierForUpstream(request.service_tier);
+    if (serviceTier) wsRequest.service_tier = serviceTier;
     if (request.prompt_cache_key) wsRequest.prompt_cache_key = request.prompt_cache_key;
     if (request.include?.length) wsRequest.include = request.include;
     wsRequest.client_metadata = this.buildCodexClientMetadata(request, installationId, identity.windowId);
@@ -376,11 +382,13 @@ export class CodexApi {
       includeTimingMetrics: _timing,
       codexWindowId: _window,
       parentThreadId: _parent,
-      service_tier: _st,
+      service_tier,
       ...bodyFields
     } = request;
+    const upstreamServiceTier = normalizeServiceTierForUpstream(service_tier);
     const bodyWithMetadata = {
       ...bodyFields,
+      ...(upstreamServiceTier ? { service_tier: upstreamServiceTier } : {}),
       client_metadata: this.buildCodexClientMetadata(request, installationId, identity.windowId),
     };
     const body = JSON.stringify(bodyWithMetadata);

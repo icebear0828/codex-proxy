@@ -211,6 +211,8 @@ describe("E2E: POST /v1/responses", () => {
     expect(sentBody.model).toBe("gpt-5.4");
     // Reasoning effort should be set from suffix
     expect(sentBody.reasoning?.effort).toBe("high");
+    // Fast suffix should survive the final Codex API serialization as upstream's priority tier.
+    expect(sentBody.service_tier).toBe("priority");
   });
 
   it("unauthenticated: returns 401 with invalid_api_key", async () => {
