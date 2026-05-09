@@ -107,6 +107,68 @@ describe("usage stats routes", () => {
       expect(body.data_points[0].input_tokens).toBe(400);
     });
 
+    it("accepts all history without clamping to seven days", async () => {
+      const now = Date.now();
+      const snapshots: UsageSnapshot[] = [
+        {
+          timestamp: new Date(now - 30 * 24 * 3600_000).toISOString(),
+          totals: { input_tokens: 100, output_tokens: 10, request_count: 1, active_accounts: 1 },
+        },
+        {
+          timestamp: new Date(now - 15 * 24 * 3600_000).toISOString(),
+          totals: { input_tokens: 500, output_tokens: 50, request_count: 5, active_accounts: 1 },
+        },
+        {
+          timestamp: new Date(now).toISOString(),
+          totals: { input_tokens: 1000, output_tokens: 100, request_count: 10, active_accounts: 1 },
+        },
+      ];
+
+      const pool = createMockPool({ input_tokens: 1000, output_tokens: 100, request_count: 10 });
+      const store = createStore(snapshots);
+      const app = new Hono();
+      app.route("/", createUsageStatsRoutes(pool, store));
+
+      const res = await app.request("/admin/usage-stats/history?granularity=raw&hours=all");
+      expect(res.status).toBe(200);
+
+      const body = await res.json();
+      expect(body.hours).toBe("all");
+      expect(body.data_points).toHaveLength(2);
+      expect(body.data_points[0].input_tokens).toBe(400);
+      expect(body.data_points[1].input_tokens).toBe(500);
+    });
+
+    it("accepts numeric ranges above seven days", async () => {
+      const now = Date.now();
+      const snapshots: UsageSnapshot[] = [
+        {
+          timestamp: new Date(now - 30 * 24 * 3600_000).toISOString(),
+          totals: { input_tokens: 100, output_tokens: 10, request_count: 1, active_accounts: 1 },
+        },
+        {
+          timestamp: new Date(now - 15 * 24 * 3600_000).toISOString(),
+          totals: { input_tokens: 500, output_tokens: 50, request_count: 5, active_accounts: 1 },
+        },
+        {
+          timestamp: new Date(now).toISOString(),
+          totals: { input_tokens: 1000, output_tokens: 100, request_count: 10, active_accounts: 1 },
+        },
+      ];
+
+      const pool = createMockPool({ input_tokens: 1000, output_tokens: 100, request_count: 10 });
+      const store = createStore(snapshots);
+      const app = new Hono();
+      app.route("/", createUsageStatsRoutes(pool, store));
+
+      const res = await app.request("/admin/usage-stats/history?granularity=raw&hours=720");
+      expect(res.status).toBe(200);
+
+      const body = await res.json();
+      expect(body.hours).toBe(720);
+      expect(body.data_points).toHaveLength(2);
+    });
+
     it("accepts five_min granularity", async () => {
       const now = Date.now();
       const snapshots: UsageSnapshot[] = [

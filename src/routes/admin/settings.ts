@@ -115,6 +115,7 @@ export function createSettingsRoutes(): Hono {
       logs_capacity: config.logs.capacity,
       logs_capture_body: config.logs.capture_body,
       logs_llm_only: config.logs.llm_only,
+      usage_history_retention_days: config.usage_stats.history_retention_days,
     });
   });
 
@@ -151,6 +152,7 @@ export function createSettingsRoutes(): Hono {
       logs_capacity?: number;
       logs_capture_body?: boolean;
       logs_llm_only?: boolean;
+      usage_history_retention_days?: number | null;
     };
 
     // --- validation ---
@@ -213,6 +215,13 @@ export function createSettingsRoutes(): Hono {
       if (!Number.isInteger(body.logs_capacity) || body.logs_capacity < 1) {
         c.status(400);
         return c.json({ error: "logs_capacity must be an integer >= 1" });
+      }
+    }
+
+    if (body.usage_history_retention_days !== undefined && body.usage_history_retention_days !== null) {
+      if (!Number.isInteger(body.usage_history_retention_days) || body.usage_history_retention_days < 1) {
+        c.status(400);
+        return c.json({ error: "usage_history_retention_days must be an integer >= 1 or null" });
       }
     }
 
@@ -296,6 +305,10 @@ export function createSettingsRoutes(): Hono {
         if (!data.logs) data.logs = {};
         (data.logs as Record<string, unknown>).llm_only = body.logs_llm_only;
       }
+      if (body.usage_history_retention_days !== undefined) {
+        if (!data.usage_stats) data.usage_stats = {};
+        (data.usage_stats as Record<string, unknown>).history_retention_days = body.usage_history_retention_days;
+      }
     });
     reloadAllConfigs();
 
@@ -331,6 +344,7 @@ export function createSettingsRoutes(): Hono {
       logs_capacity: updated.logs?.capacity ?? 2000,
       logs_capture_body: updated.logs?.capture_body ?? false,
       logs_llm_only: updated.logs?.llm_only ?? true,
+      usage_history_retention_days: updated.usage_stats.history_retention_days,
       restart_required: restartRequired,
     });
   });

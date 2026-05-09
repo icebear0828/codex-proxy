@@ -95,6 +95,10 @@ export const ConfigSchema = z.object({
     capture_body: z.boolean().default(false),
     llm_only: z.boolean().default(true),
   }).default({}),
+  usage_stats: z.object({
+    /** null means keep usage history forever. */
+    history_retention_days: z.number().int().positive().nullable().default(null),
+  }).default({}),
   session: z.object({
     ttl_minutes: z.number().min(1).default(1440),
     cleanup_interval_minutes: z.number().min(1).default(5),

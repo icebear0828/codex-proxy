@@ -7,7 +7,7 @@
 
 import { Hono } from "hono";
 import type { AccountPool } from "../../auth/account-pool.js";
-import type { UsageStatsStore } from "../../auth/usage-stats.js";
+import type { UsageHistoryRange, UsageStatsStore } from "../../auth/usage-stats.js";
 
 export function createUsageStatsRoutes(
   pool: AccountPool,
@@ -32,7 +32,17 @@ export function createUsageStatsRoutes(
     }
 
     const hoursStr = c.req.query("hours") ?? "24";
-    const hours = Math.min(Math.max(1, parseInt(hoursStr, 10) || 24), 168);
+    let hours: UsageHistoryRange;
+    if (hoursStr === "all") {
+      hours = "all";
+    } else {
+      const parsedHours = Number(hoursStr);
+      if (!Number.isInteger(parsedHours) || parsedHours < 1) {
+        c.status(400);
+        return c.json({ error: "hours must be a positive integer or all." });
+      }
+      hours = parsedHours;
+    }
 
     const data_points = statsStore.getHistory(hours, granularity);
 

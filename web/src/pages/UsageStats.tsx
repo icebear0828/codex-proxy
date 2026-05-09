@@ -1,6 +1,6 @@
 import { useState } from "preact/hooks";
 import { useT } from "../../../shared/i18n/context";
-import { useUsageSummary, useUsageHistory, type Granularity } from "../../../shared/hooks/use-usage-stats";
+import { useUsageSummary, useUsageHistory, type Granularity, type UsageHistoryRange } from "../../../shared/hooks/use-usage-stats";
 import { UsageChart, formatNumber, formatHitRate, sumWindow } from "../components/UsageChart";
 import type { TranslationKey } from "../../../shared/i18n/translations";
 
@@ -10,12 +10,15 @@ const granularityOptions: Array<{ value: Granularity; label: TranslationKey }> =
   { value: "daily", label: "granularityDaily" },
 ];
 
-const rangeOptions: Array<{ hours: number; label: TranslationKey }> = [
+const rangeOptions: Array<{ hours: UsageHistoryRange; label: TranslationKey }> = [
   { hours: 1, label: "last1h" },
   { hours: 6, label: "last6h" },
   { hours: 24, label: "last24h" },
   { hours: 72, label: "last3d" },
   { hours: 168, label: "last7d" },
+  { hours: 720, label: "last30d" },
+  { hours: 2160, label: "last90d" },
+  { hours: "all", label: "allHistory" },
 ];
 
 function UsageContent({ t, summary, summaryLoading, granularity, setGranularity, hours, setHours, dataPoints, historyLoading }: {
@@ -24,8 +27,8 @@ function UsageContent({ t, summary, summaryLoading, granularity, setGranularity,
   summaryLoading: boolean;
   granularity: Granularity;
   setGranularity: (g: Granularity) => void;
-  hours: number;
-  setHours: (h: number) => void;
+  hours: UsageHistoryRange;
+  setHours: (h: UsageHistoryRange) => void;
   dataPoints: ReturnType<typeof useUsageHistory>["dataPoints"];
   historyLoading: boolean;
 }) {
@@ -107,11 +110,11 @@ function UsageContent({ t, summary, summaryLoading, granularity, setGranularity,
             onClick={() => {
               setGranularity(value);
               // Daily with ≤24h produces a single bucket — auto-switch to 3d.
-              if (value === "daily" && hours <= 24) setHours(72);
+              if (value === "daily" && typeof hours === "number" && hours <= 24) setHours(72);
               // Hourly with <6h has too few buckets — bump to 24h.
-              if (value === "hourly" && hours < 6) setHours(24);
+              if (value === "hourly" && typeof hours === "number" && hours < 6) setHours(24);
               // 5-min with >24h is a lot of buckets — clamp to 24h.
-              if (value === "five_min" && hours > 24) setHours(24);
+              if (value === "five_min" && (hours === "all" || hours > 24)) setHours(24);
             }}
             class={`px-3 py-1 text-xs font-medium rounded-full border transition-colors ${
               granularity === value
@@ -125,9 +128,9 @@ function UsageContent({ t, summary, summaryLoading, granularity, setGranularity,
         <div class="w-px h-5 bg-gray-200 dark:bg-border-dark self-center" />
         {rangeOptions
           .filter(({ hours: h }) => {
-            if (granularity === "daily" && h <= 24) return false;
-            if (granularity === "hourly" && h < 6) return false;
-            if (granularity === "five_min" && h > 24) return false;
+            if (granularity === "daily" && typeof h === "number" && h <= 24) return false;
+            if (granularity === "hourly" && typeof h === "number" && h < 6) return false;
+            if (granularity === "five_min" && (h === "all" || h > 24)) return false;
             return true;
           })
           .map(({ hours: h, label }) => (
@@ -161,7 +164,7 @@ export function UsageStats({ embedded }: { embedded?: boolean } = {}) {
   const t = useT();
   const { summary, loading: summaryLoading } = useUsageSummary();
   const [granularity, setGranularity] = useState<Granularity>("hourly");
-  const [hours, setHours] = useState(24);
+  const [hours, setHours] = useState<UsageHistoryRange>(24);
   const { dataPoints, loading: historyLoading } = useUsageHistory(granularity, hours);
 
   const contentProps = { t, summary, summaryLoading, granularity, setGranularity, hours, setHours, dataPoints, historyLoading };
@@ -206,4 +209,3 @@ function SummaryCard({ label, value, hint }: { label: string; value: string; hin
     </div>
   );
 }
-
