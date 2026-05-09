@@ -156,6 +156,37 @@ describe("AccountPool quota methods", () => {
       const acct = accounts.find((a) => a.id === id);
       expect(acct?.quota).toBeUndefined();
     });
+
+    it("keeps cached quota visible after the primary reset time passes", () => {
+      const id = pool.addAccount(createValidJwt({ accountId: "a10", planType: "plus" }));
+      const nowSec = Math.floor(Date.now() / 1000);
+
+      pool.updateCachedQuota(id, makeQuota({
+        rate_limit: {
+          allowed: true,
+          limit_reached: false,
+          used_percent: 87,
+          reset_at: nowSec - 10,
+          limit_window_seconds: 3600,
+        },
+        secondary_rate_limit: {
+          limit_reached: false,
+          used_percent: 33,
+          reset_at: nowSec + 7200,
+          limit_window_seconds: 604800,
+        },
+      }));
+
+      const accounts = pool.getAccounts();
+      const acct = accounts.find((a) => a.id === id);
+
+      expect(acct?.quota).toBeDefined();
+      expect(acct?.quota?.rate_limit.used_percent).toBe(0);
+      expect(acct?.quota?.rate_limit.limit_reached).toBe(false);
+      expect(acct?.quota?.rate_limit.reset_at).toBeGreaterThan(nowSec);
+      expect(acct?.quota?.secondary_rate_limit?.used_percent).toBe(33);
+      expect(acct?.quotaFetchedAt).toBeTruthy();
+    });
   });
 
   describe("acquire skips exhausted accounts", () => {

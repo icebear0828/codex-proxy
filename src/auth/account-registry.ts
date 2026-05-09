@@ -24,6 +24,31 @@ import type {
   CodexQuota,
 } from "./types.js";
 
+type ResettableQuotaWindow = {
+  used_percent: number | null;
+  reset_at: number | null;
+  limit_window_seconds?: number | null;
+  limit_reached: boolean;
+};
+
+function nextResetAt(resetAt: number, windowSec: number | null | undefined, nowSec: number): number | null {
+  if (windowSec == null || windowSec <= 0) return null;
+  const elapsedWindows = Math.floor((nowSec - resetAt) / windowSec) + 1;
+  return resetAt + elapsedWindows * windowSec;
+}
+
+function resetExpiredQuotaWindow(
+  quotaWindow: ResettableQuotaWindow | null | undefined,
+  nowSec: number,
+): boolean {
+  const resetAt = quotaWindow?.reset_at;
+  if (quotaWindow == null || resetAt == null || nowSec < resetAt) return false;
+  quotaWindow.used_percent = 0;
+  quotaWindow.limit_reached = false;
+  quotaWindow.reset_at = nextResetAt(resetAt, quotaWindow.limit_window_seconds, nowSec);
+  return true;
+}
+
 export class AccountRegistry {
   private accounts: Map<string, AccountEntry> = new Map();
   private persistTimer: ReturnType<typeof setTimeout> | null = null;
@@ -474,12 +499,18 @@ export class AccountRegistry {
       this.schedulePersist();
     }
 
-    // Clear stale cached quota when its own reset time has passed
-    const quotaReset = entry.cachedQuota?.rate_limit?.reset_at;
-    if (quotaReset != null && nowSec >= quotaReset) {
-      entry.cachedQuota = null;
-      entry.quotaFetchedAt = null;
-      this.schedulePersist();
+    // Keep quota cards visible across reset boundaries. Passive quota collection
+    // will overwrite these inferred values on the next successful upstream turn.
+    const quota = entry.cachedQuota;
+    if (quota) {
+      let changed = false;
+      changed = resetExpiredQuotaWindow(quota.rate_limit, nowSec) || changed;
+      changed = resetExpiredQuotaWindow(quota.secondary_rate_limit, nowSec) || changed;
+      changed = resetExpiredQuotaWindow(quota.code_review_rate_limit, nowSec) || changed;
+
+      if (changed) {
+        this.schedulePersist();
+      }
     }
   }
 
