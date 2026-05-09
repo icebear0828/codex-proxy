@@ -170,3 +170,10 @@ models:
     contextWindow: 131072
     supportsPersonality: false
     upgrade: null
+
+# User-editable aliases. Claude Desktop can expose Claude-shaped model names
+# while this gateway maps them to Codex model IDs internally.
+aliases:
+  claude-opus-4-7: gpt-5.5
+  claude-sonnet-4-6: gpt-5.4
+  claude-haiku-4-5: gpt-5.3-codex

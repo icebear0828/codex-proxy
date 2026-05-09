@@ -1,7 +1,21 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import { UpstreamRouter } from "@src/proxy/upstream-router.js";
 import type { UpstreamAdapter } from "@src/proxy/upstream-adapter.js";
 import type { CodexResponsesRequest, CodexSSEEvent } from "@src/proxy/codex-types.js";
+
+vi.mock("@src/models/model-store.js", () => ({
+  getModelAliases: vi.fn(() => ({
+    "claude-opus-4-7": "gpt-5.5",
+    "claude-sonnet-4-6": "gpt-5.4",
+    "claude-haiku-4-5": "gpt-5.3-codex",
+  })),
+  getModelInfo: vi.fn((model: string) => {
+    if (["gpt-5.5", "gpt-5.4", "gpt-5.3-codex"].includes(model)) {
+      return { id: model };
+    }
+    return undefined;
+  }),
+}));
 
 function makeAdapter(tag: string): UpstreamAdapter {
   return {
@@ -54,6 +68,12 @@ describe("UpstreamRouter", () => {
   it("auto-routes claude-* to anthropic", () => {
     expect(router.resolve("claude-3-5-sonnet-20241022").tag).toBe("anthropic");
     expect(router.resolve("claude-3-haiku-20240307").tag).toBe("anthropic");
+  });
+
+  it("routes configured Claude Desktop shell aliases to codex before claude auto-routing", () => {
+    expect(router.resolveMatch("claude-opus-4-7").kind).toBe("codex");
+    expect(router.resolveMatch("claude-sonnet-4-6").kind).toBe("codex");
+    expect(router.resolveMatch("claude-haiku-4-5").kind).toBe("codex");
   });
 
   it("auto-routes gemini-* to gemini", () => {

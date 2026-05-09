@@ -5,9 +5,10 @@
  *   0. ApiKeyPool entry matching the exact model name
  *   1. Explicit provider prefix: "openai:gpt-4o", "anthropic:claude-3-5-sonnet"
  *   2. model_routing config table: { "deepseek-chat": "deepseek" }
- *   3. Custom provider `models` list
- *   4. Built-in name pattern rules: "claude-*" → anthropic, "gemini-*" → gemini
- *   5. Default (codex)
+ *   3. Known Codex model IDs and aliases
+ *   4. Custom provider `models` list
+ *   5. Built-in name pattern rules: "claude-*" → anthropic, "gemini-*" → gemini
+ *   6. Default (codex)
  */
 
 import type { UpstreamAdapter } from "./upstream-adapter.js";
@@ -79,15 +80,15 @@ export class UpstreamRouter {
       if (adapter) return { kind: routedTag === this.defaultTag ? "codex" : "adapter", adapter };
     }
 
+    if (this.isKnownCodexModel(model)) {
+      return { kind: "codex" };
+    }
+
     if (/^claude/i.test(model) && this.adapters.has("anthropic")) {
       return { kind: "adapter", adapter: this.adapters.get("anthropic")! };
     }
     if (/^gemini/i.test(model) && this.adapters.has("gemini")) {
       return { kind: "adapter", adapter: this.adapters.get("gemini")! };
-    }
-
-    if (this.isKnownCodexModel(model)) {
-      return { kind: "codex" };
     }
 
     return { kind: "not-found" };

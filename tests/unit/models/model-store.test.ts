@@ -107,6 +107,9 @@ models:
 aliases:
   codex: "gpt-5.4"
   codex-mini: "gpt-5.3-codex-spark"
+  claude-opus-4-7: "gpt-5.5"
+  claude-sonnet-4-6: "gpt-5.4"
+  claude-haiku-4-5: "gpt-5.3-codex"
 `;
 
 describe("ModelStore", () => {
@@ -126,12 +129,21 @@ describe("ModelStore", () => {
       const aliases = getModelAliases();
       expect(aliases["codex"]).toBe("gpt-5.4");
       expect(aliases["codex-mini"]).toBe("gpt-5.3-codex-spark");
+      expect(aliases["claude-opus-4-7"]).toBe("gpt-5.5");
+      expect(aliases["claude-sonnet-4-6"]).toBe("gpt-5.4");
+      expect(aliases["claude-haiku-4-5"]).toBe("gpt-5.3-codex");
     });
   });
 
   describe("resolveModelId", () => {
     it("resolves alias to model ID", () => {
       expect(resolveModelId("codex")).toBe("gpt-5.4");
+    });
+
+    it("resolves Claude Desktop shell aliases to Codex model IDs", () => {
+      expect(resolveModelId("claude-opus-4-7")).toBe("gpt-5.5");
+      expect(resolveModelId("claude-sonnet-4-6")).toBe("gpt-5.4");
+      expect(resolveModelId("claude-haiku-4-5")).toBe("gpt-5.3-codex");
     });
 
     it("returns known model ID as-is", () => {

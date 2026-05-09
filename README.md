@@ -275,7 +275,7 @@ claude
 
 > 控制面板的 **Anthropic SDK Setup** 卡片可一键复制环境变量（含 Opus / Sonnet / Haiku 层级模型配置）。
 >
-> 推荐模型：Opus → `gpt-5.4`，Sonnet → `gpt-5.3-codex`，Haiku → `gpt-5.4-mini`。
+> 推荐模型：Opus → `gpt-5.5`，Sonnet → `gpt-5.4`，Haiku → `gpt-5.3-codex`。
 >
 > ⚠️ 配置不生效？请参考 **[Claude Code 配置避坑指南](.github/guides/claude-code-setup.md)**（AUTH_TOKEN 劫持、API Key 黑名单等常见问题）。
 
@@ -306,21 +306,30 @@ model_provider = "proxy_codex"
 3. **填写配置**：
    - **Endpoint**: `http://127.0.0.1:8080`
    - **API Key**: 你的 API Key
-   - **Model**: `gpt-5.4` (或 `anthropic/claude-3-5-sonnet-20241022` 这种 Anthropic 格式 ID)
+   - **Model**: `claude-opus-4-7` / `claude-sonnet-4-6` / `claude-haiku-4-5`
 
 > 或手动修改配置文件（Windows 下路径通常在 `%APPDATA%\Claude-3p\configLibrary\` 目录下的 JSON 文件，Mac 为 `~/Library/Application Support/Claude-3p/configLibrary/`），添加如下字段：
 ```json
  {
+   "disableDeploymentModeChooser": true,
    "inferenceProvider": "gateway",
    "inferenceGatewayBaseUrl": "http://127.0.0.1:8080",
    "inferenceGatewayApiKey": "your-api-key",
    "inferenceGatewayAuthScheme": "bearer",
    "inferenceModels": [
-     { "name": "gpt-5.4" },
-     { "name": "gpt-5.3-codex" },
-     { "name": "gpt-5.4-mini" }
+     "claude-opus-4-7",
+     "claude-sonnet-4-6",
+     "claude-haiku-4-5"
    ]
  }
+```
+
+默认映射在 `config/models.yaml` 的 `aliases` 里，可自行改：
+```yaml
+aliases:
+  claude-opus-4-7: gpt-5.5
+  claude-sonnet-4-6: gpt-5.4
+  claude-haiku-4-5: gpt-5.3-codex
 ```
 
 > 💡 **排查提示 (Windows)**: 如果使用 `127.0.0.1` 时 Claude Desktop 提示 `ERR_CONNECTION_REFUSED`（而使用 `localhost` 提示 URL 格式错误），说明 Node.js 在你的系统上默认只绑定了 IPv6。请进入 Codex Proxy 控制面板的设置页面，将 **Host** 修改为 `127.0.0.1`，或在 `data/local.yaml` 中添加 `server: { host: "127.0.0.1" }` 后重启代理。
@@ -700,6 +709,7 @@ curl -X POST http://localhost:8080/auth/accounts/import \
 - 发版流程引入 `dev` 分支 + beta channel：`bump-electron-beta.yml` 在 dev push 时打 `vX.Y.Z-beta.SHA` tag 出预发布包；`promote-dev-to-master.yml` 每天 14:00 UTC 检查 dev soak ≥24h + CI 绿后 fast-forward 到 master，再由现有 `bump-electron.yml` 出 stable tag (`.github/workflows/`)
 - `update.allow_prerelease` 配置项（默认 `false`）：开启后本地 Electron 通过 electron-updater 接收 beta channel 推送的预发布版本，便于自己的安装实测 dev 改动 (`src/config-schema.ts`、`packages/electron/electron/auto-updater.ts`、`config/default.yaml`)
 - `config/models.yaml`: `gpt-5.5` (Plus-only general-purpose chat) and `gpt-image-2` (Plus-only image-generation backend) entered the static catalog
+- Claude Desktop shell model aliases: `claude-opus-4-7` → `gpt-5.5`, `claude-sonnet-4-6` → `gpt-5.4`, `claude-haiku-4-5` → `gpt-5.3-codex`; users can edit `config/models.yaml` aliases to remap them
 - `CodexModelInfo.outputModalities` optional field on the model catalog interface to flag image-gen models apart from chat models (`src/models/model-store.ts`, `BackendModelEntry.output_modalities` also added for backend passthrough). `/v1/models/catalog` defaults missing values to `["text"]` so API output matches the documented contract.
 - README 新增图像生成小节 + 模型表 Output 列；`API.md` / `API_CN.md` 补 `image_generation` 工具参数矩阵、事件流、编辑模式文档
 - ...（[查看全部](./CHANGELOG.md)）
