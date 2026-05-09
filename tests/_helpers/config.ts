@@ -85,6 +85,7 @@ export function createMockConfig(overrides?: MockConfigOverrides): AppConfig {
     },
     official_agent: {
       enabled: false,
+      api_key: null,
       app_server_url: "ws://127.0.0.1:4500",
       request_timeout_ms: 30000,
       auth: { type: "none" },

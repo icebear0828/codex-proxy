@@ -3,6 +3,7 @@ import { stream } from "hono/streaming";
 import { getUpdateState, checkForUpdate, isUpdateInProgress } from "../../update-checker.js";
 import { getProxyInfo, canSelfUpdate, checkProxySelfUpdate, applyProxySelfUpdate, isProxyUpdateInProgress, getCachedProxyUpdateResult, getDeployMode } from "../../self-update.js";
 import { isEmbedded } from "../../paths.js";
+import { getConfig } from "../../config.js";
 
 export function createUpdateRoutes(): Hono {
   const app = new Hono();
@@ -11,8 +12,13 @@ export function createUpdateRoutes(): Hono {
     const proxyInfo = getProxyInfo();
     const codexState = getUpdateState();
     const cached = getCachedProxyUpdateResult();
+    const config = getConfig();
+    const showUpdateDialog = config.update?.show_update_dialog ?? false;
 
     return c.json({
+      settings: {
+        show_update_dialog: showUpdateDialog,
+      },
       proxy: {
         version: proxyInfo.version,
         commit: proxyInfo.commit,

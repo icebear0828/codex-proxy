@@ -2,7 +2,8 @@
  * Usage Stats — time-series snapshot recording and aggregation.
  *
  * Records periodic snapshots of cumulative token usage across all accounts.
- * Snapshots are persisted to data/usage-history.json and pruned to 7 days.
+ * Snapshots are persisted to data/usage-history.json. Retention is
+ * configurable and defaults to unlimited.
  * Aggregation (delta computation, bucketing) happens on read.
  *
  * A "baseline" accumulates usage from accounts that have been removed or
@@ -17,6 +18,7 @@ import {
   mkdirSync,
 } from "fs";
 import { resolve, dirname } from "path";
+import { getConfig } from "../config.js";
 import { getDataDir } from "../paths.js";
 import type { AccountPool } from "./account-pool.js";
 
@@ -84,8 +86,10 @@ export interface UsageSummary {
 
 // ── Constants ──────────────────────────────────────────────────────
 
-const MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
 const HISTORY_FILE = "usage-history.json";
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+export type UsageHistoryRange = number | "all";
 
 // ── Persistence interface (injectable for testing) ─────────────────
 
@@ -286,11 +290,13 @@ export class UsageStatsStore {
       },
     });
 
-    // Prune old snapshots
-    const cutoff = Date.now() - MAX_AGE_MS;
-    this.snapshots = this.snapshots.filter(
-      (s) => new Date(s.timestamp).getTime() >= cutoff,
-    );
+    const retentionDays = getConfig().usage_stats.history_retention_days;
+    if (retentionDays !== null) {
+      const cutoff = Date.now() - retentionDays * DAY_MS;
+      this.snapshots = this.snapshots.filter(
+        (s) => new Date(s.timestamp).getTime() >= cutoff,
+      );
+    }
 
     this.persistence.save({ version: 1, snapshots: this.snapshots, baseline: this.baseline });
   }
@@ -315,17 +321,17 @@ export class UsageStatsStore {
 
   /**
    * Get usage history as delta data points, aggregated by granularity.
-   * @param hours - how many hours of history to return
+   * @param range - how many hours of history to return, or "all" retained history
    * @param granularity - "raw" | "five_min" | "hourly" | "daily"
    */
   getHistory(
-    hours: number,
+    range: UsageHistoryRange,
     granularity: "raw" | "five_min" | "hourly" | "daily",
   ): UsageDataPoint[] {
-    const cutoff = Date.now() - hours * 60 * 60 * 1000;
-    const filtered = this.snapshots.filter(
-      (s) => new Date(s.timestamp).getTime() >= cutoff,
-    );
+    const cutoff = range === "all" ? null : Date.now() - range * 60 * 60 * 1000;
+    const filtered = cutoff === null
+      ? this.snapshots
+      : this.snapshots.filter((s) => new Date(s.timestamp).getTime() >= cutoff);
 
     if (filtered.length < 2) return [];
 

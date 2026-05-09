@@ -95,6 +95,10 @@ export const ConfigSchema = z.object({
     capture_body: z.boolean().default(false),
     llm_only: z.boolean().default(true),
   }).default({}),
+  usage_stats: z.object({
+    /** null means keep usage history forever. */
+    history_retention_days: z.number().int().positive().nullable().default(null),
+  }).default({}),
   session: z.object({
     ttl_minutes: z.number().min(1).default(1440),
     cleanup_interval_minutes: z.number().min(1).default(5),
@@ -115,6 +119,7 @@ export const ConfigSchema = z.object({
   update: z.object({
     auto_update: z.boolean().default(true),
     auto_download: z.boolean().default(false),
+    show_update_dialog: z.boolean().default(false),
     allow_prerelease: z.boolean().default(false),
   }).default({}),
   /** WebSocket connection pool — pins same (entryId, conversationId) to the
@@ -140,6 +145,7 @@ export const ConfigSchema = z.object({
    * including the official Chrome/browser automation plugin. */
   official_agent: z.object({
     enabled: z.boolean().default(false),
+    api_key: z.string().trim().min(1).nullable().default(null),
     app_server_url: z.string().trim().refine(isWebSocketUrl, {
       message: "app_server_url must be a ws:// or wss:// URL",
     }).default("ws://127.0.0.1:4500"),

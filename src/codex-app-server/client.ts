@@ -5,6 +5,7 @@ import type {
   CodexAppNotification,
   CodexAppServerBridge,
   CodexAppServerClientOptions,
+  CodexAppTurnStreamEvent,
   JsonRpcFailure,
   JsonRpcIncoming,
   JsonRpcRequest,
@@ -115,6 +116,9 @@ export class CodexAppServerClient implements CodexAppServerBridge {
   private initialized = false;
   private readonly pending = new Map<number, PendingRequest>();
   private notifications = new AsyncNotificationQueue();
+  private connectPromise: Promise<void> | null = null;
+  private initializePromise: Promise<void> | null = null;
+  private turnTail: Promise<void> = Promise.resolve();
 
   constructor(options: CodexAppServerClientOptions) {
     this.options = options;
@@ -138,6 +142,27 @@ export class CodexAppServerClient implements CodexAppServerBridge {
       if (!notification) return;
       yield notification;
       if (isTerminalTurnNotification(notification.method)) return;
+    }
+  }
+
+  async *runTurn(params: StartTurnParams): AsyncIterable<CodexAppTurnStreamEvent> {
+    const previousTurn = this.turnTail.catch(() => undefined);
+    let releaseTurn: () => void = () => {};
+    const currentTurn = new Promise<void>((resolve) => {
+      releaseTurn = resolve;
+    });
+    this.turnTail = previousTurn.then(() => currentTurn);
+    await previousTurn;
+
+    try {
+      const notifications = this.notificationsUntilTurnCompleted();
+      const result = await this.startTurn(params);
+      yield { type: "result", result };
+      for await (const notification of notifications) {
+        yield { type: "notification", notification };
+      }
+    } finally {
+      releaseTurn();
     }
   }
 
@@ -213,12 +238,26 @@ export class CodexAppServerClient implements CodexAppServerBridge {
   private async ensureReady(): Promise<void> {
     await this.ensureConnected();
     if (this.initialized) return;
-    await this.requestRaw("initialize", {
-      clientInfo: this.options.clientInfo,
-      capabilities: { experimentalApi: true },
-    });
-    this.sendNotification("initialized");
-    this.initialized = true;
+    if (this.initializePromise) {
+      await this.initializePromise;
+      return;
+    }
+    const promise = (async () => {
+      await this.requestRaw("initialize", {
+        clientInfo: this.options.clientInfo,
+        capabilities: { experimentalApi: true },
+      });
+      this.sendNotification("initialized");
+      this.initialized = true;
+    })();
+    this.initializePromise = promise;
+    try {
+      await promise;
+    } finally {
+      if (this.initializePromise === promise) {
+        this.initializePromise = null;
+      }
+    }
   }
 
   private async requestRaw(method: string, params?: unknown): Promise<unknown> {
@@ -257,6 +296,10 @@ export class CodexAppServerClient implements CodexAppServerBridge {
 
   private async ensureConnected(): Promise<void> {
     if (this.ws && this.ws.readyState === WebSocket.OPEN) return;
+    if (this.connectPromise) {
+      await this.connectPromise;
+      return;
+    }
     const headers: Record<string, string> = {};
     const authorization = authHeader(this.options);
     if (authorization) headers.Authorization = authorization;
@@ -275,6 +318,8 @@ export class CodexAppServerClient implements CodexAppServerBridge {
       this.pending.clear();
       this.ws = null;
       this.initialized = false;
+      this.initializePromise = null;
+      this.connectPromise = null;
     });
     ws.on("error", (err) => {
       for (const [id, pending] of this.pending) {
@@ -284,7 +329,7 @@ export class CodexAppServerClient implements CodexAppServerBridge {
       this.pending.clear();
     });
 
-    await new Promise<void>((resolve, reject) => {
+    const promise = new Promise<void>((resolve, reject) => {
       const cleanup = () => {
         ws.off("open", onOpen);
         ws.off("error", onError);
@@ -306,6 +351,14 @@ export class CodexAppServerClient implements CodexAppServerBridge {
       ws.once("error", onError);
       ws.once("close", onClose);
     });
+    this.connectPromise = promise;
+    try {
+      await promise;
+    } finally {
+      if (this.connectPromise === promise) {
+        this.connectPromise = null;
+      }
+    }
   }
 
   private handleMessage(raw: string): void {

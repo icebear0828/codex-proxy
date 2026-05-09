@@ -1,9 +1,10 @@
+import { timingSafeEqual } from "crypto";
 import { Hono } from "hono";
 import { getConfig } from "../config.js";
 import { CodexAppServerClient } from "../codex-app-server/client.js";
 import type {
-  CodexAppNotification,
   CodexAppServerBridge,
+  OfficialAgentApprovalPolicy,
   StartThreadParams,
   StartTurnAppMention,
   StartTurnParams,
@@ -41,7 +42,9 @@ function errorBody(code: string, message: string): { error: { code: string; mess
 function isAuthorized(authHeader: string | undefined, expectedKey: string | null): boolean {
   if (!expectedKey) return false;
   const token = authHeader?.startsWith("Bearer ") ? authHeader.slice(7) : "";
-  return token === expectedKey;
+  const actual = Buffer.from(token);
+  const expected = Buffer.from(expectedKey);
+  return actual.length === expected.length && timingSafeEqual(actual, expected);
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -64,15 +67,33 @@ function parseAppMention(value: unknown): StartTurnAppMention | undefined {
   };
 }
 
-function parseStartTurn(threadId: string, body: unknown): StartTurnParams | null {
-  if (!isRecord(body) || typeof body.text !== "string" || body.text.trim() === "") return null;
-  return {
+const APPROVAL_POLICIES: readonly OfficialAgentApprovalPolicy[] = ["untrusted", "on-request", "on-failure", "never"];
+
+function isApprovalPolicy(value: string): value is OfficialAgentApprovalPolicy {
+  return APPROVAL_POLICIES.includes(value as OfficialAgentApprovalPolicy);
+}
+
+type ParseStartTurnResult =
+  | { ok: true; params: StartTurnParams }
+  | { ok: false; message: string };
+
+function parseStartTurn(threadId: string, body: unknown): ParseStartTurnResult {
+  if (!isRecord(body) || typeof body.text !== "string" || body.text.trim() === "") {
+    return { ok: false, message: "text is required" };
+  }
+  if (body.approvalPolicy !== undefined) {
+    if (typeof body.approvalPolicy !== "string" || !isApprovalPolicy(body.approvalPolicy)) {
+      return { ok: false, message: `approvalPolicy must be one of: ${APPROVAL_POLICIES.join(", ")}` };
+    }
+  }
+  const app = parseAppMention(body.app);
+  return { ok: true, params: {
     threadId,
     text: body.text,
     ...(typeof body.cwd === "string" ? { cwd: body.cwd } : {}),
-    ...(typeof body.approvalPolicy === "string" ? { approvalPolicy: body.approvalPolicy } : {}),
-    ...(parseAppMention(body.app) ? { app: parseAppMention(body.app) } : {}),
-  };
+    ...(body.approvalPolicy !== undefined ? { approvalPolicy: body.approvalPolicy } : {}),
+    ...(app ? { app } : {}),
+  } };
 }
 
 function encodeSse(event: string, data: unknown): string {
@@ -83,11 +104,12 @@ async function* turnEventStream(
   bridge: CodexAppServerBridge,
   params: StartTurnParams,
 ): AsyncGenerator<string> {
-  const notifications = bridge.notificationsUntilTurnCompleted();
-  const result = await bridge.startTurn(params);
-  yield encodeSse("official_agent.result", result);
-  for await (const notification of notifications) {
-    yield encodeSse(notification.method, notification);
+  for await (const event of bridge.runTurn(params)) {
+    if (event.type === "result") {
+      yield encodeSse("official_agent.result", event.result);
+    } else {
+      yield encodeSse(event.notification.method, event.notification);
+    }
   }
 }
 
@@ -100,13 +122,14 @@ export function createOfficialAgentRoutes(bridgeFactory: BridgeFactory = getShar
       c.status(503);
       return c.json(errorBody("official_agent_disabled", "Official Codex app-server bridge is disabled"));
     }
-    if (!config.server.proxy_api_key) {
+    const apiKey = config.official_agent.api_key;
+    if (!apiKey) {
       c.status(403);
-      return c.json(errorBody("official_agent_requires_api_key", "Official Codex app-server bridge requires server.proxy_api_key"));
+      return c.json(errorBody("official_agent_requires_api_key", "Official Codex app-server bridge requires official_agent.api_key"));
     }
-    if (!isAuthorized(c.req.header("Authorization"), config.server.proxy_api_key)) {
+    if (!isAuthorized(c.req.header("Authorization"), apiKey)) {
       c.status(401);
-      return c.json(errorBody("invalid_api_key", "Invalid proxy API key"));
+      return c.json(errorBody("invalid_api_key", "Invalid official-agent API key"));
     }
     await next();
   });
@@ -142,17 +165,17 @@ export function createOfficialAgentRoutes(bridgeFactory: BridgeFactory = getShar
       return c.json(errorBody("invalid_json", "Malformed JSON request body"));
     }
 
-    const params = parseStartTurn(c.req.param("threadId"), body);
-    if (!params) {
+    const parsed = parseStartTurn(c.req.param("threadId"), body);
+    if (!parsed.ok) {
       c.status(400);
-      return c.json(errorBody("invalid_request", "text is required"));
+      return c.json(errorBody("invalid_request", parsed.message));
     }
 
     const stream = new ReadableStream<Uint8Array>({
       async start(controller) {
         const encoder = new TextEncoder();
         try {
-          for await (const chunk of turnEventStream(bridgeFactory(), params)) {
+          for await (const chunk of turnEventStream(bridgeFactory(), parsed.params)) {
             controller.enqueue(encoder.encode(chunk));
           }
           controller.close();

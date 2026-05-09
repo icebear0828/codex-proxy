@@ -39,11 +39,13 @@ export interface StartTurnAppMention {
   name?: string;
 }
 
+export type OfficialAgentApprovalPolicy = "untrusted" | "on-request" | "on-failure" | "never";
+
 export interface StartTurnParams {
   threadId: string;
   text: string;
   cwd?: string;
-  approvalPolicy?: string;
+  approvalPolicy?: OfficialAgentApprovalPolicy;
   app?: StartTurnAppMention;
 }
 
@@ -52,11 +54,16 @@ export interface CodexAppNotification {
   params?: unknown;
 }
 
+export type CodexAppTurnStreamEvent =
+  | { type: "result"; result: unknown }
+  | { type: "notification"; notification: CodexAppNotification };
+
 export interface CodexAppServerBridge {
   listApps(params?: ListAppsParams): Promise<unknown>;
   startThread(params: StartThreadParams): Promise<unknown>;
   startTurn(params: StartTurnParams): Promise<unknown>;
   notificationsUntilTurnCompleted(): AsyncIterable<CodexAppNotification>;
+  runTurn(params: StartTurnParams): AsyncIterable<CodexAppTurnStreamEvent>;
   close(): Promise<void>;
 }
 

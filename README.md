@@ -512,7 +512,7 @@ for await (const chunk of stream) {
 | `quota` | `refresh_interval_minutes`, `warning_thresholds`, `skip_exhausted` | 用量快照、阈值配置与耗尽账号跳过 |
 | `session` | `ttl_minutes`, `cleanup_interval_minutes` | Dashboard session 管理 |
 | `ollama` | `enabled`, `host`, `port`, `version`, `disable_vision` | Ollama 兼容桥接 |
-| `official_agent` | `enabled`, `app_server_url`, `auth` | 官方 Codex app-server 桥接，用于复用 Chrome/browser 插件 |
+| `official_agent` | `enabled`, `api_key`, `app_server_url`, `auth` | 官方 Codex app-server 桥接，用于复用 Chrome/browser 插件 |
 
 ### 配额轮转
 
@@ -613,6 +613,7 @@ server:
 
 official_agent:
   enabled: true
+  api_key: "your-official-agent-key"
   app_server_url: ws://127.0.0.1:4500
   auth:
     type: none
@@ -634,6 +635,7 @@ server:
 
 official_agent:
   enabled: true
+  api_key: "your-official-agent-key"
   app_server_url: ws://127.0.0.1:4500
   auth:
     type: capability_token
@@ -644,12 +646,12 @@ official_agent:
 
 ```bash
 curl http://localhost:8080/official-agent/apps \
-  -H "Authorization: Bearer your-api-key"
+  -H "Authorization: Bearer your-official-agent-key"
 ```
 
 ```bash
 curl -N http://localhost:8080/official-agent/threads/{threadId}/turns \
-  -H "Authorization: Bearer your-api-key" \
+  -H "Authorization: Bearer your-official-agent-key" \
   -H "Content-Type: application/json" \
   -d '{"text":"Open localhost:8080 and inspect the dashboard","app":{"id":"chrome","name":"Chrome"}}'
 ```

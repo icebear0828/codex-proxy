@@ -12,12 +12,16 @@ export interface GeneralSettingsData {
   refresh_enabled: boolean;
   refresh_margin_seconds: number;
   refresh_concurrency: number;
+  max_concurrent_per_account: number | null;
+  request_interval_ms: number | null;
   auto_update: boolean;
   auto_download: boolean;
+  show_update_dialog: boolean;
   logs_enabled: boolean;
   logs_capacity: number;
   logs_capture_body: boolean;
   logs_llm_only: boolean;
+  usage_history_retention_days: number | null;
 }
 
 interface GeneralSettingsSaveResponse extends GeneralSettingsData {
@@ -74,12 +78,16 @@ export function useGeneralSettings(apiKey: string | null) {
         refresh_enabled: result.refresh_enabled,
         refresh_margin_seconds: result.refresh_margin_seconds,
         refresh_concurrency: result.refresh_concurrency,
+        max_concurrent_per_account: result.max_concurrent_per_account,
+        request_interval_ms: result.request_interval_ms,
         auto_update: result.auto_update,
         auto_download: result.auto_download,
+        show_update_dialog: result.show_update_dialog,
         logs_enabled: result.logs_enabled,
         logs_capacity: result.logs_capacity,
         logs_capture_body: result.logs_capture_body,
         logs_llm_only: result.logs_llm_only,
+        usage_history_retention_days: result.usage_history_retention_days,
       });
       setRestartRequired(result.restart_required);
       setSaved(true);

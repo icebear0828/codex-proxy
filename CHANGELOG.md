@@ -10,12 +10,14 @@
 
 ### Fixed
 
+- Official Codex app-server bridge 审计加固：首批并发请求现在复用同一个 WebSocket 连接与 `initialize` 流程，避免 CONNECTING 阶段重复建连/覆盖 `this.ws`；并发 turn SSE 改为串行执行，避免共享 notification queue 把 A/B 两个 turn 的 delta/completed 交叉发错；`/official-agent/*` 改用独立 `official_agent.api_key`，不再复用通用 `server.proxy_api_key`，并限制 `approvalPolicy` 只能是 `untrusted` / `on-request` / `on-failure` / `never`
 - 隐式续链反向校验缺失导致客户端持续看到上游 `invalid_request_error: No tool output found for function call call_X`：`evaluateImplicitResume` 此前只做 forward 检查（新输入里的 `function_call_output.call_id` 必须命中上一轮 stored function_call），漏了反向（上一轮 stored function_call 必须在新输入里有 output）。当上一轮模型并发吐 N 个 tool_use、客户端只回 N-1 个 tool_result 时，proxy 仍然 resume + `previous_response_id` 发出去，上游存的 context 里那个未回复的 function_call 触发 400。新增反向检查 → 走完整重放（`reason: "unanswered_tool_calls"`），同时 `error-classification.ts` 加 `isUnansweredFunctionCallError`，proxy-handler catch 块兜底：strip `previous_response_id` + 完整历史重放 + 同账号重试一次（与 `previous_response_not_found` 同款），避免 ws/sse 路径上的 400 静默吞掉变成 502
 - `codex-to-anthropic.ts` / `codex-to-openai.ts` / `codex-to-gemini.ts` 非流式 collect 路径里把上游错误事件抛成 `new Error(...)`，丢失 status 信息，handleNonStreaming 的 collectErr 再通过正则匹配 `HTTP/X.X NNN` 状态码必然失败 → 一律 502 兜底，客户端拿到的是模糊的 502 而不是上游真实的 400/429。改为统一 `codexApiErrorFromEvent(evt.error)` 抛 `CodexApiError(status, body)`，按 error code 映射到 400/401/402/403/429（默认 502）；handleNonStreaming 的 collectErr 也加一条 `instanceof CodexApiError` 分支直接透传 status，不再走正则降级
 - `streamResponse` 流式路径里上游错误此前只往 SSE 写一条 `stream_error` 事件、零日志，客户端能看到错误但 proxy `dev-YYYY-MM-DD.log` 里完全没记录，排查时无证据链。catch 块加 `console.warn` 打 `status / msg / body`，留下 call_id 等关键现场
 
 ### Changed
 
+- 更新提示默认不再弹窗：新增 `update.show_update_dialog`（默认 `false`），Dashboard 设置页可手动开启“显示更新弹窗”。Web 自更新弹窗与 Electron 自动更新的系统对话框都受该开关控制；更新检查和托盘/菜单入口仍保留，避免默认后台检查打断使用
 - `src/routes/api-keys.ts` 简化第三方 API key 绑定路由：合并 add/import 的重复 Zod schema，统一 JSON 解析与校验错误返回，复用按 `models` 展开写入的逻辑，并新增 `tests/unit/routes/api-keys.test.ts` 覆盖添加、导入、导出、custom provider 校验与批量删除，确保行为不变
 - README / README_EN 的 Codex CLI + Codex Desktop 两节示例从 `env_key = "PROXY_API_KEY"` 改成 `[model_providers.proxy_codex.http_headers]` 内嵌 `Authorization = "Bearer ..."`：原写法在 GUI 客户端启动时会因为 macOS / Windows GUI 进程不继承 shell rc 的环境变量而报 `Missing environment variable: PROXY_API_KEY`，普通用户得额外学 `launchctl setenv` 或 LaunchAgent 才能让 Codex Desktop 看到环境变量；http_headers 把 key 直接写在 config 文件里，重启 Codex 即用。`env_key` 写法作为「需要密钥从配置文件解耦」（多人共享 / 仓库提交）场景的备选保留在文档说明里
 

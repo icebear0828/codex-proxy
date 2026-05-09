@@ -4,6 +4,7 @@ import { createOfficialAgentRoutes } from "@src/routes/official-agent.js";
 import type {
   CodexAppServerBridge,
   CodexAppNotification,
+  CodexAppTurnStreamEvent,
   StartThreadParams,
   StartTurnParams,
 } from "@src/codex-app-server/types.js";
@@ -32,6 +33,16 @@ class FakeBridge implements CodexAppServerBridge {
       yield { method: "turn/completed", params: { turn: { id: "turn_1", status: "completed" } } };
     })();
   }
+
+  async *runTurn(params: StartTurnParams): AsyncIterable<CodexAppTurnStreamEvent> {
+    const result = await this.startTurn(params);
+    yield { type: "result", result };
+    for await (const notification of this.notificationsUntilTurnCompleted()) {
+      yield { type: "notification", notification };
+    }
+  }
+
+  async close(): Promise<void> {}
 }
 
 function makeApp(bridge: CodexAppServerBridge): Hono {
@@ -55,11 +66,11 @@ describe("official agent routes", () => {
     });
   });
 
-  it("requires proxy API key when configured", async () => {
+  it("requires official-agent API key when configured", async () => {
     setConfigForTesting(ConfigSchema.parse({
       api: {}, client: {}, model: {}, auth: {}, session: {},
       server: { proxy_api_key: "proxy-key" },
-      official_agent: { enabled: true },
+      official_agent: { enabled: true, api_key: "agent-key" },
     }));
 
     const res = await makeApp(new FakeBridge()).request("/official-agent/apps");
@@ -67,9 +78,9 @@ describe("official agent routes", () => {
     expect(res.status).toBe(401);
   });
 
-  it("rejects official agent requests when the proxy API key is not configured", async () => {
+  it("rejects official agent requests when the official-agent API key is not configured", async () => {
     setConfigForTesting(ConfigSchema.parse({
-      api: {}, client: {}, model: {}, auth: {}, server: { proxy_api_key: null }, session: {},
+      api: {}, client: {}, model: {}, auth: {}, server: { proxy_api_key: "proxy-key" }, session: {},
       official_agent: { enabled: true },
     }));
 
@@ -79,20 +90,34 @@ describe("official agent routes", () => {
     expect(await res.json()).toEqual({
       error: {
         code: "official_agent_requires_api_key",
-        message: "Official Codex app-server bridge requires server.proxy_api_key",
+        message: "Official Codex app-server bridge requires official_agent.api_key",
       },
     });
+  });
+
+  it("does not accept the general proxy API key for official-agent requests", async () => {
+    setConfigForTesting(ConfigSchema.parse({
+      api: {}, client: {}, model: {}, auth: {}, session: {},
+      server: { proxy_api_key: "proxy-key" },
+      official_agent: { enabled: true, api_key: "agent-key" },
+    }));
+
+    const res = await makeApp(new FakeBridge()).request("/official-agent/apps", {
+      headers: { Authorization: "Bearer proxy-key" },
+    });
+
+    expect(res.status).toBe(401);
   });
 
   it("lists apps through the app-server bridge", async () => {
     setConfigForTesting(ConfigSchema.parse({
       api: {}, client: {}, model: {}, auth: {}, session: {},
       server: { proxy_api_key: "proxy-key" },
-      official_agent: { enabled: true },
+      official_agent: { enabled: true, api_key: "agent-key" },
     }));
 
     const res = await makeApp(new FakeBridge()).request("/official-agent/apps", {
-      headers: { Authorization: "Bearer proxy-key" },
+      headers: { Authorization: "Bearer agent-key" },
     });
 
     expect(res.status).toBe(200);
@@ -106,13 +131,13 @@ describe("official agent routes", () => {
     setConfigForTesting(ConfigSchema.parse({
       api: {}, client: {}, model: {}, auth: {}, session: {},
       server: { proxy_api_key: "proxy-key" },
-      official_agent: { enabled: true },
+      official_agent: { enabled: true, api_key: "agent-key" },
     }));
 
     const res = await makeApp(new FakeBridge()).request("/official-agent/threads", {
       method: "POST",
       body: JSON.stringify({ model: "gpt-5.4" }),
-      headers: { "Content-Type": "application/json", Authorization: "Bearer proxy-key" },
+      headers: { "Content-Type": "application/json", Authorization: "Bearer agent-key" },
     });
 
     expect(res.status).toBe(200);
@@ -123,14 +148,14 @@ describe("official agent routes", () => {
     setConfigForTesting(ConfigSchema.parse({
       api: {}, client: {}, model: {}, auth: {}, session: {},
       server: { proxy_api_key: "proxy-key" },
-      official_agent: { enabled: true },
+      official_agent: { enabled: true, api_key: "agent-key" },
     }));
     const bridge = new FakeBridge();
 
     const res = await makeApp(bridge).request("/official-agent/threads/thr_54/turns", {
       method: "POST",
       body: JSON.stringify({ text: "Open the dashboard", app: { id: "chrome", name: "Chrome" } }),
-      headers: { "Content-Type": "application/json", Authorization: "Bearer proxy-key" },
+      headers: { "Content-Type": "application/json", Authorization: "Bearer agent-key" },
     });
 
     expect(res.status).toBe(200);
@@ -144,5 +169,29 @@ describe("official agent routes", () => {
     expect(body).toContain("event: official_agent.result");
     expect(body).toContain("event: item/agentMessage/delta");
     expect(body).toContain("event: turn/completed");
+  });
+
+  it("rejects unsupported approval policies", async () => {
+    setConfigForTesting(ConfigSchema.parse({
+      api: {}, client: {}, model: {}, auth: {}, session: {},
+      server: { proxy_api_key: "proxy-key" },
+      official_agent: { enabled: true, api_key: "agent-key" },
+    }));
+    const bridge = new FakeBridge();
+
+    const res = await makeApp(bridge).request("/official-agent/threads/thr_54/turns", {
+      method: "POST",
+      body: JSON.stringify({ text: "Open the dashboard", approvalPolicy: "always-approve" }),
+      headers: { "Content-Type": "application/json", Authorization: "Bearer agent-key" },
+    });
+
+    expect(res.status).toBe(400);
+    expect(await res.json()).toEqual({
+      error: {
+        code: "invalid_request",
+        message: "approvalPolicy must be one of: untrusted, on-request, on-failure, never",
+      },
+    });
+    expect(bridge.startedTurns).toEqual([]);
   });
 });

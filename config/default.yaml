@@ -34,6 +34,9 @@ logs:
   capacity: 2000
   capture_body: false
   llm_only: true
+usage_stats:
+  # null = keep usage history forever
+  history_retention_days: null
 session:
   ttl_minutes: 60
   cleanup_interval_minutes: 5
@@ -54,6 +57,7 @@ quota:
   skip_exhausted: true
 update:
   auto_update: true
+  show_update_dialog: false
   # allow_prerelease: false  # set true to receive beta builds (vX.Y.Z-beta.SHA) from the dev branch
 ollama:
   enabled: false
@@ -63,6 +67,7 @@ ollama:
   disable_vision: false
 official_agent:
   enabled: false
+  api_key: null
   app_server_url: ws://127.0.0.1:4500
   request_timeout_ms: 30000
   auth:

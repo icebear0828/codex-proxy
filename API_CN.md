@@ -323,13 +323,17 @@ context 或 max-token 开关可用。
 插件能力，例如 Chrome/browser 插件。默认关闭：`official_agent.enabled:
 false`。
 
-以下端点强制要求 `server.proxy_api_key`；未配置 proxy API key 时，桥接会拒绝请求。
+以下端点强制要求独立的 `official_agent.api_key`；未配置该 key 时，桥接会拒绝请求。
+不要复用 `server.proxy_api_key`，因为该桥接可以驱动本机 app-server 插件和审批流程。
 
 | 方法 | 路径 | 说明 |
 |------|------|------|
 | GET | `/official-agent/apps` | 通过 `app/list` 列出官方 Codex apps/connectors |
 | POST | `/official-agent/threads` | 创建 app-server thread（`{ model?, cwd? }`） |
 | POST | `/official-agent/threads/:threadId/turns` | 发起 turn，并以 SSE 流式返回 app-server notifications |
+
+turn 请求里的 `approvalPolicy` 如需传入，只允许 `untrusted`、`on-request`、
+`on-failure`、`never`。
 
 使用官方 Chrome app mention 的请求示例：
 

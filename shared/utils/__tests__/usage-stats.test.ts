@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { formatHitRate, formatUsageNumber, sumWindow } from "../usage-stats";
+import { formatHitRate, formatUsageNumber, sumUsageWindow, sumWindow } from "../usage-stats";
 import type { UsageDataPoint } from "../../hooks/use-usage-stats";
 
 const point = (overrides: Partial<UsageDataPoint> = {}): UsageDataPoint => ({
@@ -57,5 +57,43 @@ describe("sumWindow", () => {
 
   it("returns zeros for empty input", () => {
     expect(sumWindow([])).toEqual({ cached: 0, input: 0 });
+  });
+});
+
+describe("sumUsageWindow", () => {
+  it("sums every usage metric across points", () => {
+    const r = sumUsageWindow([
+      point({
+        input_tokens: 1000,
+        output_tokens: 200,
+        cached_tokens: 300,
+        image_input_tokens: 10,
+        image_output_tokens: 20,
+        image_request_count: 1,
+        image_request_failed_count: 0,
+        request_count: 2,
+      }),
+      point({
+        input_tokens: 2000,
+        output_tokens: 500,
+        cached_tokens: 900,
+        image_input_tokens: 30,
+        image_output_tokens: 40,
+        image_request_count: 2,
+        image_request_failed_count: 1,
+        request_count: 5,
+      }),
+    ]);
+
+    expect(r).toEqual({
+      input_tokens: 3000,
+      output_tokens: 700,
+      cached_tokens: 1200,
+      image_input_tokens: 40,
+      image_output_tokens: 60,
+      image_request_count: 3,
+      image_request_failed_count: 1,
+      request_count: 7,
+    });
   });
 });

@@ -22,7 +22,7 @@ function isHttps(c: Context): boolean {
 }
 
 /** Paths that are always allowed through without dashboard session. */
-const ALLOWED_PREFIXES = ["/assets/", "/v1/", "/v1beta/"];
+const ALLOWED_PREFIXES = ["/assets/", "/v1/", "/v1beta/", "/official-agent/"];
 const ALLOWED_EXACT = new Set([
   "/health",
   "/auth/dashboard-login",

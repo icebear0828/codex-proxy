@@ -376,14 +376,19 @@ Optional bridge to a local official `codex app-server` instance. This is the
 path for using official Codex app plugins such as the Chrome/browser plugin.
 It is disabled by default with `official_agent.enabled: false`.
 
-All endpoints require `server.proxy_api_key`; the bridge refuses requests when
-the proxy API key is not configured.
+All endpoints require `official_agent.api_key`; the bridge refuses requests
+when the dedicated official-agent API key is not configured. Do not reuse
+`server.proxy_api_key` here, because this bridge can drive local app-server
+plugins and approval flows.
 
 | Method | Path | Purpose |
 |--------|------|---------|
 | GET | `/official-agent/apps` | List official Codex apps/connectors from `app/list` |
 | POST | `/official-agent/threads` | Start an app-server thread (`{ model?, cwd? }`) |
 | POST | `/official-agent/threads/:threadId/turns` | Start a turn and stream app-server notifications as SSE |
+
+`approvalPolicy`, when provided on a turn, must be one of `untrusted`,
+`on-request`, `on-failure`, or `never`.
 
 Example turn using an official Chrome app mention:
 
