@@ -2,6 +2,51 @@ import { z } from "zod";
 
 export const ROTATION_STRATEGIES = ["least_used", "round_robin", "sticky"] as const;
 
+// Note: discriminatedUnion does not accept ZodEffects branches, so the
+// presence-of-secret-material checks are applied at the union level via
+// superRefine rather than per-branch.
+const OfficialAgentAuthSchema = z.discriminatedUnion("type", [
+  z.object({ type: z.literal("none") }),
+  z.object({
+    type: z.literal("capability_token"),
+    token: z.string().trim().min(1).optional(),
+    token_file: z.string().trim().min(1).optional(),
+  }),
+  z.object({
+    type: z.literal("signed_bearer_token"),
+    shared_secret: z.string().trim().min(1).optional(),
+    shared_secret_file: z.string().trim().min(1).optional(),
+    issuer: z.string().trim().min(1).default("codex-proxy"),
+    audience: z.string().trim().min(1).default("codex-app-server"),
+    subject: z.string().trim().min(1).default("codex-proxy"),
+    ttl_seconds: z.number().int().min(30).max(3600).default(300),
+  }),
+]).superRefine((value, ctx) => {
+  if (value.type === "capability_token" && !value.token && !value.token_file) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: "capability_token auth requires token or token_file",
+      path: ["token"],
+    });
+  }
+  if (value.type === "signed_bearer_token" && !value.shared_secret && !value.shared_secret_file) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: "signed_bearer_token auth requires shared_secret or shared_secret_file",
+      path: ["shared_secret"],
+    });
+  }
+});
+
+function isWebSocketUrl(value: string): boolean {
+  try {
+    const url = new URL(value);
+    return url.protocol === "ws:" || url.protocol === "wss:";
+  } catch {
+    return false;
+  }
+}
+
 export const ConfigSchema = z.object({
   api: z.object({
     base_url: z.string().default("https://chatgpt.com/backend-api"),
@@ -90,6 +135,16 @@ export const ConfigSchema = z.object({
     port: z.number().min(1).max(65535).default(11434),
     version: z.string().trim().min(1).max(64).default("0.18.3"),
     disable_vision: z.boolean().default(false),
+  }).default({}),
+  /** Optional bridge to official local `codex app-server` for Codex app plugins,
+   * including the official Chrome/browser automation plugin. */
+  official_agent: z.object({
+    enabled: z.boolean().default(false),
+    app_server_url: z.string().trim().refine(isWebSocketUrl, {
+      message: "app_server_url must be a ws:// or wss:// URL",
+    }).default("ws://127.0.0.1:4500"),
+    request_timeout_ms: z.number().int().min(1000).max(300000).default(30000),
+    auth: OfficialAgentAuthSchema.default({ type: "none" }),
   }).default({}),
   /** Third-party API provider keys for multi-backend routing. */
   providers: z.object({

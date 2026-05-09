@@ -317,6 +317,32 @@ context 或 max-token 开关可用。
 | GET | `/debug/diagnostics` | 系统诊断信息（仅 localhost） |
 | GET | `/debug/models` | 模型存储内部状态 |
 
+## 官方 Codex App Server Bridge
+
+可选桥接到本机官方 `codex app-server`。这条路径用于复用官方 Codex app
+插件能力，例如 Chrome/browser 插件。默认关闭：`official_agent.enabled:
+false`。
+
+当配置了 `server.proxy_api_key` 时，以下端点同样要求 Codex Proxy API Key。
+
+| 方法 | 路径 | 说明 |
+|------|------|------|
+| GET | `/official-agent/apps` | 通过 `app/list` 列出官方 Codex apps/connectors |
+| POST | `/official-agent/threads` | 创建 app-server thread（`{ model?, cwd? }`） |
+| POST | `/official-agent/threads/:threadId/turns` | 发起 turn，并以 SSE 流式返回 app-server notifications |
+
+使用官方 Chrome app mention 的请求示例：
+
+```json
+{
+  "text": "Open localhost:8080 and inspect the dashboard",
+  "app": { "id": "chrome", "name": "Chrome" }
+}
+```
+
+桥接层会发送一个 text item 和一个 `path: "app://{id}"` 的 `mention`
+item。实际 app id 请先通过 `/official-agent/apps` 探测，不要默认硬编码。
+
 ### 更新
 
 | 方法 | 路径 | 说明 |

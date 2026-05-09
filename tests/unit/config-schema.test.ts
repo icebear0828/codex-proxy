@@ -52,6 +52,12 @@ describe("ConfigSchema", () => {
       version: "0.18.3",
       disable_vision: false,
     });
+    expect(result.official_agent).toEqual({
+      enabled: false,
+      app_server_url: "ws://127.0.0.1:4500",
+      request_timeout_ms: 30000,
+      auth: { type: "none" },
+    });
   });
 
   it("respects overridden values", () => {
@@ -71,6 +77,12 @@ describe("ConfigSchema", () => {
         port: 11435,
         version: "0.20.1",
         disable_vision: true,
+      },
+      official_agent: {
+        enabled: true,
+        app_server_url: "ws://127.0.0.1:4777",
+        request_timeout_ms: 5000,
+        auth: { type: "capability_token", token_file: "/tmp/codex-token" },
       },
     });
 
@@ -92,6 +104,33 @@ describe("ConfigSchema", () => {
       version: "0.20.1",
       disable_vision: true,
     });
+    expect(result.official_agent.enabled).toBe(true);
+    expect(result.official_agent.app_server_url).toBe("ws://127.0.0.1:4777");
+    expect(result.official_agent.auth).toEqual({ type: "capability_token", token_file: "/tmp/codex-token" });
+  });
+
+  it("rejects non-websocket official agent URLs", () => {
+    const result = ConfigSchema.safeParse({
+      api: {}, client: {}, model: {}, auth: {}, server: {}, session: {},
+      official_agent: { app_server_url: "http://127.0.0.1:4500" },
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it("requires official agent capability token material", () => {
+    const result = ConfigSchema.safeParse({
+      api: {}, client: {}, model: {}, auth: {}, server: {}, session: {},
+      official_agent: { auth: { type: "capability_token" } },
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it("requires official agent signed bearer secret material", () => {
+    const result = ConfigSchema.safeParse({
+      api: {}, client: {}, model: {}, auth: {}, server: {}, session: {},
+      official_agent: { auth: { type: "signed_bearer_token" } },
+    });
+    expect(result.success).toBe(false);
   });
 
   it("rejects port out of range", () => {

@@ -73,6 +73,7 @@ export class AccountLifecycle {
 
     const config = getConfig();
     const maxConcurrent = config.auth.max_concurrent_per_account ?? 3;
+    const skipExhausted = config.quota?.skip_exhausted === true;
     const excludeSet = options?.excludeIds?.length ? new Set(options.excludeIds) : null;
 
     const available = entries.filter(
@@ -80,7 +81,7 @@ export class AccountLifecycle {
         a.status === "active" &&
         this.slotCount(a.id) < maxConcurrent &&
         (!excludeSet || !excludeSet.has(a.id)) &&
-        (config.quota.skip_exhausted !== true || !hasReachedCachedQuota(a)),
+        (!skipExhausted || !hasReachedCachedQuota(a)),
     );
 
     if (available.length === 0) return null;
@@ -181,6 +182,7 @@ export class AccountLifecycle {
     const now = new Date();
     const config = getConfig();
     const maxConcurrent = config.auth.max_concurrent_per_account ?? 3;
+    const skipExhausted = config.quota?.skip_exhausted === true;
     const entries = this.registry.getAllEntries();
     for (const entry of entries) {
       this.registry.refreshStatus(entry, now);
@@ -191,7 +193,7 @@ export class AccountLifecycle {
         a.status === "active" &&
         this.slotCount(a.id) < maxConcurrent &&
         a.planType &&
-        (config.quota.skip_exhausted !== true || !hasReachedCachedQuota(a)),
+        (!skipExhausted || !hasReachedCachedQuota(a)),
     );
 
     const byPlan = new Map<string, AccountEntry[]>();
