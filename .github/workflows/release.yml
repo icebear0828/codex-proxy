@@ -116,10 +116,73 @@ jobs:
           # are detected as prerelease by electron-builder's semver suffix check.
           TAG="${{ inputs.tag || github.ref_name }}"
           VERSION="${TAG#v}"
+          # --publish never: build artifacts to release/ but don't upload yet.
+          # The Smoke step below gates the upload — better to ship nothing than
+          # ship a binary that crashes on startup (cf. v2.0.71/72 events bug).
           npx electron-builder --config electron-builder.yml \
             --${{ matrix.platform }} ${{ matrix.arch && format('--{0}', matrix.arch) || '' }} \
             --config.extraMetadata.version="$VERSION" \
-            --publish always
+            --publish never
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Install AppImage runtime (Linux only)
+        if: matrix.platform == 'linux'
+        run: |
+          sudo apt-get update -qq
+          # libfuse2 = AppImage runtime; xvfb = virtual display so the
+          # Electron renderer can spawn a window in a headless runner.
+          sudo apt-get install -y libfuse2 xvfb
+
+      - name: Smoke test packaged binary (${{ matrix.platform }}${{ matrix.arch && format('-{0}', matrix.arch) || '' }})
+        shell: bash
+        env:
+          RELEASE_DIR: packages/electron/release
+          MAC_ARCH: ${{ matrix.arch }}
+          SMOKE_LOG: ${{ runner.temp }}/electron-smoke.log
+        run: bash .github/scripts/electron-smoke.sh
+
+      - name: Upload smoke log on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: electron-smoke-${{ matrix.platform }}${{ matrix.arch && format('-{0}', matrix.arch) || '' }}-log
+          path: ${{ runner.temp }}/electron-smoke.log
+          if-no-files-found: ignore
+          retention-days: 7
+
+      - name: Upload artifacts to release (${{ matrix.platform }}${{ matrix.arch && format('-{0}', matrix.arch) || '' }})
+        # Only runs when smoke succeeded. Mirrors the build-mac-x64
+        # job's manual-upload pattern; replaces what `--publish always`
+        # used to do, but conditional on artifact actually working.
+        shell: bash
+        run: |
+          TAG="${{ inputs.tag || github.ref_name }}"
+          cd packages/electron/release
+          case "${{ matrix.platform }}" in
+            mac)
+              # arm64 only — x64 handled by build-mac-x64 job.
+              for f in *arm64* latest-mac.yml; do
+                [ -f "$f" ] || continue
+                echo "Uploading: $f"
+                gh release upload "$TAG" "$f" --clobber
+              done
+              ;;
+            linux)
+              for f in Codex-Proxy-*-linux* latest-linux.yml; do
+                [ -f "$f" ] || continue
+                echo "Uploading: $f"
+                gh release upload "$TAG" "$f" --clobber
+              done
+              ;;
+            win)
+              for f in Codex-Proxy-*-win* latest.yml; do
+                [ -f "$f" ] || continue
+                echo "Uploading: $f"
+                gh release upload "$TAG" "$f" --clobber
+              done
+              ;;
+          esac
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
@@ -205,6 +268,23 @@ jobs:
             --mac --x64 \
             --config.extraMetadata.version="$VERSION" \
             --publish never
+
+      - name: Smoke test packaged binary (mac-x64)
+        shell: bash
+        env:
+          RELEASE_DIR: packages/electron/release
+          MAC_ARCH: x64
+          SMOKE_LOG: ${{ runner.temp }}/electron-smoke.log
+        run: bash .github/scripts/electron-smoke.sh
+
+      - name: Upload smoke log on failure (mac-x64)
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: electron-smoke-mac-x64-log
+          path: ${{ runner.temp }}/electron-smoke.log
+          if-no-files-found: ignore
+          retention-days: 7
 
       - name: Upload x64 artifacts to release
         run: |
