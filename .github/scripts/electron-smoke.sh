@@ -57,12 +57,27 @@ case "$RUNNER_OS" in
     ;;
   macOS)
     ARCH="${MAC_ARCH:-arm64}"
-    APP="$(ls -d "$RELEASE_DIR"/mac-${ARCH}/*.app 2>/dev/null | head -1 || true)"
-    if [ -z "$APP" ] && [ "$ARCH" = "arm64" ]; then
-      # electron-builder uses bare 'mac/' for arm64 when only arm64 is built
-      APP="$(ls -d "$RELEASE_DIR"/mac/*.app 2>/dev/null | head -1 || true)"
+    # electron-builder's output directory depends on whether one or
+    # multiple archs were built in the same invocation. Single-arch
+    # builds (the build-mac-x64 job invokes `--mac --x64` alone) land
+    # in `release/mac/`; multi-arch matrix builds produce
+    # `release/mac-arm64/` and `release/mac-x64/`. Search both shapes
+    # before giving up.
+    CANDIDATES=(
+      "$RELEASE_DIR/mac-${ARCH}"
+      "$RELEASE_DIR/mac"
+    )
+    APP=""
+    for dir in "${CANDIDATES[@]}"; do
+      APP="$(ls -d "$dir"/*.app 2>/dev/null | head -1 || true)"
+      [ -n "$APP" ] && break
+    done
+    if [ -z "$APP" ]; then
+      echo "::warning::Looked for .app in: ${CANDIDATES[*]}"
+      echo "::warning::Contents of $RELEASE_DIR:"
+      ls -la "$RELEASE_DIR" 2>&1 || true
+      die "macOS .app ($ARCH) not found under $RELEASE_DIR"
     fi
-    [ -n "$APP" ] || die "macOS .app ($ARCH) not found under $RELEASE_DIR"
     APP_NAME="$(basename "$APP" .app)"
     BINARY="$APP/Contents/MacOS/$APP_NAME"
     [ -x "$BINARY" ] || die "Mac binary not executable: $BINARY"
