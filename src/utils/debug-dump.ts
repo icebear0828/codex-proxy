@@ -6,17 +6,22 @@
  * function in this module is a no-op and incurs zero overhead beyond a
  * boolean check.
  *
- * Output: a single JSONL file at `/tmp/codex-proxy-dump-<startupMs>.jsonl`,
- * one line per event, with `ts`, `kind`, and arbitrary payload fields. Path
- * is logged once at startup so users know where to look.
+ * Output: a single JSONL file under the OS temp dir
+ * (`os.tmpdir()/codex-proxy-dump-<startupMs>.jsonl`), one line per event,
+ * with `ts`, `kind`, and arbitrary payload fields. Path is logged once at
+ * startup so users know where to look. Resolved via `os.tmpdir()` so it
+ * works on Windows (where `/tmp` doesn't exist) without silently dropping
+ * every event into the catch-and-ignore branch.
  *
  * **Privacy warning:** the dump contains full request payloads (including
  * user prompts) and upstream response chunks. Treat the file as sensitive.
  */
 import * as fs from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 
 const ENABLED = !!process.env.CODEX_PROXY_DEBUG_DUMP;
-const DUMP_PATH = ENABLED ? `/tmp/codex-proxy-dump-${Date.now()}.jsonl` : null;
+const DUMP_PATH = ENABLED ? join(tmpdir(), `codex-proxy-dump-${Date.now()}.jsonl`) : null;
 let announced = false;
 
 export function debugDumpEnabled(): boolean {
