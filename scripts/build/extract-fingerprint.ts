@@ -19,7 +19,7 @@ import { execSync } from "child_process";
 import yaml from "js-yaml";
 import type { ExtractedFingerprint } from "./types.js";
 
-const ROOT = resolve(import.meta.dirname, "..");
+const ROOT = resolve(import.meta.dirname, "..", "..");
 const OUTPUT_PATH = resolve(ROOT, "data/extracted-fingerprint.json");
 const PROMPTS_DIR = resolve(ROOT, "data/extracted-prompts");
 const PATTERNS_PATH = resolve(ROOT, "config/extraction-patterns.yaml");
