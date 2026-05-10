@@ -18,7 +18,11 @@ export function computeVariantHash(
   tools: ReadonlyArray<unknown> | null | undefined,
 ): string {
   const instr = instructions ?? "";
-  const toolsJson = tools && tools.length > 0 ? JSON.stringify(tools) : "[]";
+  // NOTE: tool order matters by design — same set in different order yields
+  // different hashes. Upstream prompt cache hits on byte-stable prefixes, so
+  // tool reordering is a real cache miss. Translation layers must produce a
+  // deterministic order. See variant-hash.test.ts for the freeze contract.
+  const toolsJson = JSON.stringify(tools ?? []);
   return createHash("sha256")
     .update(instr)
     .update("\x00")

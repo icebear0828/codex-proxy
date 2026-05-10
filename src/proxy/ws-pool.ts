@@ -534,7 +534,7 @@ export interface WsPoolConfig {
 
 export const DEFAULT_WS_POOL_CONFIG: WsPoolConfig = {
   enabled: true,
-  maxAgeMs: 3_300_000, // 55 minutes (under server's 60-min hard cap)
+  maxAgeMs: 3_300_000, // 55 minutes (under server's 60-min hard cap). Mirrored in `IMPLICIT_RESUME_MAX_AGE_MS` (proxy-handler.ts) — keep them in sync.
   maxPerAccount: 8,
 };
 

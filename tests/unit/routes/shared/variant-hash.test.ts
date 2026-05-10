@@ -62,4 +62,29 @@ describe("computeVariantHash", () => {
     const tools = [{ type: "function", name: "read_file" }];
     expect(computeVariantHash(instr, tools)).toBe(computeVariantHash(instr, tools));
   });
+
+  it("freeze contract: tool array order matters — reordering same set yields a different hash", () => {
+    // 设计契约（不是 bug）：variantHash 字节级敏感。Upstream prompt cache
+    // 也字节级敏感（prefix 一变即 miss），所以 tool 顺序变化本来就该被视作
+    // 不同 variant。如果未来翻译层（anthropic-to-codex 等）引入非确定性的 tool
+    // 顺序（比如 `Object.values` over a `Map`），这条会立刻挂，提示要么稳住
+    // 翻译层输出顺序，要么在 computeVariantHash 内部做 canonicalize。
+    const a = [
+      { type: "function", name: "read_file" },
+      { type: "function", name: "write_file" },
+    ];
+    const b = [
+      { type: "function", name: "write_file" },
+      { type: "function", name: "read_file" },
+    ];
+    expect(computeVariantHash("system", a)).not.toBe(computeVariantHash("system", b));
+  });
+
+  it("freeze contract: per-tool field order matters — same key set in different order yields a different hash", () => {
+    // 同上：tool 对象内 key 顺序变化也算不同 variant。这是 JSON.stringify 的
+    // 自然语义（按 key 插入顺序输出），翻译层必须保证 key 顺序稳定。
+    const a = [{ type: "function", name: "read_file" }];
+    const b = [{ name: "read_file", type: "function" }];
+    expect(computeVariantHash("system", a)).not.toBe(computeVariantHash("system", b));
+  });
 });

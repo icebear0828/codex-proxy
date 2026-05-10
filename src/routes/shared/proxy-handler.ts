@@ -100,12 +100,13 @@ export interface FormatAdapter {
 const MAX_EMPTY_RETRIES = 2;
 
 /** Upper bound on how stale an implicit-resume `previous_response_id` may be.
- *  Aligned with the WS pool's `max_age_ms` (55 min, see `ws-pool.ts`): once the
- *  pool rotates the underlying connection, the upstream LB rehashes to a new
- *  backend and any prev id from the old connection is guaranteed not_found.
- *  Beyond this window reusing the id just costs one failed round-trip plus a
- *  strip-and-retry. Anthropic clients (Claude Code) hit this often because the
- *  protocol gives us no explicit prev id to anchor on. */
+ *  Must stay in sync with `DEFAULT_POOL_CONFIG.maxAgeMs` (3_300_000 ms) in
+ *  `src/proxy/ws-pool.ts`: once the pool rotates the underlying connection,
+ *  the upstream LB rehashes to a new backend and any prev id from the old
+ *  connection is guaranteed not_found. Beyond this window reusing the id just
+ *  costs one failed round-trip plus a strip-and-retry. Anthropic clients
+ *  (Claude Code) hit this often because the protocol gives us no explicit
+ *  prev id to anchor on. */
 const IMPLICIT_RESUME_MAX_AGE_MS = 55 * 60 * 1000;
 
 function normalizeInstructions(instructions: string | null | undefined): string {
@@ -801,6 +802,9 @@ export async function handleProxyRequest(
   }
 }
 
+// TODO: this signature has grown to 14 positional params with 7 trailing
+// optionals. Future work: refactor to an options object so adding a new
+// optional doesn't risk callers slotting it into the wrong position.
 async function handleNonStreaming(
   c: Context,
   accountPool: AccountPool,
