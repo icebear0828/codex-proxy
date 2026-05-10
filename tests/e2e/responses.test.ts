@@ -269,12 +269,41 @@ describe("E2E: POST /v1/responses", () => {
     expect(sent.instructions).toBe("");
   });
 
-  it("upstream 429: returns 429 with rate_limit_error", async () => {
+  // Streaming path: once the SSE response has been opened, upstream
+  // failures (incl. 429) cannot change the HTTP status. The proxy emits
+  // a `response.failed` SSE event with the structured error instead.
+  // See PR #466 (858fb7c).
+  it("upstream 429 in streaming mode: emits response.failed SSE event with rate_limit_error", async () => {
     setTransportPost(async () =>
       makeErrorTransportResponse(429, JSON.stringify({ detail: "Rate limited" })),
     );
 
     const res = await responsesRequest(defaultBody());
+    expect(res.status).toBe(200);
+    expect(res.headers.get("Content-Type")).toContain("text/event-stream");
+
+    const events = parseNamedSSE(await res.text());
+    const failed = events.find((e) => e.event === "response.failed");
+    expect(failed).toBeDefined();
+
+    const data = failed!.data as {
+      response: { status: string; error: { type: string; code: string; message: string } };
+      error: { type: string; code: string; message: string };
+    };
+    expect(data.response.status).toBe("failed");
+    expect(data.response.error.type).toBe("rate_limit_error");
+    expect(data.response.error.code).toBe("rate_limit_exceeded");
+    expect(data.error.type).toBe("rate_limit_error");
+  });
+
+  // Non-streaming path: upstream 429 still surfaces as HTTP 429 + JSON
+  // error body — no SSE involved, so the status code is preserved.
+  it("upstream 429 in non-streaming mode: returns HTTP 429 with rate_limit_error JSON", async () => {
+    setTransportPost(async () =>
+      makeErrorTransportResponse(429, JSON.stringify({ detail: "Rate limited" })),
+    );
+
+    const res = await responsesRequest(defaultBody({ stream: false }));
     expect(res.status).toBe(429);
 
     type ErrorResponse = {
