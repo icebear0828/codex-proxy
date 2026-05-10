@@ -24,6 +24,7 @@ import type { AccountPool } from "../../auth/account-pool.js";
 import type { CookieJar } from "../../proxy/cookie-jar.js";
 import type { ProxyPool } from "../../proxy/proxy-pool.js";
 import { withRetry } from "../../utils/retry.js";
+import { debugDump, debugDumpEnabled } from "../../utils/debug-dump.js";
 import { acquireAccount, releaseAccount } from "./account-acquisition.js";
 import { handleCodexApiError, toErrorStatus } from "./proxy-error-handler.js";
 import { isPreviousResponseNotFoundError, isUnansweredFunctionCallError } from "../../proxy/error-classification.js";
@@ -547,6 +548,17 @@ export async function handleProxyRequest(
       };
 
       const startMs = Date.now();
+      if (debugDumpEnabled()) {
+        debugDump("request", {
+          rid: requestId,
+          tag: fmt.tag,
+          entryId,
+          conv: chainConversationId ?? null,
+          implicitResumeActive,
+          resumeReason: resumeEval.active ? null : resumeEval.reason,
+          payload: req.codexRequest,
+        });
+      }
       const rawResponse = await withRetry(
         () => codexApi.createResponse(req.codexRequest, abortController.signal, applyRateLimits, buildPoolCtx()),
         { tag: fmt.tag },

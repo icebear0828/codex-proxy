@@ -8,6 +8,7 @@ import type { UpstreamAdapter } from "../../proxy/upstream-adapter.js";
 import { CodexApiError } from "../../proxy/codex-types.js";
 import type { FormatAdapter, ResponseMetadata, UsageHint } from "./proxy-handler.js";
 import type { UsageInfo } from "../../translation/codex-event-extractor.js";
+import { debugDump, debugDumpEnabled } from "../../utils/debug-dump.js";
 
 /** Minimal subset of Hono's StreamingApi that we actually use. */
 export interface StreamWriter {
@@ -124,6 +125,15 @@ export async function streamResponse(
       onResponseMetadata,
     )) {
       const chunkTrace = inspectStreamChunk(chunk);
+      if (debugDumpEnabled()) {
+        debugDump("upstream-chunk", {
+          rid: diagnostics?.requestId,
+          tag: diagnostics?.tag ?? adapter.tag,
+          event: chunkTrace.lastEvent,
+          terminal: chunkTrace.terminal,
+          chunk: chunk.length > 16_000 ? chunk.slice(0, 16_000) + "...<truncated>" : chunk,
+        });
+      }
       try {
         await s.write(chunk);
         applyWrittenChunkTrace(written, chunkTrace);
@@ -143,11 +153,33 @@ export async function streamResponse(
         return;
       }
     }
+    if (debugDumpEnabled()) {
+      debugDump("stream-finish", {
+        rid: diagnostics?.requestId,
+        tag: diagnostics?.tag ?? adapter.tag,
+        chunks: written.chunks,
+        bytes: written.bytes,
+        sawTerminal: written.sawTerminal,
+        lastEvent: written.lastEvent,
+      });
+    }
   } catch (err) {
     const errMsg = err instanceof Error ? err.message : "Stream interrupted";
     const errStatus = err instanceof CodexApiError ? err.status : "?";
     const errBody = err instanceof CodexApiError ? err.body : undefined;
     const responseStatus = streamErrorStatus(err);
+    if (debugDumpEnabled()) {
+      debugDump("stream-error", {
+        rid: diagnostics?.requestId,
+        tag: diagnostics?.tag ?? adapter.tag,
+        status: errStatus,
+        msg: errMsg,
+        body: errBody?.slice(0, 4000) ?? null,
+        chunks: written.chunks,
+        bytes: written.bytes,
+        sawTerminal: written.sawTerminal,
+      });
+    }
     console.warn(
       `[stream-error] rid=${formatDiagnosticValue(diagnostics?.requestId)}` +
         ` tag=${formatDiagnosticValue(diagnostics?.tag ?? adapter.tag)} model=${model}` +
