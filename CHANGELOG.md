@@ -8,6 +8,10 @@
 
 ## [Unreleased]
 
+### Added
+
+- 本地 uncaught error log（observability foundation，#480 PR-1）：进程级 `uncaughtException` / `unhandledRejection` 自动落盘到 `data/error-log.jsonl`，单 backup 滚动（默认 10MB → `error-log.1.jsonl`），`context` 经 `redactJson` 脱敏 token / cookie / api_key / oauth；新增 4 个 admin 端点 `/admin/error-logs`（按 `name + first stack frame` 聚合）/ `/admin/error-logs/raw`（裸 JSONL tail）/ `/admin/error-logs/count`（含 unread）/ `/admin/error-logs/seen`（推进读游标）/ `/admin/error-logs/report`（renderer / 外部 POST 上报）；`uncaughtException` 走 `setImmediate(throw)` 保留 Node 默认崩溃语义，不会静默吞掉 fatal；新增 schema 节 `observability: { local_error_log: bool=true, max_log_bytes: int=10485760 }`；前端 Errors tab + 浮起 badge 由 PR-2 跟进（`src/logs/error-log.ts`、`src/routes/admin/error-logs.ts`、`src/config-schema.ts`、`src/index.ts`、`tests/unit/logs/error-log.test.ts`、`tests/unit/routes/admin/error-logs.test.ts`）
+
 ### Fixed
 
 - Electron 端 WS transport 触发时抛 `Dynamic require of "events" is not supported`：`packages/electron/electron/build.mjs` 把 backend bundle 成 ESM `server.mjs` 时 esbuild 把 CJS `ws` 整个打进来，包内 `require("events")` / `require("https")` 等被改写成内部 `__require` shim；ESM 模块里 `require` 是 undefined，shim 走「typeof require === undefined」分支直接 throw。WS path 只有 `previous_response_id` 才走，#468 拆分 sub-agent prev_id 链后 WS 触发频率上来才暴露这个一直存在的 bundling bug。修复：build.mjs 给 ESM build 加 `banner.js` 注入 `import { createRequire } from "module"; const require = createRequire(import.meta.url);`，让 `__require` 命中真 `require` 路径，Node builtins 正常解析；新增 `packages/electron/__tests__/build.test.ts` 中 banner 回归断言（`packages/electron/electron/build.mjs`、`packages/electron/__tests__/build.test.ts`、`src/proxy/ws-transport.ts` 注释订正）

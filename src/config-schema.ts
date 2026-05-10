@@ -95,6 +95,12 @@ export const ConfigSchema = z.object({
     capture_body: z.boolean().default(false),
     llm_only: z.boolean().default(true),
   }).default({}),
+  // Local observability (no third-party SaaS). v1 ships a local
+  // uncaught-error log; future iterations may add remote upload here.
+  observability: z.object({
+    local_error_log: z.boolean().default(true),
+    max_log_bytes: z.number().int().min(1024).default(10 * 1024 * 1024),
+  }).default({}),
   usage_stats: z.object({
     /** null means keep usage history forever. */
     history_retention_days: z.number().int().positive().nullable().default(null),

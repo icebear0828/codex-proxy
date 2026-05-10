@@ -11,6 +11,7 @@ import { createSettingsRoutes } from "./admin/settings.js";
 import { createOllamaAdminRoutes } from "./admin/ollama.js";
 import { createUsageStatsRoutes } from "./admin/usage-stats.js";
 import { createLogRoutes } from "./admin/logs.js";
+import { createErrorLogRoutes } from "./admin/error-logs.js";
 import type { UsageStatsStore } from "../auth/usage-stats.js";
 
 export function createWebRoutes(accountPool: AccountPool, usageStats: UsageStatsStore): Hono {
@@ -49,6 +50,7 @@ export function createWebRoutes(accountPool: AccountPool, usageStats: UsageStats
   app.route("/", createOllamaAdminRoutes());
   app.route("/", createUsageStatsRoutes(accountPool, usageStats));
   app.route("/", createLogRoutes());
+  app.route("/", createErrorLogRoutes());
 
   return app;
 }

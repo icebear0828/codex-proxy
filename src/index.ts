@@ -46,6 +46,7 @@ import { createApiKeyRoutes } from "./routes/api-keys.js";
 import { createAdapterForEntry } from "./proxy/adapter-factory.js";
 import { startOllamaBridge, stopOllamaBridge } from "./ollama/server.js";
 import { createOfficialAgentRoutes } from "./routes/official-agent.js";
+import { installUncaughtErrorHandlers } from "./logs/error-log.js";
 
 export interface ServerHandle {
   close: () => Promise<void>;
@@ -68,6 +69,11 @@ function urlHostForLocalRequest(host: string): string {
  * Throws on config errors instead of calling process.exit().
  */
 export async function startServer(options?: StartOptions): Promise<ServerHandle> {
+  // Funnel uncaught errors / unhandled rejections into the local
+  // error log before anything else can throw. Idempotent — Electron
+  // main may have already called this earlier.
+  installUncaughtErrorHandlers("server");
+
   // Load configuration
   console.log("[Init] Loading configuration...");
   const config = loadConfig();
