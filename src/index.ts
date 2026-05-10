@@ -47,6 +47,7 @@ import { createAdapterForEntry } from "./proxy/adapter-factory.js";
 import { startOllamaBridge, stopOllamaBridge } from "./ollama/server.js";
 import { createOfficialAgentRoutes } from "./routes/official-agent.js";
 import { installUncaughtErrorHandlers } from "./logs/error-log.js";
+import { awaitServerListening } from "./utils/await-listening.js";
 
 export interface ServerHandle {
   close: () => Promise<void>;
@@ -249,6 +250,13 @@ export async function startServer(options?: StartOptions): Promise<ServerHandle>
     hostname: host,
     port,
   });
+
+  // `serve()` returns synchronously before `listen()` actually binds.
+  // Wait for the listening event (or surface bind errors as a real
+  // rejection of startServer) so callers' try/catch can react —
+  // notably main.ts's port-fallback path, which was getting bypassed
+  // because EADDRINUSE fired after `await startServer(...)` resolved.
+  await awaitServerListening(server);
 
   // Resolve actual port (may differ from requested when port=0)
   const addr = server.address();
