@@ -8,10 +8,13 @@
  *
  * Used when `previous_response_id` is present — HTTP SSE does not support it.
  *
- * The `ws` package is loaded lazily via dynamic import to avoid
- * "Dynamic require of 'events' is not supported" errors when the
- * backend is bundled as ESM for Electron (esbuild cannot convert
- * ws's CJS require chain to ESM statics).
+ * The `ws` package is loaded lazily via dynamic import so its heavy
+ * CJS init (Receiver/Sender/PerMessageDeflate) is deferred until the
+ * WS path is actually exercised. Note: esbuild still bundles ws into
+ * the ESM server bundle; that bundling is what makes the
+ * `createRequire` banner in packages/electron/electron/build.mjs
+ * load-bearing — without it, ws's `require("events")` etc. throw
+ * `Dynamic require of "X" is not supported` at runtime.
  */
 
 import type { CodexInputItem } from "./codex-api.js";

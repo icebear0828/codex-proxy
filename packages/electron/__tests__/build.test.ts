@@ -6,7 +6,7 @@
  */
 
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
-import { existsSync, rmSync, statSync } from "fs";
+import { existsSync, readFileSync, rmSync, statSync } from "fs";
 import { resolve } from "path";
 import { execFileSync } from "child_process";
 import { acquireElectronTestLock } from "./test-lock.js";
@@ -68,5 +68,18 @@ describe("electron build (esbuild)", () => {
     const mod = await import(serverMjs);
     expect(typeof mod.setPaths).toBe("function");
     expect(typeof mod.startServer).toBe("function");
+  });
+
+  // Regression: bundled CJS deps (e.g. `ws`) emit `__require("events")`
+  // calls. In an ESM .mjs module `require` is undefined, so without a
+  // banner that synthesizes one via `module.createRequire`, those calls
+  // throw `Dynamic require of "events" is not supported` the moment
+  // anything triggers the WS transport path. See build.mjs.
+  it("server.mjs banner exposes a real require so __require resolves Node builtins", () => {
+    buildOnce();
+    const serverMjs = resolve(DIST, "server.mjs");
+    const head = readFileSync(serverMjs, "utf-8").slice(0, 500);
+    expect(head).toContain('from "module"');
+    expect(head).toContain("createRequire");
   });
 });
