@@ -52,7 +52,7 @@ export interface ProxyRequest {
   isNewConversation?: boolean;
   /** True iff the request declared `tools: [{type: "image_generation"}]`.
    *  Used to attribute success/failure to the image_generation request counters
-   *  even when the upstream call fails before any SSE arrives. */
+   *  even when the upstream call fails before the first SSE event arrives. */
   expectsImageGen?: boolean;
 }
 
@@ -100,6 +100,42 @@ const MAX_EMPTY_RETRIES = 2;
 
 function normalizeInstructions(instructions: string | null | undefined): string {
   return instructions ?? "";
+}
+
+function nonEmptyString(value: string | null | undefined): string | null {
+  const trimmed = value?.trim();
+  return trimmed ? trimmed : null;
+}
+
+export interface PromptCacheIdentity {
+  promptCacheKey: string;
+  conversationId: string;
+  explicitPromptCacheKey: string | null;
+  clientConversationId: string | null;
+  derivedConversationId: string | null;
+}
+
+export function resolvePromptCacheIdentity(
+  codexRequest: CodexResponsesRequest,
+  clientConversationId?: string,
+  generateFallbackId: () => string = () => crypto.randomUUID(),
+): PromptCacheIdentity {
+  const explicitPromptCacheKey = nonEmptyString(codexRequest.prompt_cache_key);
+  const normalizedClientConversationId = nonEmptyString(clientConversationId);
+  const derivedConversationId = deriveStableConversationKey(codexRequest);
+  const promptCacheKey =
+    explicitPromptCacheKey ??
+    normalizedClientConversationId ??
+    derivedConversationId ??
+    generateFallbackId();
+
+  return {
+    promptCacheKey,
+    conversationId: promptCacheKey,
+    explicitPromptCacheKey,
+    clientConversationId: normalizedClientConversationId,
+    derivedConversationId,
+  };
 }
 
 /** Strip CodexApiError's "Codex API error (NNN): " prefix so log warns that
@@ -274,12 +310,13 @@ export async function handleProxyRequest(
   const originalUseWebSocket = req.codexRequest.useWebSocket;
   const currentInstructions = req.codexRequest.instructions;
   const explicitPrevRespId = req.codexRequest.previous_response_id;
-  const derivedConversationId = deriveStableConversationKey(req.codexRequest);
-  const promptCacheKey = derivedConversationId ?? req.clientConversationId ?? crypto.randomUUID();
+  const promptCacheIdentity = resolvePromptCacheIdentity(req.codexRequest, req.clientConversationId);
+  const promptCacheKey = promptCacheIdentity.promptCacheKey;
   const continuationInputStart = explicitPrevRespId ? 0 : getContinuationInputStartIndex(req.codexRequest.input);
   const explicitConversationId = explicitPrevRespId ? affinityMap.lookupConversationId(explicitPrevRespId) : null;
-  // effectiveConversationId: client explicit ID > content hash derived ID > promptCacheKey
-  const effectiveConversationId = req.clientConversationId || derivedConversationId || promptCacheKey;
+  // effectiveConversationId follows the same identity used by prompt_cache_key:
+  // explicit key > client session > content hash > random fallback.
+  const effectiveConversationId = promptCacheIdentity.conversationId;
   const chainConversationId = explicitConversationId ?? effectiveConversationId;
   const implicitPrevRespId =
     !explicitPrevRespId &&
@@ -306,9 +343,8 @@ export async function handleProxyRequest(
         ? affinityMap.lookup(implicitPrevRespId)
         : null;
 
-  // Conversation ID: inherit from previous response chain, or derive from
-  // content hash (enables cache hits across turns even without previous_response_id),
-  // or fall back to a random UUID.
+  // Conversation ID: honor explicit prompt_cache_key first, otherwise prefer
+  // client session IDs (Claude Code), then content hash, then random fallback.
   req.codexRequest.prompt_cache_key = promptCacheKey;
 
   // Turn state: sticky routing token from upstream, echoed back on subsequent requests

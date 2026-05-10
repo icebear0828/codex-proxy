@@ -1,9 +1,70 @@
 import { describe, it, expect } from "vitest";
 import { PreviousResponseWebSocketError } from "@src/proxy/codex-api.js";
+import type { CodexResponsesRequest } from "@src/proxy/codex-api.js";
 import {
+  resolvePromptCacheIdentity,
   shouldActivateImplicitResume,
   shouldReplayFullInputAfterImplicitResumeError,
 } from "@src/routes/shared/proxy-handler.js";
+
+function makeCodexRequest(overrides: Partial<CodexResponsesRequest> = {}): CodexResponsesRequest {
+  return {
+    model: "gpt-5.4",
+    input: [{ role: "user", content: "first message" }],
+    stream: true,
+    store: false,
+    instructions: "system prompt",
+    ...overrides,
+  };
+}
+
+describe("resolvePromptCacheIdentity", () => {
+  it("显式 prompt_cache_key 优先于 Claude Code session 和内容 hash", () => {
+    const result = resolvePromptCacheIdentity(
+      makeCodexRequest({ prompt_cache_key: " explicit-thread " }),
+      "claude-session",
+      () => "fallback-thread",
+    );
+
+    expect(result.promptCacheKey).toBe("explicit-thread");
+    expect(result.conversationId).toBe("explicit-thread");
+  });
+
+  it("Claude Code session id 优先于内容 hash，避免同 session 被首条消息拆成多个 key", () => {
+    const firstTurn = makeCodexRequest({
+      input: [{ role: "user", content: "first task" }],
+    });
+    const laterTurnWithDifferentAnchor = makeCodexRequest({
+      input: [
+        { role: "user", content: "different internal task" },
+        { role: "assistant", content: "ok" },
+        { role: "user", content: "continue" },
+      ],
+      tools: [{ type: "function", name: "read_file" }],
+    });
+
+    expect(resolvePromptCacheIdentity(firstTurn, "claude-session").promptCacheKey).toBe("claude-session");
+    expect(resolvePromptCacheIdentity(laterTurnWithDifferentAnchor, "claude-session").promptCacheKey).toBe("claude-session");
+  });
+
+  it("没有显式 key 或 session id 时回退到稳定内容 hash", () => {
+    const result = resolvePromptCacheIdentity(makeCodexRequest(), undefined, () => "fallback-thread");
+
+    expect(result.promptCacheKey).not.toBe("fallback-thread");
+    expect(result.promptCacheKey).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/);
+  });
+
+  it("空字符串 key/session 被忽略，避免退化成共享空会话", () => {
+    const result = resolvePromptCacheIdentity(
+      makeCodexRequest({ prompt_cache_key: " " }),
+      "",
+      () => "fallback-thread",
+    );
+
+    expect(result.promptCacheKey).not.toBe("");
+    expect(result.promptCacheKey).not.toBe("fallback-thread");
+  });
+});
 
 describe("shouldActivateImplicitResume", () => {
   it("同账号且 system 未变化时允许隐式续链", () => {

@@ -1,5 +1,10 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { Hono } from "hono";
+import type { CodexResponsesRequest } from "@src/proxy/codex-api.js";
+
+const mockState = vi.hoisted(() => ({
+  responseIdCount: 0,
+}));
 
 // ── Mocks ───────────────────────────────────────────────
 const mockConfig = {
@@ -74,15 +79,15 @@ vi.mock("@src/utils/retry.js", () => ({
 }));
 
 // Capture upstream requests
-let capturedCodexRequest: any = null;
+let capturedCodexRequest: CodexResponsesRequest | null = null;
 
 vi.mock("@src/proxy/codex-api.js", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@src/proxy/codex-api.js")>();
   return {
     ...actual,
     CodexApi: vi.fn().mockImplementation(() => ({
-      createResponse: vi.fn(async (req: any) => {
-        capturedCodexRequest = JSON.parse(JSON.stringify(req));
+      createResponse: vi.fn(async (req: CodexResponsesRequest) => {
+        capturedCodexRequest = structuredClone(req);
         return {
           status: 200,
           headers: new Headers({ "x-codex-turn-state": "turn-123" }),
@@ -92,14 +97,11 @@ vi.mock("@src/proxy/codex-api.js", async (importOriginal) => {
   };
 });
 
-// Use global to pass state into hoisted mocks safely
-globalThis.__mockResponseIdCount = 0;
-
 vi.mock("@src/translation/codex-to-openai.js", () => ({
   streamCodexToOpenAI: vi.fn(),
   collectCodexResponse: vi.fn(async (_api, _resp, _model, _wantReasoning, _tuple, usageHint, onMetadata) => {
-    (globalThis as any).__mockResponseIdCount++;
-    const id = `resp-${(globalThis as any).__mockResponseIdCount}`;
+    mockState.responseIdCount++;
+    const id = `resp-${mockState.responseIdCount}`;
     return {
       response: { id, choices: [{ message: { role: "assistant", content: "ok" } }] },
       usage: { input_tokens: 10, output_tokens: 5 },
@@ -111,8 +113,8 @@ vi.mock("@src/translation/codex-to-openai.js", () => ({
 vi.mock("@src/translation/codex-to-gemini.js", () => ({
   streamCodexToGemini: vi.fn(),
   collectCodexToGeminiResponse: vi.fn(async (_api, _resp, _model, _tuple) => {
-    (globalThis as any).__mockResponseIdCount++;
-    const id = `resp-${(globalThis as any).__mockResponseIdCount}`;
+    mockState.responseIdCount++;
+    const id = `resp-${mockState.responseIdCount}`;
     return {
       response: { candidates: [{ content: { parts: [{ text: "ok" }] } }] },
       usage: { input_tokens: 10, output_tokens: 5 },
@@ -132,6 +134,13 @@ import { getSessionAffinityMap } from "@src/auth/session-affinity.js";
 
 // ── Tests ───────────────────────────────────────────────────────────
 
+function getCapturedCodexRequest(): CodexResponsesRequest {
+  if (!capturedCodexRequest) {
+    throw new Error("Expected Codex request to be captured");
+  }
+  return capturedCodexRequest;
+}
+
 describe("Implicit Resume from Derived Key", () => {
   let pool: AccountPool;
   let chatApp: Hono;
@@ -140,7 +149,7 @@ describe("Implicit Resume from Derived Key", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     capturedCodexRequest = null;
-    (globalThis as any).__mockResponseIdCount = 0;
+    mockState.responseIdCount = 0;
     delete process.env.CODEX_JWT_TOKEN; // Prevent AccountPool from loading multiple accounts
     pool = new AccountPool();
     pool.addAccount("test-token-1");
@@ -165,9 +174,9 @@ describe("Implicit Resume from Derived Key", () => {
       }),
     });
     
-    expect(capturedCodexRequest).toBeDefined();
-    expect(capturedCodexRequest.previous_response_id).toBeUndefined(); // First turn, no implicit resume
-    const derivedKeyT1 = capturedCodexRequest.prompt_cache_key;
+    let captured = getCapturedCodexRequest();
+    expect(captured.previous_response_id).toBeUndefined(); // First turn, no implicit resume
+    const derivedKeyT1 = captured.prompt_cache_key;
     expect(derivedKeyT1).toBeDefined();
     
     // Turn 2
@@ -188,8 +197,9 @@ describe("Implicit Resume from Derived Key", () => {
     });
     
     // T2 should have triggered implicit resume
-    expect(capturedCodexRequest.previous_response_id).toBe("resp-1");
-    expect(capturedCodexRequest.input).toEqual([{ role: "user", content: "Hello again" }]);
+    captured = getCapturedCodexRequest();
+    expect(captured.previous_response_id).toBe("resp-1");
+    expect(captured.input).toEqual([{ role: "user", content: "Hello again" }]);
   });
 
   it("Test 1 & 2b: Chat endpoint uses client session via 'user' field if provided", async () => {
@@ -204,7 +214,7 @@ describe("Implicit Resume from Derived Key", () => {
       }),
     });
     expect(req1.status).toBe(200);
-    expect(capturedCodexRequest.prompt_cache_key).toBeDefined();
+    expect(getCapturedCodexRequest().prompt_cache_key).toBe(explicitUserId);
     
     // The chainConversationId used for affinity should be the client ID
     const affinityMap = getSessionAffinityMap();
@@ -223,7 +233,7 @@ describe("Implicit Resume from Derived Key", () => {
       }),
     });
     expect(req1.status).toBe(200);
-    expect(capturedCodexRequest.prompt_cache_key).toBeDefined();
+    expect(getCapturedCodexRequest().prompt_cache_key).toBe("gemini-test-session-id");
 
     const affinityMap = getSessionAffinityMap();
     expect(affinityMap.lookupConversationId("resp-1")).toBe("gemini-test-session-id");
@@ -241,7 +251,8 @@ describe("Implicit Resume from Derived Key", () => {
     expect(req1.status).toBe(200);
 
     // Derived key will be null for empty request, so promptCacheKey will be UUID
-    expect(capturedCodexRequest.prompt_cache_key).toBeDefined();
-    expect(capturedCodexRequest.prompt_cache_key.length).toBeGreaterThan(16); // UUID
+    const promptCacheKey = getCapturedCodexRequest().prompt_cache_key;
+    expect(promptCacheKey).toBeDefined();
+    expect(promptCacheKey?.length).toBeGreaterThan(16); // UUID
   });
 });
