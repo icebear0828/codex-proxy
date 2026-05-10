@@ -233,10 +233,13 @@ export function useAccounts() {
       return { success: false, added: 0, updated: 0, failed: 0, errors: ["Invalid JSON file"] };
     }
     // Support both { accounts: [...] } (export format) and raw array
+    const parsedObject = parsed && typeof parsed === "object"
+      ? parsed as { accounts?: unknown }
+      : null;
     const accounts = Array.isArray(parsed)
       ? parsed
-      : Array.isArray(parsed.accounts)
-        ? parsed.accounts
+      : Array.isArray(parsedObject?.accounts)
+        ? parsedObject.accounts
         : null;
     if (!accounts) {
       return { success: false, added: 0, updated: 0, failed: 0, errors: ["Invalid format: expected { accounts: [...] }"] };

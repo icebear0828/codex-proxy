@@ -8,6 +8,7 @@ import { ApiConfig } from "./ApiConfig";
 import { AnthropicSetup } from "./AnthropicSetup";
 import { CodeExamples } from "./CodeExamples";
 import { TestConnection } from "./TestConnection";
+import type { ModelFamily } from "../../../shared/hooks/use-status";
 
 interface SettingsTabProps {
   baseUrl: string;
@@ -15,11 +16,11 @@ interface SettingsTabProps {
   models: string[];
   selectedModel: string;
   onModelChange: (model: string) => void;
-  modelFamilies: Record<string, string[]>;
+  modelFamilies: ModelFamily[];
   selectedEffort: string;
   onEffortChange: (effort: string) => void;
-  selectedSpeed: string;
-  onSpeedChange: (speed: string) => void;
+  selectedSpeed: string | null;
+  onSpeedChange: (speed: string | null) => void;
 }
 
 export function SettingsTab(props: SettingsTabProps) {

@@ -108,7 +108,7 @@ describe("AccountList", () => {
 
   it("preserves expand-all preference when the filtered list still exceeds one page", async () => {
     localStorage.setItem(EXPAND_ALL_STORAGE_KEY, "true");
-    renderAccountList([...makeAccounts(12, "active"), makeAccounts(2, "expired")]);
+    renderAccountList([...makeAccounts(12, "active"), ...makeAccounts(2, "expired")]);
 
     fireEvent.change(screen.getByRole("combobox"), {
       target: { value: "active" },
