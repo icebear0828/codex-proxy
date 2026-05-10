@@ -356,7 +356,24 @@ jobs:
       - name: Generate release notes and publish
         run: |
           TAG="${{ steps.tag.outputs.name }}"
-          PREV_TAG=$(git tag --sort=-v:refname | grep '^v' | grep -v "^${TAG}$" | head -1)
+          # PREV_TAG must stay within the same channel (stable vs beta) or
+          # release notes get cross-channel bleed. Old logic took the
+          # numerically-highest other v-tag, which would pick a v2.1.0-beta.X
+          # left over from a test branch as "previous" when shipping v2.0.73,
+          # producing a 30-commit changelog spanning unrelated history.
+          if [[ "$TAG" == *-* ]]; then
+            # Current is a beta (has -suffix). Prefer another beta; fall
+            # back to the latest stable so the very first beta in a series
+            # still gets a sensible diff base.
+            PREV_TAG=$(git tag --sort=-v:refname | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+-' | grep -v "^${TAG}$" | head -1 || true)
+            if [ -z "$PREV_TAG" ]; then
+              PREV_TAG=$(git tag --sort=-v:refname | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | head -1 || true)
+            fi
+          else
+            # Current is stable. Compare only to other stables — never let
+            # a beta tag (which lives on its own ref) sneak in as PREV_TAG.
+            PREV_TAG=$(git tag --sort=-v:refname | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | grep -v "^${TAG}$" | head -1 || true)
+          fi
           if [ -z "$PREV_TAG" ]; then
             BODY="Initial release"
           else
