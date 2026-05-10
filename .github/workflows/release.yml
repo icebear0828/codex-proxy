@@ -158,6 +158,13 @@ jobs:
         shell: bash
         run: |
           TAG="${{ inputs.tag || github.ref_name }}"
+          # Ensure the GitHub Release exists. With --publish never above,
+          # electron-builder no longer creates it, so the first uploader
+          # to arrive needs to. `|| true` swallows the 422 that the
+          # concurrent matrix jobs hit when a peer wins the race.
+          IS_PRERELEASE=""
+          if [[ "$TAG" == *-* ]]; then IS_PRERELEASE="--prerelease"; fi
+          gh release create "$TAG" --title "$TAG" --notes "" --draft=false $IS_PRERELEASE 2>/dev/null || true
           cd packages/electron/release
           case "${{ matrix.platform }}" in
             mac)
@@ -289,6 +296,12 @@ jobs:
       - name: Upload x64 artifacts to release
         run: |
           TAG="${{ inputs.tag || github.ref_name }}"
+          # Same release-create safety net as the main build job —
+          # this job runs after `build` but if all 3 main matrix
+          # platforms failed smoke, the release wouldn't exist yet.
+          IS_PRERELEASE=""
+          if [[ "$TAG" == *-* ]]; then IS_PRERELEASE="--prerelease"; fi
+          gh release create "$TAG" --title "$TAG" --notes "" --draft=false $IS_PRERELEASE 2>/dev/null || true
           cd packages/electron/release
           for f in *; do
             [ -f "$f" ] || continue
