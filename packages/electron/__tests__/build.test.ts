@@ -82,4 +82,66 @@ describe("electron build (esbuild)", () => {
     expect(head).toContain('from "module"');
     expect(head).toContain("createRequire");
   });
+
+  // Runtime regression: the banner-string assertion above is necessary
+  // but not sufficient. esbuild could change `__require`'s shim shape,
+  // or `ws` could be replaced by another lazy-CJS dependency, and the
+  // banner check would still pass while the bundle explodes at runtime.
+  //
+  // The only way to be sure is to actually instantiate the bundled
+  // ws module so that ws/lib/websocket.js's `__require("events")` /
+  // `__require("https")` chain executes. If the banner is missing or
+  // broken, those throw `Dynamic require of "X" is not supported`.
+  //
+  // CRITICAL: this MUST run in a fresh Node subprocess, not in-process
+  // via vitest's `await import(...)`. vite-node injects a `require`
+  // into the ESM module scope, which masks the bug — the bundle that
+  // would crash inside Electron's real Node loader passes silently
+  // here. A `node --input-type=module` subprocess matches Electron's
+  // runtime semantics: globally-undefined `require`, `__require` shim
+  // is forced through its throwing branch unless the banner has
+  // already synthesized a real `require` via `module.createRequire`.
+  it("server.mjs loadWebSocketModule actually instantiates bundled ws under native Node", () => {
+    buildOnce();
+    const serverMjs = resolve(DIST, "server.mjs");
+
+    // The script imports the bundle and forces ws's lazy CJS factory
+    // to run. Stdout marker proves end-to-end success; any throw from
+    // the bundle surfaces as a non-zero exit + stderr.
+    const script = `
+      const mod = await import(${JSON.stringify(serverMjs)});
+      if (typeof mod.loadWebSocketModule !== "function") {
+        console.error("loadWebSocketModule export missing");
+        process.exit(2);
+      }
+      const WS = await mod.loadWebSocketModule();
+      if (typeof WS !== "function" || !/WebSocket$/.test(WS.name)) {
+        console.error("loadWebSocketModule did not return a WebSocket constructor (got: " + typeof WS + " " + (WS && WS.name) + ")");
+        process.exit(3);
+      }
+      console.log("OK:" + WS.name);
+    `;
+
+    let stdout = "";
+    let stderr = "";
+    let exitCode = 0;
+    try {
+      stdout = execFileSync(
+        "node",
+        ["--input-type=module", "-e", script],
+        { cwd: PKG_DIR, timeout: 30_000, encoding: "utf-8", stdio: ["ignore", "pipe", "pipe"] },
+      );
+    } catch (err: unknown) {
+      const e = err as { stdout?: string; stderr?: string; status?: number; message?: string };
+      stdout = e.stdout ?? "";
+      stderr = e.stderr ?? e.message ?? "";
+      exitCode = e.status ?? -1;
+    }
+
+    expect(stderr, `subprocess stderr:\n${stderr}\nstdout:\n${stdout}`).not.toMatch(
+      /Dynamic require of/,
+    );
+    expect(exitCode, `subprocess exited ${exitCode}\nstderr:\n${stderr}`).toBe(0);
+    expect(stdout.trim()).toMatch(/^OK:.*WebSocket$/);
+  });
 });

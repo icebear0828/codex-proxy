@@ -99,6 +99,14 @@ async function getWS(): Promise<typeof import("ws").default> {
   return _WS;
 }
 
+/**
+ * Public alias of `getWS` — exposes the lazy ws loader so the Electron
+ * bundle smoke test can force ws's CJS factory to run without spinning
+ * up the full server. Re-exported via packages/electron/src/electron-entry.ts;
+ * consumed by packages/electron/__tests__/build.test.ts.
+ */
+export const loadWebSocketModule = getWS;
+
 /** Flat WebSocket message format expected by the Codex backend. */
 export interface WsCreateRequest {
   type: "response.create";
