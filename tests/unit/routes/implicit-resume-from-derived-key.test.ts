@@ -239,6 +239,130 @@ describe("Implicit Resume from Derived Key", () => {
     expect(affinityMap.lookupConversationId("resp-1")).toBe("gemini-test-session-id");
   });
 
+  it("Test 5: variantHash 隔离 — 同 conv 不同 system → implicit resume 不复用主对话的 prev id", async () => {
+    const sessionId = "shared-session";
+
+    // 主对话第 1 轮：system A，留下 resp-1
+    await chatApp.request("/v1/chat/completions", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        model: "gpt-4",
+        user: sessionId,
+        messages: [
+          { role: "system", content: "You are MAIN." },
+          { role: "user", content: "hi" },
+        ],
+      }),
+    });
+    expect(getCapturedCodexRequest().previous_response_id).toBeUndefined();
+
+    // 子代理第 1 轮：同 sessionId，但 system 不同（→ variantHash 不同）。
+    // 即便走的是同一个 conv，也不应该错误地继承主对话的 resp-1。
+    capturedCodexRequest = null;
+    await chatApp.request("/v1/chat/completions", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        model: "gpt-4",
+        user: sessionId,
+        messages: [
+          { role: "system", content: "You are SUBAGENT." },
+          { role: "user", content: "hi" },
+          { role: "assistant", content: "ok" },
+          { role: "user", content: "next" },
+        ],
+      }),
+    });
+    expect(getCapturedCodexRequest().previous_response_id).toBeUndefined();
+
+    // 对照：再来一次同 system A 多轮 → 应仍然能 implicit resume 到 resp-1
+    capturedCodexRequest = null;
+    await chatApp.request("/v1/chat/completions", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        model: "gpt-4",
+        user: sessionId,
+        messages: [
+          { role: "system", content: "You are MAIN." },
+          { role: "user", content: "hi" },
+          { role: "assistant", content: "ok" },
+          { role: "user", content: "again" },
+        ],
+      }),
+    });
+    expect(getCapturedCodexRequest().previous_response_id).toBe("resp-1");
+  });
+
+  it("Test 6: 同 conv 同 variant 多轮 → 各 variant 有自己的 prev id 链", async () => {
+    const sessionId = "shared-session-2";
+
+    // 主对话 turn 1 → resp-1 (vh_main)
+    await chatApp.request("/v1/chat/completions", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        model: "gpt-4",
+        user: sessionId,
+        messages: [
+          { role: "system", content: "MAIN" },
+          { role: "user", content: "m1" },
+        ],
+      }),
+    });
+
+    // 子代理 turn 1 → resp-2 (vh_sub)
+    await chatApp.request("/v1/chat/completions", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        model: "gpt-4",
+        user: sessionId,
+        messages: [
+          { role: "system", content: "SUB" },
+          { role: "user", content: "s1" },
+        ],
+      }),
+    });
+
+    // 子代理 turn 2 → 应该续到 resp-2，而不是被主对话的 resp-1 污染
+    capturedCodexRequest = null;
+    await chatApp.request("/v1/chat/completions", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        model: "gpt-4",
+        user: sessionId,
+        messages: [
+          { role: "system", content: "SUB" },
+          { role: "user", content: "s1" },
+          { role: "assistant", content: "ok" },
+          { role: "user", content: "s2" },
+        ],
+      }),
+    });
+    expect(getCapturedCodexRequest().previous_response_id).toBe("resp-2");
+
+    // 主对话 turn 2 → 应该续到 resp-1
+    capturedCodexRequest = null;
+    await chatApp.request("/v1/chat/completions", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        model: "gpt-4",
+        user: sessionId,
+        messages: [
+          { role: "system", content: "MAIN" },
+          { role: "user", content: "m1" },
+          { role: "assistant", content: "ok" },
+          { role: "user", content: "m2" },
+        ],
+      }),
+    });
+    expect(getCapturedCodexRequest().previous_response_id).toBe("resp-1");
+  });
+
   it("Test 4: Empty requests do not crash and fallback to random UUID promptCacheKey", async () => {
     const req1 = await chatApp.request("/v1/chat/completions", {
       method: "POST",

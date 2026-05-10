@@ -36,6 +36,7 @@ import { getSessionAffinityMap, type SessionAffinityMap } from "../../auth/sessi
 import { enqueueLogEntry } from "../../logs/entry.js";
 import { randomUUID } from "crypto";
 import { deriveStableConversationKey } from "./stable-conversation-key.js";
+import { computeVariantHash } from "./variant-hash.js";
 import { getWsPool } from "../../proxy/ws-pool.js";
 import type { WsPoolContext } from "../../proxy/codex-api.js";
 
@@ -97,6 +98,15 @@ export interface FormatAdapter {
 }
 
 const MAX_EMPTY_RETRIES = 2;
+
+/** Upper bound on how stale an implicit-resume `previous_response_id` may be.
+ *  Aligned with the WS pool's `max_age_ms` (55 min, see `ws-pool.ts`): once the
+ *  pool rotates the underlying connection, the upstream LB rehashes to a new
+ *  backend and any prev id from the old connection is guaranteed not_found.
+ *  Beyond this window reusing the id just costs one failed round-trip plus a
+ *  strip-and-retry. Anthropic clients (Claude Code) hit this often because the
+ *  protocol gives us no explicit prev id to anchor on. */
+const IMPLICIT_RESUME_MAX_AGE_MS = 55 * 60 * 1000;
 
 function normalizeInstructions(instructions: string | null | undefined): string {
   return instructions ?? "";
@@ -318,11 +328,23 @@ export async function handleProxyRequest(
   // explicit key > client session > content hash > random fallback.
   const effectiveConversationId = promptCacheIdentity.conversationId;
   const chainConversationId = explicitConversationId ?? effectiveConversationId;
+  // Variant fingerprint isolates concurrent shapes of the same conversation
+  // (sub-agents, parallel tool calls) onto independent pool slots + prev_id
+  // chains. See `variant-hash.ts`. Cheap (sha256 over bytes already in memory)
+  // so we always compute it, even on routes that won't use it.
+  const variantHash = computeVariantHash(
+    req.codexRequest.instructions,
+    req.codexRequest.tools,
+  );
   const implicitPrevRespId =
     !explicitPrevRespId &&
     continuationInputStart > 0 &&
     effectiveConversationId
-      ? affinityMap.lookupLatestResponseIdByConversationId(effectiveConversationId)
+      ? affinityMap.lookupLatestResponseIdByConversationId(
+          effectiveConversationId,
+          IMPLICIT_RESUME_MAX_AGE_MS,
+          variantHash,
+        )
       : null;
   const prevRespId = explicitPrevRespId ?? implicitPrevRespId;
   const implicitStoredInstructions = implicitPrevRespId
@@ -456,7 +478,7 @@ export async function handleProxyRequest(
         ? (resumeEval.active ? "on" : `off:${resumeEval.reason}`)
         : null;
     console.log(
-      `[${fmt.tag}] Account ${entryId} | model=${req.model} | rid=${requestId.slice(0, 8)} conv=${convField} key=${keyField} prev=${prevField}` +
+      `[${fmt.tag}] Account ${entryId} | model=${req.model} | rid=${requestId.slice(0, 8)} conv=${convField} key=${keyField} vh=${variantHash} prev=${prevField}` +
       (resumeField ? ` resume=${resumeField}` : "") +
       ` | input_items=${inputItems} tools=${toolsCount} instr=${instrLen}B payload=${reqJson.length}B reasoning=[${reasoningField}]` +
       (prevRespId ? ` | affinity=${affinityHit ? "hit" : "miss"}` : ""),
@@ -489,7 +511,7 @@ export async function handleProxyRequest(
     if (!chainConversationId) return undefined;
     return {
       pool: getWsPool(),
-      poolKey: `${forEntryId}:${chainConversationId}`,
+      poolKey: `${forEntryId}:${chainConversationId}:${variantHash}`,
       entryId: forEntryId,
       onDecision: (decision) => {
         const ridShort = requestId.slice(0, 8);
@@ -577,6 +599,7 @@ export async function handleProxyRequest(
               req.codexRequest.instructions ?? undefined,
               usageInfo?.input_tokens,
               Array.from(responseFunctionCallIds),
+              variantHash,
             );
           };
           try {
@@ -657,6 +680,7 @@ export async function handleProxyRequest(
           codexApi = nextApi;
           if (!triedEntryIds.includes(nextEntryId)) triedEntryIds.push(nextEntryId);
         },
+        variantHash,
       );
     } catch (err) {
       if (!(err instanceof CodexApiError)) {
@@ -797,6 +821,7 @@ async function handleNonStreaming(
   restoreImplicitResumeRequest?: () => void,
   buildPoolCtx?: (forEntryId: string) => WsPoolContext | undefined,
   setActiveAccount?: (entryId: string, api: CodexApi) => void,
+  variantHash?: string,
 ): Promise<Response> {
   let currentEntryId = initialEntryId;
   let currentApi = initialApi;
@@ -826,6 +851,7 @@ async function handleNonStreaming(
           req.codexRequest.instructions ?? undefined,
           result.usage.input_tokens,
           Array.from(responseFunctionCallIds),
+          variantHash,
         );
       }
       if (result.usage) {

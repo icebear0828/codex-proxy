@@ -74,6 +74,76 @@ describe("SessionAffinityMap", () => {
     expect(map.lookupLatestResponseIdByConversationId("conv_other")).toBe("resp_3");
   });
 
+  it("ignores latest response older than maxAgeMs (upstream prompt-cache 已过期)", () => {
+    map = new SessionAffinityMap();
+    map.record("resp_old", "entry_1", "conv_same");
+
+    const start = Date.now();
+    while (Date.now() - start < 60) {
+      // busy wait — make resp_old > 50ms 老
+    }
+
+    // 不带 maxAgeMs 时仍按全局 TTL（4h）返回
+    expect(map.lookupLatestResponseIdByConversationId("conv_same")).toBe("resp_old");
+    // 带 maxAgeMs 时，超过阈值的响应被视作不可用
+    expect(map.lookupLatestResponseIdByConversationId("conv_same", 50)).toBeNull();
+  });
+
+  it("returns the most recent response within maxAgeMs window even when older entries exist", () => {
+    map = new SessionAffinityMap();
+    map.record("resp_old", "entry_1", "conv_same");
+
+    const start = Date.now();
+    while (Date.now() - start < 60) {
+      // busy wait
+    }
+
+    map.record("resp_new", "entry_1", "conv_same");
+    expect(map.lookupLatestResponseIdByConversationId("conv_same", 50)).toBe("resp_new");
+  });
+
+  it("isolates lookups by variantHash so subagent / 主对话 各自独立续链", () => {
+    map = new SessionAffinityMap();
+    map.record("resp_main_1", "entry_1", "conv_same", undefined, undefined, undefined, undefined, "vh_main");
+    map.record("resp_sub_1", "entry_1", "conv_same", undefined, undefined, undefined, undefined, "vh_sub");
+    map.record("resp_main_2", "entry_1", "conv_same", undefined, undefined, undefined, undefined, "vh_main");
+
+    expect(map.lookupLatestResponseIdByConversationId("conv_same", undefined, "vh_main")).toBe("resp_main_2");
+    expect(map.lookupLatestResponseIdByConversationId("conv_same", undefined, "vh_sub")).toBe("resp_sub_1");
+  });
+
+  it("variantHash 查询时跳过未携带 variantHash 的旧记录，避免跨 variant 污染", () => {
+    map = new SessionAffinityMap();
+    map.record("resp_legacy", "entry_1", "conv_same"); // 没传 variantHash
+    map.record("resp_tagged", "entry_1", "conv_same", undefined, undefined, undefined, undefined, "vh_main");
+
+    expect(map.lookupLatestResponseIdByConversationId("conv_same", undefined, "vh_main")).toBe("resp_tagged");
+    // 用一个未存在的 variantHash 查，不应回退到 legacy 记录
+    expect(map.lookupLatestResponseIdByConversationId("conv_same", undefined, "vh_other")).toBeNull();
+  });
+
+  it("不传 variantHash 时保持原行为（任意 variant 都参与匹配）", () => {
+    map = new SessionAffinityMap();
+    map.record("resp_a", "entry_1", "conv_same", undefined, undefined, undefined, undefined, "vh_a");
+    map.record("resp_b", "entry_1", "conv_same", undefined, undefined, undefined, undefined, "vh_b");
+
+    // 没传 variantHash → 跨 variant 选最新（兼容 [Responses] / [Chat] / [Gemini] 路径）
+    expect(map.lookupLatestResponseIdByConversationId("conv_same")).toBe("resp_b");
+  });
+
+  it("variantHash 与 maxAgeMs 共同作用：超龄即便 variantHash 匹配也不返回", () => {
+    map = new SessionAffinityMap();
+    map.record("resp_old_main", "entry_1", "conv_same", undefined, undefined, undefined, undefined, "vh_main");
+
+    const start = Date.now();
+    while (Date.now() - start < 60) {
+      // busy wait
+    }
+
+    expect(map.lookupLatestResponseIdByConversationId("conv_same", 50, "vh_main")).toBeNull();
+    expect(map.lookupLatestResponseIdByConversationId("conv_same", undefined, "vh_main")).toBe("resp_old_main");
+  });
+
   it("looks up the latest instructions by conversation ID", () => {
     map = new SessionAffinityMap();
     map.record("resp_1", "entry_1", "conv_same", undefined, "old instructions");
