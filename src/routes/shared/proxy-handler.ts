@@ -71,6 +71,7 @@ export interface FormatAdapter {
   formatNoAccount: () => unknown;
   format429: (message: string) => unknown;
   formatError: (status: number, message: string) => unknown;
+  formatStreamError?: (status: number, message: string) => string;
   streamTranslator: (
     api: UpstreamAdapter,
     response: Response,
@@ -230,6 +231,28 @@ function buildCodexApi(
   return new CodexApi(token, accountId, cookieJar, entryId, proxyUrl);
 }
 
+function canReturnStreamError(req: ProxyRequest, fmt: FormatAdapter): boolean {
+  return req.isStreaming && typeof fmt.formatStreamError === "function";
+}
+
+function streamErrorResponse(
+  c: Context,
+  fmt: FormatAdapter,
+  status: number,
+  message: string,
+): Response {
+  c.header("Content-Type", "text/event-stream");
+  c.header("Cache-Control", "no-cache");
+  c.header("Connection", "keep-alive");
+
+  return stream(c, async (s) => {
+    await s.write(
+      fmt.formatStreamError?.(status, message) ??
+        `data: ${JSON.stringify({ error: { message, type: "stream_error" } })}\n\n`,
+    );
+  });
+}
+
 export async function handleProxyRequest(
   c: Context,
   accountPool: AccountPool,
@@ -300,6 +323,14 @@ export async function handleProxyRequest(
   // Single acquire call — preferredEntryId is a hint, not a hard requirement
   const acquired = acquireAccount(accountPool, req.codexRequest.model, undefined, fmt.tag, preferredEntryId ?? undefined);
   if (!acquired) {
+    if (canReturnStreamError(req, fmt)) {
+      return streamErrorResponse(
+        c,
+        fmt,
+        fmt.noAccountStatus,
+        "No available accounts. All accounts are expired or rate-limited.",
+      );
+    }
     c.status(fmt.noAccountStatus);
     return c.json(fmt.formatNoAccount());
   }
@@ -496,7 +527,10 @@ export async function handleProxyRequest(
         const capturedApi = codexApi;
 
         return stream(c, async (s) => {
-          s.onAbort(() => abortController.abort());
+          s.onAbort(() => {
+            console.warn(`[stream-client-abort] rid=${requestId.slice(0, 8)} tag=${fmt.tag} model=${req.model}`);
+            abortController.abort();
+          });
           const recordStreamAffinity = (): void => {
             if (!capturedResponseId) return;
             affinityMap.record(
@@ -528,6 +562,7 @@ export async function handleProxyRequest(
                 }
                 recordStreamAffinity();
               },
+              { requestId: requestId.slice(0, 8), tag: fmt.tag },
             );
           } finally {
             abortController.abort();
@@ -642,6 +677,9 @@ export async function handleProxyRequest(
 
       if (decision.action === "respond") {
         releaseAccount(accountPool, entryId, annotateImageGenOutcome(undefined, req.expectsImageGen), released);
+        if (canReturnStreamError(req, fmt)) {
+          return streamErrorResponse(c, fmt, decision.status, decision.message);
+        }
         c.status(decision.status as StatusCode);
         return c.json(fmt.formatError(decision.status, decision.message));
       }
@@ -670,6 +708,9 @@ export async function handleProxyRequest(
           ? `All accounts exhausted (${parts.join(", ")}). ${decision.message}`
           : `No accounts available. ${decision.message}`;
         const status = decision.status as StatusCode;
+        if (canReturnStreamError(req, fmt)) {
+          return streamErrorResponse(c, fmt, status, detail);
+        }
         c.status(status);
         if (decision.useFormat429) {
           return c.json(fmt.format429(detail));
@@ -680,6 +721,9 @@ export async function handleProxyRequest(
       const retry = acquireAccount(accountPool, req.codexRequest.model, triedEntryIds, fmt.tag);
       if (!retry) {
         const status = decision.status as StatusCode;
+        if (canReturnStreamError(req, fmt)) {
+          return streamErrorResponse(c, fmt, status, decision.message);
+        }
         c.status(status);
         if (decision.useFormat429) {
           return c.json(fmt.format429(decision.message));
@@ -926,6 +970,9 @@ export async function handleDirectRequest(
     });
     if (err instanceof CodexApiError) {
       const code = toErrorStatus(err.status) as StatusCode;
+      if (canReturnStreamError(req, fmt)) {
+        return streamErrorResponse(c, fmt, code, err.message);
+      }
       c.status(code);
       // For API-key upstreams, forward the raw upstream error body transparently
       try {
@@ -939,6 +986,9 @@ export async function handleDirectRequest(
       }
       return c.json(fmt.formatError(code, err.message));
     }
+    if (canReturnStreamError(req, fmt)) {
+      return streamErrorResponse(c, fmt, 502, msg);
+    }
     c.status(502);
     return c.json(fmt.formatError(502, msg));
   }
@@ -949,8 +999,23 @@ export async function handleDirectRequest(
     c.header("Connection", "keep-alive");
 
     return stream(c, async (s) => {
-      s.onAbort(() => abortController.abort());
-      await streamResponse(s, upstream, rawResponse, req.model, fmt, () => {}, req.tupleSchema, () => {});
+      s.onAbort(() => {
+        console.warn(`[stream-client-abort] rid=${requestId.slice(0, 8)} tag=${fmt.tag} model=${req.model}`);
+        abortController.abort();
+      });
+      await streamResponse(
+        s,
+        upstream,
+        rawResponse,
+        req.model,
+        fmt,
+        () => {},
+        req.tupleSchema,
+        () => {},
+        undefined,
+        undefined,
+        { requestId: requestId.slice(0, 8), tag: fmt.tag },
+      );
     });
   }
 

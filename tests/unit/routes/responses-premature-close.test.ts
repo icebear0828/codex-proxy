@@ -29,7 +29,7 @@ vi.mock("@src/paths.js", () => ({
   STATE_DIR: "/tmp/codex-proxy-test",
 }));
 
-import { collectPassthrough } from "@src/routes/responses.js";
+import { collectPassthrough, streamPassthrough } from "@src/routes/responses.js";
 
 interface CodexSSEEvent {
   event: string;
@@ -46,6 +46,154 @@ function createMockApi(events: CodexSSEEvent[], throwAfter?: Error) {
     },
   };
 }
+
+function parseSSEEvents(text: string): Array<{ event: string; data: Record<string, unknown> }> {
+  return text
+    .trim()
+    .split("\n\n")
+    .filter(Boolean)
+    .map((block) => {
+      const lines = block.split("\n");
+      const eventLine = lines.find((line) => line.startsWith("event: "));
+      const dataLine = lines.find((line) => line.startsWith("data: "));
+      const data = dataLine ? JSON.parse(dataLine.slice("data: ".length)) as Record<string, unknown> : {};
+      return {
+        event: eventLine?.slice("event: ".length) ?? "",
+        data,
+      };
+    });
+}
+
+async function collectStreamEvents(events: CodexSSEEvent[], throwAfter?: Error) {
+  const api = createMockApi(events, throwAfter);
+  const chunks: string[] = [];
+  for await (const chunk of streamPassthrough(
+    api as never,
+    new Response("ok"),
+    "test-model",
+    () => {},
+    () => {},
+  )) {
+    chunks.push(chunk);
+  }
+  return parseSSEEvents(chunks.join(""));
+}
+
+describe("streamPassthrough premature close handling", () => {
+  it("emits response.failed when the stream ends before response.completed", async () => {
+    const events = await collectStreamEvents([
+      { event: "response.created", data: { response: { id: "resp_stream_1" } } },
+      { event: "response.output_text.delta", data: { delta: "partial text" } },
+    ]);
+
+    expect(events.map((event) => event.event)).toEqual([
+      "response.created",
+      "response.output_text.delta",
+      "response.failed",
+    ]);
+    const failed = events.at(-1);
+    expect(failed?.data).toMatchObject({
+      type: "response.failed",
+      response: {
+        id: "resp_stream_1",
+        status: "failed",
+        error: {
+          code: "stream_disconnected",
+          message: "Upstream stream closed before response.completed",
+        },
+      },
+      error: {
+        code: "stream_disconnected",
+        message: "Upstream stream closed before response.completed",
+      },
+    });
+  });
+
+  it("emits response.failed when parseStream throws before a terminal event", async () => {
+    const events = await collectStreamEvents(
+      [
+        { event: "response.created", data: { response: { id: "resp_stream_2" } } },
+      ],
+      new Error("WebSocket closed unexpectedly"),
+    );
+
+    const failed = events.at(-1);
+    expect(failed?.event).toBe("response.failed");
+    expect(failed?.data).toMatchObject({
+      response: {
+        id: "resp_stream_2",
+        status: "failed",
+      },
+      error: {
+        code: "stream_disconnected",
+        message: "Upstream stream closed before response.completed: WebSocket closed unexpectedly",
+      },
+    });
+  });
+
+  it("does not synthesize response.failed after response.completed", async () => {
+    const events = await collectStreamEvents([
+      { event: "response.created", data: { response: { id: "resp_stream_3" } } },
+      {
+        event: "response.completed",
+        data: {
+          response: {
+            id: "resp_stream_3",
+            output: [],
+            usage: { input_tokens: 10, output_tokens: 20 },
+          },
+        },
+      },
+    ]);
+
+    expect(events.map((event) => event.event)).toEqual([
+      "response.created",
+      "response.completed",
+    ]);
+  });
+
+  it("does not synthesize response.failed after upstream response.failed", async () => {
+    const events = await collectStreamEvents([
+      { event: "response.created", data: { response: { id: "resp_stream_4" } } },
+      {
+        event: "response.failed",
+        data: {
+          type: "response.failed",
+          response: {
+            id: "resp_stream_4",
+            status: "failed",
+            error: { code: "upstream_error", message: "failed upstream" },
+          },
+        },
+      },
+    ]);
+
+    expect(events.map((event) => event.event)).toEqual([
+      "response.created",
+      "response.failed",
+    ]);
+  });
+
+  it("propagates local callback errors instead of synthesizing response.failed", async () => {
+    const api = createMockApi([
+      { event: "response.created", data: { response: { id: "resp_callback" } } },
+    ]);
+
+    await expect((async () => {
+      for await (const _chunk of streamPassthrough(
+        api as never,
+        new Response("ok"),
+        "test-model",
+        () => {},
+        () => {
+          throw new Error("callback broke");
+        },
+      )) {
+        // Drain the generator.
+      }
+    })()).rejects.toThrow("callback broke");
+  });
+});
 
 describe("collectPassthrough premature close handling", () => {
   it("throws EmptyResponseError when stream ends normally without response.completed", async () => {

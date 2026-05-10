@@ -77,6 +77,10 @@ function classifyWsErrorEvent(msg: Record<string, unknown>): { status: number } 
   return status ? { status } : null;
 }
 
+function isTerminalWsEvent(type: string): boolean {
+  return type === "response.completed" || type === "response.failed" || type === "error";
+}
+
 /** Cached ws module — loaded once on first use. */
 let _WS: typeof import("ws").default | undefined;
 
@@ -298,6 +302,7 @@ async function openOneShotWs(
     // for a real first frame so we can detect early upstream errors and
     // route them through the existing CodexApiError → rotation path.
     let earlyDecisionMade = false;
+    let sawTerminalEvent = false;
 
     function closeStream() {
       if (!streamClosed && controller) {
@@ -400,7 +405,8 @@ async function openOneShotWs(
         controller!.enqueue(encoder.encode(sse));
 
         // Close stream after response.completed, response.failed, or error
-        if (type === "response.completed" || type === "response.failed" || type === "error") {
+        if (isTerminalWsEvent(type)) {
+          sawTerminalEvent = true;
           queueMicrotask(() => {
             closeStream();
             ws.close(1000);
@@ -432,6 +438,15 @@ async function openOneShotWs(
           `WebSocket closed before any data: code=${code}` +
             (reasonStr ? ` reason=${reasonStr}` : ""),
         ));
+        return;
+      }
+      if (earlyDecisionMade && !sawTerminalEvent) {
+        const reasonStr = reason && reason.length ? reason.toString("utf-8") : "";
+        errorStream(new Error(
+          `WebSocket closed before terminal event: code=${code}` +
+            (reasonStr ? ` reason=${reasonStr}` : ""),
+        ));
+        return;
       }
       closeStream();
     });

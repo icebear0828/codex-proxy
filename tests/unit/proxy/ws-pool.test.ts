@@ -139,6 +139,25 @@ describe("PersistentWs", () => {
     expect(text).toContain("event: response.completed");
   });
 
+  it("errors the response stream when the WS closes after first frame without terminal event", async () => {
+    const { ws, persistent, onDead } = newPersistentWs();
+    persistent.tryAcquire();
+    const promise = persistent.send({
+      request: { type: "response.create", model: "m", instructions: "", input: [] },
+      signal: undefined,
+      onRateLimits: undefined,
+      reused: false,
+    });
+    await nextTick();
+    ws.pushMessage({ type: "response.created", response: { id: "resp_mid" } });
+    const resp = await promise;
+    ws.pushClose(1006, "tcp rst");
+
+    await expect(resp.text()).rejects.toThrow("WebSocket closed before terminal event");
+    expect(persistent.isAlive()).toBe(false);
+    expect(onDead).toHaveBeenCalled();
+  });
+
   it("after response.completed the WS becomes available for the next send", async () => {
     const { ws, persistent } = newPersistentWs();
     persistent.tryAcquire();

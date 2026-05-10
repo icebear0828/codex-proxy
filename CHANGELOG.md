@@ -10,6 +10,7 @@
 
 ### Fixed
 
+- `/v1/responses` streaming 提前断流时不再让客户端只看到裸 EOF：HTTP/WS passthrough 现在追踪 `response.completed` / `response.failed` / `error` 终止事件；上游在终止事件前结束或 WebSocket 首帧后中断时，会合成 `response.failed`（`code=stream_disconnected`）或让上层转换为该失败事件，避免 Codex CLI 报 `stream disconnected before completion: stream closed before response.completed` 且没有结构化错误
 - 恢复模型名 `-fast` 后缀的上游出口语义：`gpt-5.4-high-fast` / `codex-fast` 仍先解析为标准模型名 + `service_tier=fast`，最终发往 Codex backend 时再映射成官方接受的 `service_tier="priority"`（HTTP SSE 与 WebSocket 路径一致）；补回单测和 `/v1/responses` E2E，防止 PR #453 的 review quota plumbing 再次把 `service_tier` 丢掉
 - Dashboard 更新状态兼容旧响应：`/admin/update-status` 尚未返回 `settings` 字段时，前端默认按 `show_update_dialog=false` 处理，避免读取 `settings.show_update_dialog` 抛错导致页面白屏
 - Official Codex app-server bridge 审计加固：首批并发请求现在复用同一个 WebSocket 连接与 `initialize` 流程，避免 CONNECTING 阶段重复建连/覆盖 `this.ws`；并发 turn SSE 改为串行执行，避免共享 notification queue 把 A/B 两个 turn 的 delta/completed 交叉发错；`/official-agent/*` 改用独立 `official_agent.api_key`，不再复用通用 `server.proxy_api_key`，并限制 `approvalPolicy` 只能是 `untrusted` / `on-request` / `on-failure` / `never`

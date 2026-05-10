@@ -201,6 +201,29 @@ describe("proxy-handler integration", () => {
     expect(fmt.streamTranslator).toHaveBeenCalled();
   });
 
+  it("returns a streaming error event when upstream request fails before SSE starts", async () => {
+    mockCreateResponse = () =>
+      Promise.reject(new CodexApiError(0, "error sending request for url"));
+
+    const accountPool = createMockAccountPool();
+    const fmt = createMockFormatAdapter();
+    const req = createStreamingRequest();
+    const { app } = buildTestApp({ accountPool, fmt, req });
+
+    const res = await app.request("/test", { method: "POST" });
+    expect(res.status).toBe(200);
+    expect(res.headers.get("Content-Type")).toContain("text/event-stream");
+
+    const text = await res.text();
+    expect(text).toContain("event: response.failed");
+    expect(text).toContain("error sending request for url");
+    expect(fmt.formatStreamError).toHaveBeenCalledWith(
+      502,
+      "Codex API error (0): error sending request for url",
+    );
+    expect(accountPool.release).toHaveBeenCalledWith("e1", undefined);
+  });
+
   // 4. CodexApiError 429 → markRateLimited with parsed retryAfterSec + fallback to next account
   it("handles 429 by parsing resets_in_seconds and falling back to next account", async () => {
     const body429 = JSON.stringify({
