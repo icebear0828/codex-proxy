@@ -180,20 +180,22 @@ export function initAutoUpdater(options: AutoUpdaterOptions): void {
     if (win) win.setProgressBar(-1);
   });
 
-  // Initial check after delay
-  initialTimer = setTimeout(() => {
-    autoUpdater.checkForUpdates().catch((err: Error) => {
-      console.warn("[AutoUpdater] Initial check failed:", err.message);
-    });
-  }, INITIAL_DELAY_MS);
+  if (isAutoUpdate) {
+    // Initial check after delay
+    initialTimer = setTimeout(() => {
+      autoUpdater.checkForUpdates().catch((err: Error) => {
+        console.warn("[AutoUpdater] Initial check failed:", err.message);
+      });
+    }, INITIAL_DELAY_MS);
 
-  // Periodic check
-  checkTimer = setInterval(() => {
-    autoUpdater.checkForUpdates().catch((err: Error) => {
-      console.warn("[AutoUpdater] Periodic check failed:", err.message);
-    });
-  }, CHECK_INTERVAL_MS);
-  if (checkTimer.unref) checkTimer.unref();
+    // Periodic check
+    checkTimer = setInterval(() => {
+      autoUpdater.checkForUpdates().catch((err: Error) => {
+        console.warn("[AutoUpdater] Periodic check failed:", err.message);
+      });
+    }, CHECK_INTERVAL_MS);
+    if (checkTimer.unref) checkTimer.unref();
+  }
 }
 
 export function checkForUpdateManual(): void {

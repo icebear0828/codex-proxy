@@ -95,6 +95,21 @@ describe("auto-updater state machine", () => {
     expect(mockAutoUpdater.autoDownload).toBe(false);
   });
 
+  it("does not schedule update checks when autoUpdate is explicitly false", () => {
+    initAutoUpdater({ ...mockOptions, autoUpdate: false });
+
+    vi.advanceTimersByTime(30_000);
+    vi.advanceTimersByTime(4 * 60 * 60 * 1000);
+
+    expect(mockAutoUpdater.checkForUpdates).not.toHaveBeenCalled();
+  });
+
+  it("enables prerelease updates when explicitly configured", () => {
+    initAutoUpdater({ ...mockOptions, allowPrerelease: true });
+
+    expect(mockAutoUpdater.allowPrerelease).toBe(true);
+  });
+
   it("schedules initial check after 30s delay", () => {
     initAutoUpdater(mockOptions);
 
