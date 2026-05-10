@@ -138,9 +138,24 @@ done
 
 echo "App reports server on port $PORT"
 
-# Health probe — short timeout so a hung response shows up as failure.
-if ! curl -fsS --max-time 10 "http://127.0.0.1:$PORT/health" >/dev/null; then
-  die "Health probe failed: GET http://127.0.0.1:$PORT/health"
+# Health probe — retry briefly because Electron logs "Server started"
+# the moment startServer() returns, but `serve()` from
+# @hono/node-server doesn't await the underlying socket bind. On fast
+# hosts (observed on macOS arm64 GHA runner) the smoke script can
+# race the bind and hit "connection refused" if it tries only once.
+# 30 attempts × 1s = ~30s of patience; that's still well below the
+# 90s outer timeout and just absorbs millisecond-scale jitter.
+HEALTH_OK=false
+for i in $(seq 1 30); do
+  if curl -fsS --max-time 5 "http://127.0.0.1:$PORT/health" >/dev/null 2>&1; then
+    HEALTH_OK=true
+    [ "$i" -gt 1 ] && echo "Health probe succeeded after $i attempt(s)"
+    break
+  fi
+  sleep 1
+done
+if [ "$HEALTH_OK" != "true" ]; then
+  die "Health probe failed: GET http://127.0.0.1:$PORT/health (gave up after 30s)"
 fi
 
 echo "✓ Smoke OK on $RUNNER_OS"
