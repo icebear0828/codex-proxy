@@ -116,6 +116,17 @@ export async function streamResponse(
     lastEvent: null,
     sawTerminal: false,
   };
+  // Diagnostic context passed into adapter-internal premature-close records
+  // (e.g. streamPassthrough in responses.ts). The adapter is free to ignore
+  // it; carrying it through here means audit entries land on the real
+  // requestId/account/variantHash instead of the synthetic fallback.
+  const streamContext = {
+    requestId: diagnostics?.requestId,
+    tag: diagnostics?.tag ?? adapter.tag,
+    model,
+    accountEntryId: diagnostics?.accountEntryId,
+    variantHash: diagnostics?.variantHash,
+  };
   try {
     for await (const chunk of adapter.streamTranslator(
       api,
@@ -126,6 +137,7 @@ export async function streamResponse(
       tupleSchema,
       usageHint,
       onResponseMetadata,
+      streamContext,
     )) {
       const chunkTrace = inspectStreamChunk(chunk);
       if (debugDumpEnabled()) {

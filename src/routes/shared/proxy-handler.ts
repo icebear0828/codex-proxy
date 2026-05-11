@@ -35,7 +35,7 @@ import { getConfig } from "../../config.js";
 import { jitterInt } from "../../utils/jitter.js";
 import { getSessionAffinityMap, type SessionAffinityMap } from "../../auth/session-affinity.js";
 import { enqueueLogEntry } from "../../logs/entry.js";
-import { recordStreamCloseEvent } from "../../logs/stream-close-event.js";
+import { recordStreamCloseEvent, type StreamCloseContextBase } from "../../logs/stream-close-event.js";
 import { randomUUID } from "crypto";
 import { deriveStableConversationKey } from "./stable-conversation-key.js";
 import { computeVariantHash } from "./variant-hash.js";
@@ -84,6 +84,11 @@ export interface FormatAdapter {
     tupleSchema?: Record<string, unknown> | null,
     usageHint?: UsageHint,
     onResponseMetadata?: (metadata: ResponseMetadata) => void,
+    /** Diagnostic context forwarded into adapter-internal premature-close
+     *  records (e.g. `streamPassthrough` in responses.ts) so audit entries
+     *  carry the real rid / account / variantHash instead of falling back
+     *  to the synthetic `"stream-close"` placeholder. */
+    streamContext?: StreamCloseContextBase,
   ) => AsyncGenerator<string>;
   collectTranslator: (
     api: UpstreamAdapter,

@@ -55,7 +55,11 @@ function makeOpenAIFormat(wantReasoning: boolean): FormatAdapter {
         code: "codex_api_error",
       },
     }),
-    streamTranslator: (api, response, model, onUsage, onResponseId, tupleSchema) =>
+    // 9th param `streamContext` is forwarded by response-processor for
+    // adapter-internal premature-close logging. The OpenAI chat translator
+    // doesn't surface its own close events (response-processor's outer
+    // try/catch handles them), so we accept and ignore it.
+    streamTranslator: (api, response, model, onUsage, onResponseId, tupleSchema, _usageHint, _onResponseMetadata, _streamContext) =>
       streamCodexToOpenAI(api, response, model, onUsage, onResponseId, wantReasoning, tupleSchema),
     collectTranslator: (api, response, model, tupleSchema) =>
       collectCodexResponse(api, response, model, wantReasoning, tupleSchema),
