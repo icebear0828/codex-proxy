@@ -68,13 +68,29 @@ vi.mock("@src/translation/codex-event-extractor.js", () => {
       this.usage = usage;
     }
   }
-  return { EmptyResponseError };
+  class UpstreamPrematureCloseError extends Error {
+    responseId: string | null;
+    hadReasoning: boolean;
+    eventCount: number;
+    constructor(responseId: string | null, hadReasoning: boolean, eventCount: number) {
+      super(
+        hadReasoning
+          ? "Upstream closed stream after reasoning without producing output (likely hit response-duration cap)"
+          : "Upstream closed stream without a terminal event",
+      );
+      this.name = "UpstreamPrematureCloseError";
+      this.responseId = responseId;
+      this.hadReasoning = hadReasoning;
+      this.eventCount = eventCount;
+    }
+  }
+  return { EmptyResponseError, UpstreamPrematureCloseError };
 });
 
 // Import after mocks are set up
 import { handleProxyRequest } from "@src/routes/shared/proxy-handler.js";
 import { CodexApiError } from "@src/proxy/codex-api.js";
-import { EmptyResponseError } from "@src/translation/codex-event-extractor.js";
+import { EmptyResponseError, UpstreamPrematureCloseError } from "@src/translation/codex-event-extractor.js";
 
 // ── Helpers ───────────────────────────────────────────────────────────
 
@@ -83,6 +99,7 @@ function createMockAccountPool(overrides: Record<string, unknown> = {}) {
     acquire: vi.fn(() => ({ entryId: "e1", token: "tok", accountId: "acc1" })),
     release: vi.fn(),
     markRateLimited: vi.fn(),
+    applyRateLimit429: vi.fn(),
     markStatus: vi.fn(),
     getEntry: vi.fn(() => ({ email: "test@test.com" })),
     recordEmptyResponse: vi.fn(),
@@ -250,7 +267,7 @@ describe("proxy-handler integration", () => {
     const res = await app.request("/test", { method: "POST" });
     expect(res.status).toBe(200);
 
-    expect(accountPool.markRateLimited).toHaveBeenCalledWith("e1", {
+    expect(accountPool.applyRateLimit429).toHaveBeenCalledWith("e1", {
       retryAfterSec: 471284,
       countRequest: true,
     });
@@ -277,7 +294,7 @@ describe("proxy-handler integration", () => {
     const res = await app.request("/test", { method: "POST" });
     expect(res.status).toBe(429);
 
-    expect(accountPool.markRateLimited).toHaveBeenCalledWith("e1", {
+    expect(accountPool.applyRateLimit429).toHaveBeenCalledWith("e1", {
       retryAfterSec: undefined,
       countRequest: true,
     });
@@ -302,7 +319,7 @@ describe("proxy-handler integration", () => {
 
     await app.request("/test", { method: "POST" });
 
-    const call = accountPool.markRateLimited.mock.calls[0] as [string, { retryAfterSec: number; countRequest: boolean }];
+    const call = accountPool.applyRateLimit429.mock.calls[0] as [string, { retryAfterSec: number; countRequest: boolean }];
     expect(call[0]).toBe("e1");
     // Should be approximately 3600 (±5s tolerance for test execution time)
     expect(call[1].retryAfterSec).toBeGreaterThan(3590);
@@ -331,9 +348,9 @@ describe("proxy-handler integration", () => {
     expect(res.status).toBe(429);
 
     // Both accounts marked rate limited
-    expect(accountPool.markRateLimited).toHaveBeenCalledTimes(2);
-    expect(accountPool.markRateLimited).toHaveBeenCalledWith("e1", { retryAfterSec: 100, countRequest: true });
-    expect(accountPool.markRateLimited).toHaveBeenCalledWith("e2", { retryAfterSec: 100, countRequest: true });
+    expect(accountPool.applyRateLimit429).toHaveBeenCalledTimes(2);
+    expect(accountPool.applyRateLimit429).toHaveBeenCalledWith("e1", { retryAfterSec: 100, countRequest: true });
+    expect(accountPool.applyRateLimit429).toHaveBeenCalledWith("e2", { retryAfterSec: 100, countRequest: true });
     expect(accountPool.release).not.toHaveBeenCalled();
   });
 
@@ -420,6 +437,34 @@ describe("proxy-handler integration", () => {
     const res = await app.request("/test", { method: "POST" });
     // Hono returns 500 for unhandled exceptions
     expect(res.status).toBe(500);
+    expect(accountPool.release).toHaveBeenCalledWith("e1", undefined);
+  });
+
+  // 8b. Upstream premature close → 504, no cross-account retry
+  it("fails fast with 504 on UpstreamPrematureCloseError, no retry", async () => {
+    let acquireCount = 0;
+    const accountPool = createMockAccountPool({
+      acquire: vi.fn(() => {
+        acquireCount++;
+        return { entryId: `e${acquireCount}`, token: "tok", accountId: "acc" };
+      }),
+    });
+
+    let collectCallCount = 0;
+    const fmt = createMockFormatAdapter({
+      collectTranslator: vi.fn(async () => {
+        collectCallCount++;
+        throw new UpstreamPrematureCloseError("resp_pc", true, 1920);
+      }),
+    });
+
+    const { app } = buildTestApp({ accountPool, fmt });
+
+    const res = await app.request("/test", { method: "POST" });
+    expect(res.status).toBe(504);
+    expect(collectCallCount).toBe(1);
+    expect(acquireCount).toBe(1);
+    expect(accountPool.recordEmptyResponse).not.toHaveBeenCalled();
     expect(accountPool.release).toHaveBeenCalledWith("e1", undefined);
   });
 

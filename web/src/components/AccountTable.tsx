@@ -4,6 +4,12 @@ import type { TranslationKey } from "../../../shared/i18n/translations";
 import type { AssignmentAccount } from "../../../shared/hooks/use-proxy-assignments";
 import type { ProxyEntry } from "../../../shared/types";
 
+// Note: AssignmentAccount has no `quota` field, so we cannot derive
+// "rate_limited" from cachedQuota here — the table only knows the backend
+// status string. The filter dropdown and badge therefore reflect raw
+// status. AccountList / AccountCard do derive via `derivedStatus` from
+// `web/src/lib/accountStatus.ts` because they receive full `Account`.
+
 const PAGE_SIZE = 50;
 
 const statusStyles: Record<string, [string, TranslationKey]> = {
@@ -170,7 +176,6 @@ export function AccountTable({
           <option value="active">{t("active")}</option>
           <option value="expired">{t("expired")}</option>
           <option value="quota_exhausted">{t("quotaExhausted")}</option>
-          <option value="rate_limited">{t("rateLimited")}</option>
           <option value="banned">{t("banned")}</option>
           <option value="disabled">{t("disabled")}</option>
         </select>
@@ -235,7 +240,9 @@ export function AccountTable({
                 </span>
                 {onToggleStatus && (() => {
                   const isEnabled = acct.status !== "disabled";
-                  const canToggle = acct.status === "active" || acct.status === "disabled" || acct.status === "rate_limited" || acct.status === "refreshing" || acct.status === "quota_exhausted";
+                  // "rate_limited" retired as a backend status (now derived from
+                  // cachedQuota); the remaining states still gate the toggle.
+                  const canToggle = acct.status === "active" || acct.status === "disabled" || acct.status === "refreshing" || acct.status === "quota_exhausted";
                   return (
                     <span class="w-12 hidden sm:flex justify-center" onClick={(e) => e.stopPropagation()}>
                       <button

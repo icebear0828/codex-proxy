@@ -3,6 +3,7 @@ import { useI18n, useT } from "../../../shared/i18n/context";
 import { AccountCard } from "./AccountCard";
 import { AccountImportExport } from "./AccountImportExport";
 import type { Account, ProxyEntry, QuotaWarning } from "../../../shared/types";
+import { derivedStatus } from "../lib/accountStatus";
 
 const STATUS_FILTER_STORAGE_KEY = "codex-proxy-account-list-status-filter";
 const EXPAND_ALL_STORAGE_KEY = "codex-proxy-account-list-expand-all";
@@ -128,12 +129,18 @@ export function AccountList({ accounts, loading, onDelete, onRefresh, refreshing
     localStorage.setItem(EXPAND_ALL_STORAGE_KEY, String(visibleCount > PAGE_SIZE));
   }, [visibleCount]);
 
+  // Counts are bucketed by derivedStatus so the "rate_limited" filter still
+  // works on cachedQuota-exhausted accounts even though the backend status
+  // is "active". Keep filter semantics consistent with the badge.
   const statusCounts: Record<string, number> = {};
-  for (const a of accounts) statusCounts[a.status] = (statusCounts[a.status] ?? 0) + 1;
+  for (const a of accounts) {
+    const key = derivedStatus(a);
+    statusCounts[key] = (statusCounts[key] ?? 0) + 1;
+  }
 
   const displayAccounts = statusFilter === "all"
     ? accounts
-    : accounts.filter((a) => a.status === statusFilter);
+    : accounts.filter((a) => derivedStatus(a) === statusFilter);
 
   useEffect(() => {
     if (statusFilter !== "all" && !statusCounts[statusFilter]) {

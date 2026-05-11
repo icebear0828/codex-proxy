@@ -5,6 +5,7 @@ import { CodexApiError } from "@src/proxy/codex-types.js";
 /* ── Minimal mock matching AccountPool subset used by error handler ── */
 interface MockPool {
   markRateLimited: ReturnType<typeof vi.fn>;
+  applyRateLimit429: ReturnType<typeof vi.fn>;
   markStatus: ReturnType<typeof vi.fn>;
   getEntry: ReturnType<typeof vi.fn>;
   acquire: ReturnType<typeof vi.fn>;
@@ -13,6 +14,7 @@ interface MockPool {
 function createMockPool(): MockPool {
   return {
     markRateLimited: vi.fn(),
+    applyRateLimit429: vi.fn(),
     markStatus: vi.fn(),
     getEntry: vi.fn().mockReturnValue({ email: "test@example.com" }),
     acquire: vi.fn(),
@@ -55,6 +57,7 @@ describe("handleCodexApiError", () => {
     it("does not mark account status", () => {
       handleCodexApiError(err, pool as never, entryId, model, tag, false);
 
+      expect(pool.applyRateLimit429).not.toHaveBeenCalled();
       expect(pool.markRateLimited).not.toHaveBeenCalled();
       expect(pool.markStatus).not.toHaveBeenCalled();
     });
@@ -63,33 +66,33 @@ describe("handleCodexApiError", () => {
   // ── 429 rate-limited ──
 
   describe("429 rate-limited", () => {
-    it("marks account rate-limited and returns retry", () => {
+    it("applies 429 retry-after to cachedQuota and returns retry", () => {
       const body = JSON.stringify({ error: { resets_in_seconds: 30 } });
       const err = new CodexApiError(429, body);
 
       const result = handleCodexApiError(err, pool as never, entryId, model, tag, false);
 
       expect(result.action).toBe("retry");
-      expect(pool.markRateLimited).toHaveBeenCalledWith(entryId, {
+      expect(pool.applyRateLimit429).toHaveBeenCalledWith(entryId, {
         retryAfterSec: 30,
         countRequest: true,
       });
     });
 
-    it("returns respond with 429 when no retry-after info", () => {
+    it("forwards undefined retryAfterSec when 429 body has no hint (registry uses default backoff)", () => {
       const err = new CodexApiError(429, "rate limited");
 
       const result = handleCodexApiError(err, pool as never, entryId, model, tag, false);
 
       expect(result.action).toBe("retry");
-      expect(pool.markRateLimited).toHaveBeenCalledWith(entryId, {
+      expect(pool.applyRateLimit429).toHaveBeenCalledWith(entryId, {
         retryAfterSec: undefined,
         countRequest: true,
       });
     });
 
-    it("uses cached quota reset time when account is exhausted", () => {
-      const resetAt = Math.floor(Date.now() / 1000) + 86400; // 1 day from now
+    it("does not combine with cached quota in handler (don't-shrink-existing-reset_at lives inside applyRateLimit429)", () => {
+      const resetAt = Math.floor(Date.now() / 1000) + 86400;
       pool.getEntry.mockReturnValue({
         email: "test@example.com",
         cachedQuota: {
@@ -100,25 +103,9 @@ describe("handleCodexApiError", () => {
 
       handleCodexApiError(err, pool as never, entryId, model, tag, false);
 
-      const call = pool.markRateLimited.mock.calls[0];
-      expect(call[0]).toBe(entryId);
-      // Should use the longer cached reset time instead of 30s
-      expect(call[1].retryAfterSec).toBeGreaterThan(86000);
-      expect(call[1].countRequest).toBe(true);
-    });
-
-    it("uses short backoff when account is not exhausted", () => {
-      pool.getEntry.mockReturnValue({
-        email: "test@example.com",
-        cachedQuota: {
-          rate_limit: { limit_reached: false, used_percent: 50, reset_at: null },
-        },
-      });
-      const err = new CodexApiError(429, JSON.stringify({ error: { resets_in_seconds: 30 } }));
-
-      handleCodexApiError(err, pool as never, entryId, model, tag, false);
-
-      expect(pool.markRateLimited).toHaveBeenCalledWith(entryId, {
+      // Handler passes through the raw retry-after; registry-level
+      // applyRateLimit429 preserves the longer existing reset_at.
+      expect(pool.applyRateLimit429).toHaveBeenCalledWith(entryId, {
         retryAfterSec: 30,
         countRequest: true,
       });

@@ -1,7 +1,7 @@
 /**
  * Tests for AccountPool quota-related methods:
  * - updateCachedQuota()
- * - markQuotaExhausted()
+ * - applyRateLimit429() (replaces the retired markQuotaExhausted/markRateLimited)
  * - toInfo() populating cached quota
  */
 
@@ -11,6 +11,7 @@ import { createValidJwt } from "@helpers/jwt.js";
 import { createMockConfig } from "@helpers/config.js";
 import { setConfigForTesting, resetConfigForTesting } from "@src/config.js";
 import { AccountPool } from "@src/auth/account-pool.js";
+import { hasReachedCachedQuota } from "@src/auth/quota-skip.js";
 import type { CodexQuota } from "@src/auth/types.js";
 
 function makeQuota(overrides?: Partial<CodexQuota>): CodexQuota {
@@ -58,81 +59,74 @@ describe("AccountPool quota methods", () => {
     });
   });
 
-  describe("markQuotaExhausted", () => {
-    it("sets status to rate_limited with reset time", () => {
+  describe("applyRateLimit429 (replaces markQuotaExhausted)", () => {
+    it("marks primary cachedQuota.rate_limit as limit_reached with provided reset_at", () => {
       const id = pool.addAccount(createValidJwt({ accountId: "a2" }));
       const resetAt = Math.floor(Date.now() / 1000) + 7200;
 
-      pool.markQuotaExhausted(id, resetAt);
+      pool.applyRateLimit429(id, { resetsAtSec: resetAt });
 
       const entry = pool.getEntry(id);
-      expect(entry?.status).toBe("rate_limited");
-      expect(entry?.usage.rate_limit_until).toBeTruthy();
+      expect(entry?.cachedQuota?.rate_limit.limit_reached).toBe(true);
+      expect(entry?.cachedQuota?.rate_limit.reset_at).toBe(resetAt);
+      expect(hasReachedCachedQuota(entry!)).toBe(true);
     });
 
-    it("uses fallback when resetAt is null", () => {
+    it("uses default backoff when no retry/reset hint provided", () => {
       const id = pool.addAccount(createValidJwt({ accountId: "a3" }));
 
-      pool.markQuotaExhausted(id, null);
+      pool.applyRateLimit429(id);
 
       const entry = pool.getEntry(id);
-      expect(entry?.status).toBe("rate_limited");
-      expect(entry?.usage.rate_limit_until).toBeTruthy();
+      expect(entry?.cachedQuota?.rate_limit.limit_reached).toBe(true);
+      expect(entry?.cachedQuota?.rate_limit.reset_at).toBeGreaterThan(Math.floor(Date.now() / 1000));
     });
 
-    it("does not override disabled status", () => {
+    it("does not override disabled status (account stays disabled)", () => {
       const id = pool.addAccount(createValidJwt({ accountId: "a4" }));
       pool.markStatus(id, "disabled");
 
-      pool.markQuotaExhausted(id, Math.floor(Date.now() / 1000) + 3600);
+      pool.applyRateLimit429(id, { resetsAtSec: Math.floor(Date.now() / 1000) + 3600 });
 
       const entry = pool.getEntry(id);
-      expect(entry?.status).toBe("disabled"); // unchanged
+      expect(entry?.status).toBe("disabled");
     });
 
     it("does not override expired status", () => {
       const id = pool.addAccount(createValidJwt({ accountId: "a5" }));
       pool.markStatus(id, "expired");
 
-      pool.markQuotaExhausted(id, Math.floor(Date.now() / 1000) + 3600);
+      pool.applyRateLimit429(id, { resetsAtSec: Math.floor(Date.now() / 1000) + 3600 });
 
       const entry = pool.getEntry(id);
-      expect(entry?.status).toBe("expired"); // unchanged
+      expect(entry?.status).toBe("expired");
     });
 
-    it("extends rate_limit_until on already rate_limited account", () => {
+    it("extends existing lock — never shrinks reset_at when re-applied", () => {
       const id = pool.addAccount(createValidJwt({ accountId: "a6" }));
-      // Simulate 429 backoff (short)
-      pool.markRateLimited(id, { retryAfterSec: 60 });
-      const entryBefore = pool.getEntry(id);
-      expect(entryBefore?.status).toBe("rate_limited");
-      const shortUntil = new Date(entryBefore!.usage.rate_limit_until!).getTime();
 
-      // Quota refresh discovers exhaustion — much longer reset
-      const resetAt = Math.floor(Date.now() / 1000) + 7200; // 2 hours
-      pool.markQuotaExhausted(id, resetAt);
+      // First 429 with short retry-after
+      pool.applyRateLimit429(id, { retryAfterSec: 60 });
+      const shortResetAt = pool.getEntry(id)!.cachedQuota!.rate_limit.reset_at!;
 
-      const entryAfter = pool.getEntry(id);
-      expect(entryAfter?.status).toBe("rate_limited");
-      const longUntil = new Date(entryAfter!.usage.rate_limit_until!).getTime();
-      expect(longUntil).toBeGreaterThan(shortUntil);
+      // Second 429 (e.g. discovered weekly bucket exhausted) with much longer reset
+      const longResetAt = Math.floor(Date.now() / 1000) + 7200;
+      pool.applyRateLimit429(id, { resetsAtSec: longResetAt });
+
+      expect(pool.getEntry(id)!.cachedQuota!.rate_limit.reset_at).toBe(longResetAt);
+      expect(longResetAt).toBeGreaterThan(shortResetAt);
     });
 
-    it("does not shorten existing rate_limit_until", () => {
+    it("does not shrink existing reset_at when a shorter 429 arrives", () => {
       const id = pool.addAccount(createValidJwt({ accountId: "a7" }));
-      // Mark with long reset (e.g. 7-day quota)
-      const longResetAt = Math.floor(Date.now() / 1000) + 86400; // 24 hours
-      pool.markQuotaExhausted(id, longResetAt);
+      const longResetAt = Math.floor(Date.now() / 1000) + 86400;
+      pool.applyRateLimit429(id, { resetsAtSec: longResetAt });
 
-      const entryBefore = pool.getEntry(id);
-      const originalUntil = entryBefore!.usage.rate_limit_until;
+      // Shorter retry-after should NOT replace the longer lock
+      const shortResetAt = Math.floor(Date.now() / 1000) + 3600;
+      pool.applyRateLimit429(id, { resetsAtSec: shortResetAt });
 
-      // Try to mark with shorter reset (e.g. 5-hour quota)
-      const shortResetAt = Math.floor(Date.now() / 1000) + 3600; // 1 hour
-      pool.markQuotaExhausted(id, shortResetAt);
-
-      const entryAfter = pool.getEntry(id);
-      expect(entryAfter!.usage.rate_limit_until).toBe(originalUntil); // unchanged
+      expect(pool.getEntry(id)!.cachedQuota!.rate_limit.reset_at).toBe(longResetAt);
     });
   });
 
@@ -190,12 +184,11 @@ describe("AccountPool quota methods", () => {
   });
 
   describe("acquire skips exhausted accounts", () => {
-    it("skips rate_limited (quota exhausted) account", () => {
+    it("skips account marked via applyRateLimit429", () => {
       const id1 = pool.addAccount(createValidJwt({ accountId: "b1" }));
       const id2 = pool.addAccount(createValidJwt({ accountId: "b2" }));
 
-      // Exhaust first account
-      pool.markQuotaExhausted(id1, Math.floor(Date.now() / 1000) + 7200);
+      pool.applyRateLimit429(id1, { resetsAtSec: Math.floor(Date.now() / 1000) + 7200 });
 
       const acquired = pool.acquire();
       expect(acquired).not.toBeNull();
@@ -205,7 +198,7 @@ describe("AccountPool quota methods", () => {
 
     it("returns null when all accounts exhausted", () => {
       const id1 = pool.addAccount(createValidJwt({ accountId: "c1" }));
-      pool.markQuotaExhausted(id1, Math.floor(Date.now() / 1000) + 7200);
+      pool.applyRateLimit429(id1, { resetsAtSec: Math.floor(Date.now() / 1000) + 7200 });
 
       const acquired = pool.acquire();
       expect(acquired).toBeNull();
@@ -257,6 +250,7 @@ describe("AccountPool quota methods", () => {
           limit_reached: true,
           used_percent: 100,
           reset_at: Math.floor(Date.now() / 1000) + 3600,
+          limit_window_seconds: 3600,
         },
       }));
 
@@ -300,6 +294,7 @@ describe("AccountPool quota methods", () => {
           limit_reached: true,
           used_percent: 100,
           reset_at: nowSec - 10,
+          limit_window_seconds: 3600,
         },
       }));
 
@@ -313,7 +308,7 @@ describe("AccountPool quota methods", () => {
       expect(codeReview).toBeDefined();
       expect(codeReview?.limit_reached).toBe(false);
       expect(codeReview?.used_percent).toBe(0);
-      expect(codeReview?.reset_at).toBeNull();
+      expect(codeReview?.reset_at).toBeGreaterThan(nowSec);
     });
 
     it("allows cached exhausted accounts when skip_exhausted is false", () => {

@@ -3,6 +3,7 @@ import { useT, useI18n } from "../../../shared/i18n/context";
 import type { TranslationKey } from "../../../shared/i18n/translations";
 import { formatNumber, formatResetTime, formatWindowDuration } from "../../../shared/utils/format";
 import type { Account, AccountQuotaWindow, ProxyEntry } from "../../../shared/types";
+import { derivedStatus } from "../lib/accountStatus";
 
 const avatarColors = [
   ["bg-purple-100 dark:bg-[#2a1a3f]", "text-purple-600 dark:text-purple-400"],
@@ -105,7 +106,8 @@ export function AccountCard({ account, index, onDelete, proxies, onProxyChange, 
   const windowSec = account.quota?.rate_limit?.limit_window_seconds;
   const windowDur = windowSec ? formatWindowDuration(windowSec, lang === "zh") : null;
 
-  const [statusCls, statusKey] = statusStyles[account.status] || statusStyles.disabled;
+  const effectiveStatus = derivedStatus(account);
+  const [statusCls, statusKey] = statusStyles[effectiveStatus] || statusStyles.disabled;
 
   const handleDelete = useCallback(async () => {
     if (!confirm(t("removeConfirm"))) return;
@@ -194,7 +196,10 @@ export function AccountCard({ account, index, onDelete, proxies, onProxyChange, 
 
   const [statusToggling, setStatusToggling] = useState(false);
   const isEnabled = account.status !== "disabled";
-  const canToggle = account.status === "active" || account.status === "disabled" || account.status === "rate_limited" || account.status === "refreshing" || account.status === "quota_exhausted";
+  // `rate_limited` is no longer a backend status; toggling is allowed for the
+  // remaining backend states. Cards rendered with derived "rate_limited" badge
+  // have backend status "active" and therefore satisfy this check.
+  const canToggle = account.status === "active" || account.status === "disabled" || account.status === "refreshing" || account.status === "quota_exhausted";
 
   const handleStatusToggle = useCallback(async () => {
     if (!onToggleStatus || !canToggle) return;

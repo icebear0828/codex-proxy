@@ -1,7 +1,13 @@
-import type { AccountEntry } from "./types.js";
+import type { AccountEntry, CodexQuota } from "./types.js";
+
+/** True when any of the 3 cachedQuota buckets reports limit_reached. */
+export function isQuotaExhausted(quota: CodexQuota | null | undefined): boolean {
+  if (!quota) return false;
+  return quota.rate_limit.limit_reached === true ||
+    quota.secondary_rate_limit?.limit_reached === true ||
+    quota.code_review_rate_limit?.limit_reached === true;
+}
 
 export function hasReachedCachedQuota(entry: AccountEntry): boolean {
-  return entry.cachedQuota?.rate_limit.limit_reached === true ||
-    entry.cachedQuota?.secondary_rate_limit?.limit_reached === true ||
-    entry.cachedQuota?.code_review_rate_limit?.limit_reached === true;
+  return isQuotaExhausted(entry.cachedQuota);
 }
