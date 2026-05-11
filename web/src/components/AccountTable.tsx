@@ -3,7 +3,12 @@ import { useT } from "../../../shared/i18n/context";
 import type { TranslationKey } from "../../../shared/i18n/translations";
 import type { AssignmentAccount } from "../../../shared/hooks/use-proxy-assignments";
 import type { ProxyEntry } from "../../../shared/types";
-import { derivedStatus } from "../lib/accountStatus";
+
+// Note: AssignmentAccount has no `quota` field, so we cannot derive
+// "rate_limited" from cachedQuota here — the table only knows the backend
+// status string. The filter dropdown and badge therefore reflect raw
+// status. AccountList / AccountCard do derive via `derivedStatus` from
+// `web/src/lib/accountStatus.ts` because they receive full `Account`.
 
 const PAGE_SIZE = 50;
 
