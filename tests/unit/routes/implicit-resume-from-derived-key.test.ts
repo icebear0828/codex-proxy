@@ -80,6 +80,7 @@ vi.mock("@src/utils/retry.js", () => ({
 
 // Capture upstream requests
 let capturedCodexRequest: CodexResponsesRequest | null = null;
+let capturedCodexRequests: CodexResponsesRequest[] = [];
 
 vi.mock("@src/proxy/codex-api.js", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@src/proxy/codex-api.js")>();
@@ -87,7 +88,9 @@ vi.mock("@src/proxy/codex-api.js", async (importOriginal) => {
     ...actual,
     CodexApi: vi.fn().mockImplementation(() => ({
       createResponse: vi.fn(async (req: CodexResponsesRequest) => {
-        capturedCodexRequest = structuredClone(req);
+        const snapshot = structuredClone(req);
+        capturedCodexRequest = snapshot;
+        capturedCodexRequests.push(snapshot);
         return {
           status: 200,
           headers: new Headers({ "x-codex-turn-state": "turn-123" }),
@@ -130,6 +133,7 @@ vi.mock("@src/translation/codex-to-gemini.js", () => ({
 import { AccountPool } from "@src/auth/account-pool.js";
 import { createChatRoutes } from "@src/routes/chat.js";
 import { createGeminiRoutes } from "@src/routes/gemini.js";
+import { handleProxyRequest, type FormatAdapter } from "@src/routes/shared/proxy-handler.js";
 import { getSessionAffinityMap } from "@src/auth/session-affinity.js";
 
 // ── Tests ───────────────────────────────────────────────────────────
@@ -141,20 +145,66 @@ function getCapturedCodexRequest(): CodexResponsesRequest {
   return capturedCodexRequest;
 }
 
+function getCapturedCodexRequests(): CodexResponsesRequest[] {
+  return capturedCodexRequests;
+}
+
+const directProxyFormat: FormatAdapter = {
+  tag: "DirectProxyTest",
+  noAccountStatus: 503,
+  formatNoAccount: () => ({ error: "no_account" }),
+  format429: (message) => ({ error: message }),
+  formatError: (_status, message) => ({ error: message }),
+  streamTranslator: async function* () {
+    return;
+  },
+  collectTranslator: async () => {
+    mockState.responseIdCount++;
+    const id = `resp-${mockState.responseIdCount}`;
+    return {
+      response: { id },
+      usage: { input_tokens: 10, output_tokens: 5 },
+      responseId: id,
+    };
+  },
+};
+
+function createDirectProxyRoutes(pool: AccountPool): Hono {
+  const app = new Hono();
+  app.post("/direct", async (c) => {
+    const codexRequest = await c.req.json<CodexResponsesRequest>();
+    return handleProxyRequest(
+      c,
+      pool,
+      undefined,
+      {
+        codexRequest,
+        model: codexRequest.model,
+        isStreaming: false,
+      },
+      directProxyFormat,
+    );
+  });
+  return app;
+}
+
 describe("Implicit Resume from Derived Key", () => {
   let pool: AccountPool;
   let chatApp: Hono;
   let geminiApp: Hono;
+  let directProxyApp: Hono;
 
   beforeEach(() => {
     vi.clearAllMocks();
     capturedCodexRequest = null;
+    capturedCodexRequests = [];
     mockState.responseIdCount = 0;
     delete process.env.CODEX_JWT_TOKEN; // Prevent AccountPool from loading multiple accounts
     pool = new AccountPool();
     pool.addAccount("test-token-1");
     chatApp = createChatRoutes(pool);
     geminiApp = createGeminiRoutes(pool);
+    directProxyApp = createDirectProxyRoutes(pool);
   });
 
   afterEach(() => {
@@ -361,6 +411,416 @@ describe("Implicit Resume from Derived Key", () => {
       }),
     });
     expect(getCapturedCodexRequest().previous_response_id).toBe("resp-1");
+  });
+
+  it("同一对话连续多轮只发送新增输入，避免完整历史越滚越大", async () => {
+    const sessionId = "single-thread-many-turns";
+    const base = [
+      { role: "system", content: "You are MAIN." },
+      { role: "user", content: "turn 1" },
+    ];
+
+    await chatApp.request("/v1/chat/completions", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        model: "gpt-4",
+        user: sessionId,
+        messages: base,
+      }),
+    });
+
+    await chatApp.request("/v1/chat/completions", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        model: "gpt-4",
+        user: sessionId,
+        messages: [
+          ...base,
+          { role: "assistant", content: "answer 1" },
+          { role: "user", content: "turn 2" },
+        ],
+      }),
+    });
+
+    await chatApp.request("/v1/chat/completions", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        model: "gpt-4",
+        user: sessionId,
+        messages: [
+          ...base,
+          { role: "assistant", content: "answer 1" },
+          { role: "user", content: "turn 2" },
+          { role: "assistant", content: "answer 2" },
+          { role: "user", content: "turn 3" },
+        ],
+      }),
+    });
+
+    await chatApp.request("/v1/chat/completions", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        model: "gpt-4",
+        user: sessionId,
+        messages: [
+          ...base,
+          { role: "assistant", content: "answer 1" },
+          { role: "user", content: "turn 2" },
+          { role: "assistant", content: "answer 2" },
+          { role: "user", content: "turn 3" },
+          { role: "assistant", content: "answer 3" },
+          { role: "user", content: "turn 4" },
+        ],
+      }),
+    });
+
+    const requests = getCapturedCodexRequests();
+    expect(requests).toHaveLength(4);
+    expect(requests.map((req) => req.prompt_cache_key)).toEqual([
+      sessionId,
+      sessionId,
+      sessionId,
+      sessionId,
+    ]);
+    expect(requests.map((req) => req.previous_response_id)).toEqual([
+      undefined,
+      "resp-1",
+      "resp-2",
+      "resp-3",
+    ]);
+    expect(requests.map((req) => req.input)).toEqual([
+      [{ role: "user", content: "turn 1" }],
+      [{ role: "user", content: "turn 2" }],
+      [{ role: "user", content: "turn 3" }],
+      [{ role: "user", content: "turn 4" }],
+    ]);
+  });
+
+  it("多个显式对话交错多轮时各自续自己的 prev id 链", async () => {
+    const messagesA1 = [
+      { role: "system", content: "You are MAIN." },
+      { role: "user", content: "A turn 1" },
+    ];
+    const messagesB1 = [
+      { role: "system", content: "You are MAIN." },
+      { role: "user", content: "B turn 1" },
+    ];
+
+    await chatApp.request("/v1/chat/completions", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        model: "gpt-4",
+        user: "thread-A",
+        messages: messagesA1,
+      }),
+    });
+    await chatApp.request("/v1/chat/completions", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        model: "gpt-4",
+        user: "thread-B",
+        messages: messagesB1,
+      }),
+    });
+    await chatApp.request("/v1/chat/completions", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        model: "gpt-4",
+        user: "thread-A",
+        messages: [
+          ...messagesA1,
+          { role: "assistant", content: "A answer 1" },
+          { role: "user", content: "A turn 2" },
+        ],
+      }),
+    });
+    await chatApp.request("/v1/chat/completions", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        model: "gpt-4",
+        user: "thread-B",
+        messages: [
+          ...messagesB1,
+          { role: "assistant", content: "B answer 1" },
+          { role: "user", content: "B turn 2" },
+        ],
+      }),
+    });
+    await chatApp.request("/v1/chat/completions", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        model: "gpt-4",
+        user: "thread-A",
+        messages: [
+          ...messagesA1,
+          { role: "assistant", content: "A answer 1" },
+          { role: "user", content: "A turn 2" },
+          { role: "assistant", content: "A answer 2" },
+          { role: "user", content: "A turn 3" },
+        ],
+      }),
+    });
+
+    const requests = getCapturedCodexRequests();
+    expect(requests).toHaveLength(5);
+    expect(requests.map((req) => req.prompt_cache_key)).toEqual([
+      "thread-A",
+      "thread-B",
+      "thread-A",
+      "thread-B",
+      "thread-A",
+    ]);
+    expect(requests.map((req) => req.previous_response_id)).toEqual([
+      undefined,
+      undefined,
+      "resp-1",
+      "resp-2",
+      "resp-3",
+    ]);
+    expect(requests.map((req) => req.input)).toEqual([
+      [{ role: "user", content: "A turn 1" }],
+      [{ role: "user", content: "B turn 1" }],
+      [{ role: "user", content: "A turn 2" }],
+      [{ role: "user", content: "B turn 2" }],
+      [{ role: "user", content: "A turn 3" }],
+    ]);
+  });
+
+  it("没有显式 session 的多个对话按首条 user anchor 隔离", async () => {
+    const messagesA1 = [
+      { role: "system", content: "You are MAIN." },
+      { role: "user", content: "root A" },
+    ];
+    const messagesB1 = [
+      { role: "system", content: "You are MAIN." },
+      { role: "user", content: "root B" },
+    ];
+
+    await chatApp.request("/v1/chat/completions", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        model: "gpt-4",
+        messages: messagesA1,
+      }),
+    });
+    await chatApp.request("/v1/chat/completions", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        model: "gpt-4",
+        messages: messagesB1,
+      }),
+    });
+    await chatApp.request("/v1/chat/completions", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        model: "gpt-4",
+        messages: [
+          ...messagesA1,
+          { role: "assistant", content: "A answer 1" },
+          { role: "user", content: "A follow-up" },
+        ],
+      }),
+    });
+    await chatApp.request("/v1/chat/completions", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        model: "gpt-4",
+        messages: [
+          ...messagesB1,
+          { role: "assistant", content: "B answer 1" },
+          { role: "user", content: "B follow-up" },
+        ],
+      }),
+    });
+
+    const requests = getCapturedCodexRequests();
+    expect(requests).toHaveLength(4);
+    expect(requests[0].prompt_cache_key).toBeDefined();
+    expect(requests[1].prompt_cache_key).toBeDefined();
+    expect(requests[0].prompt_cache_key).not.toBe(requests[1].prompt_cache_key);
+    expect(requests[2].prompt_cache_key).toBe(requests[0].prompt_cache_key);
+    expect(requests[3].prompt_cache_key).toBe(requests[1].prompt_cache_key);
+    expect(requests.map((req) => req.previous_response_id)).toEqual([
+      undefined,
+      undefined,
+      "resp-1",
+      "resp-2",
+    ]);
+    expect(requests.map((req) => req.input)).toEqual([
+      [{ role: "user", content: "root A" }],
+      [{ role: "user", content: "root B" }],
+      [{ role: "user", content: "A follow-up" }],
+      [{ role: "user", content: "B follow-up" }],
+    ]);
+  });
+
+  it("同一 session 下同 system/tools 的多个 subagent 也按首条任务输入隔离", async () => {
+    const sessionId = "same-shape-subagents";
+    const subagentA = [
+      { role: "system", content: "You are SUBAGENT." },
+      { role: "user", content: "inspect auth module" },
+    ];
+    const subagentB = [
+      { role: "system", content: "You are SUBAGENT." },
+      { role: "user", content: "inspect billing module" },
+    ];
+
+    await chatApp.request("/v1/chat/completions", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        model: "gpt-4",
+        user: sessionId,
+        messages: subagentA,
+        tools: [{ type: "function", function: { name: "read_file", parameters: { type: "object" } } }],
+      }),
+    });
+    await chatApp.request("/v1/chat/completions", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        model: "gpt-4",
+        user: sessionId,
+        messages: subagentB,
+        tools: [{ type: "function", function: { name: "read_file", parameters: { type: "object" } } }],
+      }),
+    });
+    await chatApp.request("/v1/chat/completions", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        model: "gpt-4",
+        user: sessionId,
+        messages: [
+          ...subagentA,
+          { role: "assistant", content: "auth findings" },
+          { role: "user", content: "continue auth" },
+        ],
+        tools: [{ type: "function", function: { name: "read_file", parameters: { type: "object" } } }],
+      }),
+    });
+    await chatApp.request("/v1/chat/completions", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        model: "gpt-4",
+        user: sessionId,
+        messages: [
+          ...subagentB,
+          { role: "assistant", content: "billing findings" },
+          { role: "user", content: "continue billing" },
+        ],
+        tools: [{ type: "function", function: { name: "read_file", parameters: { type: "object" } } }],
+      }),
+    });
+
+    const requests = getCapturedCodexRequests();
+    expect(requests).toHaveLength(4);
+    expect(requests.map((req) => req.prompt_cache_key)).toEqual([
+      sessionId,
+      sessionId,
+      sessionId,
+      sessionId,
+    ]);
+    expect(requests.map((req) => req.previous_response_id)).toEqual([
+      undefined,
+      undefined,
+      "resp-1",
+      "resp-2",
+    ]);
+    expect(requests.map((req) => req.input)).toEqual([
+      [{ role: "user", content: "inspect auth module" }],
+      [{ role: "user", content: "inspect billing module" }],
+      [{ role: "user", content: "continue auth" }],
+      [{ role: "user", content: "continue billing" }],
+    ]);
+  });
+
+  it("同一 session 下完全相同的 subagent 按 Codex window id 隔离", async () => {
+    const sessionId = "identical-subagents";
+    const rootInput: CodexResponsesRequest["input"] = [
+      { role: "user", content: "inspect the selected module" },
+    ];
+    const followUpInput: CodexResponsesRequest["input"] = [
+      ...rootInput,
+      { role: "assistant", content: "module findings" },
+      { role: "user", content: "continue" },
+    ];
+    const tools = [{ type: "function", function: { name: "read_file", parameters: { type: "object" } } }];
+    const buildRequest = (
+      codexWindowId: string,
+      input: CodexResponsesRequest["input"],
+    ): CodexResponsesRequest => ({
+      model: "gpt-4",
+      instructions: "You are SUBAGENT.",
+      input,
+      stream: true,
+      store: false,
+      prompt_cache_key: sessionId,
+      codexWindowId,
+      tools,
+    });
+
+    await directProxyApp.request("/direct", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(buildRequest("identical-subagents:1", rootInput)),
+    });
+    await directProxyApp.request("/direct", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(buildRequest("identical-subagents:2", rootInput)),
+    });
+    await directProxyApp.request("/direct", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(buildRequest("identical-subagents:1", followUpInput)),
+    });
+    await directProxyApp.request("/direct", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(buildRequest("identical-subagents:2", followUpInput)),
+    });
+
+    const requests = getCapturedCodexRequests();
+    expect(requests).toHaveLength(4);
+    expect(requests.map((req) => req.prompt_cache_key)).toEqual([
+      sessionId,
+      sessionId,
+      sessionId,
+      sessionId,
+    ]);
+    expect(requests.map((req) => req.codexWindowId)).toEqual([
+      "identical-subagents:1",
+      "identical-subagents:2",
+      "identical-subagents:1",
+      "identical-subagents:2",
+    ]);
+    expect(requests.map((req) => req.previous_response_id)).toEqual([
+      undefined,
+      undefined,
+      "resp-1",
+      "resp-2",
+    ]);
+    expect(requests.map((req) => req.input)).toEqual([
+      [{ role: "user", content: "inspect the selected module" }],
+      [{ role: "user", content: "inspect the selected module" }],
+      [{ role: "user", content: "continue" }],
+      [{ role: "user", content: "continue" }],
+    ]);
   });
 
   it("Test 4: Empty requests do not crash and fallback to random UUID promptCacheKey", async () => {
