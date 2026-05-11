@@ -14,6 +14,7 @@ import type { ProxyPool } from "../proxy/proxy-pool.js";
 import { CodexApi, CodexApiError } from "../proxy/codex-api.js";
 import type { CodexResponsesRequest, CodexCompactRequest, CodexInputItem, CodexSSEEvent } from "../proxy/codex-api.js";
 import { enqueueLogEntry } from "../logs/entry.js";
+import { recordStreamCloseEvent } from "../logs/stream-close-event.js";
 import { summarizeRequestForLog } from "../logs/request-summary.js";
 import { getRealClientIp } from "../utils/get-real-client-ip.js";
 import { randomUUID } from "crypto";
@@ -223,6 +224,12 @@ export async function* streamPassthrough(
         console.warn(
           `[Responses] premature stream close before terminal event responseId=${responseId ?? "unknown"}: ${detail}`,
         );
+        recordStreamCloseEvent({
+          kind: "upstream-premature",
+          tag: "Responses",
+          responseId,
+          detail,
+        });
         yield buildPrematureCloseFailedEvent(responseId, detail);
         return;
       }
@@ -313,6 +320,11 @@ export async function* streamPassthrough(
     console.warn(
       `[Responses] premature stream close before terminal event responseId=${responseId ?? "unknown"}`,
     );
+    recordStreamCloseEvent({
+      kind: "upstream-premature",
+      tag: "Responses",
+      responseId,
+    });
     yield buildPrematureCloseFailedEvent(responseId);
   }
 }

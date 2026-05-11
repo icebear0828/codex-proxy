@@ -35,6 +35,7 @@ import { getConfig } from "../../config.js";
 import { jitterInt } from "../../utils/jitter.js";
 import { getSessionAffinityMap, type SessionAffinityMap } from "../../auth/session-affinity.js";
 import { enqueueLogEntry } from "../../logs/entry.js";
+import { recordStreamCloseEvent } from "../../logs/stream-close-event.js";
 import { randomUUID } from "crypto";
 import { deriveStableConversationKey } from "./stable-conversation-key.js";
 import { computeVariantHash } from "./variant-hash.js";
@@ -602,6 +603,15 @@ export async function handleProxyRequest(
         return stream(c, async (s) => {
           s.onAbort(() => {
             console.warn(`[stream-client-abort] rid=${requestId.slice(0, 8)} tag=${fmt.tag} model=${req.model}`);
+            recordStreamCloseEvent({
+              kind: "client-abort",
+              requestId,
+              tag: fmt.tag,
+              model: req.model,
+              accountEntryId: capturedEntryId,
+              variantHash,
+              responseId: capturedResponseId ?? null,
+            });
             abortController.abort();
           });
           const recordStreamAffinity = (): void => {
@@ -636,7 +646,12 @@ export async function handleProxyRequest(
                 }
                 recordStreamAffinity();
               },
-              { requestId: requestId.slice(0, 8), tag: fmt.tag },
+              {
+                requestId: requestId.slice(0, 8),
+                tag: fmt.tag,
+                accountEntryId: capturedEntryId,
+                variantHash,
+              },
             );
           } finally {
             abortController.abort();
@@ -901,6 +916,18 @@ async function handleNonStreaming(
         console.warn(
           `[${fmt.tag}] Account ${currentEntryId} (${email}) | upstream premature close (hadReasoning=${collectErr.hadReasoning} events=${collectErr.eventCount}) — failing fast, not retrying`,
         );
+        recordStreamCloseEvent({
+          kind: "upstream-premature",
+          requestId,
+          tag: fmt.tag,
+          model: req.model,
+          accountEntryId: currentEntryId,
+          variantHash,
+          responseId: collectErr.responseId,
+          eventCount: collectErr.eventCount,
+          hadReasoning: collectErr.hadReasoning,
+          detail: collectErr.message,
+        });
         releaseAccount(accountPool, currentEntryId, annotateImageGenOutcome(undefined, req.expectsImageGen), released);
         c.status(504);
         return c.json(fmt.formatError(504, collectErr.message));
@@ -1095,6 +1122,12 @@ export async function handleDirectRequest(
     return stream(c, async (s) => {
       s.onAbort(() => {
         console.warn(`[stream-client-abort] rid=${requestId.slice(0, 8)} tag=${fmt.tag} model=${req.model}`);
+        recordStreamCloseEvent({
+          kind: "client-abort",
+          requestId,
+          tag: fmt.tag,
+          model: req.model,
+        });
         abortController.abort();
       });
       await streamResponse(

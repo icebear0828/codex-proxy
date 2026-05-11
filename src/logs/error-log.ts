@@ -81,8 +81,15 @@ function readObservabilityConfig(): ObservabilityConfig {
 }
 
 function readAppVersion(): string {
-  const cfg = getConfig() as { client?: { app_version?: string } };
-  return cfg.client?.app_version ?? "unknown";
+  try {
+    const cfg = getConfig() as { client?: { app_version?: string } };
+    return cfg.client?.app_version ?? "unknown";
+  } catch {
+    // Config not yet loaded (early startup, or unit-test paths that exercise
+    // log helpers without booting the server). Falling back to "unknown"
+    // keeps logging strictly best-effort.
+    return "unknown";
+  }
 }
 
 function ensureDataDir(): string {

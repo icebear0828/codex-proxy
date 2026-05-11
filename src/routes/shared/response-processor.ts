@@ -9,6 +9,7 @@ import { CodexApiError } from "../../proxy/codex-types.js";
 import type { FormatAdapter, ResponseMetadata, UsageHint } from "./proxy-handler.js";
 import type { UsageInfo } from "../../translation/codex-event-extractor.js";
 import { debugDump, debugDumpEnabled } from "../../utils/debug-dump.js";
+import { recordStreamCloseEvent } from "../../logs/stream-close-event.js";
 
 /** Minimal subset of Hono's StreamingApi that we actually use. */
 export interface StreamWriter {
@@ -19,6 +20,8 @@ export interface StreamWriter {
 export interface StreamDiagnostics {
   requestId?: string;
   tag?: string;
+  accountEntryId?: string;
+  variantHash?: string;
 }
 
 interface WrittenStreamTrace {
@@ -149,6 +152,19 @@ export async function streamResponse(
             ` failed_chunk_terminal=${chunkTrace.terminal}` +
             ` err=${errMsg}`,
         );
+        recordStreamCloseEvent({
+          kind: "client-write-failed",
+          requestId: diagnostics?.requestId ?? null,
+          tag: diagnostics?.tag ?? adapter.tag ?? null,
+          model,
+          accountEntryId: diagnostics?.accountEntryId ?? null,
+          variantHash: diagnostics?.variantHash ?? null,
+          writtenChunks: written.chunks,
+          writtenBytes: written.bytes,
+          lastSentEvent: written.lastEvent,
+          sentTerminal: written.sawTerminal,
+          detail: errMsg,
+        });
         // Client disconnected mid-stream — stop reading upstream
         return;
       }
@@ -190,6 +206,20 @@ export async function streamResponse(
         ` msg=${errMsg}` +
         (errBody ? ` body=${errBody.slice(0, 1000)}` : ""),
     );
+    recordStreamCloseEvent({
+      kind: "upstream-error",
+      requestId: diagnostics?.requestId ?? null,
+      tag: diagnostics?.tag ?? adapter.tag ?? null,
+      model,
+      accountEntryId: diagnostics?.accountEntryId ?? null,
+      variantHash: diagnostics?.variantHash ?? null,
+      writtenChunks: written.chunks,
+      writtenBytes: written.bytes,
+      lastSentEvent: written.lastEvent,
+      sentTerminal: written.sawTerminal,
+      upstreamStatus: typeof errStatus === "number" ? errStatus : null,
+      detail: errMsg,
+    });
     // Send error SSE event to client before closing
     try {
       await s.write(
