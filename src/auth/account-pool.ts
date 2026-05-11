@@ -164,25 +164,20 @@ export class AccountPool {
     }
   }
 
-  markRateLimited(
+  /**
+   * Single source of truth for "this account just got 429'd". Writes the
+   * retry-after hint into cachedQuota.rate_limit (primary bucket); pool
+   * exclusion flows through {@link hasReachedCachedQuota}. See
+   * AccountRegistry.applyRateLimit429 for full semantics including
+   * never-shrink-existing-reset_at and bucket-inference fallback.
+   */
+  applyRateLimit429(
     entryId: string,
-    options?: { retryAfterSec?: number; countRequest?: boolean },
+    options?: { retryAfterSec?: number; resetsAtSec?: number; countRequest?: boolean },
   ): void {
-    if (this.registry.markRateLimited(entryId, this.rateLimitBackoffSeconds, options)) {
+    if (this.registry.applyRateLimit429(entryId, this.rateLimitBackoffSeconds, options)) {
       this.lifecycle.clearLock(entryId);
       this.evictWsPool(entryId);
-    }
-  }
-
-  clearRateLimit(entryId: string): void {
-    if (this.registry.clearRateLimit(entryId)) {
-      this.lifecycle.clearLock(entryId);
-    }
-  }
-
-  markQuotaExhausted(entryId: string, resetAtUnix: number | null): void {
-    if (this.registry.markQuotaExhausted(entryId, resetAtUnix)) {
-      this.lifecycle.clearLock(entryId);
     }
   }
 

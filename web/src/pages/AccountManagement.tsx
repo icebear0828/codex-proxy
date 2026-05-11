@@ -7,10 +7,12 @@ import { AccountImportExport } from "../components/AccountImportExport";
 import type { AssignmentAccount } from "../../../shared/hooks/use-proxy-assignments";
 import type { TranslationKey } from "../../../shared/i18n/translations";
 
+// `rate_limited` is no longer a backend status enum value — it lives in
+// cachedQuota now. The proxy-assignment table only has the backend status
+// string (no quota), so this filter ladder reflects the new enum.
 const statusOrder: Array<{ key: string; label: TranslationKey }> = [
   { key: "active", label: "active" },
   { key: "expired", label: "expired" },
-  { key: "rate_limited", label: "rateLimited" },
   { key: "refreshing", label: "refreshing" },
   { key: "disabled", label: "disabled" },
   { key: "banned", label: "banned" },

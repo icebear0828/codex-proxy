@@ -18,7 +18,77 @@ import {
   extractUserProfile,
   isTokenExpired,
 } from "./jwt-utils.js";
-import type { AccountEntry, AccountsFile } from "./types.js";
+import type { AccountEntry, AccountsFile, CodexQuota } from "./types.js";
+
+/**
+ * Migrate a legacy entry to the new schema:
+ *   status === "rate_limited" + usage.rate_limit_until  →  status="active" +
+ *   cachedQuota.rate_limit.{limit_reached, reset_at}.
+ *
+ * Trust rule: if cachedQuota was fetched AFTER rate_limit_until was last set
+ * (quotaFetchedAt > rate_limit_until), we treat cachedQuota as ground truth
+ * and just drop the local lock. Otherwise we synthesize/overwrite the primary
+ * bucket from rate_limit_until.
+ *
+ * Returns true when the entry was mutated.
+ */
+export function migrateLegacyRateLimit(entry: AccountEntry): boolean {
+  const usage = entry.usage;
+  const legacyUntil = usage.rate_limit_until;
+  // On-disk shape pre-dates the enum narrowing; cast through string to compare
+  // against the retired "rate_limited" literal without tripping TS no-overlap.
+  const wasRateLimitedStatus = (entry.status as string) === "rate_limited";
+  if (!wasRateLimitedStatus && !legacyUntil) return false;
+
+  let mutated = false;
+
+  if (wasRateLimitedStatus) {
+    entry.status = "active";
+    mutated = true;
+  }
+
+  if (legacyUntil) {
+    const untilMs = Date.parse(legacyUntil);
+    const untilSec = Number.isFinite(untilMs) ? Math.floor(untilMs / 1000) : 0;
+    const inFuture = Number.isFinite(untilMs) && untilMs > Date.now();
+
+    const fetchedMs = entry.quotaFetchedAt ? Date.parse(entry.quotaFetchedAt) : NaN;
+    const cachedQuotaIsFresh =
+      entry.cachedQuota != null &&
+      Number.isFinite(fetchedMs) &&
+      Number.isFinite(untilMs) &&
+      fetchedMs > untilMs;
+
+    if (inFuture && !cachedQuotaIsFresh) {
+      const synthesized: CodexQuota = entry.cachedQuota ?? {
+        plan_type: entry.planType ?? "unknown",
+        rate_limit: {
+          allowed: false,
+          limit_reached: true,
+          used_percent: 100,
+          reset_at: untilSec,
+          limit_window_seconds: usage.limit_window_seconds ?? null,
+        },
+        secondary_rate_limit: null,
+        code_review_rate_limit: null,
+      };
+      synthesized.rate_limit = {
+        ...synthesized.rate_limit,
+        allowed: false,
+        limit_reached: true,
+        used_percent: Math.max(synthesized.rate_limit.used_percent ?? 0, 100),
+        reset_at: untilSec,
+      };
+      entry.cachedQuota = synthesized;
+      entry.quotaFetchedAt = new Date().toISOString();
+    }
+
+    usage.rate_limit_until = null;
+    mutated = true;
+  }
+
+  return mutated;
+}
 
 export interface AccountPersistence {
   load(): { entries: AccountEntry[]; needsPersist: boolean };
@@ -210,6 +280,10 @@ function loadPersisted(): { entries: AccountEntry[]; needsPersist: boolean } {
       if (entry.cachedQuota === undefined) {
         entry.cachedQuota = null;
         entry.quotaFetchedAt = null;
+        needsPersist = true;
+      }
+      // Migrate legacy rate_limit_until + status="rate_limited" → cachedQuota
+      if (migrateLegacyRateLimit(entry)) {
         needsPersist = true;
       }
       entries.push(entry);

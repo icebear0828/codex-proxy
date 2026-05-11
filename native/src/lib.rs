@@ -335,7 +335,7 @@ impl Task for StreamPostTask {
                             on_chunk.call(Some(buf), ThreadsafeFunctionCallMode::NonBlocking);
                         }
                         Err(e) => {
-                            eprintln!("[codex-tls] Stream error: {e}");
+                            eprintln!("[codex-tls] Stream error chain: {}", error_chain(&e));
                             break;
                         }
                     }

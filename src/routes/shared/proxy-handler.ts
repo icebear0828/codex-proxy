@@ -19,7 +19,7 @@ import {
 } from "../../proxy/codex-api.js";
 import type { CodexResponsesRequest } from "../../proxy/codex-api.js";
 import type { UpstreamAdapter } from "../../proxy/upstream-adapter.js";
-import { EmptyResponseError } from "../../translation/codex-event-extractor.js";
+import { EmptyResponseError, UpstreamPrematureCloseError } from "../../translation/codex-event-extractor.js";
 import type { AccountPool } from "../../auth/account-pool.js";
 import type { CookieJar } from "../../proxy/cookie-jar.js";
 import type { ProxyPool } from "../../proxy/proxy-pool.js";
@@ -538,11 +538,13 @@ export async function handleProxyRequest(
           const windowSec = rl.primary.window_minutes != null ? rl.primary.window_minutes * 60 : null;
           accountPool.syncRateLimitWindow(entryId, rl.primary.reset_at, windowSec);
         }
-        // Proactively mark exhausted accounts so they don't get re-selected
+        // Proactively mark exhausted accounts so they don't get re-selected.
+        // updateCachedQuota above already records the truth; this call only
+        // exists for its side effects (lifecycle.clearLock + WS pool eviction).
         if (quota.rate_limit.limit_reached && rl.primary?.reset_at != null) {
           const backoffSec = rl.primary.reset_at - Math.floor(Date.now() / 1000);
           if (backoffSec > 0) {
-            accountPool.markRateLimited(entryId, { retryAfterSec: backoffSec });
+            accountPool.applyRateLimit429(entryId, { resetsAtSec: rl.primary.reset_at });
           }
         }
       };
@@ -890,6 +892,20 @@ async function handleNonStreaming(
       releaseAccount(accountPool, currentEntryId, annotateImageGenOutcome(result.usage, req.expectsImageGen), released);
       return c.json(result.response);
     } catch (collectErr) {
+      // Upstream FIN'd mid-reasoning (typically gpt-5.5 xhigh > 120 s cap).
+      // Cross-account retry would re-hit the same cap and burn the pool, so
+      // we fail fast with 504. The proxy can't recover this — the client
+      // needs to lower reasoning effort or pick a different model.
+      if (collectErr instanceof UpstreamPrematureCloseError) {
+        const email = accountPool.getEntry(currentEntryId)?.email ?? "?";
+        console.warn(
+          `[${fmt.tag}] Account ${currentEntryId} (${email}) | upstream premature close (hadReasoning=${collectErr.hadReasoning} events=${collectErr.eventCount}) — failing fast, not retrying`,
+        );
+        releaseAccount(accountPool, currentEntryId, annotateImageGenOutcome(undefined, req.expectsImageGen), released);
+        c.status(504);
+        return c.json(fmt.formatError(504, collectErr.message));
+      }
+
       if (collectErr instanceof EmptyResponseError && attempt <= MAX_EMPTY_RETRIES) {
         const email = accountPool.getEntry(currentEntryId)?.email ?? "?";
         console.warn(
