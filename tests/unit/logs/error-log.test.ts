@@ -45,6 +45,11 @@ beforeEach(async () => {
   tmpDataDir = mkdtempSync(resolve(tmpdir(), "errlog-"));
   mockConfig.observability.local_error_log = true;
   mockConfig.observability.max_log_bytes = 10 * 1024 * 1024;
+  // Opt into actually writing during this test file — `appendErrorLog`
+  // suppresses disk writes under Vitest by default to keep tests that
+  // exercise it incidentally (proxy-handler integration tests) from
+  // polluting `data/error-log.jsonl`.
+  process.env.VITEST_FORCE_APPEND_ERROR_LOG = "1";
   vi.resetModules();
 });
 
@@ -52,6 +57,7 @@ afterEach(() => {
   if (existsSync(tmpDataDir)) {
     rmSync(tmpDataDir, { recursive: true, force: true });
   }
+  delete process.env.VITEST_FORCE_APPEND_ERROR_LOG;
   vi.clearAllMocks();
 });
 

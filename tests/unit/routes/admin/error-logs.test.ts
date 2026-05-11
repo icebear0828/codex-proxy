@@ -34,6 +34,10 @@ vi.mock("@src/config.js", () => ({
 beforeEach(() => {
   tmpDataDir = mkdtempSync(resolve(tmpdir(), "errlog-routes-"));
   mockConfig.observability.local_error_log = true;
+  // Re-enable disk writes under Vitest (suppressed by default in
+  // `appendErrorLog` to keep stray test runs from polluting the
+  // developer's `data/error-log.jsonl`).
+  process.env.VITEST_FORCE_APPEND_ERROR_LOG = "1";
   vi.resetModules();
 });
 
@@ -41,6 +45,7 @@ afterEach(() => {
   if (existsSync(tmpDataDir)) {
     rmSync(tmpDataDir, { recursive: true, force: true });
   }
+  delete process.env.VITEST_FORCE_APPEND_ERROR_LOG;
   vi.clearAllMocks();
 });
 

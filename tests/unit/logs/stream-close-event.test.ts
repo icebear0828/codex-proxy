@@ -26,11 +26,15 @@ vi.mock("@src/config.js", () => ({ getConfig: () => mockConfig }));
 
 beforeEach(() => {
   tmpDataDir = mkdtempSync(resolve(tmpdir(), "stream-close-evt-"));
+  // Re-enable the file writer under Vitest — see error-log.ts for why
+  // it's suppressed by default.
+  process.env.VITEST_FORCE_APPEND_ERROR_LOG = "1";
   vi.resetModules();
 });
 
 afterEach(() => {
   if (existsSync(tmpDataDir)) rmSync(tmpDataDir, { recursive: true, force: true });
+  delete process.env.VITEST_FORCE_APPEND_ERROR_LOG;
   vi.clearAllMocks();
 });
 

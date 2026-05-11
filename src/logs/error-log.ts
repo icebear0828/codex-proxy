@@ -137,6 +137,15 @@ function rotateIfNeeded(maxBytes: number): void {
  * write itself fails (we never want logging to break the caller).
  */
 export function appendErrorLog(input: AppendInput): void {
+  // Under Vitest, never touch the real data dir. Integration tests that
+  // pass through `recordStreamCloseEvent` (proxy-handler / response-processor
+  // paths) don't always mock `@src/paths.js`, and we don't want a stray
+  // `npm test` to write into the developer's `data/error-log.jsonl`.
+  // Test files that intentionally exercise the writer (e.g. `error-log.test.ts`,
+  // `stream-close-event.test.ts`) override this via the `__forceAppendInTests`
+  // hatch below.
+  if (process.env.VITEST && !process.env.VITEST_FORCE_APPEND_ERROR_LOG) return;
+
   let cfg: ObservabilityConfig;
   try {
     cfg = readObservabilityConfig();
