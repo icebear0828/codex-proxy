@@ -54,12 +54,29 @@ export class AccountRegistry {
   private accounts: Map<string, AccountEntry> = new Map();
   private persistTimer: ReturnType<typeof setTimeout> | null = null;
   private persistence: AccountPersistence;
+  private persistDisabled: boolean;
 
-  constructor(persistence: AccountPersistence, initialEntries: AccountEntry[]) {
+  constructor(
+    persistence: AccountPersistence,
+    initialEntries: AccountEntry[],
+    options?: { persistDisabled?: boolean },
+  ) {
     this.persistence = persistence;
+    this.persistDisabled = options?.persistDisabled ?? false;
     for (const entry of initialEntries) {
       this.accounts.set(entry.id, entry);
     }
+  }
+
+  /**
+   * When true, the persistence layer is held in a quarantined state
+   * (load() previously failed to parse accounts.json). All schedulePersist
+   * and persistNow calls are no-ops so we don't overwrite the on-disk
+   * file with the empty in-memory map. Manual recovery (restore the
+   * backup and restart the process) is required to clear this flag.
+   */
+  isPersistDisabled(): boolean {
+    return this.persistDisabled;
   }
 
   // ── CRUD ──────────────────────────────────────────────────────────
@@ -559,6 +576,7 @@ export class AccountRegistry {
   // ── Persistence ───────────────────────────────────────────────────
 
   schedulePersist(): void {
+    if (this.persistDisabled) return;
     if (this.persistTimer) return;
     this.persistTimer = setTimeout(() => {
       this.persistTimer = null;
@@ -571,6 +589,7 @@ export class AccountRegistry {
       clearTimeout(this.persistTimer);
       this.persistTimer = null;
     }
+    if (this.persistDisabled) return;
     this.persistence.save([...this.accounts.values()]);
   }
 

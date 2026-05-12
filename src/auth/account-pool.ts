@@ -42,9 +42,15 @@ export class AccountPool {
     this.rateLimitBackoffSeconds =
       options?.rateLimitBackoffSeconds ?? config!.auth.rate_limit_backoff_seconds;
 
-    // Load persisted entries
-    const { entries } = persistence.load();
-    this.registry = new AccountRegistry(persistence, entries);
+    // Load persisted entries. When loadFailed=true, the file on disk was
+    // unparseable and has been quarantined; we must not write the empty
+    // in-memory map back over the (now renamed) original. The registry's
+    // persistDisabled flag keeps schedulePersist/persistNow as no-ops
+    // until the user restores a healthy accounts.json and restarts.
+    const { entries, loadFailed } = persistence.load();
+    this.registry = new AccountRegistry(persistence, entries, {
+      persistDisabled: loadFailed === true,
+    });
     this.lifecycle = new AccountLifecycle(this.registry, strategyName);
 
     // Override with initial token if set
@@ -258,6 +264,18 @@ export class AccountPool {
 
   persistNow(): void {
     this.registry.persistNow();
+  }
+
+  /**
+   * True when the on-disk `accounts.json` failed to load at startup and
+   * was quarantined. While disabled, all schedulePersist/persistNow calls
+   * are no-ops — in-memory CRUD still works for the running session, but
+   * nothing reaches disk until the user restores a healthy file and
+   * restarts the process. Dashboard surfaces this via the
+   * `persistence_health` field on GET /auth/accounts.
+   */
+  isPersistDisabled(): boolean {
+    return this.registry.isPersistDisabled();
   }
 
   /**

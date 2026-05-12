@@ -20,7 +20,7 @@ const statusOrder: Array<{ key: string; label: TranslationKey }> = [
 
 export function AccountManagement({ embedded }: { embedded?: boolean } = {}) {
   const t = useT();
-  const { list, loading: listLoading, batchDelete, batchSetStatus, toggleStatus, exportAccounts, importAccounts } = useAccounts();
+  const { list, loading: listLoading, batchDelete, batchSetStatus, toggleStatus, exportAccounts, importAccounts, persistenceHealth } = useAccounts();
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [statusFilter, setStatusFilter] = useState("all");
   const [message, setMessage] = useState<{ text: string; error?: boolean } | null>(null);
@@ -102,6 +102,25 @@ export function AccountManagement({ embedded }: { embedded?: boolean } = {}) {
 
   const content = (
     <>
+      {/* Persist-disabled banner — surfaced when accounts.json failed to load
+          at startup and the registry is in quarantine mode. Drives the user
+          to inspect data/accounts.json.corrupt-*.bak rather than silently
+          watching mutations vanish on the next restart. */}
+      {!persistenceHealth.ok && (
+        <div
+          role="alert"
+          data-testid="persistence-banner"
+          class="mb-4 px-4 py-3 rounded-lg border border-amber-300 bg-amber-50 dark:bg-amber-900/20 dark:border-amber-700"
+        >
+          <div class="text-sm font-semibold text-amber-800 dark:text-amber-200">
+            {t("persistDisabledTitle")}
+          </div>
+          <div class="text-xs mt-1 text-amber-700 dark:text-amber-300">
+            {persistenceHealth.message || t("persistDisabledBody")}
+          </div>
+        </div>
+      )}
+
       {/* Import/Export toolbar (always shown) */}
       <div class="flex items-center justify-end mb-3">
         <AccountImportExport

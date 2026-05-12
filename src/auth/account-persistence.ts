@@ -13,6 +13,7 @@ import {
 import { resolve, dirname } from "path";
 import { randomBytes } from "crypto";
 import { getDataDir } from "../paths.js";
+import { appendErrorLog } from "../logs/error-log.js";
 import {
   extractChatGptAccountId,
   extractUserProfile,
@@ -91,7 +92,7 @@ export function migrateLegacyRateLimit(entry: AccountEntry): boolean {
 }
 
 export interface AccountPersistence {
-  load(): { entries: AccountEntry[]; needsPersist: boolean };
+  load(): { entries: AccountEntry[]; needsPersist: boolean; loadFailed?: boolean };
   save(accounts: AccountEntry[]): void;
 }
 
@@ -104,21 +105,24 @@ function getLegacyAuthFile(): string {
 
 export function createFsPersistence(): AccountPersistence {
   const persistence: AccountPersistence = {
-    load(): { entries: AccountEntry[]; needsPersist: boolean } {
+    load(): { entries: AccountEntry[]; needsPersist: boolean; loadFailed?: boolean } {
       // Migrate from legacy auth.json if needed
       const migrated = migrateFromLegacy();
 
       // Load from accounts.json
-      const { entries: loaded, needsPersist } = loadPersisted();
+      const { entries: loaded, needsPersist, loadFailed } = loadPersisted();
 
       const entries = migrated.length > 0 && loaded.length === 0 ? migrated : loaded;
 
-      // Auto-persist when backfill was applied (preserves original behavior)
-      if (needsPersist && loaded.length > 0) {
+      // Auto-persist when backfill was applied (preserves original behavior).
+      // Suppressed when loadFailed — the registry will be put into a
+      // persist-disabled state by AccountPool, and we must not write the
+      // partially-recovered map back over the (now quarantined) original.
+      if (needsPersist && loaded.length > 0 && !loadFailed) {
         persistence.save(loaded);
       }
 
-      return { entries, needsPersist };
+      return { entries, needsPersist, loadFailed };
     },
 
     save(accounts: AccountEntry[]): void {
@@ -203,14 +207,34 @@ function migrateFromLegacy(): AccountEntry[] {
   }
 }
 
-function loadPersisted(): { entries: AccountEntry[]; needsPersist: boolean } {
-  try {
-    const accountsFile = getAccountsFile();
-    if (!existsSync(accountsFile)) return { entries: [], needsPersist: false };
-    const raw = readFileSync(accountsFile, "utf-8");
-    const data = JSON.parse(raw) as AccountsFile;
-    if (!Array.isArray(data.accounts)) return { entries: [], needsPersist: false };
+function loadPersisted(): { entries: AccountEntry[]; needsPersist: boolean; loadFailed?: boolean } {
+  const accountsFile = getAccountsFile();
+  if (!existsSync(accountsFile)) return { entries: [], needsPersist: false };
 
+  let raw: string;
+  try {
+    raw = readFileSync(accountsFile, "utf-8");
+  } catch (err) {
+    return quarantineCorruptFile(accountsFile, null, err, "read_failed");
+  }
+
+  let data: AccountsFile;
+  try {
+    data = JSON.parse(raw) as AccountsFile;
+  } catch (err) {
+    return quarantineCorruptFile(accountsFile, raw, err, "json_parse_failed");
+  }
+
+  if (!Array.isArray(data.accounts)) {
+    return quarantineCorruptFile(
+      accountsFile,
+      raw,
+      new Error("accounts field is not an array"),
+      "shape_invalid",
+    );
+  }
+
+  try {
     const entries: AccountEntry[] = [];
     let needsPersist = false;
 
@@ -291,7 +315,70 @@ function loadPersisted(): { entries: AccountEntry[]; needsPersist: boolean } {
 
     return { entries, needsPersist };
   } catch (err) {
-    console.warn("[AccountPool] Failed to load accounts:", err instanceof Error ? err.message : err);
-    return { entries: [], needsPersist: false };
+    // The per-entry migration/backfill loop threw. Treat as corruption.
+    return quarantineCorruptFile(accountsFile, raw, err, "entry_processing_failed");
   }
+}
+
+/**
+ * Move the unparseable `accounts.json` aside so the next launch can start
+ * cleanly, and surface the failure via the local error log. The caller
+ * (AccountPool) reads `loadFailed=true` and flips the registry into a
+ * persist-disabled state so we don't overwrite the quarantine with the
+ * empty in-memory map.
+ *
+ * Renaming is best-effort: filesystem quirks (lock, permission) must not
+ * prevent the caller from getting a `loadFailed` signal. If rename fails,
+ * the original file stays on disk and the next launch will hit the same
+ * code path — still better than silent data loss.
+ */
+function quarantineCorruptFile(
+  accountsFile: string,
+  rawContent: string | null,
+  err: unknown,
+  reason: string,
+): { entries: AccountEntry[]; needsPersist: boolean; loadFailed: true } {
+  const stamp = new Date().toISOString().replace(/[:.]/g, "-");
+  const backupPath = `${accountsFile}.corrupt-${stamp}.bak`;
+  let quarantined = false;
+  let renameError: unknown = null;
+  try {
+    renameSync(accountsFile, backupPath);
+    quarantined = true;
+  } catch (renameErr) {
+    renameError = renameErr;
+  }
+
+  const message = err instanceof Error ? err.message : String(err);
+  console.warn(
+    `[AccountPool] Failed to load accounts (${reason}): ${message}. ` +
+      (quarantined
+        ? `Quarantined original to ${backupPath}.`
+        : `Quarantine rename failed; original file left in place.`),
+  );
+
+  try {
+    appendErrorLog({
+      source: "server",
+      error: {
+        name: "AccountsFileLoadFailed",
+        message,
+        stack: err instanceof Error ? err.stack : undefined,
+      },
+      context: {
+        reason,
+        accountsFile,
+        quarantined,
+        backupPath: quarantined ? backupPath : null,
+        renameError:
+          renameError instanceof Error ? renameError.message : renameError ? String(renameError) : null,
+        rawByteLength: rawContent != null ? Buffer.byteLength(rawContent, "utf-8") : null,
+      },
+    });
+  } catch {
+    // appendErrorLog already swallows write failures, but guard against
+    // upstream-side throws (e.g. getConfig() unavailable in early boot).
+  }
+
+  return { entries: [], needsPersist: false, loadFailed: true };
 }

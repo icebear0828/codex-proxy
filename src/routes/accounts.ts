@@ -156,7 +156,19 @@ export function createAccountRoutes(pool: AccountPool, scheduler: RefreshSchedul
 
   app.get("/auth/accounts", async (c) => {
     const accounts = querySvc.listFresh();
-    return c.json({ accounts });
+    const persistDisabled = pool.isPersistDisabled();
+    return c.json({
+      accounts,
+      persistence_health: persistDisabled
+        ? {
+            ok: false,
+            reason: "load_failed_quarantined",
+            message:
+              "accounts.json failed to load at startup and was quarantined (see data/ for accounts.json.corrupt-*.bak). " +
+              "Auto-save is paused until you restore the file and restart the app. Imports in this session live in memory only.",
+          }
+        : { ok: true },
+    });
   });
 
   app.post("/auth/accounts", async (c) => {
