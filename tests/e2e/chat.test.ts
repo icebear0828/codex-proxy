@@ -239,6 +239,58 @@ describe("E2E: POST /v1/chat/completions", () => {
     expect(sentBody.reasoning?.effort).toBe("high");
   });
 
+  it("Cursor-style Responses payload: normalizes input and tools before forwarding", async () => {
+    const res = await chatRequest({
+      model: "codex",
+      input: [
+        {
+          role: "user",
+          content: [{ type: "input_text", text: "Edit src/index.ts" }],
+        },
+      ],
+      instructions: "Preserve the existing style.",
+      tools: [
+        {
+          type: "function",
+          name: "edit_file",
+          parameters: { type: "object", properties: { path: { type: "string" } } },
+        },
+        {
+          type: "custom",
+          name: "apply_patch",
+          description: "Apply a patch",
+        },
+      ],
+      reasoning: { effort: "high" },
+      stream: false,
+    });
+    expect(res.status).toBe(200);
+
+    const sentBody = JSON.parse(getLastTransportBody()!) as {
+      instructions?: string;
+      input?: Array<{ role?: string; content?: unknown }>;
+      tools?: Array<{ type?: string; name?: string; parameters?: unknown }>;
+      reasoning?: { effort?: string };
+    };
+    expect(sentBody.instructions).toContain("Preserve the existing style.");
+    expect(sentBody.input?.[0]).toEqual({ role: "user", content: "Edit src/index.ts" });
+    expect(sentBody.tools).toEqual([
+      {
+        type: "function",
+        name: "edit_file",
+        strict: false,
+        parameters: { type: "object", properties: { path: { type: "string" } } },
+      },
+      {
+        type: "function",
+        name: "apply_patch",
+        strict: false,
+        description: "Apply a patch",
+      },
+    ]);
+    expect(sentBody.reasoning?.effort).toBe("high");
+  });
+
   // ── Error format ──────────────────────────────────────────────
 
   it("upstream 429: OpenAI error envelope", async () => {
