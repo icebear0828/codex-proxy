@@ -81,8 +81,16 @@ function readObservabilityConfig(): ObservabilityConfig {
 }
 
 function readAppVersion(): string {
-  const cfg = getConfig() as { client?: { app_version?: string } };
-  return cfg.client?.app_version ?? "unknown";
+  try {
+    const cfg = getConfig() as { client?: { app_version?: string } };
+    return cfg.client?.app_version ?? "unknown";
+  } catch {
+    // Config not yet loaded (early-boot crash, including the very early
+    // quarantine of accounts.json before loadConfig() returns). Without
+    // this catch the throw escapes appendErrorLog's outer try and the
+    // quarantine event silently disappears from error-log.jsonl.
+    return "unknown";
+  }
 }
 
 function ensureDataDir(): string {

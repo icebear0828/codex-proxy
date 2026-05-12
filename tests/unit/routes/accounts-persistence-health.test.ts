@@ -99,9 +99,14 @@ describe("GET /auth/accounts persistence_health", () => {
     expect(body.persistence_health).toEqual({ ok: true });
   });
 
-  it("reports ok=false + reason when load failed", async () => {
+  it("reports ok=false + reason=load_failed_quarantined when rename succeeded", async () => {
     const persistence: AccountPersistence = {
-      load: () => ({ entries: [], needsPersist: false, loadFailed: true }),
+      load: () => ({
+        entries: [],
+        needsPersist: false,
+        loadFailed: true,
+        health: { quarantined: true, backupPath: "/tmp/accounts.json.corrupt-X.bak" },
+      }),
       save: vi.fn(),
     };
     const { app, pool } = makeApp(persistence);
@@ -110,10 +115,53 @@ describe("GET /auth/accounts persistence_health", () => {
 
     const resp = await app.request("/auth/accounts");
     const body = await resp.json() as {
-      persistence_health: { ok: boolean; reason?: string; message?: string };
+      persistence_health: { ok: boolean; reason?: string; message?: string; quarantined?: boolean; backupPath?: string | null };
     };
     expect(body.persistence_health.ok).toBe(false);
     expect(body.persistence_health.reason).toBe("load_failed_quarantined");
+    expect(body.persistence_health.quarantined).toBe(true);
+    expect(body.persistence_health.backupPath).toBe("/tmp/accounts.json.corrupt-X.bak");
     expect(body.persistence_health.message).toMatch(/quarantined/);
+  });
+
+  it("reports reason=load_failed_unquarantined when rename failed — message must NOT promise a .bak file that does not exist", async () => {
+    const persistence: AccountPersistence = {
+      load: () => ({
+        entries: [],
+        needsPersist: false,
+        loadFailed: true,
+        health: { quarantined: false, backupPath: null },
+      }),
+      save: vi.fn(),
+    };
+    const { app } = makeApp(persistence);
+
+    const resp = await app.request("/auth/accounts");
+    const body = await resp.json() as {
+      persistence_health: { ok: boolean; reason?: string; message?: string; quarantined?: boolean; backupPath?: string | null };
+    };
+    expect(body.persistence_health.ok).toBe(false);
+    expect(body.persistence_health.reason).toBe("load_failed_unquarantined");
+    expect(body.persistence_health.quarantined).toBe(false);
+    expect(body.persistence_health.backupPath).toBeNull();
+    // Quarantine rename failed, so do NOT instruct the user to recover from
+    // a .bak that does not exist — the original corrupt file is still there.
+    expect(body.persistence_health.message).not.toMatch(/\.bak/);
+  });
+
+  it("falls back to a generic quarantined reason if older persistence implementations omit health", async () => {
+    const persistence: AccountPersistence = {
+      load: () => ({ entries: [], needsPersist: false, loadFailed: true }),
+      save: vi.fn(),
+    };
+    const { app } = makeApp(persistence);
+
+    const resp = await app.request("/auth/accounts");
+    const body = await resp.json() as { persistence_health: { ok: boolean; reason?: string } };
+    expect(body.persistence_health.ok).toBe(false);
+    // Without explicit health info, assume quarantine succeeded (the safest
+    // assumption for the file-based implementation), but the dashboard still
+    // shows the banner so the user investigates.
+    expect(body.persistence_health.reason).toBe("load_failed_quarantined");
   });
 });

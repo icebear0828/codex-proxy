@@ -147,6 +147,66 @@ describe("AccountPersistence load failsafe", () => {
     expect(corruptBackupFiles()).toHaveLength(1);
   });
 
+  it("top-level JSON null → loadFailed=true + quarantined (defensive: data.accounts on null would throw)", async () => {
+    writeFileSync(accountsPath(), "null", "utf-8");
+
+    const { createFsPersistence } = await freshModule();
+    const result = createFsPersistence().load();
+
+    expect(result.loadFailed).toBe(true);
+    expect(existsSync(accountsPath())).toBe(false);
+    expect(corruptBackupFiles()).toHaveLength(1);
+  });
+
+  it("top-level non-object JSON (number, string, array) → loadFailed=true + quarantined", async () => {
+    for (const payload of ["42", '"oops"', "[1,2,3]"]) {
+      // Fresh dir per iteration so the quarantine count assertion is clean.
+      rmSync(tmpData, { recursive: true, force: true });
+      tmpData = mkdtempSync(resolve(tmpdir(), "codex-load-failsafe-nonobj-"));
+      writeFileSync(accountsPath(), payload, "utf-8");
+
+      const { createFsPersistence } = await freshModule();
+      const result = createFsPersistence().load();
+
+      expect(result.loadFailed, `payload=${payload}`).toBe(true);
+      expect(existsSync(accountsPath()), `payload=${payload}`).toBe(false);
+      expect(corruptBackupFiles().length, `payload=${payload}`).toBe(1);
+    }
+  });
+
+  it("save() short-circuits after load detected corruption (defense against any code path that reaches the persistence object directly)", async () => {
+    writeFileSync(accountsPath(), "{not-json", "utf-8");
+
+    const { createFsPersistence } = await freshModule();
+    const persistence = createFsPersistence();
+
+    const load = persistence.load();
+    expect(load.loadFailed).toBe(true);
+    expect(existsSync(accountsPath())).toBe(false);
+
+    // Simulate a stray caller — e.g. a future refactor that calls
+    // persistence.save() without going through AccountRegistry's
+    // persistDisabled gate. The persistence object must refuse and leave
+    // the quarantined .bak as the only copy on disk.
+    persistence.save([]);
+
+    expect(existsSync(accountsPath())).toBe(false);
+    expect(corruptBackupFiles()).toHaveLength(1);
+  });
+
+  it("health reports quarantined=true + backupPath on successful rename", async () => {
+    writeFileSync(accountsPath(), "{bad", "utf-8");
+
+    const { createFsPersistence } = await freshModule();
+    const persistence = createFsPersistence();
+    const result = persistence.load();
+
+    expect(result.loadFailed).toBe(true);
+    expect(result.health?.quarantined).toBe(true);
+    expect(result.health?.backupPath).toMatch(/accounts\.json\.corrupt-.*\.bak$/);
+    expect(existsSync(result.health!.backupPath!)).toBe(true);
+  });
+
   it("quarantine filename uses timestamp so repeat failures don't clobber each other", async () => {
     // First failure
     writeFileSync(accountsPath(), "{bad1", "utf-8");

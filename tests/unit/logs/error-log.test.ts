@@ -291,3 +291,33 @@ describe("uncaught handlers", () => {
     expect(entries[0].error.message).toBe("nope");
   });
 });
+
+describe("appendErrorLog — early-boot resilience", () => {
+  it("still writes the entry when getConfig() throws (e.g. quarantine fires before loadConfig)", async () => {
+    // Reset module + override the config mock to simulate the early-boot
+    // case where loadConfig() has not yet populated the config singleton.
+    // The pre-fix readAppVersion call would re-throw and silently swallow
+    // the entry (outer try wraps appendFileSync, not entry construction).
+    vi.resetModules();
+    vi.doMock("@src/config.js", () => ({
+      getConfig: () => {
+        throw new Error("config not loaded");
+      },
+    }));
+
+    const { appendErrorLog, readErrorLog } = await importErrorLog();
+    appendErrorLog({
+      source: "server",
+      error: { name: "AccountsFileLoadFailed", message: "boot-time corruption" },
+      context: { reason: "json_parse_failed" },
+    });
+
+    const entries = readErrorLog();
+    expect(entries.length).toBeGreaterThanOrEqual(1);
+    const latest = entries[entries.length - 1]!;
+    expect(latest.error.name).toBe("AccountsFileLoadFailed");
+    expect(latest.version).toBe("unknown");
+
+    vi.doUnmock("@src/config.js");
+  });
+});

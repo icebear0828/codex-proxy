@@ -91,8 +91,26 @@ export function migrateLegacyRateLimit(entry: AccountEntry): boolean {
   return mutated;
 }
 
+export interface PersistenceLoadHealth {
+  /**
+   * Whether the corrupt `accounts.json` was successfully renamed aside.
+   * False means the rename itself failed — the original file is still
+   * on disk and the user-facing message must NOT instruct recovery
+   * from a `.bak` that does not exist.
+   */
+  quarantined: boolean;
+  /** Absolute path of the `.bak` file if quarantine succeeded. */
+  backupPath: string | null;
+}
+
 export interface AccountPersistence {
-  load(): { entries: AccountEntry[]; needsPersist: boolean; loadFailed?: boolean };
+  load(): {
+    entries: AccountEntry[];
+    needsPersist: boolean;
+    loadFailed?: boolean;
+    /** Populated when loadFailed=true so dashboard can show accurate recovery instructions. */
+    health?: PersistenceLoadHealth;
+  };
   save(accounts: AccountEntry[]): void;
 }
 
@@ -104,13 +122,27 @@ function getLegacyAuthFile(): string {
 }
 
 export function createFsPersistence(): AccountPersistence {
+  // Once a load discovers `accounts.json` is unparseable and quarantines it,
+  // any subsequent `save()` on this persistence instance must be refused.
+  // The registry's persistDisabled flag covers the normal mutation path,
+  // but a future caller that holds the persistence reference directly
+  // (e.g. a refactor, a script, a stray test) would otherwise race-write
+  // a fresh empty file on top of the just-renamed `.bak`. This per-instance
+  // latch is the second line of defense.
+  let quarantineActive = false;
+  let quarantineHealth: PersistenceLoadHealth | null = null;
+
   const persistence: AccountPersistence = {
-    load(): { entries: AccountEntry[]; needsPersist: boolean; loadFailed?: boolean } {
+    load() {
       // Migrate from legacy auth.json if needed
       const migrated = migrateFromLegacy();
 
       // Load from accounts.json
-      const { entries: loaded, needsPersist, loadFailed } = loadPersisted();
+      const { entries: loaded, needsPersist, loadFailed, health } = loadPersisted();
+      if (loadFailed) {
+        quarantineActive = true;
+        quarantineHealth = health ?? { quarantined: false, backupPath: null };
+      }
 
       const entries = migrated.length > 0 && loaded.length === 0 ? migrated : loaded;
 
@@ -122,10 +154,18 @@ export function createFsPersistence(): AccountPersistence {
         persistence.save(loaded);
       }
 
-      return { entries, needsPersist, loadFailed };
+      return { entries, needsPersist, loadFailed, health };
     },
 
     save(accounts: AccountEntry[]): void {
+      if (quarantineActive) {
+        console.warn(
+          "[AccountPool] save() refused: accounts.json was quarantined this session" +
+            (quarantineHealth?.backupPath ? ` (backup: ${quarantineHealth.backupPath})` : "") +
+            ". Restore a healthy file and restart the process to resume auto-save.",
+        );
+        return;
+      }
       try {
         const accountsFile = getAccountsFile();
         const dir = dirname(accountsFile);
@@ -207,7 +247,12 @@ function migrateFromLegacy(): AccountEntry[] {
   }
 }
 
-function loadPersisted(): { entries: AccountEntry[]; needsPersist: boolean; loadFailed?: boolean } {
+function loadPersisted(): {
+  entries: AccountEntry[];
+  needsPersist: boolean;
+  loadFailed?: boolean;
+  health?: PersistenceLoadHealth;
+} {
   const accountsFile = getAccountsFile();
   if (!existsSync(accountsFile)) return { entries: [], needsPersist: false };
 
@@ -218,13 +263,26 @@ function loadPersisted(): { entries: AccountEntry[]; needsPersist: boolean; load
     return quarantineCorruptFile(accountsFile, null, err, "read_failed");
   }
 
-  let data: AccountsFile;
+  let parsed: unknown;
   try {
-    data = JSON.parse(raw) as AccountsFile;
+    parsed = JSON.parse(raw);
   } catch (err) {
     return quarantineCorruptFile(accountsFile, raw, err, "json_parse_failed");
   }
 
+  // Validate shape BEFORE reading `.accounts` — `null`, primitives, or
+  // arrays at the top level would otherwise crash on property access or
+  // pass an Array.isArray check on the wrong target.
+  if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) {
+    return quarantineCorruptFile(
+      accountsFile,
+      raw,
+      new Error(`top-level JSON is not an object (got ${parsed === null ? "null" : Array.isArray(parsed) ? "array" : typeof parsed})`),
+      "shape_invalid",
+    );
+  }
+
+  const data = parsed as AccountsFile;
   if (!Array.isArray(data.accounts)) {
     return quarantineCorruptFile(
       accountsFile,
@@ -337,7 +395,12 @@ function quarantineCorruptFile(
   rawContent: string | null,
   err: unknown,
   reason: string,
-): { entries: AccountEntry[]; needsPersist: boolean; loadFailed: true } {
+): {
+  entries: AccountEntry[];
+  needsPersist: boolean;
+  loadFailed: true;
+  health: PersistenceLoadHealth;
+} {
   const stamp = new Date().toISOString().replace(/[:.]/g, "-");
   const backupPath = `${accountsFile}.corrupt-${stamp}.bak`;
   let quarantined = false;
@@ -380,5 +443,10 @@ function quarantineCorruptFile(
     // upstream-side throws (e.g. getConfig() unavailable in early boot).
   }
 
-  return { entries: [], needsPersist: false, loadFailed: true };
+  return {
+    entries: [],
+    needsPersist: false,
+    loadFailed: true,
+    health: { quarantined, backupPath: quarantined ? backupPath : null },
+  };
 }
