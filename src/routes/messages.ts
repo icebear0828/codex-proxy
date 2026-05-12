@@ -172,10 +172,10 @@ export function createMessagesRoutes(
         model: req.model,
         codexRequest: { ...codexRequest, model: req.model },
       };
-      return handleDirectRequest(c, routeMatch.adapter, directReq, fmt);
+      return handleDirectRequest({ c, upstream: routeMatch.adapter, req: directReq, fmt });
     }
 
-    return handleProxyRequest(c, accountPool, cookieJar, proxyReq, fmt, proxyPool);
+    return handleProxyRequest({ c, accountPool, cookieJar, req: proxyReq, fmt, proxyPool });
   });
 
   return app;

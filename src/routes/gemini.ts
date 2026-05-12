@@ -174,10 +174,10 @@ export function createGeminiRoutes(
 
     if (routeMatch?.kind === "api-key" || routeMatch?.kind === "adapter") {
       const directReq = { ...proxyReq, codexRequest: { ...codexRequest, model: geminiModel } };
-      return handleDirectRequest(c, routeMatch.adapter, directReq, GEMINI_FORMAT);
+      return handleDirectRequest({ c, upstream: routeMatch.adapter, req: directReq, fmt: GEMINI_FORMAT });
     }
 
-    return handleProxyRequest(c, accountPool, cookieJar, proxyReq, GEMINI_FORMAT, proxyPool);
+    return handleProxyRequest({ c, accountPool, cookieJar, req: proxyReq, fmt: GEMINI_FORMAT, proxyPool });
   });
 
   // List available models (Gemini format)

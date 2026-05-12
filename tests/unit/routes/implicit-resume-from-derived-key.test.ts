@@ -173,17 +173,16 @@ function createDirectProxyRoutes(pool: AccountPool): Hono {
   const app = new Hono();
   app.post("/direct", async (c) => {
     const codexRequest = await c.req.json<CodexResponsesRequest>();
-    return handleProxyRequest(
+    return handleProxyRequest({
       c,
-      pool,
-      undefined,
-      {
+      accountPool: pool,
+      req: {
         codexRequest,
         model: codexRequest.model,
         isStreaming: false,
       },
-      directProxyFormat,
-    );
+      fmt: directProxyFormat,
+    });
   });
   return app;
 }

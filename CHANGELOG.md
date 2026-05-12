@@ -42,6 +42,7 @@
 
 ### Changed
 
+- `handleProxyRequest` / `handleDirectRequest` 改为 named options object 调用契约，顺带把 private `handleNonStreaming` 的 20 个位置参数收敛成内部 options object，避免后续新增可选上下文时错位；所有 route 调用与直接 handler 测试同步迁移，并补 direct upstream route guard 锁住 adapter/raw model/format tag 传递（`src/routes/shared/proxy-handler.ts`、`src/routes/chat.ts`、`src/routes/messages.ts`、`src/routes/gemini.ts`、`src/routes/responses.ts`、`tests/unit/routes/upstream-auth-bypass.test.ts`）
 - 更新提示默认不再弹窗：新增 `update.show_update_dialog`（默认 `false`），Dashboard 设置页可手动开启“显示更新弹窗”。Web 自更新弹窗与 Electron 自动更新的系统对话框都受该开关控制；更新检查和托盘/菜单入口仍保留，避免默认后台检查打断使用
 - `src/routes/api-keys.ts` 简化第三方 API key 绑定路由：合并 add/import 的重复 Zod schema，统一 JSON 解析与校验错误返回，复用按 `models` 展开写入的逻辑，并新增 `tests/unit/routes/api-keys.test.ts` 覆盖添加、导入、导出、custom provider 校验与批量删除，确保行为不变
 - README / README_EN 的 Codex CLI + Codex Desktop 两节示例从 `env_key = "PROXY_API_KEY"` 改成 `[model_providers.proxy_codex.http_headers]` 内嵌 `Authorization = "Bearer ..."`：原写法在 GUI 客户端启动时会因为 macOS / Windows GUI 进程不继承 shell rc 的环境变量而报 `Missing environment variable: PROXY_API_KEY`，普通用户得额外学 `launchctl setenv` 或 LaunchAgent 才能让 Codex Desktop 看到环境变量；http_headers 把 key 直接写在 config 文件里，重启 Codex 即用。`env_key` 写法作为「需要密钥从配置文件解耦」（多人共享 / 仓库提交）场景的备选保留在文档说明里

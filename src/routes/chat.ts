@@ -155,7 +155,7 @@ export function createChatRoutes(
         model: req.model,
         codexRequest: { ...codexRequest, model: req.model },
       };
-      return handleDirectRequest(c, routeMatch.adapter, directReq, fmt);
+      return handleDirectRequest({ c, upstream: routeMatch.adapter, req: directReq, fmt });
     }
 
     // Auth check for Codex route only
@@ -173,7 +173,7 @@ export function createChatRoutes(
 
     const summary = accountPool.getPoolSummary();
     if (summary.active === 0) {
-      return handleProxyRequest(c, accountPool, cookieJar, proxyReq, fmt, proxyPool);
+      return handleProxyRequest({ c, accountPool, cookieJar, req: proxyReq, fmt, proxyPool });
     }
 
     const config = getConfig();
@@ -193,7 +193,7 @@ export function createChatRoutes(
       }
     }
 
-    return handleProxyRequest(c, accountPool, cookieJar, proxyReq, fmt, proxyPool);
+    return handleProxyRequest({ c, accountPool, cookieJar, req: proxyReq, fmt, proxyPool });
   });
 
   return app;

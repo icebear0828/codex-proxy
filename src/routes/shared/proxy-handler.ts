@@ -104,6 +104,22 @@ export interface FormatAdapter {
   }>;
 }
 
+export interface HandleProxyRequestOptions {
+  c: Context;
+  accountPool: AccountPool;
+  cookieJar?: CookieJar;
+  req: ProxyRequest;
+  fmt: FormatAdapter;
+  proxyPool?: ProxyPool;
+}
+
+export interface HandleDirectRequestOptions {
+  c: Context;
+  upstream: UpstreamAdapter;
+  req: ProxyRequest;
+  fmt: FormatAdapter;
+}
+
 const MAX_EMPTY_RETRIES = 2;
 
 /** Upper bound on how stale an implicit-resume `previous_response_id` may be.
@@ -320,14 +336,8 @@ function streamErrorResponse(
   });
 }
 
-export async function handleProxyRequest(
-  c: Context,
-  accountPool: AccountPool,
-  cookieJar: CookieJar | undefined,
-  req: ProxyRequest,
-  fmt: FormatAdapter,
-  proxyPool?: ProxyPool,
-): Promise<Response> {
+export async function handleProxyRequest(options: HandleProxyRequestOptions): Promise<Response> {
+  const { c, accountPool, cookieJar, req, fmt, proxyPool } = options;
   c.set("logForwarded", true);
 
   const affinityMap = getSessionAffinityMap();
@@ -709,32 +719,32 @@ export async function handleProxyRequest(
       }
 
       // ── Non-streaming path (with empty-response retry) ──
-      return await handleNonStreaming(
+      return await handleNonStreaming({
         c,
         accountPool,
         cookieJar,
         req,
         fmt,
         proxyPool,
-        codexApi,
-        rawResponse,
-        entryId,
+        initialApi: codexApi,
+        initialResponse: rawResponse,
+        initialEntryId: entryId,
         abortController,
         released,
         requestId,
         affinityMap,
-        chainConversationId,
-        upstreamTurnState,
-        () => activeUsageHint,
+        conversationId: chainConversationId,
+        turnState: upstreamTurnState,
+        getUsageHint: () => activeUsageHint,
         restoreImplicitResumeRequest,
         buildPoolCtx,
-        (nextEntryId, nextApi) => {
+        setActiveAccount: (nextEntryId, nextApi) => {
           entryId = nextEntryId;
           codexApi = nextApi;
           if (!triedEntryIds.includes(nextEntryId)) triedEntryIds.push(nextEntryId);
         },
         variantHash,
-      );
+      });
     } catch (err) {
       if (!(err instanceof CodexApiError)) {
         releaseAccount(accountPool, entryId, annotateImageGenOutcome(undefined, req.expectsImageGen), released);
@@ -854,31 +864,52 @@ export async function handleProxyRequest(
   }
 }
 
-// TODO: this signature has grown to 14 positional params with 7 trailing
-// optionals. Future work: refactor to an options object so adding a new
-// optional doesn't risk callers slotting it into the wrong position.
-async function handleNonStreaming(
-  c: Context,
-  accountPool: AccountPool,
-  cookieJar: CookieJar | undefined,
-  req: ProxyRequest,
-  fmt: FormatAdapter,
-  proxyPool: ProxyPool | undefined,
-  initialApi: CodexApi,
-  initialResponse: Response,
-  initialEntryId: string,
-  abortController: AbortController,
-  released: Set<string>,
-  requestId: string,
-  affinityMap?: SessionAffinityMap,
-  conversationId?: string,
-  turnState?: string,
-  getUsageHint?: () => UsageHint | undefined,
-  restoreImplicitResumeRequest?: () => void,
-  buildPoolCtx?: (forEntryId: string) => WsPoolContext | undefined,
-  setActiveAccount?: (entryId: string, api: CodexApi) => void,
-  variantHash?: string,
-): Promise<Response> {
+interface HandleNonStreamingOptions {
+  c: Context;
+  accountPool: AccountPool;
+  cookieJar?: CookieJar;
+  req: ProxyRequest;
+  fmt: FormatAdapter;
+  proxyPool?: ProxyPool;
+  initialApi: CodexApi;
+  initialResponse: Response;
+  initialEntryId: string;
+  abortController: AbortController;
+  released: Set<string>;
+  requestId: string;
+  affinityMap?: SessionAffinityMap;
+  conversationId?: string | null;
+  turnState?: string;
+  getUsageHint?: () => UsageHint | undefined;
+  restoreImplicitResumeRequest?: () => void;
+  buildPoolCtx?: (forEntryId: string) => WsPoolContext | undefined;
+  setActiveAccount?: (entryId: string, api: CodexApi) => void;
+  variantHash?: string;
+}
+
+async function handleNonStreaming(options: HandleNonStreamingOptions): Promise<Response> {
+  const {
+    c,
+    accountPool,
+    cookieJar,
+    req,
+    fmt,
+    proxyPool,
+    initialApi,
+    initialResponse,
+    initialEntryId,
+    abortController,
+    released,
+    requestId,
+    affinityMap,
+    conversationId,
+    turnState,
+    getUsageHint,
+    restoreImplicitResumeRequest,
+    buildPoolCtx,
+    setActiveAccount,
+    variantHash,
+  } = options;
   let currentEntryId = initialEntryId;
   let currentApi = initialApi;
   let currentRawResponse = initialResponse;
@@ -1064,12 +1095,8 @@ async function handleNonStreaming(
  * Lightweight handler for API-key-based upstreams (OpenAI, Anthropic, Gemini, custom).
  * No account pool management, no session affinity, no retry logic — just proxy + translate.
  */
-export async function handleDirectRequest(
-  c: Context,
-  upstream: UpstreamAdapter,
-  req: ProxyRequest,
-  fmt: FormatAdapter,
-): Promise<Response> {
+export async function handleDirectRequest(options: HandleDirectRequestOptions): Promise<Response> {
+  const { c, upstream, req, fmt } = options;
   const abortController = new AbortController();
   c.req.raw.signal.addEventListener("abort", () => abortController.abort(), { once: true });
 
