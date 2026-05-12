@@ -1,4 +1,13 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
+
+const recordedStreamCloseEvents = vi.hoisted((): Array<Record<string, unknown>> => []);
+
+vi.mock("@src/logs/stream-close-event.js", () => ({
+  recordStreamCloseEvent: vi.fn((evt: Record<string, unknown>) => {
+    recordedStreamCloseEvents.push(evt);
+  }),
+}));
+
 import { streamResponse } from "@src/routes/shared/response-processor.js";
 
 /* ── Helpers ── */
@@ -37,6 +46,7 @@ function createMockCodexApi() {
 describe("streamResponse", () => {
   beforeEach(() => {
     vi.restoreAllMocks();
+    recordedStreamCloseEvents.length = 0;
   });
 
   it("writes all chunks to the stream", async () => {
@@ -86,6 +96,31 @@ describe("streamResponse", () => {
     const errorChunk = s.written.find((c) => c.includes("stream_error"));
     expect(errorChunk).toBeDefined();
     expect(errorChunk).toContain("upstream died");
+  });
+
+  it("does not record upstream-error when the request abort caused the stream failure", async () => {
+    const s = createMockStream();
+    const adapter = createMockAdapter({ streamError: new Error("Aborted") });
+    const api = createMockCodexApi();
+    const rawResponse = new Response("ok");
+    const abortController = new AbortController();
+    abortController.abort();
+
+    await streamResponse(
+      s as never,
+      api,
+      rawResponse,
+      "gpt-5.4",
+      adapter as never,
+      vi.fn(),
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      { requestId: "rid-abort", tag: "Responses", abortSignal: abortController.signal },
+    );
+
+    expect(recordedStreamCloseEvents).toEqual([]);
   });
 
   it("uses a protocol-specific stream error formatter when stream throws", async () => {

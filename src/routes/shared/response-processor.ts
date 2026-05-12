@@ -9,6 +9,7 @@ import { CodexApiError } from "../../proxy/codex-types.js";
 import type { FormatAdapter, ResponseMetadata, UsageHint } from "./proxy-handler.js";
 import type { UsageInfo } from "../../translation/codex-event-extractor.js";
 import { debugDump, debugDumpEnabled } from "../../utils/debug-dump.js";
+import { recordStreamCloseEvent } from "../../logs/stream-close-event.js";
 
 /** Minimal subset of Hono's StreamingApi that we actually use. */
 export interface StreamWriter {
@@ -19,6 +20,11 @@ export interface StreamWriter {
 export interface StreamDiagnostics {
   requestId?: string;
   tag?: string;
+  provider?: string;
+  path?: string;
+  accountEntryId?: string;
+  variantHash?: string;
+  abortSignal?: AbortSignal;
 }
 
 interface WrittenStreamTrace {
@@ -113,6 +119,19 @@ export async function streamResponse(
     lastEvent: null,
     sawTerminal: false,
   };
+  // Diagnostic context passed into adapter-internal premature-close records
+  // (e.g. streamPassthrough in responses.ts). The adapter is free to ignore
+  // it; carrying it through here means audit entries land on the real
+  // requestId/account/variantHash instead of the synthetic fallback.
+  const streamContext = {
+    requestId: diagnostics?.requestId,
+    tag: diagnostics?.tag ?? adapter.tag,
+    provider: diagnostics?.provider,
+    path: diagnostics?.path,
+    model,
+    accountEntryId: diagnostics?.accountEntryId,
+    variantHash: diagnostics?.variantHash,
+  };
   try {
     for await (const chunk of adapter.streamTranslator(
       api,
@@ -123,6 +142,7 @@ export async function streamResponse(
       tupleSchema,
       usageHint,
       onResponseMetadata,
+      streamContext,
     )) {
       const chunkTrace = inspectStreamChunk(chunk);
       if (debugDumpEnabled()) {
@@ -149,6 +169,21 @@ export async function streamResponse(
             ` failed_chunk_terminal=${chunkTrace.terminal}` +
             ` err=${errMsg}`,
         );
+        recordStreamCloseEvent({
+          kind: "client-write-failed",
+          requestId: diagnostics?.requestId ?? null,
+          tag: diagnostics?.tag ?? adapter.tag ?? null,
+          provider: diagnostics?.provider ?? null,
+          path: diagnostics?.path ?? null,
+          model,
+          accountEntryId: diagnostics?.accountEntryId ?? null,
+          variantHash: diagnostics?.variantHash ?? null,
+          writtenChunks: written.chunks,
+          writtenBytes: written.bytes,
+          lastSentEvent: written.lastEvent,
+          sentTerminal: written.sawTerminal,
+          detail: errMsg,
+        });
         // Client disconnected mid-stream — stop reading upstream
         return;
       }
@@ -164,6 +199,9 @@ export async function streamResponse(
       });
     }
   } catch (err) {
+    if (diagnostics?.abortSignal?.aborted) {
+      return;
+    }
     const errMsg = err instanceof Error ? err.message : "Stream interrupted";
     const errStatus = err instanceof CodexApiError ? err.status : "?";
     const errBody = err instanceof CodexApiError ? err.body : undefined;
@@ -190,6 +228,22 @@ export async function streamResponse(
         ` msg=${errMsg}` +
         (errBody ? ` body=${errBody.slice(0, 1000)}` : ""),
     );
+    recordStreamCloseEvent({
+      kind: "upstream-error",
+      requestId: diagnostics?.requestId ?? null,
+      tag: diagnostics?.tag ?? adapter.tag ?? null,
+      provider: diagnostics?.provider ?? null,
+      path: diagnostics?.path ?? null,
+      model,
+      accountEntryId: diagnostics?.accountEntryId ?? null,
+      variantHash: diagnostics?.variantHash ?? null,
+      writtenChunks: written.chunks,
+      writtenBytes: written.bytes,
+      lastSentEvent: written.lastEvent,
+      sentTerminal: written.sawTerminal,
+      upstreamStatus: typeof errStatus === "number" ? errStatus : null,
+      detail: errMsg,
+    });
     // Send error SSE event to client before closing
     try {
       await s.write(

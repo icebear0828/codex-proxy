@@ -20,6 +20,7 @@ export interface ErrorGroup {
   last_seen: string;
   source: ErrorSource;
   sample_stack?: string;
+  sample_context?: Record<string, unknown>;
 }
 
 export interface ErrorLogCount {

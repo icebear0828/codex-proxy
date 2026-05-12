@@ -35,6 +35,7 @@ import { getConfig } from "../../config.js";
 import { jitterInt } from "../../utils/jitter.js";
 import { getSessionAffinityMap, type SessionAffinityMap } from "../../auth/session-affinity.js";
 import { enqueueLogEntry } from "../../logs/entry.js";
+import { recordStreamCloseEvent, type StreamCloseContextBase } from "../../logs/stream-close-event.js";
 import { randomUUID } from "crypto";
 import { deriveStableConversationKey } from "./stable-conversation-key.js";
 import { computeVariantHash } from "./variant-hash.js";
@@ -83,6 +84,11 @@ export interface FormatAdapter {
     tupleSchema?: Record<string, unknown> | null,
     usageHint?: UsageHint,
     onResponseMetadata?: (metadata: ResponseMetadata) => void,
+    /** Diagnostic context forwarded into adapter-internal premature-close
+     *  records (e.g. `streamPassthrough` in responses.ts) so audit entries
+     *  carry the real rid / account / variantHash instead of falling back
+     *  to the synthetic `"stream-close"` placeholder. */
+    streamContext?: StreamCloseContextBase,
   ) => AsyncGenerator<string>;
   collectTranslator: (
     api: UpstreamAdapter,
@@ -617,6 +623,15 @@ export async function handleProxyRequest(
         return stream(c, async (s) => {
           s.onAbort(() => {
             console.warn(`[stream-client-abort] rid=${requestId.slice(0, 8)} tag=${fmt.tag} model=${req.model}`);
+            recordStreamCloseEvent({
+              kind: "client-abort",
+              requestId,
+              tag: fmt.tag,
+              model: req.model,
+              accountEntryId: capturedEntryId,
+              variantHash,
+              responseId: capturedResponseId ?? null,
+            });
             abortController.abort();
           });
           const recordStreamAffinity = (): void => {
@@ -651,7 +666,15 @@ export async function handleProxyRequest(
                 }
                 recordStreamAffinity();
               },
-              { requestId: requestId.slice(0, 8), tag: fmt.tag },
+              {
+                requestId: requestId.slice(0, 8),
+                tag: fmt.tag,
+                provider: "codex",
+                path: "/codex/responses",
+                accountEntryId: capturedEntryId,
+                variantHash,
+                abortSignal: abortController.signal,
+              },
             );
           } finally {
             abortController.abort();
@@ -916,6 +939,18 @@ async function handleNonStreaming(
         console.warn(
           `[${fmt.tag}] Account ${currentEntryId} (${email}) | upstream premature close (hadReasoning=${collectErr.hadReasoning} events=${collectErr.eventCount}) — failing fast, not retrying`,
         );
+        recordStreamCloseEvent({
+          kind: "upstream-premature",
+          requestId,
+          tag: fmt.tag,
+          model: req.model,
+          accountEntryId: currentEntryId,
+          variantHash,
+          responseId: collectErr.responseId,
+          eventCount: collectErr.eventCount,
+          hadReasoning: collectErr.hadReasoning,
+          detail: collectErr.message,
+        });
         releaseAccount(accountPool, currentEntryId, annotateImageGenOutcome(undefined, req.expectsImageGen), released);
         c.status(504);
         return c.json(fmt.formatError(504, collectErr.message));
@@ -1110,6 +1145,14 @@ export async function handleDirectRequest(
     return stream(c, async (s) => {
       s.onAbort(() => {
         console.warn(`[stream-client-abort] rid=${requestId.slice(0, 8)} tag=${fmt.tag} model=${req.model}`);
+        recordStreamCloseEvent({
+          kind: "client-abort",
+          requestId,
+          tag: fmt.tag,
+          provider: upstream.tag,
+          path: "/v1/responses",
+          model: req.model,
+        });
         abortController.abort();
       });
       await streamResponse(
@@ -1123,7 +1166,13 @@ export async function handleDirectRequest(
         () => {},
         undefined,
         undefined,
-        { requestId: requestId.slice(0, 8), tag: fmt.tag },
+        {
+          requestId: requestId.slice(0, 8),
+          tag: fmt.tag,
+          provider: upstream.tag,
+          path: "/v1/responses",
+          abortSignal: abortController.signal,
+        },
       );
     });
   }
