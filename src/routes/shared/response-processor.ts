@@ -20,8 +20,11 @@ export interface StreamWriter {
 export interface StreamDiagnostics {
   requestId?: string;
   tag?: string;
+  provider?: string;
+  path?: string;
   accountEntryId?: string;
   variantHash?: string;
+  abortSignal?: AbortSignal;
 }
 
 interface WrittenStreamTrace {
@@ -123,6 +126,8 @@ export async function streamResponse(
   const streamContext = {
     requestId: diagnostics?.requestId,
     tag: diagnostics?.tag ?? adapter.tag,
+    provider: diagnostics?.provider,
+    path: diagnostics?.path,
     model,
     accountEntryId: diagnostics?.accountEntryId,
     variantHash: diagnostics?.variantHash,
@@ -168,6 +173,8 @@ export async function streamResponse(
           kind: "client-write-failed",
           requestId: diagnostics?.requestId ?? null,
           tag: diagnostics?.tag ?? adapter.tag ?? null,
+          provider: diagnostics?.provider ?? null,
+          path: diagnostics?.path ?? null,
           model,
           accountEntryId: diagnostics?.accountEntryId ?? null,
           variantHash: diagnostics?.variantHash ?? null,
@@ -192,6 +199,9 @@ export async function streamResponse(
       });
     }
   } catch (err) {
+    if (diagnostics?.abortSignal?.aborted) {
+      return;
+    }
     const errMsg = err instanceof Error ? err.message : "Stream interrupted";
     const errStatus = err instanceof CodexApiError ? err.status : "?";
     const errBody = err instanceof CodexApiError ? err.body : undefined;
@@ -222,6 +232,8 @@ export async function streamResponse(
       kind: "upstream-error",
       requestId: diagnostics?.requestId ?? null,
       tag: diagnostics?.tag ?? adapter.tag ?? null,
+      provider: diagnostics?.provider ?? null,
+      path: diagnostics?.path ?? null,
       model,
       accountEntryId: diagnostics?.accountEntryId ?? null,
       variantHash: diagnostics?.variantHash ?? null,

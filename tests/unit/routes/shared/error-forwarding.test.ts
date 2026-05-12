@@ -9,6 +9,7 @@ import { createMockFormatAdapter } from "@helpers/format-adapter.js";
 
 // ── Mocks ────────────────────────────────────────────────────────────
 
+const recordedStreamCloseEvents = vi.hoisted((): Array<Record<string, unknown>> => []);
 let mockUpstreamCreate: (() => Promise<Response>) | null = null;
 let mockCodexCreate: (() => Promise<Response>) | null = null;
 
@@ -50,6 +51,12 @@ vi.mock("@src/utils/jitter.js", () => ({
 
 vi.mock("@src/utils/retry.js", () => ({
   withRetry: vi.fn(async (fn: () => Promise<unknown>) => fn()),
+}));
+
+vi.mock("@src/logs/stream-close-event.js", () => ({
+  recordStreamCloseEvent: vi.fn((evt: Record<string, unknown>) => {
+    recordedStreamCloseEvents.push(evt);
+  }),
 }));
 
 vi.mock("@src/translation/codex-event-extractor.js", () => {
@@ -121,6 +128,7 @@ function createMockAccountPool(overrides: Record<string, unknown> = {}) {
 describe("handleDirectRequest error forwarding", () => {
   beforeEach(() => {
     mockUpstreamCreate = null;
+    recordedStreamCloseEvents.length = 0;
     vi.clearAllMocks();
   });
 
@@ -258,6 +266,31 @@ describe("handleDirectRequest error forwarding", () => {
     const body = await res.json();
     expect(body.error).toBe("api_error");
     expect(fmt.formatError).toHaveBeenCalled();
+  });
+
+  it("records direct streaming failures with the direct provider and public API path", async () => {
+    const app = new Hono();
+    const upstream = createMockUpstream({ tag: "openai" });
+    const req = { ...createDefaultRequest(), isStreaming: true };
+    const fmt = createMockFormatAdapter({
+      streamTranslator: vi.fn(async function* () {
+        throw new Error("direct stream died");
+      }),
+    });
+
+    app.post("/test", (c) => handleDirectRequest(c, upstream as never, req, fmt));
+
+    const res = await app.request("/test", { method: "POST" });
+    await res.text();
+
+    expect(recordedStreamCloseEvents).toHaveLength(1);
+    expect(recordedStreamCloseEvents[0]).toMatchObject({
+      kind: "upstream-error",
+      provider: "openai",
+      path: "/v1/responses",
+      model: "gpt-4o",
+      detail: "direct stream died",
+    });
   });
 });
 

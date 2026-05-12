@@ -654,8 +654,11 @@ export async function handleProxyRequest(
               {
                 requestId: requestId.slice(0, 8),
                 tag: fmt.tag,
+                provider: "codex",
+                path: "/codex/responses",
                 accountEntryId: capturedEntryId,
                 variantHash,
+                abortSignal: abortController.signal,
               },
             );
           } finally {
@@ -1131,6 +1134,8 @@ export async function handleDirectRequest(
           kind: "client-abort",
           requestId,
           tag: fmt.tag,
+          provider: upstream.tag,
+          path: "/v1/responses",
           model: req.model,
         });
         abortController.abort();
@@ -1146,7 +1151,13 @@ export async function handleDirectRequest(
         () => {},
         undefined,
         undefined,
-        { requestId: requestId.slice(0, 8), tag: fmt.tag },
+        {
+          requestId: requestId.slice(0, 8),
+          tag: fmt.tag,
+          provider: upstream.tag,
+          path: "/v1/responses",
+          abortSignal: abortController.signal,
+        },
       );
     });
   }

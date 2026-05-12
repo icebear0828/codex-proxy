@@ -28,6 +28,8 @@ export type StreamCloseKind =
 export interface StreamCloseContextBase {
   requestId?: string | null;
   tag?: string | null;
+  provider?: string | null;
+  path?: string | null;
   model?: string | null;
   accountEntryId?: string | null;
   variantHash?: string | null;
@@ -92,6 +94,8 @@ export function recordStreamCloseEvent(evt: StreamCloseEvent): void {
       kind: evt.kind,
       requestId: evt.requestId,
       tag: evt.tag,
+      provider: evt.provider,
+      path: evt.path,
       model: evt.model,
       accountEntryId: evt.accountEntryId,
       variantHash: evt.variantHash,
@@ -112,9 +116,9 @@ export function recordStreamCloseEvent(evt: StreamCloseEvent): void {
     requestId: evt.requestId ?? "stream-close",
     direction: "egress",
     method: "POST",
-    path: "/codex/responses",
+    path: evt.path ?? "/codex/responses",
     model: evt.model ?? null,
-    provider: "codex",
+    provider: evt.provider ?? "codex",
     status: numericStatus,
     stream: true,
     error: message,

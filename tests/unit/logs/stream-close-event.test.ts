@@ -197,6 +197,34 @@ describe("recordStreamCloseEvent", () => {
     expect(audit.records[0].status).toBe(502);
   });
 
+  it("uses caller-supplied provider and path for direct upstream audit entries", async () => {
+    const { recordStreamCloseEvent, logStore } = await importAll();
+    recordStreamCloseEvent({
+      kind: "upstream-error",
+      requestId: "rid-openai",
+      model: "gpt-4.1",
+      provider: "openai",
+      path: "/v1/responses",
+      upstreamStatus: 502,
+      detail: "direct stream died",
+    });
+
+    await flushMicrotasks();
+    const audit = logStore.list({ limit: 50 });
+    expect(audit.records[0]).toMatchObject({
+      provider: "openai",
+      path: "/v1/responses",
+      status: 502,
+    });
+
+    const errEntries = readErrorLogLines();
+    const ctx = errEntries[0].context as Record<string, unknown>;
+    expect(ctx).toMatchObject({
+      provider: "openai",
+      path: "/v1/responses",
+    });
+  });
+
   it("falls back to a synthetic requestId when none is provided", async () => {
     const { recordStreamCloseEvent, logStore } = await importAll();
     recordStreamCloseEvent({ kind: "upstream-premature", detail: "early eof" });
