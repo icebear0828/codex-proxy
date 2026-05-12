@@ -5,6 +5,7 @@ export interface ExtractedFingerprint {
   chromium_version: string | null;
   api_base_url: string | null;
   originator: string | null;
+  models: string[];
   wham_endpoints: string[];
   user_agent_contains: string;
   sparkle_feed_url: string | null;

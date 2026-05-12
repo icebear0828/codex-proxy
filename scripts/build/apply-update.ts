@@ -18,6 +18,7 @@ import type { ExtractedFingerprint } from "./types.js";
 const ROOT = resolve(import.meta.dirname, "..", "..");
 const CONFIG_PATH = resolve(ROOT, "config/default.yaml");
 const EXTRACTED_PATH = resolve(ROOT, "data/extracted-fingerprint.json");
+const MODELS_PATH = resolve(ROOT, "config/models.yaml");
 const PROMPTS_DIR = resolve(ROOT, "config/prompts");
 
 type ChangeType = "auto" | "semi-auto" | "alert";
@@ -31,71 +32,116 @@ interface Change {
   file: string;
 }
 
+function asRecord(value: unknown, label: string): Record<string, unknown> {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    throw new Error(`${label} must be an object`);
+  }
+  return value as Record<string, unknown>;
+}
+
+function optionalString(value: unknown): string | null {
+  return typeof value === "string" ? value : null;
+}
+
+function readString(record: Record<string, unknown>, key: string): string {
+  const value = record[key];
+  return typeof value === "string" ? value : "";
+}
+
+function stringArray(value: unknown): string[] {
+  return Array.isArray(value) ? value.filter((item): item is string => typeof item === "string") : [];
+}
+
 function loadExtracted(): ExtractedFingerprint {
   if (!existsSync(EXTRACTED_PATH)) {
     throw new Error(
       `No extracted fingerprint found at ${EXTRACTED_PATH}.\n` +
-      `Run: npm run extract -- --path <codex-path>`
+      "Run: npm run extract -- --path <Codex.app or extracted ASAR dir>",
     );
   }
-  return JSON.parse(readFileSync(EXTRACTED_PATH, "utf-8"));
+  const parsed = asRecord(JSON.parse(readFileSync(EXTRACTED_PATH, "utf-8")) as unknown, EXTRACTED_PATH);
+  const prompts = asRecord(parsed.prompts, "prompts");
+  return {
+    app_version: String(parsed.app_version ?? ""),
+    build_number: String(parsed.build_number ?? ""),
+    electron_version: optionalString(parsed.electron_version),
+    chromium_version: optionalString(parsed.chromium_version),
+    api_base_url: optionalString(parsed.api_base_url),
+    originator: optionalString(parsed.originator),
+    models: stringArray(parsed.models),
+    wham_endpoints: stringArray(parsed.wham_endpoints),
+    user_agent_contains: String(parsed.user_agent_contains ?? ""),
+    sparkle_feed_url: optionalString(parsed.sparkle_feed_url),
+    prompts: {
+      desktop_context_hash: optionalString(prompts.desktop_context_hash),
+      desktop_context_path: optionalString(prompts.desktop_context_path),
+      title_generation_hash: optionalString(prompts.title_generation_hash),
+      title_generation_path: optionalString(prompts.title_generation_path),
+      pr_generation_hash: optionalString(prompts.pr_generation_hash),
+      pr_generation_path: optionalString(prompts.pr_generation_path),
+      automation_response_hash: optionalString(prompts.automation_response_hash),
+      automation_response_path: optionalString(prompts.automation_response_path),
+    },
+    extracted_at: String(parsed.extracted_at ?? ""),
+    source_path: String(parsed.source_path ?? ""),
+  };
 }
 
 function loadCurrentConfig(): Record<string, unknown> {
-  return yaml.load(readFileSync(CONFIG_PATH, "utf-8")) as Record<string, unknown>;
+  return asRecord(yaml.load(readFileSync(CONFIG_PATH, "utf-8")), CONFIG_PATH);
 }
 
 function detectChanges(extracted: ExtractedFingerprint): Change[] {
   const changes: Change[] = [];
   const config = loadCurrentConfig();
-  const client = config.client as Record<string, string>;
+  const client = asRecord(config.client, "client");
 
   // Version
-  if (extracted.app_version !== client.app_version) {
+  if (extracted.app_version && extracted.app_version !== readString(client, "app_version")) {
     changes.push({
       type: "auto",
       category: "version",
       description: "App version changed",
-      current: client.app_version,
+      current: readString(client, "app_version"),
       updated: extracted.app_version,
       file: CONFIG_PATH,
     });
   }
 
   // Build number
-  if (extracted.build_number !== client.build_number) {
+  if (extracted.build_number && extracted.build_number !== readString(client, "build_number")) {
     changes.push({
       type: "auto",
       category: "build",
       description: "Build number changed",
-      current: client.build_number,
+      current: readString(client, "build_number"),
       updated: extracted.build_number,
       file: CONFIG_PATH,
     });
   }
 
   // Chromium version
-  if (extracted.chromium_version && extracted.chromium_version !== client.chromium_version) {
+  if (extracted.chromium_version && extracted.chromium_version !== readString(client, "chromium_version")) {
     changes.push({
       type: "auto",
       category: "chromium_version",
       description: "Chromium version changed",
-      current: client.chromium_version ?? "unknown",
+      current: readString(client, "chromium_version") || "unknown",
       updated: extracted.chromium_version,
       file: CONFIG_PATH,
     });
   }
 
   // TLS impersonate profile (derived from Chromium version)
-  const tls = config.tls as Record<string, string>;
+  const tls = asRecord(config.tls ?? {}, "tls");
   if (extracted.chromium_version) {
     const expectedProfile = `chrome${extracted.chromium_version}`;
-    if (tls.impersonate_profile && tls.impersonate_profile !== expectedProfile) {
+    if (readString(tls, "impersonate_profile") && readString(tls, "impersonate_profile") !== expectedProfile) {
       changes.push({
         type: "auto",
         category: "impersonate_profile",
         description: "TLS impersonate profile changed",
-        current: tls.impersonate_profile,
+        current: readString(tls, "impersonate_profile"),
         updated: expectedProfile,
         file: CONFIG_PATH,
       });
@@ -103,29 +149,31 @@ function detectChanges(extracted: ExtractedFingerprint): Change[] {
   }
 
   // Originator
-  if (extracted.originator && extracted.originator !== client.originator) {
+  if (extracted.originator && extracted.originator !== readString(client, "originator")) {
     changes.push({
       type: "auto",
       category: "originator",
       description: "Originator header changed",
-      current: client.originator,
+      current: readString(client, "originator"),
       updated: extracted.originator,
       file: CONFIG_PATH,
     });
   }
 
   // API base URL
-  const api = config.api as Record<string, string>;
-  if (extracted.api_base_url && extracted.api_base_url !== api.base_url) {
+  const api = asRecord(config.api, "api");
+  if (extracted.api_base_url && extracted.api_base_url !== readString(api, "base_url")) {
     changes.push({
       type: "alert",
       category: "api_url",
       description: "API base URL changed (CRITICAL)",
-      current: api.base_url,
+      current: readString(api, "base_url"),
       updated: extracted.api_base_url,
       file: CONFIG_PATH,
     });
   }
+
+  detectModelChanges(extracted, changes);
 
   // WHAM endpoints — check for new ones
   const knownEndpoints = [
@@ -188,6 +236,45 @@ function detectChanges(extracted: ExtractedFingerprint): Change[] {
   return changes;
 }
 
+function detectModelChanges(extracted: ExtractedFingerprint, changes: Change[]): void {
+  if (!existsSync(MODELS_PATH)) return;
+
+  const modelsYaml = loadCurrentConfigFrom(MODELS_PATH);
+  const rawModels = Array.isArray(modelsYaml.models) ? modelsYaml.models : [];
+  const currentModels = rawModels
+    .map((entry) => asRecord(entry, "model").id)
+    .filter((id): id is string => typeof id === "string");
+  const extractedModels = [...new Set(extracted.models)].sort();
+  const newModels = extractedModels.filter((model) => !currentModels.includes(model));
+  const removedModels = currentModels.filter((model) => !extractedModels.includes(model));
+
+  if (newModels.length > 0) {
+    changes.push({
+      type: "semi-auto",
+      category: "models_added",
+      description: `New models found: ${newModels.join(", ")}`,
+      current: currentModels.join(", "),
+      updated: extractedModels.join(", "),
+      file: MODELS_PATH,
+    });
+  }
+
+  if (removedModels.length > 0) {
+    changes.push({
+      type: "semi-auto",
+      category: "models_removed",
+      description: `Models removed: ${removedModels.join(", ")}`,
+      current: currentModels.join(", "),
+      updated: extractedModels.join(", "),
+      file: MODELS_PATH,
+    });
+  }
+}
+
+function loadCurrentConfigFrom(path: string): Record<string, unknown> {
+  return asRecord(yaml.load(readFileSync(path, "utf-8")), path);
+}
+
 function applyAutoChanges(changes: Change[], dryRun: boolean): void {
   const autoChanges = changes.filter((c) => c.type === "auto");
 
@@ -201,8 +288,10 @@ function applyAutoChanges(changes: Change[], dryRun: boolean): void {
 
   if (configChanges.length > 0 && !dryRun) {
     mutateYaml(CONFIG_PATH, (data) => {
-      const client = data.client as Record<string, unknown>;
-      const tls = data.tls as Record<string, unknown>;
+      const client = asRecord(data.client ?? {}, "client");
+      const tls = asRecord(data.tls ?? {}, "tls");
+      data.client = client;
+      data.tls = tls;
       for (const change of configChanges) {
         switch (change.category) {
           case "version":
@@ -241,7 +330,7 @@ function applyAutoChanges(changes: Change[], dryRun: boolean): void {
         console.warn(`  [SKIPPED] config/prompts/${name}.md — extracted content too short (${trimmed.length} chars)`);
         continue;
       }
-      const garbageLines = trimmed.split("\n").filter((l) => /^[,`'"]\s*$/.test(l.trim()));
+      const garbageLines = trimmed.split("\n").filter((line) => /^[,`'"]\s*$/.test(line.trim()));
       if (garbageLines.length > 3) {
         console.warn(`  [SKIPPED] config/prompts/${name}.md — ${garbageLines.length} garbled lines detected`);
         continue;
@@ -348,7 +437,7 @@ async function main() {
   }
 }
 
-main().catch((err) => {
-  console.error("[apply-update] Fatal:", err);
+main().catch((error: unknown) => {
+  console.error("[apply-update] Fatal:", error instanceof Error ? error.message : error);
   process.exit(1);
 });

@@ -1,6 +1,9 @@
 /**
  * Update checker — polls the Codex Sparkle appcast for new versions.
  * Automatically applies version updates to config file and runtime.
+ * Fingerprint extraction is optional because the public repo does not ship the
+ * private Codex Desktop downloader; set CODEX_DESKTOP_PATH/CODEX_APP_PATH to
+ * run extraction against a local app bundle or extracted ASAR.
  */
 
 import { readFileSync, writeFileSync, mkdirSync, existsSync } from "fs";
@@ -110,7 +113,13 @@ function applyVersionUpdate(version: string, build: string): void {
  */
 const UPDATE_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutes
 
-function triggerFullUpdate(): void {
+function getConfiguredCodexSourcePath(): string | null {
+  const value = process.env.CODEX_DESKTOP_PATH ?? process.env.CODEX_APP_PATH ?? null;
+  const trimmed = value?.trim();
+  return trimmed && trimmed.length > 0 ? trimmed : null;
+}
+
+function triggerFullUpdate(codexSourcePath: string | null = getConfiguredCodexSourcePath()): void {
   if (_updateInProgress) {
     console.log("[UpdateChecker] Full update already in progress, skipping");
     return;
@@ -122,12 +131,19 @@ function triggerFullUpdate(): void {
     return;
   }
 
+  if (!codexSourcePath) {
+    console.log(
+      "[UpdateChecker] Skipping full-update pipeline: set CODEX_DESKTOP_PATH or CODEX_APP_PATH to a local Codex.app/extracted ASAR path",
+    );
+    return;
+  }
+
   _updateInProgress = true;
   console.log("[UpdateChecker] Triggering full-update pipeline...");
 
   const child = fork(
     resolve(process.cwd(), "scripts/build/full-update.ts"),
-    ["--force"],
+    ["--path", codexSourcePath],
     {
       execArgv: ["--import", "tsx"],
       stdio: "pipe",

@@ -26,6 +26,13 @@ main_js:
     group: 1
     description: "originator header sent with requests"
 
+  # Model IDs from quoted Desktop source strings.
+  models:
+    pattern: '"(gpt-[a-z0-9]+(?:[.-][a-z0-9]+)*)"'
+    group: 1
+    global: true
+    description: "All GPT model ID strings"
+
   # WHAM API endpoint paths
   wham_endpoints:
     pattern: '"(/wham/[^"]+)"'

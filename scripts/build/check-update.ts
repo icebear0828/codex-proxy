@@ -9,16 +9,17 @@
  * Without: runs once and exits.
  */
 
-import { readFileSync, writeFileSync, mkdirSync } from "fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "fs";
 import { resolve } from "path";
 import { pathToFileURL } from "url";
 import yaml from "js-yaml";
 
 const ROOT = resolve(import.meta.dirname, "..", "..");
 const CONFIG_PATH = resolve(ROOT, "config/default.yaml");
+const VERSION_OVERRIDE_PATH = resolve(ROOT, "data/version-state.json");
 const STATE_PATH = resolve(ROOT, "data/update-state.json");
 const APPCAST_URL = "https://persistent.oaistatic.com/codex-app-prod/appcast.xml";
-const POLL_INTERVAL_MS = 30 * 60 * 1000; // 30 minutes
+const POLL_INTERVAL_MS = 30 * 60 * 1000;
 
 interface UpdateState {
   last_check: string;
@@ -35,12 +36,35 @@ interface CurrentConfig {
   build_number: string;
 }
 
+function asRecord(value: unknown, label: string): Record<string, unknown> {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    throw new Error(`${label} must be an object`);
+  }
+  return value as Record<string, unknown>;
+}
+
+function stringField(record: Record<string, unknown>, key: string): string {
+  const value = record[key];
+  if (typeof value !== "string") {
+    throw new Error(`${key} must be a string`);
+  }
+  return value;
+}
+
 function loadCurrentConfig(): CurrentConfig {
-  const raw = yaml.load(readFileSync(CONFIG_PATH, "utf-8")) as Record<string, unknown>;
-  const client = raw.client as Record<string, string>;
+  if (existsSync(VERSION_OVERRIDE_PATH)) {
+    const override = asRecord(JSON.parse(readFileSync(VERSION_OVERRIDE_PATH, "utf-8")) as unknown, VERSION_OVERRIDE_PATH);
+    return {
+      app_version: stringField(override, "app_version"),
+      build_number: stringField(override, "build_number"),
+    };
+  }
+
+  const raw = asRecord(yaml.load(readFileSync(CONFIG_PATH, "utf-8")), CONFIG_PATH);
+  const client = asRecord(raw.client, "client");
   return {
-    app_version: client.app_version,
-    build_number: client.build_number,
+    app_version: stringField(client, "app_version"),
+    build_number: stringField(client, "build_number"),
   };
 }
 
@@ -53,23 +77,18 @@ export function parseCheckUpdateAppcast(xml: string): {
   build: string | null;
   downloadUrl: string | null;
 } {
-  // Extract the latest <item> (first one is usually the latest)
-  const itemMatch = xml.match(/<item>([\s\S]*?)<\/item>/i);
-  if (!itemMatch) {
-    return { version: null, build: null, downloadUrl: null };
-  }
+  const itemMatch = /<item>([\s\S]*?)<\/item>/i.exec(xml);
+  if (!itemMatch) return { version: null, build: null, downloadUrl: null };
+
   const item = itemMatch[1];
 
-  // sparkle:shortVersionString = display version
   const versionMatch =
-    item.match(/sparkle:shortVersionString="([^"]+)"/) ??
-    item.match(/<sparkle:shortVersionString>([^<]+)<\/sparkle:shortVersionString>/);
-  // sparkle:version = build number
+    /sparkle:shortVersionString="([^"]+)"/.exec(item) ??
+    /<sparkle:shortVersionString>([^<]+)<\/sparkle:shortVersionString>/.exec(item);
   const buildMatch =
-    item.match(/sparkle:version="([^"]+)"/) ??
-    item.match(/<sparkle:version>([^<]+)<\/sparkle:version>/);
-  // url = download URL from enclosure
-  const urlMatch = item.match(/url="([^"]+)"/);
+    /sparkle:version="([^"]+)"/.exec(item) ??
+    /<sparkle:version>([^<]+)<\/sparkle:version>/.exec(item);
+  const urlMatch = /url="([^"]+)"/.exec(item);
 
   return {
     version: versionMatch?.[1] ?? null,
@@ -84,7 +103,7 @@ async function checkOnce(): Promise<UpdateState> {
   console.log(`[check-update] Current: v${current.app_version} (build ${current.build_number})`);
   console.log(`[check-update] Fetching ${APPCAST_URL}...`);
 
-  const res = await fetch(APPCAST_URL);
+  const res = await fetch(APPCAST_URL, { signal: AbortSignal.timeout(15000) });
   if (!res.ok) {
     throw new Error(`Failed to fetch appcast: ${res.status} ${res.statusText}`);
   }
@@ -125,40 +144,37 @@ async function checkOnce(): Promise<UpdateState> {
     if (downloadUrl) {
       console.log(`  Download:    ${downloadUrl}`);
     }
-    console.log(`\n  Run: npm run extract -- --path <new-codex-path>`);
-    console.log(`  Then: npm run apply-update\n`);
+    console.log("[check-update] Run: npm run update -- --path <Codex.app or extracted ASAR dir>");
   } else {
     console.log(`[check-update] Up to date: v${version} (build ${build})`);
   }
 
   // Write state
   mkdirSync(resolve(ROOT, "data"), { recursive: true });
-  writeFileSync(STATE_PATH, JSON.stringify(state, null, 2));
+  writeFileSync(STATE_PATH, JSON.stringify(state, null, 2), "utf-8");
   console.log(`[check-update] State written to ${STATE_PATH}`);
 
   return state;
 }
 
-async function main() {
+async function main(): Promise<void> {
   const watch = process.argv.includes("--watch");
 
   await checkOnce();
 
   if (watch) {
-    console.log(`[check-update] Watching for updates every ${POLL_INTERVAL_MS / 60000} minutes...`);
-    setInterval(async () => {
-      try {
-        await checkOnce();
-      } catch (err) {
-        console.error("[check-update] Poll error:", err);
-      }
+    console.log(`[check-update] Watching every ${POLL_INTERVAL_MS / 60000} minutes...`);
+    setInterval(() => {
+      void checkOnce().catch((error: unknown) => {
+        console.error("[check-update] Poll error:", error instanceof Error ? error.message : error);
+      });
     }, POLL_INTERVAL_MS);
   }
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {
-  main().catch((err) => {
-    console.error("[check-update] Fatal:", err);
+  main().catch((error: unknown) => {
+    console.error("[check-update] Fatal:", error instanceof Error ? error.message : error);
     process.exit(1);
   });
 }

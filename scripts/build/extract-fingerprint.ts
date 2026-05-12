@@ -12,11 +12,11 @@
  *   - A Windows install dir containing resources/app.asar
  */
 
-import { readFileSync, writeFileSync, existsSync, mkdirSync, readdirSync } from "fs";
+import { readFileSync, writeFileSync, existsSync, mkdirSync, readdirSync, rmSync } from "fs";
 import { resolve, join } from "path";
 import { createHash } from "crypto";
-import { execSync } from "child_process";
 import { createRequire } from "module";
+import asar from "@electron/asar";
 import yaml from "js-yaml";
 import type { ExtractedFingerprint } from "./types.js";
 
@@ -54,6 +54,13 @@ function sha256(content: string): string {
 function loadPatterns(): ExtractionPatterns {
   const raw = yaml.load(readFileSync(PATTERNS_PATH, "utf-8")) as ExtractionPatterns;
   return raw;
+}
+
+function asRecord(value: unknown, label: string): Record<string, unknown> {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    throw new Error(`${label} must be an object`);
+  }
+  return value as Record<string, unknown>;
 }
 
 /**
@@ -97,10 +104,11 @@ function findAsarRoot(inputPath: string): string {
 
 function extractAsar(asarPath: string): string {
   const outDir = resolve(ROOT, ".asar-out");
+  if (existsSync(outDir)) {
+    rmSync(outDir, { recursive: true, force: true });
+  }
   console.log(`[extract] Extracting ASAR: ${asarPath} → ${outDir}`);
-  execSync(`npx @electron/asar extract "${asarPath}" "${outDir}"`, {
-    stdio: "inherit",
-  });
+  asar.extractAll(asarPath, outDir);
   return outDir;
 }
 
@@ -114,13 +122,23 @@ function extractFromPackageJson(root: string): {
   electronVersion: string | null;
 } {
   const pkgPath = join(root, "package.json");
-  const pkg = JSON.parse(readFileSync(pkgPath, "utf-8"));
+  const pkg = asRecord(JSON.parse(readFileSync(pkgPath, "utf-8")) as unknown, pkgPath);
+  const buildNumber = pkg.codexBuildNumber;
+
+  if (typeof buildNumber !== "string" && typeof buildNumber !== "number") {
+    throw new Error(`Expected a Codex Desktop package at ${root}: missing codexBuildNumber`);
+  }
+
+  const devDependencies = typeof pkg.devDependencies === "object" && pkg.devDependencies !== null && !Array.isArray(pkg.devDependencies)
+    ? pkg.devDependencies as Record<string, unknown>
+    : {};
+  const electronVersion = devDependencies.electron;
 
   return {
-    version: pkg.version ?? "unknown",
-    buildNumber: String(pkg.codexBuildNumber ?? "unknown"),
-    sparkleFeedUrl: pkg.codexSparkleFeedUrl ?? null,
-    electronVersion: pkg.devDependencies?.electron ?? null,
+    version: typeof pkg.version === "string" ? pkg.version : "unknown",
+    buildNumber: String(buildNumber),
+    sparkleFeedUrl: typeof pkg.codexSparkleFeedUrl === "string" ? pkg.codexSparkleFeedUrl : null,
+    electronVersion: typeof electronVersion === "string" ? electronVersion : null,
   };
 }
 
@@ -133,6 +151,7 @@ function extractFromMainJs(
 ): {
   apiBaseUrl: string | null;
   originator: string | null;
+  models: string[];
   whamEndpoints: string[];
   userAgentContains: string;
 } {
@@ -166,6 +185,17 @@ function extractFromMainJs(
     throw new Error("Failed to extract critical field: originator");
   }
 
+  // Models — deduplicate, use capture group if specified
+  const models: Set<string> = new Set();
+  const modelPattern = patterns.models;
+  if (modelPattern?.pattern) {
+    const re = new RegExp(modelPattern.pattern, "g");
+    const groupIdx = modelPattern.group ?? 0;
+    for (const m of content.matchAll(re)) {
+      models.add(m[groupIdx] ?? m[0]);
+    }
+  }
+
   // WHAM endpoints — deduplicate, use capture group if specified
   const endpoints: Set<string> = new Set();
   const epPattern = patterns.wham_endpoints;
@@ -180,6 +210,7 @@ function extractFromMainJs(
   return {
     apiBaseUrl,
     originator,
+    models: [...models].sort(),
     whamEndpoints: [...endpoints].sort(),
     userAgentContains: "Codex Desktop/",
   };
@@ -437,6 +468,7 @@ async function main() {
   let mainJsResults = {
     apiBaseUrl: null as string | null,
     originator: null as string | null,
+    models: [] as string[],
     whamEndpoints: [] as string[],
     userAgentContains: "Codex Desktop/",
   };
@@ -480,10 +512,19 @@ async function main() {
         const m = mainJs.match(new RegExp(apiPattern.pattern));
         if (m) mainJsResults.apiBaseUrl = m[0];
       }
+      const modelPattern = patterns.main_js.models;
+      if (modelPattern?.pattern) {
+        const re = new RegExp(modelPattern.pattern, "g");
+        const groupIdx = modelPattern.group ?? 0;
+        mainJsResults.models = [...mainJs.matchAll(re)]
+          .map((match) => match[groupIdx] ?? match[0])
+          .sort();
+      }
     }
 
     console.log(`  API base URL:  ${mainJsResults.apiBaseUrl}`);
     console.log(`  originator:    ${mainJsResults.originator}`);
+    console.log(`  models:        ${mainJsResults.models.join(", ")}`);
     console.log(`  WHAM endpoints: ${mainJsResults.whamEndpoints.length} found`);
 
     // Extract system prompts
@@ -509,6 +550,7 @@ async function main() {
     chromium_version: chromiumVersion,
     api_base_url: mainJsResults.apiBaseUrl,
     originator: mainJsResults.originator,
+    models: mainJsResults.models,
     wham_endpoints: mainJsResults.whamEndpoints,
     user_agent_contains: mainJsResults.userAgentContains,
     sparkle_feed_url: sparkleFeedUrl,

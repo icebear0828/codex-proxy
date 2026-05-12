@@ -10,6 +10,12 @@ const mockExistsSync = vi.fn(() => false);
 const mockMkdirSync = vi.fn();
 const mockReadFileSync = vi.fn();
 const mockMutateClientConfig = vi.fn();
+const mockFork = vi.fn(() => ({
+  stdout: { on: vi.fn() },
+  stderr: { on: vi.fn() },
+  on: vi.fn(),
+  kill: vi.fn(),
+}));
 
 vi.mock("@src/config.js", () => ({
   mutateClientConfig: mockMutateClientConfig,
@@ -41,6 +47,10 @@ vi.mock("fs", async (importOriginal) => {
   };
 });
 
+vi.mock("child_process", () => ({
+  fork: mockFork,
+}));
+
 vi.mock("js-yaml", () => ({
   default: {
     load: vi.fn(() => ({
@@ -61,6 +71,8 @@ describe("update-checker writes to data/, not config/", () => {
     vi.clearAllMocks();
     mockExistsSync.mockReturnValue(false);
     mockReadFileSync.mockReturnValue("");
+    delete process.env.CODEX_DESKTOP_PATH;
+    delete process.env.CODEX_APP_PATH;
   });
 
   it("applyVersionUpdate writes to data/version-state.json, not config/default.yaml", async () => {
@@ -122,5 +134,34 @@ describe("update-checker writes to data/, not config/", () => {
       app_version: "2.0.0",
       build_number: "200",
     });
+  });
+
+  it("does not fork the full-update script without a configured Codex source path", async () => {
+    vi.mocked(curlFetchGet).mockResolvedValue({
+      ok: true,
+      status: 200,
+      body: APPCAST_XML,
+    });
+
+    const { checkForUpdate } = await import("@src/update-checker.js");
+    await checkForUpdate();
+
+    expect(mockFork).not.toHaveBeenCalled();
+  });
+
+  it("passes the configured Codex source path to full-update", async () => {
+    process.env.CODEX_DESKTOP_PATH = "/Applications/Codex.app";
+    vi.mocked(curlFetchGet).mockResolvedValue({
+      ok: true,
+      status: 200,
+      body: APPCAST_XML,
+    });
+
+    const { checkForUpdate } = await import("@src/update-checker.js");
+    await checkForUpdate();
+
+    expect(mockFork).toHaveBeenCalledOnce();
+    const [, args] = mockFork.mock.calls[0];
+    expect(args).toEqual(["--path", "/Applications/Codex.app"]);
   });
 });
