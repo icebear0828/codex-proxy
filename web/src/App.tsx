@@ -71,10 +71,10 @@ const TABS: Array<{ hash: string; label: TranslationKey }> = [
   { hash: "#/settings", label: "settings" },
 ];
 
-function TabBar({ activeHash }: { activeHash: string }) {
+export function TabBar({ activeHash }: { activeHash: string }) {
   const t = useT();
   return (
-    <div class="flex items-center gap-1.5 mb-4">
+    <div class="flex flex-wrap items-center gap-1.5 mb-4 max-w-full">
       {TABS.map((tab) => {
         const isActive = activeHash === tab.hash;
         return (
@@ -83,7 +83,7 @@ function TabBar({ activeHash }: { activeHash: string }) {
             href={tab.hash || "#/"}
             class={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
               isActive
-                ? "bg-primary/10 text-primary dark:bg-primary/20"
+                ? "bg-primary-container text-primary"
                 : "text-slate-500 dark:text-text-dim hover:bg-slate-100 dark:hover:bg-border-dark"
             }`}
           >
@@ -275,7 +275,7 @@ function LoginGate({ children }: { children: ComponentChildren }) {
       <div class="min-h-screen flex items-center justify-center bg-slate-50 dark:bg-bg-dark px-4">
         <div class="w-full max-w-sm bg-white dark:bg-card-dark border border-gray-200 dark:border-border-dark rounded-2xl shadow-lg p-8">
           <div class="flex flex-col items-center gap-2 mb-6">
-            <div class="flex items-center justify-center size-12 rounded-full bg-primary/10 text-primary border border-primary/20">
+            <div class="flex items-center justify-center size-12 rounded-full bg-primary-container text-primary border border-primary/20">
               <svg class="size-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                 <path stroke-linecap="round" stroke-linejoin="round" d="M16.5 10.5V6.75a4.5 4.5 0 10-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 002.25-2.25v-6.75a2.25 2.25 0 00-2.25-2.25H6.75a2.25 2.25 0 00-2.25 2.25v6.75a2.25 2.25 0 002.25 2.25z" />
               </svg>
@@ -295,7 +295,7 @@ function LoginGate({ children }: { children: ComponentChildren }) {
                 {auth.error.includes("Too many") ? t("dashboardTooManyAttempts") : t("dashboardLoginError")}
               </p>
             )}
-            <button type="submit" class="w-full py-2.5 bg-primary hover:bg-primary-hover text-white text-sm font-semibold rounded-lg transition-colors shadow-sm active:scale-[0.98]">
+            <button type="submit" class="w-full py-2.5 bg-primary-action hover:bg-primary-action-hover text-white text-sm font-semibold rounded-lg transition-colors shadow-sm active:scale-[0.98]">
               {t("dashboardLoginBtn")}
             </button>
           </form>

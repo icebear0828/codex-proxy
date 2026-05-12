@@ -119,7 +119,7 @@ export function TestConnection() {
             class={`w-full py-2.5 text-sm font-medium rounded-lg transition-colors ${
               testing
                 ? "bg-slate-100 dark:bg-[#21262d] text-slate-400 dark:text-text-dim cursor-not-allowed"
-                : "bg-primary text-white hover:bg-primary/90 cursor-pointer"
+                : "bg-primary-action text-white hover:bg-primary-action-hover cursor-pointer"
             }`}
           >
             {testing ? t("testing") : t("testConnection")}

@@ -14,23 +14,23 @@ const PAGE_SIZE = 50;
 
 const statusStyles: Record<string, [string, TranslationKey]> = {
   active: [
-    "bg-green-100 text-green-700 border-green-200 dark:bg-[#11281d] dark:text-primary dark:border-[#1a442e]",
+    "bg-success-container text-success border-success/30",
     "active",
   ],
   expired: [
-    "bg-red-100 text-red-600 border-red-200 dark:bg-red-900/20 dark:text-red-400 dark:border-red-800/30",
+    "bg-danger-container text-danger border-danger/30",
     "expired",
   ],
   quota_exhausted: [
-    "bg-orange-100 text-orange-700 border-orange-200 dark:bg-orange-900/20 dark:text-orange-400 dark:border-orange-800/30",
+    "bg-warning-container text-warning border-warning/30",
     "quotaExhausted",
   ],
   rate_limited: [
-    "bg-amber-100 text-amber-700 border-amber-200 dark:bg-amber-900/20 dark:text-amber-400 dark:border-amber-800/30",
+    "bg-warning-container text-warning border-warning/30",
     "rateLimited",
   ],
   refreshing: [
-    "bg-blue-100 text-blue-600 border-blue-200 dark:bg-blue-900/20 dark:text-blue-400 dark:border-blue-800/30",
+    "bg-info-container text-info border-info/30",
     "refreshing",
   ],
   disabled: [
@@ -251,7 +251,7 @@ export function AccountTable({
                         title={canToggle ? (isEnabled ? t("disableAccount") : t("enableAccount")) : undefined}
                         class={`relative inline-flex h-4 w-7 shrink-0 rounded-full border-2 border-transparent transition-colors duration-200 focus:outline-none ${
                           !canToggle ? "opacity-40 cursor-not-allowed" : "cursor-pointer"
-                        } ${isEnabled ? "bg-primary" : "bg-slate-300 dark:bg-slate-600"}`}
+                      } ${isEnabled ? "bg-primary-action" : "bg-slate-300 dark:bg-slate-600"}`}
                       >
                         <span
                           class={`pointer-events-none inline-block h-3 w-3 rounded-full bg-white dark:bg-slate-200 shadow transform transition-transform duration-200 ${

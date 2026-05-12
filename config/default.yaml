@@ -35,6 +35,8 @@ logs:
   capture_body: false
   llm_only: true
 usage_stats:
+  # 0 = disable local usage history snapshots
+  snapshot_interval_minutes: 5
   # null = keep usage history forever
   history_retention_days: null
 session:

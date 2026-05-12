@@ -57,6 +57,118 @@ describe("ChatCompletionRequestSchema", () => {
     expect(result.success).toBe(true);
   });
 
+  it("normalizes flat function tools from Cursor Agent requests", () => {
+    const result = ChatCompletionRequestSchema.safeParse({
+      model: "gpt-5.4",
+      messages: [{ role: "user", content: "Edit src/index.ts" }],
+      tools: [{
+        type: "function",
+        name: "edit_file",
+        description: "Edit a file",
+        parameters: { type: "object", properties: { path: { type: "string" } } },
+        strict: true,
+      }],
+    });
+
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.tools?.[0]).toEqual({
+        type: "function",
+        function: {
+          name: "edit_file",
+          description: "Edit a file",
+          parameters: { type: "object", properties: { path: { type: "string" } } },
+          strict: true,
+        },
+      });
+    }
+  });
+
+  it("normalizes named custom tools as function-compatible tools", () => {
+    const result = ChatCompletionRequestSchema.safeParse({
+      model: "gpt-5.4",
+      messages: [{ role: "user", content: "Apply a patch" }],
+      tools: [{
+        type: "custom",
+        name: "apply_patch",
+        description: "Apply a repository patch",
+      }],
+    });
+
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.tools?.[0]).toEqual({
+        type: "function",
+        function: {
+          name: "apply_patch",
+          description: "Apply a repository patch",
+        },
+      });
+    }
+  });
+
+  it("normalizes Responses-style input string into chat messages", () => {
+    const result = ChatCompletionRequestSchema.safeParse({
+      model: "gpt-5.4",
+      input: "Hello from Responses-style input",
+    });
+
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.messages).toEqual([
+        { role: "user", content: "Hello from Responses-style input" },
+      ]);
+    }
+  });
+
+  it("normalizes Responses-style input items and reasoning effort", () => {
+    const result = ChatCompletionRequestSchema.safeParse({
+      model: "gpt-5.4",
+      instructions: "Be concise.",
+      input: [
+        {
+          role: "user",
+          content: [{ type: "input_text", text: "Read package.json" }],
+        },
+        {
+          type: "function_call",
+          call_id: "call_read",
+          name: "read_file",
+          arguments: "{\"path\":\"package.json\"}",
+        },
+        {
+          type: "function_call_output",
+          call_id: "call_read",
+          output: "{\"name\":\"codex-proxy\"}",
+        },
+      ],
+      reasoning: { effort: "high" },
+    });
+
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.reasoning_effort).toBe("high");
+      expect(result.data.messages).toEqual([
+        { role: "system", content: "Be concise." },
+        { role: "user", content: [{ type: "text", text: "Read package.json" }] },
+        {
+          role: "assistant",
+          content: null,
+          tool_calls: [{
+            id: "call_read",
+            type: "function",
+            function: { name: "read_file", arguments: "{\"path\":\"package.json\"}" },
+          }],
+        },
+        {
+          role: "tool",
+          content: "{\"name\":\"codex-proxy\"}",
+          tool_call_id: "call_read",
+        },
+      ]);
+    }
+  });
+
   it("parses native image_generation tools", () => {
     const result = ChatCompletionRequestSchema.safeParse({
       model: "gpt-5.5",

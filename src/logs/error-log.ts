@@ -85,9 +85,9 @@ function readAppVersion(): string {
     const cfg = getConfig() as { client?: { app_version?: string } };
     return cfg.client?.app_version ?? "unknown";
   } catch {
-    // Config not yet loaded (early startup, or unit-test paths that exercise
-    // log helpers without booting the server). Falling back to "unknown"
-    // keeps logging strictly best-effort.
+    // Config may not be loaded yet during early boot, accounts quarantine,
+    // or unit-test paths that exercise log helpers without booting the server.
+    // Keep logging best-effort so those events still reach error-log.jsonl.
     return "unknown";
   }
 }

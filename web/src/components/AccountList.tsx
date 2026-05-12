@@ -25,20 +25,31 @@ interface AccountListProps {
 
 const PAGE_SIZE = 10;
 
+function getBrowserStorage(): Storage | null {
+  if (typeof window === "undefined") return null;
+  try {
+    return window.localStorage;
+  } catch {
+    return null;
+  }
+}
+
 export function AccountList({ accounts, loading, onDelete, onRefresh, refreshing, lastUpdated, proxies, onProxyChange, onExport, onImport, onToggleStatus, onUpdateLabel }: AccountListProps) {
   const t = useT();
   const { lang } = useI18n();
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [warnings, setWarnings] = useState<QuotaWarning[]>([]);
   const [visibleCount, setVisibleCount] = useState(() => {
-    if (typeof localStorage === "undefined") return PAGE_SIZE;
-    return localStorage.getItem(EXPAND_ALL_STORAGE_KEY) === "true" ? Number.MAX_SAFE_INTEGER : PAGE_SIZE;
+    const storage = getBrowserStorage();
+    if (!storage) return PAGE_SIZE;
+    return storage.getItem(EXPAND_ALL_STORAGE_KEY) === "true" ? Number.MAX_SAFE_INTEGER : PAGE_SIZE;
   });
   const [healthChecking, setHealthChecking] = useState(false);
   const [healthResult, setHealthResult] = useState<{ alive: number; dead: number; skipped: number } | null>(null);
   const [statusFilter, setStatusFilter] = useState<string>(() => {
-    if (typeof localStorage === "undefined") return "all";
-    return localStorage.getItem(STATUS_FILTER_STORAGE_KEY) ?? "all";
+    const storage = getBrowserStorage();
+    if (!storage) return "all";
+    return storage.getItem(STATUS_FILTER_STORAGE_KEY) ?? "all";
   });
   const [refreshingExpired, setRefreshingExpired] = useState(false);
   const [deleteResult, setDeleteResult] = useState<string | null>(null);
@@ -120,13 +131,15 @@ export function AccountList({ accounts, loading, onDelete, onRefresh, refreshing
   }, []);
 
   useEffect(() => {
-    if (typeof localStorage === "undefined") return;
-    localStorage.setItem(STATUS_FILTER_STORAGE_KEY, statusFilter);
+    const storage = getBrowserStorage();
+    if (!storage) return;
+    storage.setItem(STATUS_FILTER_STORAGE_KEY, statusFilter);
   }, [statusFilter]);
 
   useEffect(() => {
-    if (typeof localStorage === "undefined") return;
-    localStorage.setItem(EXPAND_ALL_STORAGE_KEY, String(visibleCount > PAGE_SIZE));
+    const storage = getBrowserStorage();
+    if (!storage) return;
+    storage.setItem(EXPAND_ALL_STORAGE_KEY, String(visibleCount > PAGE_SIZE));
   }, [visibleCount]);
 
   // Counts are bucketed by derivedStatus so the "rate_limited" filter still

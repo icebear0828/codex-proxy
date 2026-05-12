@@ -156,7 +156,10 @@ export function createAccountRoutes(pool: AccountPool, scheduler: RefreshSchedul
 
   app.get("/auth/accounts", async (c) => {
     const accounts = querySvc.listFresh();
-    return c.json({ accounts });
+    return c.json({
+      accounts,
+      persistence_health: pool.getPersistenceHealth(),
+    });
   });
 
   app.post("/auth/accounts", async (c) => {

@@ -126,7 +126,7 @@ export function ApiConfig({
                         onClick={() => handleFamilySelect(f)}
                         class={`w-full text-left px-3 py-2 text-[0.78rem] font-medium border-b border-gray-100 dark:border-border-dark last:border-b-0 transition-colors ${
                           selectedModel === f.id
-                            ? "bg-primary/10 text-primary dark:bg-primary/20"
+                            ? "bg-primary-container text-primary"
                             : "text-slate-700 dark:text-text-main hover:bg-slate-50 dark:hover:bg-[#21262d]"
                         }`}
                       >
@@ -146,7 +146,7 @@ export function ApiConfig({
                       title={e.description}
                       class={`px-2.5 py-1 text-[0.7rem] font-semibold rounded transition-all ${
                         selectedEffort === e.reasoningEffort
-                          ? "bg-primary text-white shadow-sm"
+                          ? "bg-primary-action text-white shadow-sm"
                           : "bg-white dark:bg-[#21262d] text-slate-600 dark:text-text-dim border border-gray-200 dark:border-border-dark hover:border-primary/50"
                       }`}
                     >
@@ -162,7 +162,7 @@ export function ApiConfig({
                   onClick={() => onSpeedChange(null)}
                   class={`px-2.5 py-1 text-[0.7rem] font-semibold rounded transition-all ${
                     selectedSpeed === null
-                      ? "bg-primary text-white shadow-sm"
+                      ? "bg-primary-action text-white shadow-sm"
                       : "bg-white dark:bg-[#21262d] text-slate-600 dark:text-text-dim border border-gray-200 dark:border-border-dark hover:border-primary/50"
                   }`}
                 >
@@ -172,7 +172,7 @@ export function ApiConfig({
                   onClick={() => onSpeedChange("fast")}
                   class={`px-2.5 py-1 text-[0.7rem] font-semibold rounded transition-all ${
                     selectedSpeed === "fast"
-                      ? "bg-primary text-white shadow-sm"
+                      ? "bg-primary-action text-white shadow-sm"
                       : "bg-white dark:bg-[#21262d] text-slate-600 dark:text-text-dim border border-gray-200 dark:border-border-dark hover:border-primary/50"
                   }`}
                 >

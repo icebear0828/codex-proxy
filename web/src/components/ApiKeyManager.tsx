@@ -268,7 +268,7 @@ function AddKeyForm({ onAdd, catalog, fetchCustomModels }: {
         <button
           type="submit"
           disabled={adding}
-          class="px-4 py-1.5 text-sm font-medium text-white bg-primary hover:bg-primary-hover rounded-lg transition-colors disabled:opacity-40 whitespace-nowrap"
+          class="px-4 py-1.5 text-sm font-medium text-white bg-primary-action hover:bg-primary-action-hover rounded-lg transition-colors disabled:opacity-40 whitespace-nowrap"
         >
           {adding ? "Adding..." : "Add Key"}
         </button>
@@ -283,10 +283,10 @@ export { AddKeyForm };
 
 function providerBadgeColor(provider: ApiKeyProvider): string {
   switch (provider) {
-    case "anthropic": return "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400";
-    case "openai": return "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400";
-    case "gemini": return "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400";
-    case "openrouter": return "bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400";
+    case "anthropic": return "bg-warning-container text-warning";
+    case "openai": return "bg-success-container text-success";
+    case "gemini": return "bg-info-container text-info";
+    case "openrouter": return "bg-avatar-purple-bg text-avatar-purple-text";
     default: return "bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400";
   }
 }

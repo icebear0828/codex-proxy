@@ -156,6 +156,19 @@ export function resolvePromptCacheIdentity(
   };
 }
 
+function buildVariantIdentity(
+  codexRequest: CodexResponsesRequest,
+  identity: PromptCacheIdentity,
+): string | null {
+  const parts: string[] = [];
+  const windowId = nonEmptyString(codexRequest.codexWindowId);
+  if (windowId) parts.push(`window:${windowId}`);
+  if ((identity.explicitPromptCacheKey || identity.clientConversationId) && identity.derivedConversationId) {
+    parts.push(`anchor:${identity.derivedConversationId}`);
+  }
+  return parts.length > 0 ? parts.join("\x00") : null;
+}
+
 /** Strip CodexApiError's "Codex API error (NNN): " prefix so log warns that
  *  already include status= don't duplicate it inside the message body. */
 function stripCodexErrorPrefix(msg: string): string {
@@ -340,9 +353,11 @@ export async function handleProxyRequest(
   // (sub-agents, parallel tool calls) onto independent pool slots + prev_id
   // chains. See `variant-hash.ts`. Cheap (sha256 over bytes already in memory)
   // so we always compute it, even on routes that won't use it.
+  const variantIdentity = buildVariantIdentity(req.codexRequest, promptCacheIdentity);
   const variantHash = computeVariantHash(
     req.codexRequest.instructions,
     req.codexRequest.tools,
+    variantIdentity,
   );
   const implicitPrevRespId =
     !explicitPrevRespId &&
