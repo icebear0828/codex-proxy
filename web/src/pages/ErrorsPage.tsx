@@ -19,9 +19,14 @@ function sourceBadgeClass(source: string): string {
   }
 }
 
+function hasContext(group: ErrorGroup): boolean {
+  return group.sample_context !== undefined && Object.keys(group.sample_context).length > 0;
+}
+
 function ErrorRow({ group }: { group: ErrorGroup }) {
   const t = useT();
   const [open, setOpen] = useState(false);
+  const showContext = hasContext(group);
   return (
     <div class="rounded-xl border border-gray-200 dark:border-border-dark bg-white dark:bg-card-dark transition-colors">
       <button
@@ -61,11 +66,18 @@ function ErrorRow({ group }: { group: ErrorGroup }) {
           <path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7" />
         </svg>
       </button>
-      {open && group.sample_stack && (
+      {open && (group.sample_stack || showContext) && (
         <div class="px-4 pb-4 border-t border-gray-100 dark:border-border-dark/50">
-          <pre class="mt-3 text-[11px] font-mono whitespace-pre-wrap break-all text-slate-600 dark:text-text-dim leading-relaxed bg-slate-50 dark:bg-bg-dark/40 rounded-lg p-3 overflow-x-auto">
-            {group.sample_stack}
-          </pre>
+          {showContext && (
+            <pre class="mt-3 text-[11px] font-mono whitespace-pre-wrap break-all text-slate-600 dark:text-text-dim leading-relaxed bg-slate-50 dark:bg-bg-dark/40 rounded-lg p-3 overflow-x-auto">
+              {JSON.stringify(group.sample_context, null, 2)}
+            </pre>
+          )}
+          {group.sample_stack && (
+            <pre class="mt-3 text-[11px] font-mono whitespace-pre-wrap break-all text-slate-600 dark:text-text-dim leading-relaxed bg-slate-50 dark:bg-bg-dark/40 rounded-lg p-3 overflow-x-auto">
+              {group.sample_stack}
+            </pre>
+          )}
         </div>
       )}
     </div>

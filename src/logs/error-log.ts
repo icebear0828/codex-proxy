@@ -54,6 +54,7 @@ export interface ErrorGroup {
   last_seen: string;
   source: ErrorSource;
   sample_stack?: string;
+  sample_context?: Record<string, unknown>;
 }
 
 export interface AppendInput {
@@ -233,7 +234,13 @@ export function groupErrorLog(entries: ErrorLogEntry[]): ErrorGroup[] {
     const existing = groups.get(sig);
     if (existing) {
       existing.count += 1;
-      if (e.ts > existing.last_seen) existing.last_seen = e.ts;
+      if (e.ts > existing.last_seen) {
+        existing.last_seen = e.ts;
+        existing.message = e.error.message;
+        existing.source = e.source;
+        existing.sample_stack = e.error.stack;
+        existing.sample_context = e.context;
+      }
       if (e.ts < existing.first_seen) existing.first_seen = e.ts;
     } else {
       groups.set(sig, {
@@ -245,6 +252,7 @@ export function groupErrorLog(entries: ErrorLogEntry[]): ErrorGroup[] {
         last_seen: e.ts,
         source: e.source,
         sample_stack: e.error.stack,
+        sample_context: e.context,
       });
     }
   }
