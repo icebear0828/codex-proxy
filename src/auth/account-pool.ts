@@ -10,7 +10,7 @@ import { getConfig } from "../config.js";
 import { createFsPersistence } from "./account-persistence.js";
 import { AccountRegistry } from "./account-registry.js";
 import { AccountLifecycle } from "./account-lifecycle.js";
-import type { AccountPersistence } from "./account-persistence.js";
+import type { AccountPersistence, PersistenceLoadHealth } from "./account-persistence.js";
 import type { RotationStrategyName } from "./rotation-strategy.js";
 import type {
   AccountEntry,
@@ -19,9 +19,18 @@ import type {
   CodexQuota,
 } from "./types.js";
 
+export interface PersistenceHealth {
+  ok: boolean;
+  reason?: "load_failed_quarantined" | "load_failed_unquarantined";
+  message?: string;
+  quarantined?: boolean;
+  backupPath?: string | null;
+}
+
 export class AccountPool {
   private registry: AccountRegistry;
   private lifecycle: AccountLifecycle;
+  private persistenceHealth: PersistenceLoadHealth | null = null;
   private _onExpired?: (entryId: string) => void;
 
   constructor(options?: {
@@ -42,9 +51,21 @@ export class AccountPool {
     this.rateLimitBackoffSeconds =
       options?.rateLimitBackoffSeconds ?? config!.auth.rate_limit_backoff_seconds;
 
-    // Load persisted entries
-    const { entries } = persistence.load();
-    this.registry = new AccountRegistry(persistence, entries);
+    // Load persisted entries. When loadFailed=true, the file on disk was
+    // unparseable and has been quarantined; we must not write the empty
+    // in-memory map back over the (now renamed) original. The registry's
+    // persistDisabled flag keeps schedulePersist/persistNow as no-ops
+    // until the user restores a healthy accounts.json and restarts.
+    const loaded = persistence.load();
+    if (loaded.loadFailed === true) {
+      // Default to assuming quarantine succeeded if the persistence
+      // implementation didn't report — older/mocked impls predate the
+      // health field. The file-based createFsPersistence always reports.
+      this.persistenceHealth = loaded.health ?? { quarantined: true, backupPath: null };
+    }
+    this.registry = new AccountRegistry(persistence, loaded.entries, {
+      persistDisabled: loaded.loadFailed === true,
+    });
     this.lifecycle = new AccountLifecycle(this.registry, strategyName);
 
     // Override with initial token if set
@@ -258,6 +279,50 @@ export class AccountPool {
 
   persistNow(): void {
     this.registry.persistNow();
+  }
+
+  /**
+   * True when the on-disk `accounts.json` failed to load at startup and
+   * was quarantined. While disabled, all schedulePersist/persistNow calls
+   * are no-ops — in-memory CRUD still works for the running session, but
+   * nothing reaches disk until the user restores a healthy file and
+   * restarts the process. Dashboard surfaces this via the
+   * `persistence_health` field on GET /auth/accounts.
+   */
+  isPersistDisabled(): boolean {
+    return this.registry.isPersistDisabled();
+  }
+
+  /**
+   * Returns a structured health snapshot for the dashboard. `quarantined`
+   * distinguishes the happy case (rename succeeded, user should recover
+   * from the `.bak`) from the rare case where the rename itself failed
+   * (original file still on disk, no `.bak` exists) — the user-facing
+   * recovery instructions differ between the two.
+   */
+  getPersistenceHealth(): PersistenceHealth {
+    if (!this.isPersistDisabled()) return { ok: true };
+    const health = this.persistenceHealth;
+    if (health?.quarantined === false) {
+      return {
+        ok: false,
+        reason: "load_failed_unquarantined",
+        quarantined: false,
+        backupPath: null,
+        message:
+          "accounts.json failed to load at startup. The proxy tried to move it aside but the rename failed — the original file is still on disk. " +
+          "Auto-save is paused for this session. Inspect data/accounts.json manually and restart the app once it parses cleanly.",
+      };
+    }
+    return {
+      ok: false,
+      reason: "load_failed_quarantined",
+      quarantined: true,
+      backupPath: health?.backupPath ?? null,
+      message:
+        "accounts.json failed to load at startup and was quarantined (see data/ for accounts.json.corrupt-*.bak). " +
+        "Auto-save is paused until you restore the file and restart the app. Imports in this session live in memory only.",
+    };
   }
 
   /**

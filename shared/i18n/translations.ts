@@ -388,6 +388,10 @@ export const translations = {
     filterRateLimited: "Rate Limited",
     filterDisabled: "Disabled",
     noMatchingAccounts: "No accounts match this filter",
+    persistDisabledTitle: "Auto-save paused",
+    persistDisabledBody:
+      "accounts.json failed to load and was quarantined (data/accounts.json.corrupt-*.bak). " +
+      "Changes in this session live in memory only. Restore a healthy file and restart to resume auto-save.",
   },
   zh: {
     serverOnline: "\u670d\u52a1\u8fd0\u884c\u4e2d",
@@ -781,6 +785,10 @@ export const translations = {
     filterRateLimited: "限流",
     filterDisabled: "已禁用",
     noMatchingAccounts: "没有匹配的账号",
+    persistDisabledTitle: "自动保存已暂停",
+    persistDisabledBody:
+      "accounts.json 加载失败，原文件已隔离到 data/accounts.json.corrupt-*.bak。" +
+      "本次会话的改动仅保存在内存中。请恢复一份可用的 accounts.json 并重启应用以恢复自动保存。",
   },
 } as const;
 
