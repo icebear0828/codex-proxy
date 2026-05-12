@@ -149,7 +149,7 @@ describe("handleDirectRequest error forwarding", () => {
     const req = createDefaultRequest();
     const fmt = createMockFormatAdapter();
 
-    app.post("/test", (c) => handleDirectRequest(c, upstream as never, req, fmt));
+    app.post("/test", (c) => handleDirectRequest({ c, upstream: upstream as never, req, fmt }));
 
     const res = await app.request("/test", { method: "POST" });
     expect(res.status).toBe(404);
@@ -172,7 +172,7 @@ describe("handleDirectRequest error forwarding", () => {
     const req = createDefaultRequest();
     const fmt = createMockFormatAdapter();
 
-    app.post("/test", (c) => handleDirectRequest(c, upstream as never, req, fmt));
+    app.post("/test", (c) => handleDirectRequest({ c, upstream: upstream as never, req, fmt }));
 
     const res = await app.request("/test", { method: "POST" });
     expect(res.status).toBe(502);
@@ -198,7 +198,7 @@ describe("handleDirectRequest error forwarding", () => {
     const req = createDefaultRequest();
     const fmt = createMockFormatAdapter();
 
-    app.post("/test", (c) => handleDirectRequest(c, upstream as never, req, fmt));
+    app.post("/test", (c) => handleDirectRequest({ c, upstream: upstream as never, req, fmt }));
 
     const res = await app.request("/test", { method: "POST" });
     expect(res.status).toBe(429);
@@ -217,7 +217,7 @@ describe("handleDirectRequest error forwarding", () => {
     const req = createDefaultRequest();
     const fmt = createMockFormatAdapter();
 
-    app.post("/test", (c) => handleDirectRequest(c, upstream as never, req, fmt));
+    app.post("/test", (c) => handleDirectRequest({ c, upstream: upstream as never, req, fmt }));
 
     const res = await app.request("/test", { method: "POST" });
     expect(res.status).toBe(429);
@@ -239,7 +239,7 @@ describe("handleDirectRequest error forwarding", () => {
     const req = createDefaultRequest();
     const fmt = createMockFormatAdapter();
 
-    app.post("/test", (c) => handleDirectRequest(c, upstream as never, req, fmt));
+    app.post("/test", (c) => handleDirectRequest({ c, upstream: upstream as never, req, fmt }));
 
     const res = await app.request("/test", { method: "POST" });
     expect(res.status).toBe(400);
@@ -258,7 +258,7 @@ describe("handleDirectRequest error forwarding", () => {
     const req = createDefaultRequest();
     const fmt = createMockFormatAdapter();
 
-    app.post("/test", (c) => handleDirectRequest(c, upstream as never, req, fmt));
+    app.post("/test", (c) => handleDirectRequest({ c, upstream: upstream as never, req, fmt }));
 
     const res = await app.request("/test", { method: "POST" });
     expect(res.status).toBe(502);
@@ -278,7 +278,7 @@ describe("handleDirectRequest error forwarding", () => {
       }),
     });
 
-    app.post("/test", (c) => handleDirectRequest(c, upstream as never, req, fmt));
+    app.post("/test", (c) => handleDirectRequest({ c, upstream: upstream as never, req, fmt }));
 
     const res = await app.request("/test", { method: "POST" });
     await res.text();
@@ -313,7 +313,7 @@ describe("handleProxyRequest uses proxy error format (no passthrough)", () => {
 
     const app = new Hono();
     app.post("/test", (c) =>
-      handleProxyRequest(c, accountPool as never, undefined, req, fmt),
+      handleProxyRequest({ c, accountPool: accountPool as never, req, fmt }),
     );
 
     const res = await app.request("/test", { method: "POST" });

@@ -638,7 +638,7 @@ async function handleCompact(
       model: rawModel,
       isStreaming: false,
     };
-    return handleDirectRequest(c, compactRouteMatch.adapter, directReq, PASSTHROUGH_FORMAT);
+    return handleDirectRequest({ c, upstream: compactRouteMatch.adapter, req: directReq, fmt: PASSTHROUGH_FORMAT });
   }
 
   // Acquire account
@@ -906,11 +906,11 @@ export function createResponsesRoutes(
 
     if (routeMatch?.kind === "api-key" || routeMatch?.kind === "adapter") {
       // Use raw model name so adapter's extractModelId can strip the provider prefix
-      const directReq = { ...proxyReq, codexRequest: { ...codexRequest, model: rawModel } };
-      return handleDirectRequest(c, routeMatch.adapter, directReq, PASSTHROUGH_FORMAT);
+      const directReq = { ...proxyReq, model: rawModel, codexRequest: { ...codexRequest, model: rawModel } };
+      return handleDirectRequest({ c, upstream: routeMatch.adapter, req: directReq, fmt: PASSTHROUGH_FORMAT });
     }
 
-    return handleProxyRequest(c, accountPool, cookieJar, proxyReq, PASSTHROUGH_FORMAT, proxyPool);
+    return handleProxyRequest({ c, accountPool, cookieJar, req: proxyReq, fmt: PASSTHROUGH_FORMAT, proxyPool });
   };
 
   // ── POST /v1/responses/compact — non-streaming JSON proxy ──

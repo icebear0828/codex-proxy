@@ -200,13 +200,12 @@ describe("plan routing through proxy handler", () => {
 
     const app = new Hono();
     app.post("/test", (c) =>
-      handleProxyRequest(
+      handleProxyRequest({
         c,
-        pool,
-        undefined,
-        makeProxyRequest("gpt-5.4"),
-        createTestFormat(),
-      ),
+        accountPool: pool,
+        req: makeProxyRequest("gpt-5.4"),
+        fmt: createTestFormat(),
+      }),
     );
 
     const res = await app.request("/test", { method: "POST" });
@@ -228,13 +227,12 @@ describe("plan routing through proxy handler", () => {
 
     const app = new Hono();
     app.post("/test", (c) =>
-      handleProxyRequest(
+      handleProxyRequest({
         c,
-        pool,
-        undefined,
-        makeProxyRequest("gpt-5.4"),
-        createTestFormat(),
-      ),
+        accountPool: pool,
+        req: makeProxyRequest("gpt-5.4"),
+        fmt: createTestFormat(),
+      }),
     );
 
     const res = await app.request("/test", { method: "POST" });
@@ -248,13 +246,12 @@ describe("plan routing through proxy handler", () => {
 
     const app = new Hono();
     app.post("/test", (c) =>
-      handleProxyRequest(
+      handleProxyRequest({
         c,
-        pool,
-        undefined,
-        makeProxyRequest("gpt-5.4"),
-        createTestFormat(),
-      ),
+        accountPool: pool,
+        req: makeProxyRequest("gpt-5.4"),
+        fmt: createTestFormat(),
+      }),
     );
 
     // Blocked — free can't use team-only model
@@ -282,13 +279,12 @@ describe("plan routing through proxy handler", () => {
 
     const app = new Hono();
     app.post("/test", (c) =>
-      handleProxyRequest(
+      handleProxyRequest({
         c,
-        pool,
-        undefined,
-        makeProxyRequest("gpt-5.4"),
-        createTestFormat(),
-      ),
+        accountPool: pool,
+        req: makeProxyRequest("gpt-5.4"),
+        fmt: createTestFormat(),
+      }),
     );
 
     const res = await app.request("/test", { method: "POST" });
@@ -306,13 +302,12 @@ describe("plan routing through proxy handler", () => {
 
     const app = new Hono();
     app.post("/test", (c) =>
-      handleProxyRequest(
+      handleProxyRequest({
         c,
-        pool,
-        undefined,
-        makeProxyRequest("gpt-5.4"),
-        createTestFormat(),
-      ),
+        accountPool: pool,
+        req: makeProxyRequest("gpt-5.4"),
+        fmt: createTestFormat(),
+      }),
     );
 
     const res = await app.request("/test", { method: "POST" });

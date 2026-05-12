@@ -5,6 +5,7 @@
 
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { Hono } from "hono";
+import type { HandleProxyRequestOptions } from "@src/routes/shared/proxy-handler.js";
 
 // ── Mocks (before imports) ──────────────────────────────────────────
 
@@ -78,9 +79,9 @@ vi.mock("@src/utils/retry.js", () => ({
 let capturedCodexRequest: unknown = null;
 
 vi.mock("@src/routes/shared/proxy-handler.js", () => ({
-  handleProxyRequest: vi.fn(async (c, _pool, _jar, proxyReq) => {
-    capturedCodexRequest = proxyReq.codexRequest;
-    return c.json({ ok: true });
+  handleProxyRequest: vi.fn(async (options: HandleProxyRequestOptions) => {
+    capturedCodexRequest = options.req.codexRequest;
+    return options.c.json({ ok: true });
   }),
 }));
 

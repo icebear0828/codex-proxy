@@ -147,13 +147,13 @@ function buildTestApp(opts: {
 
   const app = new Hono();
   app.post("/test", (c) =>
-    handleProxyRequest(
+    handleProxyRequest({
       c,
-      accountPool as never,
+      accountPool: accountPool as never,
       cookieJar,
-      proxyReq,
+      req: proxyReq,
       fmt,
-    ),
+    }),
   );
 
   return { app, accountPool, fmt, proxyReq };
