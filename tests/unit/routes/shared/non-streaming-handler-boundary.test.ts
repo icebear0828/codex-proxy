@@ -4,6 +4,7 @@ import { retryNonStreamingEmptyResponse } from "@src/routes/shared/non-streaming
 import { handleNonStreamingPrematureClose } from "@src/routes/shared/non-streaming-premature-close.js";
 import { logNonStreamingUsage } from "@src/routes/shared/non-streaming-usage-log.js";
 import { recordNonStreamingSuccessAffinity } from "@src/routes/shared/non-streaming-affinity.js";
+import { planNonStreamingCollectErrorResponse } from "@src/routes/shared/non-streaming-collect-error-response.js";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import * as ts from "typescript";
@@ -14,6 +15,7 @@ const EMPTY_RESPONSE_RETRY_MODULE = "src/routes/shared/non-streaming-empty-respo
 const PREMATURE_CLOSE_MODULE = "src/routes/shared/non-streaming-premature-close.ts";
 const USAGE_LOG_MODULE = "src/routes/shared/non-streaming-usage-log.ts";
 const AFFINITY_MODULE = "src/routes/shared/non-streaming-affinity.ts";
+const COLLECT_ERROR_RESPONSE_MODULE = "src/routes/shared/non-streaming-collect-error-response.ts";
 
 function source(path: string): string {
   return readFileSync(resolve(ROOT, path), "utf-8");
@@ -68,6 +70,10 @@ describe("non-streaming handler module boundary", () => {
 
   it("exports the non-streaming affinity helper from its own module", () => {
     expect(recordNonStreamingSuccessAffinity).toBeTypeOf("function");
+  });
+
+  it("exports the collect error response planner from its own module", () => {
+    expect(planNonStreamingCollectErrorResponse).toBeTypeOf("function");
   });
 
   it("keeps empty-response retry reacquire and upstream send details out of the collect handler", () => {
@@ -199,5 +205,40 @@ describe("non-streaming handler module boundary", () => {
     expect(helper).not.toContain("c.json");
     expect(helper).not.toContain("releaseAccount");
     expect(helper).not.toContain("logNonStreamingUsage");
+  });
+
+  it("keeps generic collect error status parsing out of the collect handler", () => {
+    const handler = source(NON_STREAMING_HANDLER_MODULE);
+
+    expect(importsNamedBinding(
+      handler,
+      "non-streaming-collect-error-response.js",
+      "planNonStreamingCollectErrorResponse",
+      NON_STREAMING_HANDLER_MODULE,
+    )).toBe(true);
+    expect(importsNamedBinding(handler, "proxy-error-handler.js", "toErrorStatus", NON_STREAMING_HANDLER_MODULE)).toBe(false);
+    expect(handler).not.toContain("HTTP/[\\\\d.]");
+    expect(handler).not.toContain("Unknown error");
+  });
+
+  it("does not let the collect error response planner own HTTP rendering, retry handling, or account lifecycle", () => {
+    const helper = source(COLLECT_ERROR_RESPONSE_MODULE);
+
+    expect(importedModuleSpecifiers(helper, COLLECT_ERROR_RESPONSE_MODULE)).not.toEqual(expect.arrayContaining([
+      "hono",
+      "./account-acquisition.js",
+      "./proxy-error-response.js",
+      "./streaming-handler.js",
+      "./non-streaming-handler.js",
+      "./non-streaming-empty-response-retry.js",
+      "./non-streaming-premature-close.js",
+      "./non-streaming-usage-log.js",
+      "./non-streaming-affinity.js",
+      "../../logs/entry.js",
+    ]));
+    expect(helper).not.toContain("collectTranslator");
+    expect(helper).not.toContain("formatError");
+    expect(helper).not.toContain("c.json");
+    expect(helper).not.toContain("releaseAccount");
   });
 });

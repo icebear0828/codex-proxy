@@ -654,6 +654,29 @@ describe("proxy-handler integration", () => {
     expect(accountPool.release).toHaveBeenCalledWith("e1", undefined);
   });
 
+  it("formats non-Codex collect errors with embedded upstream HTTP status", async () => {
+    const message = "collect failed after HTTP/2 503";
+    const accountPool = createMockAccountPool();
+    const fmt = createMockFormatAdapter({
+      collectTranslator: vi.fn(async () => {
+        throw new Error(message);
+      }),
+    });
+    const { app } = buildTestApp({ accountPool, fmt });
+
+    const res = await app.request("/test", { method: "POST" });
+    expect(res.status).toBe(503);
+
+    const body = await res.json();
+    expect(body).toEqual({
+      error: "api_error",
+      status: 503,
+      message,
+    });
+    expect(fmt.formatError).toHaveBeenCalledWith(503, message);
+    expect(accountPool.release).toHaveBeenCalledWith("e1", undefined);
+  });
+
   // 8b. Upstream premature close → 504, no cross-account retry
   it("fails fast with 504 on UpstreamPrematureCloseError, no retry", async () => {
     let acquireCount = 0;

@@ -7,7 +7,6 @@ import type { CookieJar } from "../../proxy/cookie-jar.js";
 import type { ProxyPool } from "../../proxy/proxy-pool.js";
 import { EmptyResponseError, UpstreamPrematureCloseError } from "../../translation/codex-event-extractor.js";
 import { releaseAccount } from "./account-acquisition.js";
-import { toErrorStatus } from "./proxy-error-handler.js";
 import type { SessionAffinityMap } from "../../auth/session-affinity.js";
 import type { FormatAdapter, ProxyRequest, UsageHint } from "./proxy-handler-types.js";
 import { annotateImageGenOutcome, stripCodexErrorPrefix } from "./proxy-handler-utils.js";
@@ -15,6 +14,7 @@ import { retryNonStreamingEmptyResponse } from "./non-streaming-empty-response-r
 import { handleNonStreamingPrematureClose } from "./non-streaming-premature-close.js";
 import { logNonStreamingUsage } from "./non-streaming-usage-log.js";
 import { recordNonStreamingSuccessAffinity } from "./non-streaming-affinity.js";
+import { planNonStreamingCollectErrorResponse } from "./non-streaming-collect-error-response.js";
 
 const MAX_EMPTY_RETRIES = 2;
 
@@ -171,12 +171,9 @@ export async function handleNonStreaming(options: HandleNonStreamingOptions): Pr
         c.status(502);
         return c.json(fmt.formatError(502, "Codex returned empty responses across all available accounts"));
       }
-      const msg = collectErr instanceof Error ? collectErr.message : "Unknown error";
-      const statusMatch = msg.match(/HTTP\/[\d.]+ (\d{3})/);
-      const upstreamStatus = statusMatch ? parseInt(statusMatch[1], 10) : 0;
-      const code = toErrorStatus(upstreamStatus);
-      c.status(code);
-      return c.json(fmt.formatError(code, msg));
+      const responsePlan = planNonStreamingCollectErrorResponse(collectErr);
+      c.status(responsePlan.status);
+      return c.json(fmt.formatError(responsePlan.status, responsePlan.message));
     }
   }
 }
