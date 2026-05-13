@@ -9,12 +9,11 @@
  *   - non-streaming-handler.ts — collect / retry response lifecycle
  */
 
-import type { StatusCode } from "hono/utils/http-status";
 import { CodexApiError } from "../../proxy/codex-api.js";
 import { withRetry } from "../../utils/retry.js";
 import { debugDump, debugDumpEnabled } from "../../utils/debug-dump.js";
 import { acquireAccount, releaseAccount } from "./account-acquisition.js";
-import { handleCodexApiError, toErrorStatus } from "./proxy-error-handler.js";
+import { handleCodexApiError } from "./proxy-error-handler.js";
 import { isPreviousResponseNotFoundError, isUnansweredFunctionCallError } from "../../proxy/error-classification.js";
 import { handleStreaming } from "./streaming-handler.js";
 import { handleNonStreaming } from "./non-streaming-handler.js";
@@ -34,7 +33,11 @@ import { randomUUID } from "crypto";
 import { computeVariantHash } from "./variant-hash.js";
 import { getWsPool } from "../../proxy/ws-pool.js";
 import type { WsPoolContext } from "../../proxy/codex-api.js";
-import { canReturnStreamError, streamErrorResponse } from "./stream-error-response.js";
+import {
+  buildAccountExhaustionDetail,
+  respondWithNoAccount,
+  respondWithProxyError,
+} from "./proxy-error-response.js";
 import {
   buildVariantIdentity,
   evaluateImplicitResume,
@@ -134,16 +137,7 @@ export async function handleProxyRequest(options: HandleProxyRequestOptions): Pr
   // Single acquire call — preferredEntryId is a hint, not a hard requirement
   const acquired = acquireAccount(accountPool, req.codexRequest.model, undefined, fmt.tag, preferredEntryId ?? undefined);
   if (!acquired) {
-    if (canReturnStreamError(req, fmt)) {
-      return streamErrorResponse(
-        c,
-        fmt,
-        fmt.noAccountStatus,
-        "No available accounts. All accounts are expired or rate-limited.",
-      );
-    }
-    c.status(fmt.noAccountStatus);
-    return c.json(fmt.formatNoAccount());
+    return respondWithNoAccount({ c, req, fmt });
   }
 
   let { entryId } = acquired;
@@ -441,11 +435,13 @@ export async function handleProxyRequest(options: HandleProxyRequestOptions): Pr
 
       if (decision.action === "respond") {
         releaseAccount(accountPool, entryId, annotateImageGenOutcome(undefined, req.expectsImageGen), released);
-        if (canReturnStreamError(req, fmt)) {
-          return streamErrorResponse(c, fmt, decision.status, decision.message);
-        }
-        c.status(decision.status as StatusCode);
-        return c.json(fmt.formatError(decision.status, decision.message));
+        return respondWithProxyError({
+          c,
+          req,
+          fmt,
+          status: decision.status,
+          message: decision.message,
+        });
       }
 
       if (decision.releaseBeforeRetry) {
@@ -461,38 +457,27 @@ export async function handleProxyRequest(options: HandleProxyRequestOptions): Pr
       // → clearLock), so no releaseAccount call needed — matches existing !retry path.
       if (!accountPool.hasAvailableAccounts(triedEntryIds)) {
         const summary = accountPool.getPoolSummary();
-        const parts: string[] = [];
-        if (summary.rate_limited) parts.push(`${summary.rate_limited} rate-limited`);
-        if (summary.expired) parts.push(`${summary.expired} expired`);
-        if (summary.banned) parts.push(`${summary.banned} banned`);
-        if (summary.disabled) parts.push(`${summary.disabled} disabled`);
-        if (summary.quota_exhausted) parts.push(`${summary.quota_exhausted} quota-exhausted`);
-        if (summary.refreshing) parts.push(`${summary.refreshing} refreshing`);
-        const detail = parts.length
-          ? `All accounts exhausted (${parts.join(", ")}). ${decision.message}`
-          : `No accounts available. ${decision.message}`;
-        const status = decision.status as StatusCode;
-        if (canReturnStreamError(req, fmt)) {
-          return streamErrorResponse(c, fmt, status, detail);
-        }
-        c.status(status);
-        if (decision.useFormat429) {
-          return c.json(fmt.format429(detail));
-        }
-        return c.json(fmt.formatError(status, detail));
+        const detail = buildAccountExhaustionDetail(summary, decision.message);
+        return respondWithProxyError({
+          c,
+          req,
+          fmt,
+          status: decision.status,
+          message: detail,
+          useFormat429: decision.useFormat429,
+        });
       }
 
       const retry = acquireAccount(accountPool, req.codexRequest.model, triedEntryIds, fmt.tag);
       if (!retry) {
-        const status = decision.status as StatusCode;
-        if (canReturnStreamError(req, fmt)) {
-          return streamErrorResponse(c, fmt, status, decision.message);
-        }
-        c.status(status);
-        if (decision.useFormat429) {
-          return c.json(fmt.format429(decision.message));
-        }
-        return c.json(fmt.formatError(status, decision.message));
+        return respondWithProxyError({
+          c,
+          req,
+          fmt,
+          status: decision.status,
+          message: decision.message,
+          useFormat429: decision.useFormat429,
+        });
       }
 
       entryId = retry.entryId;
