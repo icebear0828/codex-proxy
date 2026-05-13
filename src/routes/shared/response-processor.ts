@@ -10,6 +10,13 @@ import type { FormatAdapter, ResponseMetadata, UsageHint } from "./proxy-handler
 import type { UsageInfo } from "../../translation/codex-event-extractor.js";
 import { debugDump, debugDumpEnabled } from "../../utils/debug-dump.js";
 import { recordStreamCloseEvent } from "../../logs/stream-close-event.js";
+import {
+  applyWrittenChunkTrace,
+  createWrittenStreamTrace,
+  formatDiagnosticValue,
+  inspectStreamChunk,
+  streamErrorStatus,
+} from "./response-stream-trace.js";
 
 /** Minimal subset of Hono's StreamingApi that we actually use. */
 export interface StreamWriter {
@@ -41,73 +48,6 @@ export interface StreamResponseOptions {
   diagnostics?: StreamDiagnostics;
 }
 
-interface WrittenStreamTrace {
-  chunks: number;
-  bytes: number;
-  lastEvent: string | null;
-  sawTerminal: boolean;
-}
-
-interface ChunkTrace {
-  bytes: number;
-  lastEvent: string | null;
-  terminal: boolean;
-}
-
-function isTerminalStreamEvent(event: string): boolean {
-  return event === "response.completed" ||
-    event === "response.failed" ||
-    event === "error" ||
-    event === "message_stop" ||
-    event === "[DONE]";
-}
-
-function inspectStreamChunk(chunk: string): ChunkTrace {
-  const trace: ChunkTrace = {
-    bytes: Buffer.byteLength(chunk, "utf8"),
-    lastEvent: null,
-    terminal: false,
-  };
-
-  for (const line of chunk.split(/\r?\n/)) {
-    if (line.startsWith("event: ")) {
-      const event = line.slice("event: ".length).trim();
-      if (event) {
-        trace.lastEvent = event;
-        if (isTerminalStreamEvent(event)) trace.terminal = true;
-      }
-      continue;
-    }
-    if (line.startsWith("data: ")) {
-      const data = line.slice("data: ".length).trim();
-      if (data === "[DONE]") {
-        trace.lastEvent = "[DONE]";
-        trace.terminal = true;
-      }
-    }
-  }
-
-  return trace;
-}
-
-function applyWrittenChunkTrace(written: WrittenStreamTrace, chunk: ChunkTrace): void {
-  written.chunks += 1;
-  written.bytes += chunk.bytes;
-  if (chunk.lastEvent) written.lastEvent = chunk.lastEvent;
-  if (chunk.terminal) written.sawTerminal = true;
-}
-
-function formatDiagnosticValue(value: string | null | undefined): string {
-  return value && value.length > 0 ? value : "none";
-}
-
-function streamErrorStatus(err: unknown): number {
-  if (err instanceof CodexApiError && err.status >= 400 && err.status < 600) {
-    return err.status;
-  }
-  return 502;
-}
-
 /**
  * Stream SSE chunks from the Codex upstream to the client.
  *
@@ -128,12 +68,7 @@ export async function streamResponse(options: StreamResponseOptions): Promise<vo
     onResponseMetadata,
     diagnostics,
   } = options;
-  const written: WrittenStreamTrace = {
-    chunks: 0,
-    bytes: 0,
-    lastEvent: null,
-    sawTerminal: false,
-  };
+  const written = createWrittenStreamTrace();
   // Diagnostic context passed into adapter-internal premature-close records
   // (e.g. streamPassthrough in responses.ts). The adapter is free to ignore
   // it; carrying it through here means audit entries land on the real
