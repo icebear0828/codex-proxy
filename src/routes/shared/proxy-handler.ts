@@ -4,6 +4,7 @@
  *
  * Delegates to:
  *   - account-acquisition.ts  — acquire / release with idempotent guard
+ *   - proxy-egress-log.ts     — upstream request audit log entries
  *   - proxy-error-handler.ts  — CodexApiError classification + pool state mutations
  *   - proxy-debug-dump.ts     — opt-in request payload diagnostics
  *   - proxy-request-diagnostics.ts — request summary / large payload logs
@@ -29,7 +30,6 @@ import type {
   UsageHint,
 } from "./proxy-handler-types.js";
 import { getSessionAffinityMap } from "../../auth/session-affinity.js";
-import { enqueueLogEntry } from "../../logs/entry.js";
 import { randomUUID } from "crypto";
 import { computeVariantHash } from "./variant-hash.js";
 import {
@@ -37,6 +37,7 @@ import {
   respondWithNoAccount,
   respondWithProxyError,
 } from "./proxy-error-response.js";
+import { recordProxyEgressLog } from "./proxy-egress-log.js";
 import { applyParsedRateLimits, applyRateLimitHeaders, type ApplyParsedRateLimitsOptions } from "./proxy-rate-limit.js";
 import { buildRequestDiagnostics } from "./proxy-request-diagnostics.js";
 import { staggerIfNeeded } from "./proxy-stagger.js";
@@ -245,21 +246,11 @@ export async function handleProxyRequest(options: HandleProxyRequestOptions): Pr
         { tag: fmt.tag },
       );
       const status: number | null = rawResponse.status;
-      enqueueLogEntry({
+      recordProxyEgressLog({
         requestId,
-        direction: "egress",
-        method: "POST",
-        path: "/codex/responses",
-        model: req.model,
-        provider: "codex",
+        request: req,
         status,
-        latencyMs: Date.now() - startMs,
-        stream: req.isStreaming,
-        request: {
-          model: req.codexRequest.model,
-          stream: req.codexRequest.stream,
-          useWebSocket: req.codexRequest.useWebSocket,
-        },
+        startMs,
       });
 
       // Capture upstream turn-state for sticky routing
