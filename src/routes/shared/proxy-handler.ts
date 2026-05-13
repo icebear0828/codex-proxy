@@ -6,6 +6,7 @@
  *   - account-acquisition.ts  — acquire / release with idempotent guard
  *   - proxy-error-handler.ts  — CodexApiError classification + pool state mutations
  *   - proxy-stagger.ts        — request interval staggering
+ *   - proxy-ws-context.ts     — WebSocket pool context construction
  *   - streaming-handler.ts    — streaming (SSE) response lifecycle
  *   - non-streaming-handler.ts — collect / retry response lifecycle
  */
@@ -29,8 +30,6 @@ import { getSessionAffinityMap } from "../../auth/session-affinity.js";
 import { enqueueLogEntry } from "../../logs/entry.js";
 import { randomUUID } from "crypto";
 import { computeVariantHash } from "./variant-hash.js";
-import { getWsPool } from "../../proxy/ws-pool.js";
-import type { WsPoolContext } from "../../proxy/codex-api.js";
 import {
   buildAccountExhaustionDetail,
   respondWithNoAccount,
@@ -38,6 +37,7 @@ import {
 } from "./proxy-error-response.js";
 import { applyParsedRateLimits, applyRateLimitHeaders, type ApplyParsedRateLimitsOptions } from "./proxy-rate-limit.js";
 import { staggerIfNeeded } from "./proxy-stagger.js";
+import { buildWsPoolContext } from "./proxy-ws-context.js";
 import {
   buildVariantIdentity,
   evaluateImplicitResume,
@@ -237,27 +237,15 @@ export async function handleProxyRequest(options: HandleProxyRequestOptions): Pr
 
   await staggerIfNeeded(acquired.prevSlotMs);
 
-  /** Build a per-request WS pool context. Only attached when the request is
-   *  going to take the WS path AND we have a stable conversation id — empty
-   *  conversationId would degenerate the pool key and break affinity. */
-  const buildPoolCtx = (forEntryId: string = entryId): WsPoolContext | undefined => {
-    if (!req.codexRequest.useWebSocket) return undefined;
-    if (!chainConversationId) return undefined;
-    return {
-      pool: getWsPool(),
-      poolKey: `${forEntryId}:${chainConversationId}:${variantHash}`,
+  const buildPoolCtx = (forEntryId: string = entryId) =>
+    buildWsPoolContext({
+      useWebSocket: req.codexRequest.useWebSocket,
+      conversationId: chainConversationId,
       entryId: forEntryId,
-      onDecision: (decision) => {
-        const ridShort = requestId.slice(0, 8);
-        const tag = decision.kind === "bypass"
-          ? `bypass(${decision.reason})`
-          : decision.kind === "retry-after-stale-reuse"
-            ? `retry-after-stale-reuse:${decision.wsId}`
-            : `${decision.kind}:${decision.wsId}`;
-        console.log(`[${fmt.tag}] Account ${forEntryId} | rid=${ridShort} | ws=${tag}`);
-      },
-    };
-  };
+      variantHash,
+      requestId,
+      tag: fmt.tag,
+    });
 
   for (;;) {
     try {
