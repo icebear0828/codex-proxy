@@ -8,6 +8,7 @@
  *   - proxy-error-handler.ts  — CodexApiError classification + pool state mutations
  *   - proxy-fallback-retry-plan.ts — account fallback retry response planning
  *   - proxy-implicit-resume-request.ts — implicit-resume request apply/restore state
+ *   - proxy-request-preparation.ts — request input/default forwarding fields
  *   - proxy-debug-dump.ts     — opt-in request payload diagnostics
  *   - proxy-request-diagnostics.ts — request summary / large payload logs
  *   - proxy-stagger.ts        — request interval staggering
@@ -43,6 +44,10 @@ import {
   captureImplicitResumeRequestState,
   restoreImplicitResumeRequestState,
 } from "./proxy-implicit-resume-request.js";
+import {
+  applyProxyRequestForwardingDefaults,
+  ensureProxyRequestInputArray,
+} from "./proxy-request-preparation.js";
 import { recordProxyEgressLog } from "./proxy-egress-log.js";
 import { applyParsedRateLimits, applyRateLimitHeaders, type ApplyParsedRateLimitsOptions } from "./proxy-rate-limit.js";
 import { buildRequestDiagnostics } from "./proxy-request-diagnostics.js";
@@ -66,9 +71,7 @@ export async function handleProxyRequest(options: HandleProxyRequestOptions): Pr
 
   const affinityMap = getSessionAffinityMap();
   const requestId = c.get("requestId") ?? randomUUID().slice(0, 8);
-  if (!Array.isArray(req.codexRequest.input)) {
-    req.codexRequest.input = [];
-  }
+  ensureProxyRequestInputArray(req);
   const originalRequestState = captureImplicitResumeRequestState(req);
   const currentInstructions = req.codexRequest.instructions;
   const explicitPrevRespId = req.codexRequest.previous_response_id;
@@ -119,18 +122,13 @@ export async function handleProxyRequest(options: HandleProxyRequestOptions): Pr
         ? affinityMap.lookup(implicitPrevRespId)
         : null;
 
-  // Conversation ID: honor explicit prompt_cache_key first, otherwise prefer
-  // client session IDs (Claude Code), then content hash, then random fallback.
-  req.codexRequest.prompt_cache_key = promptCacheKey;
-
   // Turn state: sticky routing token from upstream, echoed back on subsequent requests
   const explicitTurnState = explicitPrevRespId ? affinityMap.lookupTurnState(explicitPrevRespId) : null;
-  if (explicitTurnState) req.codexRequest.turnState = explicitTurnState;
-
-  // Set include for reasoning-enabled requests (matches Codex CLI behavior)
-  if (req.codexRequest.reasoning && !req.codexRequest.include?.length) {
-    req.codexRequest.include = ["reasoning.encrypted_content"];
-  }
+  applyProxyRequestForwardingDefaults({
+    request: req,
+    promptCacheKey,
+    explicitTurnState,
+  });
 
   // Single acquire call — preferredEntryId is a hint, not a hard requirement
   const acquired = acquireAccount(accountPool, req.codexRequest.model, undefined, fmt.tag, preferredEntryId ?? undefined);
