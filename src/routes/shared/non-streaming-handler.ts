@@ -8,11 +8,11 @@ import { EmptyResponseError, UpstreamPrematureCloseError } from "../../translati
 import { withRetry } from "../../utils/retry.js";
 import { acquireAccount, releaseAccount } from "./account-acquisition.js";
 import { toErrorStatus } from "./proxy-error-handler.js";
-import { enqueueLogEntry } from "../../logs/entry.js";
 import { recordStreamCloseEvent } from "../../logs/stream-close-event.js";
 import type { SessionAffinityMap } from "../../auth/session-affinity.js";
 import type { FormatAdapter, ProxyRequest, UsageHint } from "./proxy-handler-types.js";
 import { annotateImageGenOutcome, buildCodexApi, stripCodexErrorPrefix } from "./proxy-handler-utils.js";
+import { recordProxyEgressLog } from "./proxy-egress-log.js";
 
 const MAX_EMPTY_RETRIES = 2;
 
@@ -163,41 +163,21 @@ export async function handleNonStreaming(options: HandleNonStreamingOptions): Pr
             () => currentApi.createResponse(req.codexRequest, abortController.signal, undefined, buildPoolCtx?.(currentEntryId)),
             { tag: fmt.tag },
           );
-          enqueueLogEntry({
+          recordProxyEgressLog({
             requestId,
-            direction: "egress",
-            method: "POST",
-            path: "/codex/responses",
-            model: req.model,
-            provider: "codex",
+            request: req,
             status: currentRawResponse.status,
-            latencyMs: Date.now() - retryStartMs,
-            stream: req.isStreaming,
-            request: {
-              model: req.codexRequest.model,
-              stream: req.codexRequest.stream,
-              useWebSocket: req.codexRequest.useWebSocket,
-            },
+            startMs: retryStartMs,
           });
         } catch (retryErr) {
           releaseAccount(accountPool, currentEntryId, annotateImageGenOutcome(undefined, req.expectsImageGen), released);
           const msg = retryErr instanceof Error ? retryErr.message : "Upstream request failed";
-          enqueueLogEntry({
+          recordProxyEgressLog({
             requestId,
-            direction: "egress",
-            method: "POST",
-            path: "/codex/responses",
-            model: req.model,
-            provider: "codex",
+            request: req,
             status: retryErr instanceof CodexApiError ? retryErr.status : null,
-            latencyMs: Date.now() - retryStartMs,
-            stream: req.isStreaming,
             error: msg,
-            request: {
-              model: req.codexRequest.model,
-              stream: req.codexRequest.stream,
-              useWebSocket: req.codexRequest.useWebSocket,
-            },
+            startMs: retryStartMs,
           });
           if (retryErr instanceof CodexApiError) {
             const code = toErrorStatus(retryErr.status);

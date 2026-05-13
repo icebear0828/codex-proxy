@@ -77,4 +77,27 @@ describe("recordProxyEgressLog", () => {
       },
     }));
   });
+
+  it("records optional upstream request errors", () => {
+    recordProxyEgressLog({
+      requestId: "rid-error",
+      request: createRequest({ stream: false, useWebSocket: false }),
+      status: null,
+      startMs: 100,
+      nowMs: () => 175,
+      error: "upstream request failed",
+    });
+
+    expect(enqueueLogEntryMock).toHaveBeenCalledWith(expect.objectContaining({
+      requestId: "rid-error",
+      status: null,
+      latencyMs: 75,
+      error: "upstream request failed",
+      request: {
+        model: "codex-model",
+        stream: false,
+        useWebSocket: false,
+      },
+    }));
+  });
 });
