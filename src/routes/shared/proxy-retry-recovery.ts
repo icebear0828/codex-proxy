@@ -2,6 +2,8 @@ import {
   isPreviousResponseNotFoundError,
   isUnansweredFunctionCallError,
 } from "../../proxy/error-classification.js";
+import type { SessionAffinityMap } from "../../auth/session-affinity.js";
+import type { ProxyRequest } from "./proxy-handler-types.js";
 import { stripCodexErrorPrefix } from "./proxy-handler-utils.js";
 
 export type ProxyRetryRecoveryKind =
@@ -23,6 +25,14 @@ export interface BuildProxyRetryRecoveryDecisionOptions {
   entryId: string;
   stripAndRetryDone: boolean;
   previousResponseId: string | undefined;
+}
+
+export interface ApplyProxyRetryRecoveryDecisionOptions {
+  decision: ProxyRetryRecoveryDecision;
+  request: ProxyRequest;
+  affinityMap: Pick<SessionAffinityMap, "forget">;
+  restoreImplicitResumeRequest: () => void;
+  log?: (message: string) => void;
 }
 
 function errorMessage(err: unknown): string {
@@ -62,4 +72,27 @@ export function buildProxyRetryRecoveryDecision({
   }
 
   return { action: "none" };
+}
+
+export function applyProxyRetryRecoveryDecision(
+  options: ApplyProxyRetryRecoveryDecisionOptions,
+): boolean {
+  const {
+    decision,
+    request,
+    affinityMap,
+    restoreImplicitResumeRequest,
+    log = console.warn,
+  } = options;
+
+  if (decision.action !== "retry") {
+    return false;
+  }
+
+  log(decision.logMessage);
+  if (decision.staleId) affinityMap.forget(decision.staleId);
+  restoreImplicitResumeRequest();
+  request.codexRequest.previous_response_id = undefined;
+  request.codexRequest.turnState = undefined;
+  return true;
 }

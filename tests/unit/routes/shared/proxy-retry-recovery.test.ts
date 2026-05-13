@@ -1,9 +1,28 @@
 import { CodexApiError } from "@src/proxy/codex-api.js";
-import { buildProxyRetryRecoveryDecision } from "@src/routes/shared/proxy-retry-recovery.js";
-import { describe, expect, it } from "vitest";
+import type { ProxyRequest } from "@src/routes/shared/proxy-handler-types.js";
+import {
+  applyProxyRetryRecoveryDecision,
+  buildProxyRetryRecoveryDecision,
+} from "@src/routes/shared/proxy-retry-recovery.js";
+import { describe, expect, it, vi } from "vitest";
 
 function codexError(status: number, error: Record<string, unknown>): CodexApiError {
   return new CodexApiError(status, JSON.stringify({ error }));
+}
+
+function proxyRequest(): ProxyRequest {
+  return {
+    codexRequest: {
+      model: "gpt-5.4",
+      input: [],
+      stream: true,
+      store: false,
+      previous_response_id: "resp_stale",
+      turnState: "turn-state",
+    },
+    model: "gpt-5.4",
+    isStreaming: true,
+  };
 }
 
 describe("buildProxyRetryRecoveryDecision", () => {
@@ -87,5 +106,59 @@ describe("buildProxyRetryRecoveryDecision", () => {
     });
 
     expect(decision).toEqual({ action: "none" });
+  });
+});
+
+describe("applyProxyRetryRecoveryDecision", () => {
+  it("applies same-account retry recovery side effects", () => {
+    const request = proxyRequest();
+    const forget = vi.fn();
+    const restoreImplicitResumeRequest = vi.fn(() => {
+      request.codexRequest.previous_response_id = "resp_restored";
+      request.codexRequest.turnState = "restored-turn-state";
+    });
+    const log = vi.fn();
+
+    const applied = applyProxyRetryRecoveryDecision({
+      decision: {
+        action: "retry",
+        kind: "previous_response_not_found",
+        staleId: "resp_stale",
+        logMessage: "[openai] stripping and retrying same account",
+      },
+      request,
+      affinityMap: { forget },
+      restoreImplicitResumeRequest,
+      log,
+    });
+
+    expect(applied).toBe(true);
+    expect(log).toHaveBeenCalledWith("[openai] stripping and retrying same account");
+    expect(forget).toHaveBeenCalledWith("resp_stale");
+    expect(restoreImplicitResumeRequest).toHaveBeenCalled();
+    expect(request.codexRequest.previous_response_id).toBeUndefined();
+    expect(request.codexRequest.turnState).toBeUndefined();
+  });
+
+  it("leaves request and affinity state untouched when no recovery is needed", () => {
+    const request = proxyRequest();
+    const forget = vi.fn();
+    const restoreImplicitResumeRequest = vi.fn();
+    const log = vi.fn();
+
+    const applied = applyProxyRetryRecoveryDecision({
+      decision: { action: "none" },
+      request,
+      affinityMap: { forget },
+      restoreImplicitResumeRequest,
+      log,
+    });
+
+    expect(applied).toBe(false);
+    expect(log).not.toHaveBeenCalled();
+    expect(forget).not.toHaveBeenCalled();
+    expect(restoreImplicitResumeRequest).not.toHaveBeenCalled();
+    expect(request.codexRequest.previous_response_id).toBe("resp_stale");
+    expect(request.codexRequest.turnState).toBe("turn-state");
   });
 });

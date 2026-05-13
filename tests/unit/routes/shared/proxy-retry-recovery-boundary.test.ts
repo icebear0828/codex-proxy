@@ -75,9 +75,10 @@ function importsNamedBindingFromAnyModule(content: string, bindingName: string, 
 describe("proxy retry recovery helper boundary", () => {
   it("exports the retry recovery decision helper from its own module", () => {
     expect(retryRecovery.buildProxyRetryRecoveryDecision).toBeTypeOf("function");
+    expect(retryRecovery.applyProxyRetryRecoveryDecision).toBeTypeOf("function");
   });
 
-  it("keeps same-account retry classification out of the proxy orchestrator", () => {
+  it("keeps same-account retry classification and side effects out of the proxy orchestrator", () => {
     const proxyHandler = source(PROXY_HANDLER_MODULE);
 
     expect(importsNamedBinding(
@@ -110,5 +111,9 @@ describe("proxy retry recovery helper boundary", () => {
       "stripCodexErrorPrefix",
       PROXY_HANDLER_MODULE,
     )).toBe(false);
+    expect(proxyHandler).not.toContain("console.warn(retryRecovery.logMessage)");
+    expect(proxyHandler).not.toContain("affinityMap.forget(retryRecovery.staleId)");
+    expect(proxyHandler).not.toContain("req.codexRequest.previous_response_id = undefined");
+    expect(proxyHandler).not.toContain("req.codexRequest.turnState = undefined");
   });
 });
