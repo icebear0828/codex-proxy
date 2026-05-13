@@ -6,6 +6,7 @@ import { applyParsedRateLimits, applyRateLimitHeaders } from "@src/routes/shared
 
 const ROOT = process.cwd();
 const RATE_LIMIT_MODULE = "src/routes/shared/proxy-rate-limit.ts";
+const UPSTREAM_ATTEMPT_MODULE = "src/routes/shared/proxy-upstream-attempt.ts";
 const PROXY_HANDLER_MODULE = "src/routes/shared/proxy-handler.ts";
 
 function source(path: string): string {
@@ -64,8 +65,12 @@ describe("proxy rate-limit helper boundary", () => {
 
   it("keeps parsed rate-limit account-pool mutation out of the proxy orchestrator", () => {
     const proxyHandler = source(PROXY_HANDLER_MODULE);
+    const upstreamAttempt = source(UPSTREAM_ATTEMPT_MODULE);
 
-    expect(importsNamedBinding(proxyHandler, "proxy-rate-limit.js", "applyParsedRateLimits", PROXY_HANDLER_MODULE)).toBe(true);
+    expect(importsNamedBinding(proxyHandler, "proxy-upstream-attempt.js", "sendProxyUpstreamAttempt", PROXY_HANDLER_MODULE)).toBe(true);
+    expect(importsNamedBinding(proxyHandler, "proxy-rate-limit.js", "applyParsedRateLimits", PROXY_HANDLER_MODULE)).toBe(false);
+    expect(importsNamedBinding(upstreamAttempt, "proxy-rate-limit.js", "applyParsedRateLimits", UPSTREAM_ATTEMPT_MODULE)).toBe(true);
+    expect(importsNamedBinding(upstreamAttempt, "proxy-rate-limit.js", "applyRateLimitHeaders", UPSTREAM_ATTEMPT_MODULE)).toBe(true);
     expect(importedModuleSpecifiers(proxyHandler, PROXY_HANDLER_MODULE)).not.toEqual(expect.arrayContaining([
       "../../proxy/rate-limit-headers.js",
     ]));

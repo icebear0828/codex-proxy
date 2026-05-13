@@ -8,12 +8,22 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { Hono } from "hono";
 import type { FormatCollectTranslatorOptions, ProxyRequest } from "@src/routes/shared/proxy-handler-types.js";
+import type { WsPoolContext } from "@src/proxy/codex-api.js";
+import type { CodexResponsesRequest } from "@src/proxy/codex-types.js";
+import type { ParsedRateLimit } from "@src/proxy/rate-limit-headers.js";
 import { createMockFormatAdapter } from "@helpers/format-adapter.js";
 import { getSessionAffinityMap } from "@src/auth/session-affinity.js";
 
 // ── Module-level control for CodexApi.createResponse ──────────────────
 
-let mockCreateResponse: (() => Promise<Response>) | null = null;
+type MockCreateResponse = (
+  request: CodexResponsesRequest,
+  signal?: AbortSignal,
+  onRateLimits?: (rateLimits: ParsedRateLimit) => void,
+  poolCtx?: WsPoolContext,
+) => Promise<Response>;
+
+let mockCreateResponse: MockCreateResponse | null = null;
 
 vi.mock("@src/proxy/codex-api.js", () => {
   class CodexApiError extends Error {
@@ -34,8 +44,13 @@ vi.mock("@src/proxy/codex-api.js", () => {
   }
 
   const CodexApi = vi.fn().mockImplementation(() => ({
-    createResponse: vi.fn((): Promise<Response> => {
-      if (mockCreateResponse) return mockCreateResponse();
+    createResponse: vi.fn((
+      request: CodexResponsesRequest,
+      signal?: AbortSignal,
+      onRateLimits?: (rateLimits: ParsedRateLimit) => void,
+      poolCtx?: WsPoolContext,
+    ): Promise<Response> => {
+      if (mockCreateResponse) return mockCreateResponse(request, signal, onRateLimits, poolCtx);
       return Promise.resolve(new Response("data: {}\n\n"));
     }),
   }));
@@ -101,6 +116,8 @@ function createMockAccountPool(overrides: Record<string, unknown> = {}) {
     release: vi.fn(),
     markRateLimited: vi.fn(),
     applyRateLimit429: vi.fn(),
+    updateCachedQuota: vi.fn(),
+    syncRateLimitWindow: vi.fn(),
     markStatus: vi.fn(),
     getEntry: vi.fn(() => ({ email: "test@test.com" })),
     recordEmptyResponse: vi.fn(),
@@ -342,6 +359,59 @@ describe("proxy-handler integration", () => {
       countRequest: true,
     });
     // Second account succeeds — release called with usage
+    expect(accountPool.release).toHaveBeenCalledWith("e2", {
+      input_tokens: 10,
+      output_tokens: 20,
+    });
+  });
+
+  it("attributes WebSocket rate-limit callback updates to the failed account before fallback", async () => {
+    const body429 = JSON.stringify({
+      error: { type: "usage_limit_reached", message: "Limit reached", resets_in_seconds: 123 },
+    });
+    const parsedRateLimit: ParsedRateLimit = {
+      primary: { used_percent: 100, window_minutes: 60, reset_at: 2_000_000_300 },
+      secondary: null,
+      code_review: null,
+    };
+    let createCount = 0;
+    mockCreateResponse = (_request, _signal, onRateLimits) => {
+      createCount++;
+      if (createCount === 1) {
+        onRateLimits?.(parsedRateLimit);
+        return Promise.reject(new CodexApiError(429, body429));
+      }
+      return Promise.resolve(new Response("data: {}\n\n"));
+    };
+
+    let acquireCount = 0;
+    const accountPool = createMockAccountPool({
+      acquire: vi.fn(() => {
+        acquireCount++;
+        if (acquireCount === 1) return { entryId: "e1", token: "tok1", accountId: "acc1" };
+        return { entryId: "e2", token: "tok2", accountId: "acc2" };
+      }),
+    });
+    const fmt = createMockFormatAdapter();
+    const { app } = buildTestApp({ accountPool, fmt });
+
+    const res = await app.request("/test", { method: "POST" });
+    expect(res.status).toBe(200);
+
+    expect(accountPool.updateCachedQuota).toHaveBeenCalledTimes(1);
+    expect(accountPool.updateCachedQuota).toHaveBeenCalledWith("e1", expect.objectContaining({
+      rate_limit: expect.objectContaining({
+        used_percent: 100,
+        limit_reached: true,
+      }),
+    }));
+    expect(accountPool.syncRateLimitWindow).toHaveBeenCalledWith("e1", 2_000_000_300, 3_600);
+    expect(accountPool.applyRateLimit429).toHaveBeenCalledWith("e1", { resetsAtSec: 2_000_000_300 });
+    expect(accountPool.applyRateLimit429).toHaveBeenCalledWith("e1", {
+      retryAfterSec: 123,
+      countRequest: true,
+    });
+    expect(accountPool.release).toHaveBeenCalledTimes(1);
     expect(accountPool.release).toHaveBeenCalledWith("e2", {
       input_tokens: 10,
       output_tokens: 20,

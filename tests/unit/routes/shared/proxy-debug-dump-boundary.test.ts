@@ -6,6 +6,7 @@ import { dumpProxyRequest } from "@src/routes/shared/proxy-debug-dump.js";
 
 const ROOT = process.cwd();
 const DEBUG_DUMP_MODULE = "src/routes/shared/proxy-debug-dump.ts";
+const UPSTREAM_ATTEMPT_MODULE = "src/routes/shared/proxy-upstream-attempt.ts";
 const PROXY_HANDLER_MODULE = "src/routes/shared/proxy-handler.ts";
 
 function source(path: string): string {
@@ -56,8 +57,11 @@ describe("proxy debug dump boundary", () => {
 
   it("keeps debug dump utility wiring out of the proxy orchestrator", () => {
     const proxyHandler = source(PROXY_HANDLER_MODULE);
+    const upstreamAttempt = source(UPSTREAM_ATTEMPT_MODULE);
 
-    expect(importsNamedBinding(proxyHandler, "proxy-debug-dump.js", "dumpProxyRequest", PROXY_HANDLER_MODULE)).toBe(true);
+    expect(importsNamedBinding(proxyHandler, "proxy-upstream-attempt.js", "sendProxyUpstreamAttempt", PROXY_HANDLER_MODULE)).toBe(true);
+    expect(importsNamedBinding(proxyHandler, "proxy-debug-dump.js", "dumpProxyRequest", PROXY_HANDLER_MODULE)).toBe(false);
+    expect(importsNamedBinding(upstreamAttempt, "proxy-debug-dump.js", "dumpProxyRequest", UPSTREAM_ATTEMPT_MODULE)).toBe(true);
     expect(importsNamedBinding(proxyHandler, "debug-dump.js", "debugDump", PROXY_HANDLER_MODULE)).toBe(false);
     expect(importsNamedBinding(proxyHandler, "debug-dump.js", "debugDumpEnabled", PROXY_HANDLER_MODULE)).toBe(false);
     expect(proxyHandler).not.toContain('debugDump("request"');
