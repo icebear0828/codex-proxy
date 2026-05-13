@@ -14,6 +14,7 @@ import { annotateImageGenOutcome, stripCodexErrorPrefix } from "./proxy-handler-
 import { retryNonStreamingEmptyResponse } from "./non-streaming-empty-response-retry.js";
 import { handleNonStreamingPrematureClose } from "./non-streaming-premature-close.js";
 import { logNonStreamingUsage } from "./non-streaming-usage-log.js";
+import { recordNonStreamingSuccessAffinity } from "./non-streaming-affinity.js";
 
 const MAX_EMPTY_RETRIES = 2;
 
@@ -82,18 +83,17 @@ export async function handleNonStreaming(options: HandleNonStreamingOptions): Pr
           }
         },
       });
-      if (result.responseId && affinityMap && conversationId) {
-        affinityMap.record(
-          result.responseId,
-          currentEntryId,
-          conversationId,
-          turnState,
-          req.codexRequest.instructions ?? undefined,
-          result.usage.input_tokens,
-          Array.from(responseFunctionCallIds),
-          variantHash,
-        );
-      }
+      recordNonStreamingSuccessAffinity({
+        affinityMap,
+        responseId: result.responseId,
+        entryId: currentEntryId,
+        conversationId,
+        turnState,
+        instructions: req.codexRequest.instructions ?? undefined,
+        inputTokens: result.usage.input_tokens,
+        responseFunctionCallIds,
+        variantHash,
+      });
       if (result.usage) {
         logNonStreamingUsage({ tag: fmt.tag, entryId: currentEntryId, requestId, usage: result.usage });
       }

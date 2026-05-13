@@ -258,7 +258,8 @@ describe("proxy-handler integration", () => {
     const accountPool = createMockAccountPool();
     const fmt = createMockFormatAdapter({
       collectTranslator: vi.fn(async (options: FormatCollectTranslatorOptions) => {
-        options.onResponseMetadata?.({ functionCallIds: ["call_a", "call_b"] });
+        options.onResponseMetadata?.({ functionCallIds: ["call_a", "call_a"] });
+        options.onResponseMetadata?.({ functionCallIds: ["call_b"] });
         return {
           response: { id: "resp_meta", choices: [] },
           usage: { input_tokens: 33, output_tokens: 4 },
@@ -273,6 +274,12 @@ describe("proxy-handler integration", () => {
         prompt_cache_key: "thread-collect",
       },
     };
+    const promptCacheIdentity = resolvePromptCacheIdentity(req.codexRequest, req.clientConversationId);
+    const variantHash = computeVariantHash(
+      req.codexRequest.instructions,
+      req.codexRequest.tools,
+      buildVariantIdentity(req.codexRequest, promptCacheIdentity),
+    );
     const { app } = buildTestApp({ accountPool, fmt, req });
 
     const res = await app.request("/test", { method: "POST" });
@@ -285,6 +292,16 @@ describe("proxy-handler integration", () => {
     expect(affinityMap.lookupInstructions("resp_meta")).toBe("You are helpful");
     expect(affinityMap.lookupInputTokens("resp_meta")).toBe(33);
     expect(affinityMap.lookupFunctionCallIds("resp_meta")).toEqual(["call_a", "call_b"]);
+    expect(affinityMap.lookupLatestResponseIdByConversationId(
+      "thread-collect",
+      undefined,
+      variantHash,
+    )).toBe("resp_meta");
+    expect(affinityMap.lookupLatestResponseIdByConversationId(
+      "thread-collect",
+      undefined,
+      "different-variant",
+    )).toBeNull();
   });
 
   // 3. Streaming success

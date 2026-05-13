@@ -3,6 +3,7 @@ import { handleNonStreaming } from "@src/routes/shared/non-streaming-handler.js"
 import { retryNonStreamingEmptyResponse } from "@src/routes/shared/non-streaming-empty-response-retry.js";
 import { handleNonStreamingPrematureClose } from "@src/routes/shared/non-streaming-premature-close.js";
 import { logNonStreamingUsage } from "@src/routes/shared/non-streaming-usage-log.js";
+import { recordNonStreamingSuccessAffinity } from "@src/routes/shared/non-streaming-affinity.js";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import * as ts from "typescript";
@@ -12,6 +13,7 @@ const NON_STREAMING_HANDLER_MODULE = "src/routes/shared/non-streaming-handler.ts
 const EMPTY_RESPONSE_RETRY_MODULE = "src/routes/shared/non-streaming-empty-response-retry.ts";
 const PREMATURE_CLOSE_MODULE = "src/routes/shared/non-streaming-premature-close.ts";
 const USAGE_LOG_MODULE = "src/routes/shared/non-streaming-usage-log.ts";
+const AFFINITY_MODULE = "src/routes/shared/non-streaming-affinity.ts";
 
 function source(path: string): string {
   return readFileSync(resolve(ROOT, path), "utf-8");
@@ -62,6 +64,10 @@ describe("non-streaming handler module boundary", () => {
 
   it("exports the usage log helper from its own module", () => {
     expect(logNonStreamingUsage).toBeTypeOf("function");
+  });
+
+  it("exports the non-streaming affinity helper from its own module", () => {
+    expect(recordNonStreamingSuccessAffinity).toBeTypeOf("function");
   });
 
   it("keeps empty-response retry reacquire and upstream send details out of the collect handler", () => {
@@ -160,5 +166,38 @@ describe("non-streaming handler module boundary", () => {
     expect(helper).not.toContain("collectTranslator");
     expect(helper).not.toContain("formatError");
     expect(helper).not.toContain("c.json");
+  });
+
+  it("keeps non-streaming affinity record details out of the collect handler", () => {
+    const handler = source(NON_STREAMING_HANDLER_MODULE);
+
+    expect(importsNamedBinding(
+      handler,
+      "non-streaming-affinity.js",
+      "recordNonStreamingSuccessAffinity",
+      NON_STREAMING_HANDLER_MODULE,
+    )).toBe(true);
+    expect(handler).not.toContain("affinityMap.record(");
+  });
+
+  it("does not let the affinity helper own HTTP rendering, retry handling, usage logging, or account lifecycle", () => {
+    const helper = source(AFFINITY_MODULE);
+
+    expect(importedModuleSpecifiers(helper, AFFINITY_MODULE)).not.toEqual(expect.arrayContaining([
+      "hono",
+      "./account-acquisition.js",
+      "./proxy-error-response.js",
+      "./streaming-handler.js",
+      "./non-streaming-handler.js",
+      "./non-streaming-empty-response-retry.js",
+      "./non-streaming-premature-close.js",
+      "./non-streaming-usage-log.js",
+      "../../logs/entry.js",
+    ]));
+    expect(helper).not.toContain("collectTranslator");
+    expect(helper).not.toContain("formatError");
+    expect(helper).not.toContain("c.json");
+    expect(helper).not.toContain("releaseAccount");
+    expect(helper).not.toContain("logNonStreamingUsage");
   });
 });
