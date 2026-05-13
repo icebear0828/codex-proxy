@@ -4,7 +4,7 @@
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { Hono } from "hono";
-import type { ProxyRequest } from "@src/routes/shared/proxy-handler.js";
+import type { FormatStreamTranslatorOptions, ProxyRequest } from "@src/routes/shared/proxy-handler.js";
 import { createMockFormatAdapter } from "@helpers/format-adapter.js";
 
 // ── Mocks ────────────────────────────────────────────────────────────
@@ -295,11 +295,15 @@ describe("handleDirectRequest error forwarding", () => {
   });
 
   it("records direct streaming failures with the direct provider and public API path", async () => {
+    const upstreamResponse = new Response("data: {}\n\n");
+    mockUpstreamCreate = () => Promise.resolve(upstreamResponse);
+
     const app = new Hono();
     const upstream = createMockUpstream({ tag: "openai" });
-    const req = { ...createDefaultRequest(), isStreaming: true };
+    const tupleSchema = { type: "array", prefixItems: [] } satisfies Record<string, unknown>;
+    const req = { ...createDefaultRequest(), isStreaming: true, tupleSchema };
     const fmt = createMockFormatAdapter({
-      streamTranslator: vi.fn(async function* () {
+      streamTranslator: vi.fn(async function* (_options: FormatStreamTranslatorOptions) {
         throw new Error("direct stream died");
       }),
     });
@@ -309,6 +313,23 @@ describe("handleDirectRequest error forwarding", () => {
     const res = await app.request("/test", { method: "POST" });
     await res.text();
 
+    const call = fmt.streamTranslator.mock.calls[0] ?? [];
+    expect(call).toHaveLength(1);
+    const options = call[0] as Record<string, unknown>;
+    expect(options.api).toBe(upstream);
+    expect(options.response).toBe(upstreamResponse);
+    expect(options.model).toBe("gpt-4o");
+    expect(typeof options.onUsage).toBe("function");
+    expect(typeof options.onResponseId).toBe("function");
+    expect(options.tupleSchema).toBe(tupleSchema);
+    expect(options.usageHint).toBeUndefined();
+    expect(options.onResponseMetadata).toBeUndefined();
+    expect(options.streamContext).toMatchObject({
+      tag: "Test",
+      provider: "openai",
+      path: "/v1/responses",
+      model: "gpt-4o",
+    });
     expect(recordedStreamCloseEvents).toHaveLength(1);
     expect(recordedStreamCloseEvents[0]).toMatchObject({
       kind: "upstream-error",

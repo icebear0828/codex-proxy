@@ -82,7 +82,14 @@ describe("streamResponse", () => {
     const rawResponse = new Response("ok");
     const onUsage = vi.fn();
 
-    await streamResponse(s, api, rawResponse, "gpt-5.4", adapter, onUsage);
+    await streamResponse({
+      writer: s,
+      api,
+      response: rawResponse,
+      model: "gpt-5.4",
+      adapter,
+      onUsage,
+    });
 
     expect(s.written).toEqual(["a", "b", "c"]);
   });
@@ -98,18 +105,18 @@ describe("streamResponse", () => {
     const tupleSchema = { type: "array", prefixItems: [] } satisfies Record<string, unknown>;
     const usageHint = { reusedInputTokensUpperBound: 42 };
 
-    await streamResponse(
-      s,
+    await streamResponse({
+      writer: s,
       api,
-      rawResponse,
-      "gpt-5.4",
+      response: rawResponse,
+      model: "gpt-5.4",
       adapter,
       onUsage,
       tupleSchema,
       onResponseId,
       usageHint,
       onResponseMetadata,
-      {
+      diagnostics: {
         requestId: "rid-options",
         tag: "Responses",
         provider: "codex",
@@ -117,7 +124,7 @@ describe("streamResponse", () => {
         accountEntryId: "entry-1",
         variantHash: "variant-1",
       },
-    );
+    });
 
     const call = adapter.streamTranslator.mock.calls[0] ?? [];
     expect(call).toHaveLength(1);
@@ -165,7 +172,14 @@ describe("streamResponse", () => {
       })),
     };
 
-    await streamResponse(s, api, rawResponse, "gpt-5.4", adapter, onUsage);
+    await streamResponse({
+      writer: s,
+      api,
+      response: rawResponse,
+      model: "gpt-5.4",
+      adapter,
+      onUsage,
+    });
 
     expect(onUsage).toHaveBeenCalledWith({ input_tokens: 5, output_tokens: 15 });
   });
@@ -176,7 +190,14 @@ describe("streamResponse", () => {
     const api = createMockCodexApi();
     const rawResponse = new Response("ok");
 
-    await streamResponse(s, api, rawResponse, "gpt-5.4", adapter, vi.fn());
+    await streamResponse({
+      writer: s,
+      api,
+      response: rawResponse,
+      model: "gpt-5.4",
+      adapter,
+      onUsage: vi.fn(),
+    });
 
     // Should have attempted to write an error event
     const errorChunk = s.written.find((c) => c.includes("stream_error"));
@@ -192,19 +213,15 @@ describe("streamResponse", () => {
     const abortController = new AbortController();
     abortController.abort();
 
-    await streamResponse(
-      s,
+    await streamResponse({
+      writer: s,
       api,
-      rawResponse,
-      "gpt-5.4",
+      response: rawResponse,
+      model: "gpt-5.4",
       adapter,
-      vi.fn(),
-      undefined,
-      undefined,
-      undefined,
-      undefined,
-      { requestId: "rid-abort", tag: "Responses", abortSignal: abortController.signal },
-    );
+      onUsage: vi.fn(),
+      diagnostics: { requestId: "rid-abort", tag: "Responses", abortSignal: abortController.signal },
+    });
 
     expect(recordedStreamCloseEvents).toEqual([]);
   });
@@ -221,7 +238,14 @@ describe("streamResponse", () => {
     const api = createMockCodexApi();
     const rawResponse = new Response("ok");
 
-    await streamResponse(s, api, rawResponse, "gpt-5.4", adapter, vi.fn());
+    await streamResponse({
+      writer: s,
+      api,
+      response: rawResponse,
+      model: "gpt-5.4",
+      adapter,
+      onUsage: vi.fn(),
+    });
 
     expect(adapter.formatStreamError).toHaveBeenCalledWith(502, "error sending request for url");
     expect(s.written.at(-1)).toBe(
@@ -237,7 +261,14 @@ describe("streamResponse", () => {
     const rawResponse = new Response("ok");
 
     // Should not throw
-    await streamResponse(s, api, rawResponse, "gpt-5.4", adapter, vi.fn());
+    await streamResponse({
+      writer: s,
+      api,
+      response: rawResponse,
+      model: "gpt-5.4",
+      adapter,
+      onUsage: vi.fn(),
+    });
 
     // Only attempted first write which failed
     expect(s.write).toHaveBeenCalledTimes(1);
@@ -258,19 +289,15 @@ describe("streamResponse", () => {
     const api = createMockCodexApi();
     const rawResponse = new Response("ok");
 
-    await streamResponse(
-      s,
+    await streamResponse({
+      writer: s,
       api,
-      rawResponse,
-      "gpt-5.4",
+      response: rawResponse,
+      model: "gpt-5.4",
       adapter,
-      vi.fn(),
-      undefined,
-      undefined,
-      undefined,
-      undefined,
-      { requestId: "rid-terminal", tag: "Responses" },
-    );
+      onUsage: vi.fn(),
+      diagnostics: { requestId: "rid-terminal", tag: "Responses" },
+    });
 
     expect(warn).toHaveBeenCalledWith(
       expect.stringContaining("[stream-client-disconnect] rid=rid-terminal tag=Responses model=gpt-5.4"),

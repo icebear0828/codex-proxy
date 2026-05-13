@@ -217,7 +217,8 @@ describe("proxy-handler integration", () => {
   it("returns text/event-stream with SSE chunks for streaming", async () => {
     const accountPool = createMockAccountPool();
     const fmt = createMockFormatAdapter();
-    const req = createStreamingRequest();
+    const tupleSchema = { type: "array", prefixItems: [] } satisfies Record<string, unknown>;
+    const req = { ...createStreamingRequest(), tupleSchema };
     const { app } = buildTestApp({ accountPool, fmt, req });
 
     const res = await app.request("/test", { method: "POST" });
@@ -227,6 +228,24 @@ describe("proxy-handler integration", () => {
     expect(text).toContain("data: {}\n\n");
     expect(text).toContain("data: [DONE]\n\n");
     expect(fmt.streamTranslator).toHaveBeenCalled();
+    const call = fmt.streamTranslator.mock.calls[0] ?? [];
+    expect(call).toHaveLength(1);
+    const options = call[0] as Record<string, unknown>;
+    expect(options.api).toBeDefined();
+    expect(options.response).toBeInstanceOf(Response);
+    expect(options.model).toBe("codex");
+    expect(typeof options.onUsage).toBe("function");
+    expect(typeof options.onResponseId).toBe("function");
+    expect(options.tupleSchema).toBe(tupleSchema);
+    expect(options.usageHint).toBeUndefined();
+    expect(typeof options.onResponseMetadata).toBe("function");
+    expect(options.streamContext).toMatchObject({
+      tag: "Test",
+      provider: "codex",
+      path: "/codex/responses",
+      model: "codex",
+      accountEntryId: "e1",
+    });
   });
 
   it("returns a streaming error event when upstream request fails before SSE starts", async () => {
