@@ -5,6 +5,7 @@
  * Delegates to:
  *   - account-acquisition.ts  — acquire / release with idempotent guard
  *   - proxy-error-handler.ts  — CodexApiError classification + pool state mutations
+ *   - proxy-request-diagnostics.ts — request summary / large payload logs
  *   - proxy-stagger.ts        — request interval staggering
  *   - proxy-ws-context.ts     — WebSocket pool context construction
  *   - streaming-handler.ts    — streaming (SSE) response lifecycle
@@ -36,6 +37,7 @@ import {
   respondWithProxyError,
 } from "./proxy-error-response.js";
 import { applyParsedRateLimits, applyRateLimitHeaders, type ApplyParsedRateLimitsOptions } from "./proxy-rate-limit.js";
+import { buildRequestDiagnostics } from "./proxy-request-diagnostics.js";
 import { staggerIfNeeded } from "./proxy-stagger.js";
 import { buildWsPoolContext } from "./proxy-ws-context.js";
 import {
@@ -187,49 +189,23 @@ export async function handleProxyRequest(options: HandleProxyRequestOptions): Pr
   };
 
   {
-    const reqJson = JSON.stringify(req.codexRequest);
-    const inputItems = req.codexRequest.input?.length ?? 0;
-    const instrLen = req.codexRequest.instructions?.length ?? 0;
-    const toolsCount = req.codexRequest.tools?.length ?? 0;
-    const affinityHit = preferredEntryId && entryId === preferredEntryId;
-    const reasoningField = req.codexRequest.reasoning
-      ? `effort=${req.codexRequest.reasoning.effort ?? "none"} summary=${req.codexRequest.reasoning.summary ?? "none"}`
-      : "off";
-    const prevSrc = explicitPrevRespId
-      ? "explicit"
-      : implicitPrevRespId
-        ? "implicit"
-        : null;
-    const prevField = prevSrc && prevRespId
-      ? `${prevSrc}:${prevRespId.slice(-8)}`
-      : "none";
-    const convField = chainConversationId ? chainConversationId.slice(0, 8) : "none";
-    const keyField = promptCacheKey.slice(0, 8);
-    // explicit prev is always honoured; implicit prev's activation is gated by evaluateImplicitResume.
-    const resumeField = explicitPrevRespId
-      ? "explicit"
-      : implicitPrevRespId
-        ? (resumeEval.active ? "on" : `off:${resumeEval.reason}`)
-        : null;
-    console.log(
-      `[${fmt.tag}] Account ${entryId} | model=${req.model} | rid=${requestId.slice(0, 8)} conv=${convField} key=${keyField} vh=${variantHash} prev=${prevField}` +
-      (resumeField ? ` resume=${resumeField}` : "") +
-      ` | input_items=${inputItems} tools=${toolsCount} instr=${instrLen}B payload=${reqJson.length}B reasoning=[${reasoningField}]` +
-      (prevRespId ? ` | affinity=${affinityHit ? "hit" : "miss"}` : ""),
-    );
-    if (reqJson.length > 50_000) {
-      // Log per-item size breakdown to diagnose large payload origin
-      const itemSizes = (req.codexRequest.input ?? []).map((item, i) => {
-        const sz = JSON.stringify(item).length;
-        const role = typeof item === "object" && item !== null && "role" in item ? (item as Record<string, unknown>).role : (item as Record<string, unknown>).type;
-        return `  [${i}] ${role} ${sz}B`;
-      });
-      console.warn(
-        `[${fmt.tag}] ⚠ Large payload (${(reqJson.length / 1024).toFixed(1)}KB) — input_items=${inputItems} instr=${instrLen}B\n` +
-        `  instructions: ${instrLen}B\n` +
-        itemSizes.join("\n"),
-      );
-    }
+    const diagnostics = buildRequestDiagnostics({
+      tag: fmt.tag,
+      entryId,
+      requestId,
+      request: req,
+      chainConversationId,
+      promptCacheKey,
+      variantHash,
+      explicitPrevRespId,
+      implicitPrevRespId,
+      prevRespId,
+      resumeActive: resumeEval.active,
+      resumeReason: resumeEval.reason,
+      preferredEntryId,
+    });
+    console.log(diagnostics.summary);
+    if (diagnostics.largePayloadWarning) console.warn(diagnostics.largePayloadWarning);
   }
 
   const abortController = new AbortController();
