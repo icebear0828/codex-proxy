@@ -15,6 +15,7 @@ import { handleNonStreamingPrematureClose } from "./non-streaming-premature-clos
 import { logNonStreamingUsage } from "./non-streaming-usage-log.js";
 import { recordNonStreamingSuccessAffinity } from "./non-streaming-affinity.js";
 import { planNonStreamingCollectErrorResponse } from "./non-streaming-collect-error-response.js";
+import { handleNonStreamingEmptyResponseExhausted } from "./non-streaming-empty-response-exhausted.js";
 
 const MAX_EMPTY_RETRIES = 2;
 
@@ -161,16 +162,20 @@ export async function handleNonStreaming(options: HandleNonStreamingOptions): Pr
         );
         throw collectErr;
       }
-      releaseAccount(accountPool, currentEntryId, annotateImageGenOutcome(undefined, req.expectsImageGen), released);
       if (collectErr instanceof EmptyResponseError) {
-        const email = accountPool.getEntry(currentEntryId)?.email ?? "?";
-        console.warn(
-          `[${fmt.tag}] Account ${currentEntryId} (${email}) | Empty response (attempt ${attempt}/${MAX_EMPTY_RETRIES + 1}), all retries exhausted`,
-        );
-        accountPool.recordEmptyResponse(currentEntryId);
-        c.status(502);
-        return c.json(fmt.formatError(502, "Codex returned empty responses across all available accounts"));
+        const responsePlan = handleNonStreamingEmptyResponseExhausted({
+          accountPool,
+          entryId: currentEntryId,
+          req,
+          tag: fmt.tag,
+          attempt,
+          maxRetries: MAX_EMPTY_RETRIES,
+          released,
+        });
+        c.status(responsePlan.status);
+        return c.json(fmt.formatError(responsePlan.status, responsePlan.message));
       }
+      releaseAccount(accountPool, currentEntryId, annotateImageGenOutcome(undefined, req.expectsImageGen), released);
       const responsePlan = planNonStreamingCollectErrorResponse(collectErr);
       c.status(responsePlan.status);
       return c.json(fmt.formatError(responsePlan.status, responsePlan.message));

@@ -5,6 +5,7 @@ import { handleNonStreamingPrematureClose } from "@src/routes/shared/non-streami
 import { logNonStreamingUsage } from "@src/routes/shared/non-streaming-usage-log.js";
 import { recordNonStreamingSuccessAffinity } from "@src/routes/shared/non-streaming-affinity.js";
 import { planNonStreamingCollectErrorResponse } from "@src/routes/shared/non-streaming-collect-error-response.js";
+import { handleNonStreamingEmptyResponseExhausted } from "@src/routes/shared/non-streaming-empty-response-exhausted.js";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import * as ts from "typescript";
@@ -16,6 +17,7 @@ const PREMATURE_CLOSE_MODULE = "src/routes/shared/non-streaming-premature-close.
 const USAGE_LOG_MODULE = "src/routes/shared/non-streaming-usage-log.ts";
 const AFFINITY_MODULE = "src/routes/shared/non-streaming-affinity.ts";
 const COLLECT_ERROR_RESPONSE_MODULE = "src/routes/shared/non-streaming-collect-error-response.ts";
+const EMPTY_RESPONSE_EXHAUSTED_MODULE = "src/routes/shared/non-streaming-empty-response-exhausted.ts";
 
 function source(path: string): string {
   return readFileSync(resolve(ROOT, path), "utf-8");
@@ -74,6 +76,10 @@ describe("non-streaming handler module boundary", () => {
 
   it("exports the collect error response planner from its own module", () => {
     expect(planNonStreamingCollectErrorResponse).toBeTypeOf("function");
+  });
+
+  it("exports the exhausted empty-response helper from its own module", () => {
+    expect(handleNonStreamingEmptyResponseExhausted).toBeTypeOf("function");
   });
 
   it("keeps empty-response retry reacquire and upstream send details out of the collect handler", () => {
@@ -240,5 +246,43 @@ describe("non-streaming handler module boundary", () => {
     expect(helper).not.toContain("formatError");
     expect(helper).not.toContain("c.json");
     expect(helper).not.toContain("releaseAccount");
+  });
+
+  it("keeps exhausted empty-response logging and recording details out of the collect handler", () => {
+    const handler = source(NON_STREAMING_HANDLER_MODULE);
+
+    expect(importsNamedBinding(
+      handler,
+      "non-streaming-empty-response-exhausted.js",
+      "handleNonStreamingEmptyResponseExhausted",
+      NON_STREAMING_HANDLER_MODULE,
+    )).toBe(true);
+    expect(handler).not.toContain("all retries exhausted");
+    expect(handler).not.toContain("recordEmptyResponse");
+    expect(handler).not.toContain("Codex returned empty responses across all available accounts");
+  });
+
+  it("does not let the exhausted empty-response helper own HTTP rendering, retry handling, or upstream sends", () => {
+    const helper = source(EMPTY_RESPONSE_EXHAUSTED_MODULE);
+
+    expect(importedModuleSpecifiers(helper, EMPTY_RESPONSE_EXHAUSTED_MODULE)).not.toEqual(expect.arrayContaining([
+      "hono",
+      "../../proxy/codex-api.js",
+      "./proxy-error-response.js",
+      "./streaming-handler.js",
+      "./non-streaming-handler.js",
+      "./non-streaming-empty-response-retry.js",
+      "./non-streaming-premature-close.js",
+      "./non-streaming-usage-log.js",
+      "./non-streaming-affinity.js",
+      "../../utils/retry.js",
+      "../../logs/entry.js",
+    ]));
+    expect(helper).not.toContain("collectTranslator");
+    expect(helper).not.toContain("createResponse");
+    expect(helper).not.toContain("formatError");
+    expect(helper).not.toContain("c.json");
+    expect(helper).not.toContain("c.status");
+    expect(helper).not.toContain("acquireAccount");
   });
 });
