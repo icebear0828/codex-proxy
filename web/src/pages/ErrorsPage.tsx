@@ -9,19 +9,24 @@ import { useT } from "../../../shared/i18n/context";
 function sourceBadgeClass(source: string): string {
   switch (source) {
     case "main":
-      return "bg-purple-100 text-purple-700 border-purple-200 dark:bg-purple-900/20 dark:border-purple-700/30 dark:text-purple-400";
+      return "bg-avatar-purple-bg text-avatar-purple-text border-avatar-purple-text/30";
     case "renderer":
-      return "bg-blue-100 text-blue-700 border-blue-200 dark:bg-blue-900/20 dark:border-blue-700/30 dark:text-blue-400";
+      return "bg-info-container text-info border-info/30";
     case "server":
-      return "bg-green-100 text-green-700 border-green-200 dark:bg-green-900/20 dark:border-green-700/30 dark:text-green-400";
+      return "bg-success-container text-success border-success/30";
     default:
       return "bg-slate-100 text-slate-700 border-slate-200 dark:bg-slate-800 dark:border-slate-700 dark:text-slate-300";
   }
 }
 
+function hasContext(group: ErrorGroup): boolean {
+  return group.sample_context !== undefined && Object.keys(group.sample_context).length > 0;
+}
+
 function ErrorRow({ group }: { group: ErrorGroup }) {
   const t = useT();
   const [open, setOpen] = useState(false);
+  const showContext = hasContext(group);
   return (
     <div class="rounded-xl border border-gray-200 dark:border-border-dark bg-white dark:bg-card-dark transition-colors">
       <button
@@ -39,7 +44,7 @@ function ErrorRow({ group }: { group: ErrorGroup }) {
               {group.source}
             </span>
             {group.count > 1 && (
-              <span class="inline-flex items-center px-1.5 py-0.5 rounded-full bg-red-100 text-red-700 border border-red-200 dark:bg-red-900/20 dark:border-red-700/30 dark:text-red-400 text-[10px] font-semibold">
+              <span class="inline-flex items-center px-1.5 py-0.5 rounded-full bg-danger-container text-danger border border-danger/30 text-[10px] font-semibold">
                 ×{group.count}
               </span>
             )}
@@ -61,11 +66,18 @@ function ErrorRow({ group }: { group: ErrorGroup }) {
           <path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7" />
         </svg>
       </button>
-      {open && group.sample_stack && (
+      {open && (group.sample_stack || showContext) && (
         <div class="px-4 pb-4 border-t border-gray-100 dark:border-border-dark/50">
-          <pre class="mt-3 text-[11px] font-mono whitespace-pre-wrap break-all text-slate-600 dark:text-text-dim leading-relaxed bg-slate-50 dark:bg-bg-dark/40 rounded-lg p-3 overflow-x-auto">
-            {group.sample_stack}
-          </pre>
+          {showContext && (
+            <pre class="mt-3 text-[11px] font-mono whitespace-pre-wrap break-all text-slate-600 dark:text-text-dim leading-relaxed bg-slate-50 dark:bg-bg-dark/40 rounded-lg p-3 overflow-x-auto">
+              {JSON.stringify(group.sample_context, null, 2)}
+            </pre>
+          )}
+          {group.sample_stack && (
+            <pre class="mt-3 text-[11px] font-mono whitespace-pre-wrap break-all text-slate-600 dark:text-text-dim leading-relaxed bg-slate-50 dark:bg-bg-dark/40 rounded-lg p-3 overflow-x-auto">
+              {group.sample_stack}
+            </pre>
+          )}
         </div>
       )}
     </div>
@@ -119,7 +131,7 @@ export function ErrorsPage() {
 
       {!loading && groups.length === 0 && !error && (
         <div class="rounded-xl border border-dashed border-gray-200 dark:border-border-dark p-8 text-center">
-          <div class="inline-flex items-center justify-center size-10 rounded-full bg-green-100 text-green-600 mb-3 dark:bg-green-900/20 dark:text-green-400">
+          <div class="inline-flex items-center justify-center size-10 rounded-full bg-success-container text-success mb-3">
             <svg class="size-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <path stroke-linecap="round" stroke-linejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
             </svg>

@@ -38,6 +38,13 @@ describe("computeVariantHash", () => {
     expect(a).not.toBe(b);
   });
 
+  it("changes when optional variant identity changes", () => {
+    const tools = [{ type: "function", name: "read_file" }];
+    expect(computeVariantHash("system", tools, "anchor-a")).not.toBe(
+      computeVariantHash("system", tools, "anchor-b"),
+    );
+  });
+
   it("differentiates subagent footprints (real-world: instr=34391B/tools=27 vs instr=10185B/tools=19)", () => {
     const mainTools = Array.from({ length: 27 }, (_, i) => ({
       type: "function",

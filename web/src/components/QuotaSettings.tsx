@@ -163,7 +163,7 @@ export function QuotaSettings() {
               disabled={qs.saving || !isDirty}
               class={`px-4 py-2 text-sm font-medium rounded-lg transition-colors whitespace-nowrap ${
                 isDirty && !qs.saving
-                  ? "bg-primary text-white hover:bg-primary/90 cursor-pointer"
+                  ? "bg-primary-action text-white hover:bg-primary-action-hover cursor-pointer"
                   : "bg-slate-100 dark:bg-[#21262d] text-slate-400 dark:text-text-dim cursor-not-allowed"
               }`}
             >

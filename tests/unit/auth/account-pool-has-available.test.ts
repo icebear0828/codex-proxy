@@ -90,7 +90,7 @@ describe("AccountPool.hasAvailableAccounts", () => {
 
   it("returns false when all accounts are rate-limited", () => {
     const id = pool.addAccount("token-a");
-    pool.markRateLimited(id, {});
+    pool.applyRateLimit429(id);
     expect(pool.hasAvailableAccounts()).toBe(false);
   });
 
@@ -170,11 +170,11 @@ describe("AccountPool.hasAvailableAccounts", () => {
     expect(pool.hasAvailableAccounts()).toBe(false);
   });
 
-  it("refreshes rate_limit_until and counts expired accounts correctly", () => {
+  it("auto-clears cachedQuota.rate_limit.limit_reached after reset_at passes", () => {
     const id = pool.addAccount("token-a");
-    // Mark rate-limited with a past timestamp so refreshStatus will flip to active
-    pool.markRateLimited(id, { retryAfterSec: -1 });
-    // Despite being marked rate_limited, refreshStatus should recover it
+    // Apply a 429 with negative retry-after so reset_at is in the past;
+    // resetExpiredQuotaWindow (called inside refreshStatus) should auto-clear.
+    pool.applyRateLimit429(id, { retryAfterSec: -1 });
     expect(pool.hasAvailableAccounts()).toBe(true);
   });
 

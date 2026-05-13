@@ -75,21 +75,13 @@ export function handleCodexApiError(
 
   console.error(`[${tag}] Account ${entryId} | Codex API error:`, err.message);
 
-  // 2. Rate-limited
+  // 2. Rate-limited — write into cachedQuota.rate_limit (single source of
+  // truth). applyRateLimit429 internally never shrinks an existing reset_at,
+  // so a fresh secondary-window lock survives a stale primary 429.
   if (err.status === 429) {
     const retryAfterSec = extractRetryAfterSec(err.body);
-
-    // If cached quota shows limit_reached with a known reset time, use that
-    // instead of the short default backoff (prevents exhausted accounts from
-    // cycling back to "active" after 60s only to get 429'd again)
-    const entry = pool.getEntry(entryId);
-    const cachedReset = entry?.cachedQuota?.rate_limit?.reset_at;
-    const effectiveRetry = (entry?.cachedQuota?.rate_limit?.limit_reached && cachedReset)
-      ? Math.max(retryAfterSec ?? 0, cachedReset - Math.floor(Date.now() / 1000))
-      : retryAfterSec;
-
-    pool.markRateLimited(entryId, { retryAfterSec: effectiveRetry ?? undefined, countRequest: true });
-    const backoffDisplay = effectiveRetry != null ? Math.round(effectiveRetry) : null;
+    pool.applyRateLimit429(entryId, { retryAfterSec, countRequest: true });
+    const backoffDisplay = retryAfterSec != null ? Math.round(retryAfterSec) : null;
     console.warn(
       `[${tag}] Account ${entryId} (${email}) | 429 rate limited` +
         (backoffDisplay != null ? ` (resets in ${backoffDisplay}s)` : "") +

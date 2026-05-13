@@ -7,7 +7,8 @@
  */
 
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
-import { Hono } from "hono";
+import { Hono, type Context } from "hono";
+import type { HandleDirectRequestOptions } from "@src/routes/shared/proxy-handler-types.js";
 
 // ── Mocks (before imports) ──────────────────────────────────────────
 
@@ -77,12 +78,16 @@ vi.mock("@src/utils/retry.js", () => ({
   withRetry: vi.fn(async (fn: () => Promise<unknown>) => fn()),
 }));
 
-// Mock shared proxy handler
-const mockHandleDirectRequest = vi.fn(async (c) => c.json({ ok: true }));
+// Mock shared proxy/direct handlers
+const mockHandleDirectRequest = vi.fn(async (options: HandleDirectRequestOptions) => options.c.json({ ok: true }));
 vi.mock("@src/routes/shared/proxy-handler.js", () => ({
-  handleProxyRequest: vi.fn(async (c) => c.json({ ok: true })),
-  handleDirectRequest: (...args: unknown[]) => mockHandleDirectRequest(...args),
+  handleProxyRequest: vi.fn(async (options: { c: Context }) => options.c.json({ ok: true })),
+}));
+vi.mock("@src/routes/shared/proxy-stagger.js", () => ({
   staggerIfNeeded: vi.fn(async () => {}),
+}));
+vi.mock("@src/routes/shared/direct-request-handler.js", () => ({
+  handleDirectRequest: (options: HandleDirectRequestOptions) => mockHandleDirectRequest(options),
 }));
 
 // Capture compact requests by mocking CodexApi
@@ -125,7 +130,7 @@ describe("POST /v1/responses/compact", () => {
     mockCompactResponse = { output: [{ role: "user", content: "compacted" }] };
     mockCompactThrow = null;
     mockConfig.server.proxy_api_key = null;
-    mockHandleDirectRequest.mockImplementation(async (c) => c.json({ ok: true }));
+    mockHandleDirectRequest.mockImplementation(async (options: HandleDirectRequestOptions) => options.c.json({ ok: true }));
     loadStaticModels();
     pool = new AccountPool();
     pool.addAccount("test-token-1");
@@ -171,7 +176,7 @@ describe("POST /v1/responses/compact", () => {
 
     expect(res.status).toBe(200);
     expect(mockHandleDirectRequest).toHaveBeenCalledTimes(1);
-    const [, , directReq] = mockHandleDirectRequest.mock.calls[0] as [unknown, unknown, Record<string, unknown>];
+    const directReq = mockHandleDirectRequest.mock.calls[0][0].req as Record<string, unknown>;
     expect(directReq.model).toBe("my-custom-model");
     expect(directReq.isStreaming).toBe(false);
     expect(directReq.codexRequest).toEqual({

@@ -39,6 +39,8 @@ describe("ConfigSchema", () => {
     expect(result.model.default).toBe("gpt-5.4");
     expect(result.model.default_reasoning_effort).toBeNull();
     expect(result.tls.force_http11).toBe(false);
+    expect(result.usage_stats.snapshot_interval_minutes).toBe(5);
+    expect(result.usage_stats.history_retention_days).toBeNull();
     expect(result.quota.refresh_interval_minutes).toBe(5);
     expect(result.quota.warning_thresholds.primary).toEqual([80, 90]);
     expect(result.quota.skip_exhausted).toBe(true);

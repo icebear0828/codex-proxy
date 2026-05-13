@@ -1,6 +1,12 @@
 import { useState, useEffect, useCallback, useRef } from "preact/hooks";
 import type { Account } from "../types";
 
+export interface PersistenceHealth {
+  ok: boolean;
+  reason?: string;
+  message?: string;
+}
+
 export function useAccounts() {
   const [list, setList] = useState<Account[]>([]);
   const [loading, setLoading] = useState(true);
@@ -9,6 +15,7 @@ export function useAccounts() {
   const [addVisible, setAddVisible] = useState(false);
   const [addInfo, setAddInfo] = useState("");
   const [addError, setAddError] = useState("");
+  const [persistenceHealth, setPersistenceHealth] = useState<PersistenceHealth>({ ok: true });
   const addCleanupRef = useRef<(() => void) | null>(null);
 
   const loadAccounts = useCallback(async (fresh = false) => {
@@ -18,6 +25,9 @@ export function useAccounts() {
       const resp = await fetch(url);
       const data = await resp.json();
       setList(data.accounts || []);
+      if (data.persistence_health && typeof data.persistence_health === "object") {
+        setPersistenceHealth(data.persistence_health as PersistenceHealth);
+      }
       setLastUpdated(new Date());
     } catch {
       setList([]);
@@ -324,6 +334,7 @@ export function useAccounts() {
     addVisible,
     addInfo,
     addError,
+    persistenceHealth,
     refresh: useCallback(() => loadAccounts(true), [loadAccounts]),
     patchLocal,
     startAdd,

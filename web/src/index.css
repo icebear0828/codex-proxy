@@ -3,8 +3,29 @@
 @tailwind utilities;
 
 :root {
-  --primary: 16 162 53;
-  --primary-hover: 14 140 46;
+  --primary: 4 120 87;
+  --primary-hover: 6 95 70;
+  --primary-action: 4 120 87;
+  --primary-action-hover: 6 95 70;
+  --primary-container: 220 252 231;
+  --success: 4 120 87;
+  --success-container: 220 252 231;
+  --warning: 180 83 9;
+  --warning-container: 254 243 199;
+  --danger: 185 28 28;
+  --danger-container: 254 226 226;
+  --info: 29 78 216;
+  --info-container: 219 234 254;
+  --avatar-purple-text: 126 34 206;
+  --avatar-purple-bg: 243 232 255;
+  --avatar-amber-text: 146 64 14;
+  --avatar-amber-bg: 254 243 199;
+  --avatar-blue-text: 29 78 216;
+  --avatar-blue-bg: 219 234 254;
+  --avatar-emerald-text: 4 120 87;
+  --avatar-emerald-bg: 209 250 229;
+  --avatar-red-text: 185 28 28;
+  --avatar-red-bg: 254 226 226;
   --chart-blue: #3b82f6;
   --chart-green: #10b981;
   --chart-amber: #f59e0b;
@@ -13,8 +34,29 @@
 }
 
 .dark {
-  --primary: 16 163 127;
-  --primary-hover: 14 140 108;
+  --primary: 52 211 153;
+  --primary-hover: 16 185 129;
+  --primary-action: 4 120 87;
+  --primary-action-hover: 6 95 70;
+  --primary-container: 17 40 29;
+  --success: 52 211 153;
+  --success-container: 17 40 29;
+  --warning: 251 191 36;
+  --warning-container: 61 44 22;
+  --danger: 248 113 113;
+  --danger-container: 63 26 26;
+  --info: 96 165 250;
+  --info-container: 26 42 63;
+  --avatar-purple-text: 167 139 250;
+  --avatar-purple-bg: 42 26 63;
+  --avatar-amber-text: 245 158 11;
+  --avatar-amber-bg: 61 44 22;
+  --avatar-blue-text: 96 165 250;
+  --avatar-blue-bg: 26 42 63;
+  --avatar-emerald-text: 52 211 153;
+  --avatar-emerald-bg: 17 42 31;
+  --avatar-red-text: 248 113 113;
+  --avatar-red-bg: 63 26 26;
   --chart-blue: #60a5fa;
   --chart-green: #34d399;
   --chart-amber: #fbbf24;

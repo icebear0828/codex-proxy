@@ -11,11 +11,12 @@ import { createHash } from "crypto";
  *  fresh WS connections, and every sub-agent turn becomes a cold start.
  *
  *  The hash is deterministic over byte-stable inputs (same instructions + same
- *  tools array → same hash). 12 hex chars = 48 bits, ample to avoid collisions
- *  within a single conversation. */
+ *  tools array + same optional identity → same hash). 12 hex chars = 48 bits,
+ *  ample to avoid collisions within a single conversation. */
 export function computeVariantHash(
   instructions: string | null | undefined,
   tools: ReadonlyArray<unknown> | null | undefined,
+  identity: string | null | undefined = null,
 ): string {
   const instr = instructions ?? "";
   // NOTE: tool order matters by design — same set in different order yields
@@ -23,10 +24,16 @@ export function computeVariantHash(
   // tool reordering is a real cache miss. Translation layers must produce a
   // deterministic order. See variant-hash.test.ts for the freeze contract.
   const toolsJson = JSON.stringify(tools ?? []);
-  return createHash("sha256")
+  const hash = createHash("sha256")
     .update(instr)
     .update("\x00")
-    .update(toolsJson)
+    .update(toolsJson);
+  if (identity?.trim()) {
+    hash
+      .update("\x00")
+      .update(identity.trim());
+  }
+  return hash
     .digest("hex")
     .slice(0, 12);
 }

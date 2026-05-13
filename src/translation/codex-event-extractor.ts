@@ -53,6 +53,32 @@ export class EmptyResponseError extends Error {
   }
 }
 
+/**
+ * Upstream closed the SSE stream without sending `response.completed`,
+ * `response.failed`, or an `error` event. Observed when gpt-5.5 with
+ * `effort=xhigh` spends > 120 s in reasoning_summary before producing any
+ * output_text — the Codex backend caps total response duration and silently
+ * FINs the connection.
+ *
+ * Treated separately from EmptyResponseError because cross-account retry is
+ * useless (same workload re-hits the same cap on the next account) and just
+ * burns the pool. The proxy surfaces 504 to the client instead.
+ */
+export class UpstreamPrematureCloseError extends Error {
+  constructor(
+    public readonly responseId: string | null,
+    public readonly hadReasoning: boolean,
+    public readonly eventCount: number,
+  ) {
+    super(
+      hadReasoning
+        ? "Upstream closed stream after reasoning without producing output (likely hit response-duration cap)"
+        : "Upstream closed stream without a terminal event",
+    );
+    this.name = "UpstreamPrematureCloseError";
+  }
+}
+
 export interface ExtractedEvent {
   typed: TypedCodexEvent;
   responseId?: string;

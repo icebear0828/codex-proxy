@@ -13,15 +13,104 @@ import {
 import { resolve, dirname } from "path";
 import { randomBytes } from "crypto";
 import { getDataDir } from "../paths.js";
+import { appendErrorLog } from "../logs/error-log.js";
 import {
   extractChatGptAccountId,
   extractUserProfile,
   isTokenExpired,
 } from "./jwt-utils.js";
-import type { AccountEntry, AccountsFile } from "./types.js";
+import type { AccountEntry, AccountsFile, CodexQuota } from "./types.js";
+
+/**
+ * Migrate a legacy entry to the new schema:
+ *   status === "rate_limited" + usage.rate_limit_until  →  status="active" +
+ *   cachedQuota.rate_limit.{limit_reached, reset_at}.
+ *
+ * Trust rule: if cachedQuota was fetched AFTER rate_limit_until was last set
+ * (quotaFetchedAt > rate_limit_until), we treat cachedQuota as ground truth
+ * and just drop the local lock. Otherwise we synthesize/overwrite the primary
+ * bucket from rate_limit_until.
+ *
+ * Returns true when the entry was mutated.
+ */
+export function migrateLegacyRateLimit(entry: AccountEntry): boolean {
+  const usage = entry.usage;
+  const legacyUntil = usage.rate_limit_until;
+  // On-disk shape pre-dates the enum narrowing; cast through string to compare
+  // against the retired "rate_limited" literal without tripping TS no-overlap.
+  const wasRateLimitedStatus = (entry.status as string) === "rate_limited";
+  if (!wasRateLimitedStatus && !legacyUntil) return false;
+
+  let mutated = false;
+
+  if (wasRateLimitedStatus) {
+    entry.status = "active";
+    mutated = true;
+  }
+
+  if (legacyUntil) {
+    const untilMs = Date.parse(legacyUntil);
+    const untilSec = Number.isFinite(untilMs) ? Math.floor(untilMs / 1000) : 0;
+    const inFuture = Number.isFinite(untilMs) && untilMs > Date.now();
+
+    const fetchedMs = entry.quotaFetchedAt ? Date.parse(entry.quotaFetchedAt) : NaN;
+    const cachedQuotaIsFresh =
+      entry.cachedQuota != null &&
+      Number.isFinite(fetchedMs) &&
+      Number.isFinite(untilMs) &&
+      fetchedMs > untilMs;
+
+    if (inFuture && !cachedQuotaIsFresh) {
+      const synthesized: CodexQuota = entry.cachedQuota ?? {
+        plan_type: entry.planType ?? "unknown",
+        rate_limit: {
+          allowed: false,
+          limit_reached: true,
+          used_percent: 100,
+          reset_at: untilSec,
+          limit_window_seconds: usage.limit_window_seconds ?? null,
+        },
+        secondary_rate_limit: null,
+        code_review_rate_limit: null,
+      };
+      synthesized.rate_limit = {
+        ...synthesized.rate_limit,
+        allowed: false,
+        limit_reached: true,
+        used_percent: Math.max(synthesized.rate_limit.used_percent ?? 0, 100),
+        reset_at: untilSec,
+      };
+      entry.cachedQuota = synthesized;
+      entry.quotaFetchedAt = new Date().toISOString();
+    }
+
+    usage.rate_limit_until = null;
+    mutated = true;
+  }
+
+  return mutated;
+}
+
+export interface PersistenceLoadHealth {
+  /**
+   * Whether the corrupt `accounts.json` was successfully renamed aside.
+   * False means the rename itself failed — the original file is still
+   * on disk and the user-facing message must NOT instruct recovery
+   * from a `.bak` that does not exist.
+   */
+  quarantined: boolean;
+  /** Absolute path of the `.bak` file if quarantine succeeded. */
+  backupPath: string | null;
+}
 
 export interface AccountPersistence {
-  load(): { entries: AccountEntry[]; needsPersist: boolean };
+  load(): {
+    entries: AccountEntry[];
+    needsPersist: boolean;
+    loadFailed?: boolean;
+    /** Populated when loadFailed=true so dashboard can show accurate recovery instructions. */
+    health?: PersistenceLoadHealth;
+  };
   save(accounts: AccountEntry[]): void;
 }
 
@@ -33,25 +122,50 @@ function getLegacyAuthFile(): string {
 }
 
 export function createFsPersistence(): AccountPersistence {
+  // Once a load discovers `accounts.json` is unparseable and quarantines it,
+  // any subsequent `save()` on this persistence instance must be refused.
+  // The registry's persistDisabled flag covers the normal mutation path,
+  // but a future caller that holds the persistence reference directly
+  // (e.g. a refactor, a script, a stray test) would otherwise race-write
+  // a fresh empty file on top of the just-renamed `.bak`. This per-instance
+  // latch is the second line of defense.
+  let quarantineActive = false;
+  let quarantineHealth: PersistenceLoadHealth | null = null;
+
   const persistence: AccountPersistence = {
-    load(): { entries: AccountEntry[]; needsPersist: boolean } {
+    load() {
       // Migrate from legacy auth.json if needed
       const migrated = migrateFromLegacy();
 
       // Load from accounts.json
-      const { entries: loaded, needsPersist } = loadPersisted();
+      const { entries: loaded, needsPersist, loadFailed, health } = loadPersisted();
+      if (loadFailed) {
+        quarantineActive = true;
+        quarantineHealth = health ?? { quarantined: false, backupPath: null };
+      }
 
       const entries = migrated.length > 0 && loaded.length === 0 ? migrated : loaded;
 
-      // Auto-persist when backfill was applied (preserves original behavior)
-      if (needsPersist && loaded.length > 0) {
+      // Auto-persist when backfill was applied (preserves original behavior).
+      // Suppressed when loadFailed — the registry will be put into a
+      // persist-disabled state by AccountPool, and we must not write the
+      // partially-recovered map back over the (now quarantined) original.
+      if (needsPersist && loaded.length > 0 && !loadFailed) {
         persistence.save(loaded);
       }
 
-      return { entries, needsPersist };
+      return { entries, needsPersist, loadFailed, health };
     },
 
     save(accounts: AccountEntry[]): void {
+      if (quarantineActive) {
+        console.warn(
+          "[AccountPool] save() refused: accounts.json was quarantined this session" +
+            (quarantineHealth?.backupPath ? ` (backup: ${quarantineHealth.backupPath})` : "") +
+            ". Restore a healthy file and restart the process to resume auto-save.",
+        );
+        return;
+      }
       try {
         const accountsFile = getAccountsFile();
         const dir = dirname(accountsFile);
@@ -133,14 +247,52 @@ function migrateFromLegacy(): AccountEntry[] {
   }
 }
 
-function loadPersisted(): { entries: AccountEntry[]; needsPersist: boolean } {
-  try {
-    const accountsFile = getAccountsFile();
-    if (!existsSync(accountsFile)) return { entries: [], needsPersist: false };
-    const raw = readFileSync(accountsFile, "utf-8");
-    const data = JSON.parse(raw) as AccountsFile;
-    if (!Array.isArray(data.accounts)) return { entries: [], needsPersist: false };
+function loadPersisted(): {
+  entries: AccountEntry[];
+  needsPersist: boolean;
+  loadFailed?: boolean;
+  health?: PersistenceLoadHealth;
+} {
+  const accountsFile = getAccountsFile();
+  if (!existsSync(accountsFile)) return { entries: [], needsPersist: false };
 
+  let raw: string;
+  try {
+    raw = readFileSync(accountsFile, "utf-8");
+  } catch (err) {
+    return quarantineCorruptFile(accountsFile, null, err, "read_failed");
+  }
+
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch (err) {
+    return quarantineCorruptFile(accountsFile, raw, err, "json_parse_failed");
+  }
+
+  // Validate shape BEFORE reading `.accounts` — `null`, primitives, or
+  // arrays at the top level would otherwise crash on property access or
+  // pass an Array.isArray check on the wrong target.
+  if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) {
+    return quarantineCorruptFile(
+      accountsFile,
+      raw,
+      new Error(`top-level JSON is not an object (got ${parsed === null ? "null" : Array.isArray(parsed) ? "array" : typeof parsed})`),
+      "shape_invalid",
+    );
+  }
+
+  const data = parsed as AccountsFile;
+  if (!Array.isArray(data.accounts)) {
+    return quarantineCorruptFile(
+      accountsFile,
+      raw,
+      new Error("accounts field is not an array"),
+      "shape_invalid",
+    );
+  }
+
+  try {
     const entries: AccountEntry[] = [];
     let needsPersist = false;
 
@@ -212,12 +364,89 @@ function loadPersisted(): { entries: AccountEntry[]; needsPersist: boolean } {
         entry.quotaFetchedAt = null;
         needsPersist = true;
       }
+      // Migrate legacy rate_limit_until + status="rate_limited" → cachedQuota
+      if (migrateLegacyRateLimit(entry)) {
+        needsPersist = true;
+      }
       entries.push(entry);
     }
 
     return { entries, needsPersist };
   } catch (err) {
-    console.warn("[AccountPool] Failed to load accounts:", err instanceof Error ? err.message : err);
-    return { entries: [], needsPersist: false };
+    // The per-entry migration/backfill loop threw. Treat as corruption.
+    return quarantineCorruptFile(accountsFile, raw, err, "entry_processing_failed");
   }
+}
+
+/**
+ * Move the unparseable `accounts.json` aside so the next launch can start
+ * cleanly, and surface the failure via the local error log. The caller
+ * (AccountPool) reads `loadFailed=true` and flips the registry into a
+ * persist-disabled state so we don't overwrite the quarantine with the
+ * empty in-memory map.
+ *
+ * Renaming is best-effort: filesystem quirks (lock, permission) must not
+ * prevent the caller from getting a `loadFailed` signal. If rename fails,
+ * the original file stays on disk and the next launch will hit the same
+ * code path — still better than silent data loss.
+ */
+function quarantineCorruptFile(
+  accountsFile: string,
+  rawContent: string | null,
+  err: unknown,
+  reason: string,
+): {
+  entries: AccountEntry[];
+  needsPersist: boolean;
+  loadFailed: true;
+  health: PersistenceLoadHealth;
+} {
+  const stamp = new Date().toISOString().replace(/[:.]/g, "-");
+  const backupPath = `${accountsFile}.corrupt-${stamp}.bak`;
+  let quarantined = false;
+  let renameError: unknown = null;
+  try {
+    renameSync(accountsFile, backupPath);
+    quarantined = true;
+  } catch (renameErr) {
+    renameError = renameErr;
+  }
+
+  const message = err instanceof Error ? err.message : String(err);
+  console.warn(
+    `[AccountPool] Failed to load accounts (${reason}): ${message}. ` +
+      (quarantined
+        ? `Quarantined original to ${backupPath}.`
+        : `Quarantine rename failed; original file left in place.`),
+  );
+
+  try {
+    appendErrorLog({
+      source: "server",
+      error: {
+        name: "AccountsFileLoadFailed",
+        message,
+        stack: err instanceof Error ? err.stack : undefined,
+      },
+      context: {
+        reason,
+        accountsFile,
+        quarantined,
+        backupPath: quarantined ? backupPath : null,
+        renameError:
+          renameError instanceof Error ? renameError.message : renameError ? String(renameError) : null,
+        rawByteLength: rawContent != null ? Buffer.byteLength(rawContent, "utf-8") : null,
+      },
+    });
+  } catch {
+    // appendErrorLog already swallows write failures, but guard against
+    // upstream-side throws (e.g. getConfig() unavailable in early boot).
+  }
+
+  return {
+    entries: [],
+    needsPersist: false,
+    loadFailed: true,
+    health: { quarantined, backupPath: quarantined ? backupPath : null },
+  };
 }

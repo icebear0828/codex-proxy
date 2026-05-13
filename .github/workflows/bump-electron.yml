@@ -87,17 +87,23 @@ jobs:
             exit 0
           fi
 
-          # Bump both root and electron package versions
+          # Bump root/electron package versions and the workspace lock metadata.
           node -e "
             const fs = require('fs');
+            const NEW_VERSION = '${NEW_VERSION}';
             for (const p of ['package.json', 'packages/electron/package.json']) {
               const pkg = JSON.parse(fs.readFileSync(p, 'utf-8'));
-              pkg.version = '${NEW_VERSION}';
+              pkg.version = NEW_VERSION;
               fs.writeFileSync(p, JSON.stringify(pkg, null, 2) + '\n');
             }
+            const lock = JSON.parse(fs.readFileSync('package-lock.json', 'utf-8'));
+            lock.version = NEW_VERSION;
+            lock.packages[''].version = NEW_VERSION;
+            lock.packages['packages/electron'].version = NEW_VERSION;
+            fs.writeFileSync('package-lock.json', JSON.stringify(lock, null, 2) + '\n');
           "
 
-          git add package.json packages/electron/package.json
+          git add package.json packages/electron/package.json package-lock.json
           # If version already matches (e.g. first tag in a new series), skip the commit
           if git diff --cached --quiet; then
             echo "package.json already at ${NEW_VERSION}, tagging without version commit"

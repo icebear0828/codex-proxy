@@ -1,0 +1,192 @@
+import type { Context } from "hono";
+import type { StatusCode } from "hono/utils/http-status";
+import { CodexApiError } from "../../proxy/codex-api.js";
+import type { CodexApi, WsPoolContext } from "../../proxy/codex-api.js";
+import type { AccountPool } from "../../auth/account-pool.js";
+import type { CookieJar } from "../../proxy/cookie-jar.js";
+import type { ProxyPool } from "../../proxy/proxy-pool.js";
+import { EmptyResponseError, UpstreamPrematureCloseError } from "../../translation/codex-event-extractor.js";
+import type { SessionAffinityMap } from "../../auth/session-affinity.js";
+import type { FormatAdapter, ProxyRequest, UsageHint } from "./proxy-handler-types.js";
+import { retryNonStreamingEmptyResponse } from "./non-streaming-empty-response-retry.js";
+import { handleNonStreamingPrematureClose } from "./non-streaming-premature-close.js";
+import { logNonStreamingUsage } from "./non-streaming-usage-log.js";
+import { recordNonStreamingSuccessAffinity } from "./non-streaming-affinity.js";
+import { handleNonStreamingEmptyResponseExhausted } from "./non-streaming-empty-response-exhausted.js";
+import { handleNonStreamingCollectFailure } from "./non-streaming-collect-failure.js";
+import { rethrowNonStreamingCodexApiErrorDuringCollect } from "./non-streaming-codex-api-error.js";
+import { releaseNonStreamingSuccessAccount } from "./non-streaming-success-release.js";
+import { collectNonStreamingResponse } from "./non-streaming-collect-response.js";
+
+const MAX_EMPTY_RETRIES = 2;
+
+export interface HandleNonStreamingOptions {
+  c: Context;
+  accountPool: AccountPool;
+  cookieJar?: CookieJar;
+  req: ProxyRequest;
+  fmt: FormatAdapter;
+  proxyPool?: ProxyPool;
+  initialApi: CodexApi;
+  initialResponse: Response;
+  initialEntryId: string;
+  abortController: AbortController;
+  released: Set<string>;
+  requestId: string;
+  affinityMap?: SessionAffinityMap;
+  conversationId?: string | null;
+  turnState?: string;
+  getUsageHint?: () => UsageHint | undefined;
+  restoreImplicitResumeRequest?: () => void;
+  buildPoolCtx?: (forEntryId: string) => WsPoolContext | undefined;
+  setActiveAccount?: (entryId: string, api: CodexApi) => void;
+  variantHash?: string;
+}
+
+export async function handleNonStreaming(options: HandleNonStreamingOptions): Promise<Response> {
+  const {
+    c,
+    accountPool,
+    cookieJar,
+    req,
+    fmt,
+    proxyPool,
+    initialApi,
+    initialResponse,
+    initialEntryId,
+    abortController,
+    released,
+    requestId,
+    affinityMap,
+    conversationId,
+    turnState,
+    getUsageHint,
+    restoreImplicitResumeRequest,
+    buildPoolCtx,
+    setActiveAccount,
+    variantHash,
+  } = options;
+  let currentEntryId = initialEntryId;
+  let currentApi = initialApi;
+  let currentRawResponse = initialResponse;
+
+  for (let attempt = 1; ; attempt++) {
+    try {
+      const collected = await collectNonStreamingResponse({
+        fmt,
+        api: currentApi,
+        rawResponse: currentRawResponse,
+        req,
+        usageHint: getUsageHint?.(),
+      });
+      const { result, responseFunctionCallIds } = collected;
+      recordNonStreamingSuccessAffinity({
+        affinityMap,
+        responseId: result.responseId,
+        entryId: currentEntryId,
+        conversationId,
+        turnState,
+        instructions: req.codexRequest.instructions ?? undefined,
+        inputTokens: result.usage.input_tokens,
+        responseFunctionCallIds,
+        variantHash,
+      });
+      if (result.usage) {
+        logNonStreamingUsage({ tag: fmt.tag, entryId: currentEntryId, requestId, usage: result.usage });
+      }
+      releaseNonStreamingSuccessAccount({
+        accountPool,
+        entryId: currentEntryId,
+        usage: result.usage,
+        expectsImageGen: req.expectsImageGen,
+        released,
+      });
+      return c.json(result.response);
+    } catch (collectErr) {
+      // Upstream FIN'd mid-reasoning (typically gpt-5.5 xhigh > 120 s cap).
+      // Cross-account retry would re-hit the same cap and burn the pool, so
+      // we fail fast with 504. The proxy can't recover this — the client
+      // needs to lower reasoning effort or pick a different model.
+      if (collectErr instanceof UpstreamPrematureCloseError) {
+        const responsePlan = handleNonStreamingPrematureClose({
+          accountPool,
+          entryId: currentEntryId,
+          err: collectErr,
+          req,
+          tag: fmt.tag,
+          requestId,
+          released,
+          variantHash,
+        });
+        c.status(responsePlan.status);
+        return c.json(fmt.formatError(responsePlan.status, responsePlan.message));
+      }
+
+      if (collectErr instanceof EmptyResponseError && attempt <= MAX_EMPTY_RETRIES) {
+        const retry = await retryNonStreamingEmptyResponse({
+          accountPool,
+          currentEntryId,
+          collectErr,
+          req,
+          tag: fmt.tag,
+          attempt,
+          maxRetries: MAX_EMPTY_RETRIES,
+          cookieJar,
+          proxyPool,
+          abortSignal: abortController.signal,
+          released,
+          requestId,
+          restoreImplicitResumeRequest,
+          buildPoolCtx,
+          setActiveAccount,
+        });
+        if (retry.action === "respond") {
+          c.status(retry.status as StatusCode);
+          return c.json(fmt.formatError(retry.status, retry.message));
+        }
+        currentEntryId = retry.entryId;
+        currentApi = retry.api;
+        currentRawResponse = retry.rawResponse;
+        continue;
+      }
+
+      // Mid-SSE upstream errors (e.g. "No tool output found for function call",
+      // "previous_response_not_found") need the same strip+retry recovery as
+      // HTTP-time errors. Rethrow so the outer handleProxyRequest catch runs
+      // its unified classification once. Critically, do NOT release the slot
+      // here — outer catch's strip+retry continues on the same entryId and
+      // would race another acquirer if we released early. Outer catch is
+      // responsible for the release on the final respond/retry decision (the
+      // released Set guards against double-release on terminal paths).
+      if (collectErr instanceof CodexApiError) {
+        rethrowNonStreamingCodexApiErrorDuringCollect({
+          err: collectErr,
+          tag: fmt.tag,
+          entryId: currentEntryId,
+        });
+      }
+      if (collectErr instanceof EmptyResponseError) {
+        const responsePlan = handleNonStreamingEmptyResponseExhausted({
+          accountPool,
+          entryId: currentEntryId,
+          req,
+          tag: fmt.tag,
+          attempt,
+          maxRetries: MAX_EMPTY_RETRIES,
+          released,
+        });
+        c.status(responsePlan.status);
+        return c.json(fmt.formatError(responsePlan.status, responsePlan.message));
+      }
+      const responsePlan = handleNonStreamingCollectFailure({
+        accountPool,
+        entryId: currentEntryId,
+        req,
+        collectErr,
+        released,
+      });
+      c.status(responsePlan.status);
+      return c.json(fmt.formatError(responsePlan.status, responsePlan.message));
+    }
+  }
+}

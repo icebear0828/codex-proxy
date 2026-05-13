@@ -1,6 +1,9 @@
 /**
  * Update checker — polls the Codex Sparkle appcast for new versions.
  * Automatically applies version updates to config file and runtime.
+ * Fingerprint extraction is optional because the public repo does not ship the
+ * private Codex Desktop downloader; set CODEX_DESKTOP_PATH/CODEX_APP_PATH to
+ * run extraction against a local app bundle or extracted ASAR.
  */
 
 import { readFileSync, writeFileSync, mkdirSync, existsSync } from "fs";
@@ -9,6 +12,7 @@ import { fork } from "child_process";
 import yaml from "js-yaml";
 import { mutateClientConfig, reloadAllConfigs } from "./config.js";
 import { jitterInt } from "./utils/jitter.js";
+import { mutateYaml } from "./utils/yaml-mutate.js";
 import { curlFetchGet } from "./tls/curl-fetch.js";
 import { getConfigDir, getDataDir, isEmbedded } from "./paths.js";
 
@@ -39,6 +43,18 @@ function getVersionOverridePath(): string {
   return resolve(getDataDir(), "version-state.json");
 }
 
+function getExtractedFingerprintPath(): string {
+  return resolve(getDataDir(), "extracted-fingerprint.json");
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function optionalString(value: unknown): string | undefined {
+  return typeof value === "string" && value.length > 0 ? value : undefined;
+}
+
 function loadCurrentConfig(): { app_version: string; build_number: string } {
   // Check runtime override first (written by applyVersionUpdate)
   try {
@@ -62,6 +78,36 @@ function loadCurrentConfig(): { app_version: string; build_number: string } {
     app_version: client.app_version,
     build_number: client.build_number,
   };
+}
+
+function readMatchingExtractedChromiumVersion(version: string, build: string): string | undefined {
+  try {
+    const extractedPath = getExtractedFingerprintPath();
+    if (!existsSync(extractedPath)) return undefined;
+
+    const parsed = JSON.parse(readFileSync(extractedPath, "utf-8")) as unknown;
+    if (!isRecord(parsed)) return undefined;
+
+    if (optionalString(parsed.app_version) !== version) return undefined;
+    if (optionalString(parsed.build_number) !== build) return undefined;
+
+    return optionalString(parsed.chromium_version);
+  } catch {
+    return undefined;
+  }
+}
+
+function syncDefaultConfigVersion(version: string, build: string, chromiumVersion?: string): void {
+  mutateYaml(getConfigPath(), (data) => {
+    const existingClient = data.client;
+    const client: Record<string, unknown> = isRecord(existingClient) ? existingClient : {};
+    data.client = client;
+    client.app_version = version;
+    client.build_number = build;
+    if (chromiumVersion) {
+      client.chromium_version = chromiumVersion;
+    }
+  });
 }
 
 function parseAppcast(xml: string): {
@@ -88,19 +134,34 @@ function parseAppcast(xml: string): {
 }
 
 function applyVersionUpdate(version: string, build: string): void {
-  // Persist to data/ (gitignored) — config/default.yaml stays read-only
+  const chromiumVersion = readMatchingExtractedChromiumVersion(version, build);
+  const versionState = {
+    app_version: version,
+    build_number: build,
+    ...(chromiumVersion ? { chromium_version: chromiumVersion } : {}),
+  };
+
+  // Persist runtime override for cold starts before config reload.
   try {
     const dataDir = getDataDir();
     mkdirSync(dataDir, { recursive: true });
     writeFileSync(
       getVersionOverridePath(),
-      JSON.stringify({ app_version: version, build_number: build }, null, 2),
+      JSON.stringify(versionState, null, 2),
     );
   } catch {
     // best-effort persistence
   }
-  // Update runtime config in memory
-  mutateClientConfig({ app_version: version, build_number: build });
+
+  // Keep the YAML baseline current so the configured fingerprint does not drift
+  // back to stale Desktop UA/build values after cleanup or deployment.
+  try {
+    syncDefaultConfigVersion(version, build, chromiumVersion);
+  } catch {
+    // best-effort persistence; runtime override above still keeps this process current
+  }
+
+  mutateClientConfig(versionState);
 }
 
 /**
@@ -110,7 +171,13 @@ function applyVersionUpdate(version: string, build: string): void {
  */
 const UPDATE_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutes
 
-function triggerFullUpdate(): void {
+function getConfiguredCodexSourcePath(): string | null {
+  const value = process.env.CODEX_DESKTOP_PATH ?? process.env.CODEX_APP_PATH ?? null;
+  const trimmed = value?.trim();
+  return trimmed && trimmed.length > 0 ? trimmed : null;
+}
+
+function triggerFullUpdate(codexSourcePath: string | null = getConfiguredCodexSourcePath()): void {
   if (_updateInProgress) {
     console.log("[UpdateChecker] Full update already in progress, skipping");
     return;
@@ -122,12 +189,19 @@ function triggerFullUpdate(): void {
     return;
   }
 
+  if (!codexSourcePath) {
+    console.log(
+      "[UpdateChecker] Skipping full-update pipeline: set CODEX_DESKTOP_PATH or CODEX_APP_PATH to a local Codex.app/extracted ASAR path",
+    );
+    return;
+  }
+
   _updateInProgress = true;
   console.log("[UpdateChecker] Triggering full-update pipeline...");
 
   const child = fork(
     resolve(process.cwd(), "scripts/build/full-update.ts"),
-    ["--force"],
+    ["--path", codexSourcePath],
     {
       execArgv: ["--import", "tsx"],
       stdio: "pipe",

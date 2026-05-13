@@ -2,8 +2,14 @@
  * Tests for Codex → OpenAI Chat Completions translation.
  */
 
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect, vi, beforeEach } from "vitest";
 import type { ExtractedEvent } from "@src/translation/codex-event-extractor.js";
+
+vi.mock("@src/utils/debug-dump.js", () => ({
+  debugDumpEnabled: vi.fn(() => false),
+  debugDump: vi.fn(),
+  debugDumpPath: vi.fn(() => null),
+}));
 import {
   simpleTextStream,
   toolCallStream,
@@ -13,6 +19,7 @@ import {
   multiToolCallStream,
   usageStream,
   toolCallNoDeltaStream,
+  prematureCloseAfterReasoningStream,
 } from "@fixtures/sse-streams.js";
 import {
   createCreated,
@@ -137,6 +144,58 @@ describe("collectCodexResponse", () => {
     mockEvents = emptyStream();
     await expect(collectCodexResponse(fakeCodexApi, fakeResponse, "gpt-5.4"))
       .rejects.toThrow("empty response");
+  });
+
+  it("throws UpstreamPrematureCloseError when stream ends after reasoning without response.completed", async () => {
+    const { UpstreamPrematureCloseError } = await import(
+      "@src/translation/codex-event-extractor.js"
+    );
+    mockEvents = prematureCloseAfterReasoningStream();
+    const promise = collectCodexResponse(fakeCodexApi, fakeResponse, "gpt-5.5");
+    await expect(promise).rejects.toBeInstanceOf(UpstreamPrematureCloseError);
+    await expect(promise).rejects.toMatchObject({
+      hadReasoning: true,
+      responseId: "resp_pc",
+    });
+  });
+
+  it("dumps collected events when EmptyResponseError fires and debug dump is enabled", async () => {
+    const debugDumpMod = await import("@src/utils/debug-dump.js");
+    vi.mocked(debugDumpMod.debugDumpEnabled).mockReturnValue(true);
+    const dumpSpy = vi.mocked(debugDumpMod.debugDump);
+    dumpSpy.mockClear();
+
+    mockEvents = emptyStream();
+    await expect(collectCodexResponse(fakeCodexApi, fakeResponse, "gpt-5.5-xhigh-fast"))
+      .rejects.toThrow("empty response");
+
+    expect(dumpSpy).toHaveBeenCalledWith(
+      "empty-response-openai",
+      expect.objectContaining({
+        model: "gpt-5.5-xhigh-fast",
+        responseId: "resp_5",
+        events: expect.any(Array),
+      }),
+    );
+    const dumpedPayload = dumpSpy.mock.calls.find(
+      ([kind]) => kind === "empty-response-openai",
+    )![1] as { events: unknown[] };
+    expect(dumpedPayload.events.length).toBeGreaterThan(0);
+
+    vi.mocked(debugDumpMod.debugDumpEnabled).mockReturnValue(false);
+  });
+
+  it("does not dump when debug dump is disabled", async () => {
+    const debugDumpMod = await import("@src/utils/debug-dump.js");
+    vi.mocked(debugDumpMod.debugDumpEnabled).mockReturnValue(false);
+    const dumpSpy = vi.mocked(debugDumpMod.debugDump);
+    dumpSpy.mockClear();
+
+    mockEvents = emptyStream();
+    await expect(collectCodexResponse(fakeCodexApi, fakeResponse, "gpt-5.4"))
+      .rejects.toThrow("empty response");
+
+    expect(dumpSpy).not.toHaveBeenCalled();
   });
 });
 

@@ -42,7 +42,7 @@ export function CopyButton({ getText, class: className, titleKey, variant = "ico
   if (variant === "label") {
     const bgClass =
       state === "ok"
-        ? "bg-primary hover:bg-primary-hover"
+        ? "bg-primary-action hover:bg-primary-action-hover"
         : state === "fail"
           ? "bg-red-600 hover:bg-red-700"
           : "bg-slate-700 hover:bg-slate-600";

@@ -80,7 +80,7 @@ describe("account-pool sticky strategy", () => {
     pool.getEntry(idA)!.usage.request_count = 5;
 
     // Rate-limit A
-    pool.markRateLimited(idA, { retryAfterSec: 300 });
+    pool.applyRateLimit429(idA, { retryAfterSec: 300 });
 
     // Should fall back to B
     const acquired = pool.acquire();

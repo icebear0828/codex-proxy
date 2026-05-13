@@ -5,6 +5,219 @@ import { z } from "zod";
 
 // --- Request ---
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function optionalString(value: unknown): string | undefined {
+  return typeof value === "string" ? value : undefined;
+}
+
+function optionalRecord(value: unknown): Record<string, unknown> | undefined {
+  return isRecord(value) ? value : undefined;
+}
+
+function safeStringify(value: unknown): string {
+  if (typeof value === "string") return value;
+  if (value == null) return "";
+  try {
+    return JSON.stringify(value);
+  } catch {
+    return String(value);
+  }
+}
+
+function isReasoningEffort(value: unknown): value is "low" | "medium" | "high" | "xhigh" {
+  return value === "low" || value === "medium" || value === "high" || value === "xhigh";
+}
+
+function isChatRole(value: unknown): value is "system" | "developer" | "user" | "assistant" | "tool" | "function" {
+  return value === "system" ||
+    value === "developer" ||
+    value === "user" ||
+    value === "assistant" ||
+    value === "tool" ||
+    value === "function";
+}
+
+function normalizeResponsesContentPart(part: unknown): unknown {
+  if (!isRecord(part)) return part;
+
+  if (part.type === "input_text" || part.type === "output_text") {
+    return { type: "text", text: optionalString(part.text) ?? "" };
+  }
+
+  if (part.type === "input_image") {
+    const imageUrl = part.image_url ?? part.url;
+    return { type: "image_url", image_url: imageUrl };
+  }
+
+  return part;
+}
+
+function normalizeResponsesContent(content: unknown): unknown {
+  if (typeof content === "string" || content === null || content === undefined) {
+    return content;
+  }
+  if (Array.isArray(content)) {
+    return content.map(normalizeResponsesContentPart);
+  }
+  if (isRecord(content)) {
+    return [normalizeResponsesContentPart(content)];
+  }
+  return safeStringify(content);
+}
+
+function responsesContentToText(content: unknown): string {
+  if (typeof content === "string") return content;
+  if (content == null) return "";
+  if (!Array.isArray(content)) return safeStringify(content);
+
+  return content
+    .map((part) => {
+      if (!isRecord(part)) return safeStringify(part);
+      if (typeof part.text === "string") return part.text;
+      if (typeof part.output === "string") return part.output;
+      return "";
+    })
+    .filter(Boolean)
+    .join("\n");
+}
+
+function normalizeResponsesInputItem(item: unknown): unknown[] {
+  if (typeof item === "string") {
+    return [{ role: "user", content: item }];
+  }
+  if (!isRecord(item)) {
+    return [];
+  }
+
+  if (item.type === "function_call") {
+    const name = optionalString(item.name);
+    if (!name) return [];
+    const callId = optionalString(item.call_id) ?? optionalString(item.id) ?? `fc_${name}`;
+    return [{
+      role: "assistant",
+      content: null,
+      tool_calls: [{
+        id: callId,
+        type: "function",
+        function: {
+          name,
+          arguments: safeStringify(item.arguments),
+        },
+      }],
+    }];
+  }
+
+  if (item.type === "function_call_output") {
+    const callId = optionalString(item.call_id) ?? optionalString(item.id) ?? "unknown";
+    return [{
+      role: "tool",
+      content: responsesContentToText(item.output ?? item.content),
+      tool_call_id: callId,
+    }];
+  }
+
+  if (item.type === "message" || isChatRole(item.role)) {
+    const role = isChatRole(item.role) ? item.role : "user";
+    const message: Record<string, unknown> = {
+      role,
+      content: normalizeResponsesContent(item.content),
+    };
+    if (typeof item.name === "string") message.name = item.name;
+    if (typeof item.tool_call_id === "string") message.tool_call_id = item.tool_call_id;
+    if (Array.isArray(item.tool_calls)) message.tool_calls = item.tool_calls;
+    if (isRecord(item.function_call)) message.function_call = item.function_call;
+    return [message];
+  }
+
+  if (item.type === "input_text" || item.type === "output_text") {
+    return [{ role: "user", content: optionalString(item.text) ?? "" }];
+  }
+
+  return [];
+}
+
+function normalizeResponsesInput(input: unknown): unknown[] {
+  if (typeof input === "string") {
+    return [{ role: "user", content: input }];
+  }
+  if (Array.isArray(input)) {
+    return input.flatMap(normalizeResponsesInputItem);
+  }
+  if (isRecord(input)) {
+    return normalizeResponsesInputItem(input);
+  }
+  return [];
+}
+
+function normalizeFlatTool(tool: unknown): unknown {
+  if (!isRecord(tool)) return tool;
+
+  const type = tool.type;
+  const existingFunction = optionalRecord(tool.function);
+  if (type !== "function" && type !== "custom") return tool;
+  if (existingFunction) return tool;
+
+  const name = optionalString(tool.name);
+  if (!name) return tool;
+
+  const fn: Record<string, unknown> = { name };
+  const description = optionalString(tool.description);
+  const parameters =
+    optionalRecord(tool.parameters) ??
+    optionalRecord(tool.input_schema) ??
+    optionalRecord(tool.schema);
+
+  if (description) fn.description = description;
+  if (parameters) fn.parameters = parameters;
+  if (typeof tool.strict === "boolean") fn.strict = tool.strict;
+
+  return { type: "function", function: fn };
+}
+
+function normalizeToolChoice(choice: unknown): unknown {
+  if (!isRecord(choice)) return choice;
+  if ((choice.type === "function" || choice.type === "custom") && !isRecord(choice.function)) {
+    const name = optionalString(choice.name);
+    if (name) return { type: "function", function: { name } };
+  }
+  return choice;
+}
+
+function normalizeChatCompletionRequestInput(value: unknown): unknown {
+  if (!isRecord(value)) return value;
+
+  const normalized: Record<string, unknown> = { ...value };
+
+  if (!Array.isArray(normalized.messages) && "input" in value) {
+    const messages = normalizeResponsesInput(value.input);
+    const instructions = optionalString(value.instructions);
+    if (instructions) {
+      messages.unshift({ role: "system", content: instructions });
+    }
+    if (messages.length > 0) {
+      normalized.messages = messages;
+    }
+  }
+
+  const reasoning = optionalRecord(value.reasoning);
+  if (normalized.reasoning_effort === undefined && reasoning && isReasoningEffort(reasoning.effort)) {
+    normalized.reasoning_effort = reasoning.effort;
+  }
+
+  if (Array.isArray(value.tools)) {
+    normalized.tools = value.tools.map(normalizeFlatTool);
+  }
+
+  if ("tool_choice" in value) {
+    normalized.tool_choice = normalizeToolChoice(value.tool_choice);
+  }
+
+  return normalized;
+}
+
 const ContentPartSchema = z.object({
   type: z.string(),
   text: z.string().optional(),
@@ -31,7 +244,7 @@ export const ChatMessageSchema = z.object({
   }).optional(),
 });
 
-export const ChatCompletionRequestSchema = z.object({
+const ChatCompletionRequestObjectSchema = z.object({
   model: z.string(),
   messages: z.array(ChatMessageSchema).min(1),
   stream: z.boolean().optional().default(false),
@@ -96,6 +309,11 @@ export const ChatCompletionRequestSchema = z.object({
     z.object({ name: z.string() }),
   ]).optional(),
 });
+
+export const ChatCompletionRequestSchema = z.preprocess(
+  normalizeChatCompletionRequestInput,
+  ChatCompletionRequestObjectSchema,
+);
 
 export type ChatMessage = z.infer<typeof ChatMessageSchema>;
 export type ChatCompletionRequest = z.infer<typeof ChatCompletionRequestSchema>;

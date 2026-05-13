@@ -44,7 +44,7 @@ export function AccountBulkActions({
         <button
           onClick={onSetActive}
           disabled={loading}
-          class="px-3 py-1.5 text-xs font-medium rounded-lg border border-green-200 dark:border-green-800/40 bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-400 hover:bg-green-100 dark:hover:bg-green-900/30 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+          class="px-3 py-1.5 text-xs font-medium rounded-lg border border-success/30 bg-success-container text-success hover:bg-success-container/80 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
         >
           {t("setActive")}
         </button>
@@ -80,7 +80,7 @@ export function AccountBulkActions({
           <button
             onClick={handleDelete}
             disabled={loading}
-            class="px-3 py-1.5 text-xs font-medium rounded-lg border border-red-200 dark:border-red-800/40 bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 hover:bg-red-100 dark:hover:bg-red-900/30 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            class="px-3 py-1.5 text-xs font-medium rounded-lg border border-danger/30 bg-danger-container text-danger hover:bg-danger-container/80 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {t("batchDelete")}
           </button>

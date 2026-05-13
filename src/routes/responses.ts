@@ -14,6 +14,7 @@ import type { ProxyPool } from "../proxy/proxy-pool.js";
 import { CodexApi, CodexApiError } from "../proxy/codex-api.js";
 import type { CodexResponsesRequest, CodexCompactRequest, CodexInputItem, CodexSSEEvent } from "../proxy/codex-api.js";
 import { enqueueLogEntry } from "../logs/entry.js";
+import { recordStreamCloseEvent, type StreamCloseContextBase } from "../logs/stream-close-event.js";
 import { summarizeRequestForLog } from "../logs/request-summary.js";
 import { getRealClientIp } from "../utils/get-real-client-ip.js";
 import { randomUUID } from "crypto";
@@ -23,12 +24,10 @@ import { prepareSchema } from "../translation/shared-utils.js";
 import { reconvertTupleValues } from "../translation/tuple-schema.js";
 import { parseModelName, resolveModelId, getModelInfo, buildDisplayModelName } from "../models/model-store.js";
 import { EmptyResponseError, type UsageInfo } from "../translation/codex-event-extractor.js";
-import {
-  handleProxyRequest,
-  handleDirectRequest,
-  staggerIfNeeded,
-  type FormatAdapter,
-} from "./shared/proxy-handler.js";
+import { handleProxyRequest } from "./shared/proxy-handler.js";
+import { staggerIfNeeded } from "./shared/proxy-stagger.js";
+import { handleDirectRequest } from "./shared/direct-request-handler.js";
+import type { FormatAdapter } from "./shared/proxy-handler-types.js";
 import type { UpstreamRouter } from "../proxy/upstream-router.js";
 import { acquireAccount, releaseAccount } from "./shared/account-acquisition.js";
 import { handleCodexApiError } from "./shared/proxy-error-handler.js";
@@ -198,10 +197,11 @@ export function extractImageGenUsage(response: Record<string, unknown>): { image
 export async function* streamPassthrough(
   api: UpstreamAdapter,
   response: Response,
-  _model: string,
+  model: string,
   onUsage: (u: { input_tokens: number; output_tokens: number; cached_tokens?: number; image_input_tokens?: number; image_output_tokens?: number }) => void,
   onResponseId: (id: string) => void,
   tupleSchema?: Record<string, unknown> | null,
+  streamContext?: StreamCloseContextBase,
 ): AsyncGenerator<string> {
   // When tupleSchema is present, buffer text deltas and reconvert on completion.
   // This means the client receives zero incremental text — all text arrives at once
@@ -223,6 +223,18 @@ export async function* streamPassthrough(
         console.warn(
           `[Responses] premature stream close before terminal event responseId=${responseId ?? "unknown"}: ${detail}`,
         );
+        recordStreamCloseEvent({
+          kind: "upstream-premature",
+          tag: streamContext?.tag ?? "Responses",
+          requestId: streamContext?.requestId,
+          provider: streamContext?.provider,
+          path: streamContext?.path,
+          model: streamContext?.model ?? model,
+          accountEntryId: streamContext?.accountEntryId,
+          variantHash: streamContext?.variantHash,
+          responseId,
+          detail,
+        });
         yield buildPrematureCloseFailedEvent(responseId, detail);
         return;
       }
@@ -313,6 +325,17 @@ export async function* streamPassthrough(
     console.warn(
       `[Responses] premature stream close before terminal event responseId=${responseId ?? "unknown"}`,
     );
+    recordStreamCloseEvent({
+      kind: "upstream-premature",
+      tag: streamContext?.tag ?? "Responses",
+      requestId: streamContext?.requestId,
+      provider: streamContext?.provider,
+      path: streamContext?.path,
+      model: streamContext?.model ?? model,
+      accountEntryId: streamContext?.accountEntryId,
+      variantHash: streamContext?.variantHash,
+      responseId,
+    });
     yield buildPrematureCloseFailedEvent(responseId);
   }
 }
@@ -456,9 +479,9 @@ const PASSTHROUGH_FORMAT: FormatAdapter = {
     },
   }),
   formatStreamError: (status, msg) => buildResponsesStreamError(status, msg),
-  streamTranslator: (api, response, model, onUsage, onResponseId, tupleSchema) =>
-    streamPassthrough(api, response, model, onUsage, onResponseId, tupleSchema),
-  collectTranslator: (api, response, model, tupleSchema) =>
+  streamTranslator: ({ api, response, model, onUsage, onResponseId, tupleSchema, streamContext }) =>
+    streamPassthrough(api, response, model, onUsage, onResponseId, tupleSchema, streamContext),
+  collectTranslator: ({ api, response, model, tupleSchema }) =>
     collectPassthrough(api, response, model, tupleSchema),
 };
 
@@ -613,7 +636,7 @@ async function handleCompact(
       model: rawModel,
       isStreaming: false,
     };
-    return handleDirectRequest(c, compactRouteMatch.adapter, directReq, PASSTHROUGH_FORMAT);
+    return handleDirectRequest({ c, upstream: compactRouteMatch.adapter, req: directReq, fmt: PASSTHROUGH_FORMAT });
   }
 
   // Acquire account
@@ -881,11 +904,11 @@ export function createResponsesRoutes(
 
     if (routeMatch?.kind === "api-key" || routeMatch?.kind === "adapter") {
       // Use raw model name so adapter's extractModelId can strip the provider prefix
-      const directReq = { ...proxyReq, codexRequest: { ...codexRequest, model: rawModel } };
-      return handleDirectRequest(c, routeMatch.adapter, directReq, PASSTHROUGH_FORMAT);
+      const directReq = { ...proxyReq, model: rawModel, codexRequest: { ...codexRequest, model: rawModel } };
+      return handleDirectRequest({ c, upstream: routeMatch.adapter, req: directReq, fmt: PASSTHROUGH_FORMAT });
     }
 
-    return handleProxyRequest(c, accountPool, cookieJar, proxyReq, PASSTHROUGH_FORMAT, proxyPool);
+    return handleProxyRequest({ c, accountPool, cookieJar, req: proxyReq, fmt: PASSTHROUGH_FORMAT, proxyPool });
   };
 
   // ── POST /v1/responses/compact — non-streaming JSON proxy ──

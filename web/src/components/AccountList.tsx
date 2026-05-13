@@ -3,6 +3,7 @@ import { useI18n, useT } from "../../../shared/i18n/context";
 import { AccountCard } from "./AccountCard";
 import { AccountImportExport } from "./AccountImportExport";
 import type { Account, ProxyEntry, QuotaWarning } from "../../../shared/types";
+import { derivedStatus } from "../lib/accountStatus";
 
 const STATUS_FILTER_STORAGE_KEY = "codex-proxy-account-list-status-filter";
 const EXPAND_ALL_STORAGE_KEY = "codex-proxy-account-list-expand-all";
@@ -24,20 +25,31 @@ interface AccountListProps {
 
 const PAGE_SIZE = 10;
 
+function getBrowserStorage(): Storage | null {
+  if (typeof window === "undefined") return null;
+  try {
+    return window.localStorage;
+  } catch {
+    return null;
+  }
+}
+
 export function AccountList({ accounts, loading, onDelete, onRefresh, refreshing, lastUpdated, proxies, onProxyChange, onExport, onImport, onToggleStatus, onUpdateLabel }: AccountListProps) {
   const t = useT();
   const { lang } = useI18n();
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [warnings, setWarnings] = useState<QuotaWarning[]>([]);
   const [visibleCount, setVisibleCount] = useState(() => {
-    if (typeof localStorage === "undefined") return PAGE_SIZE;
-    return localStorage.getItem(EXPAND_ALL_STORAGE_KEY) === "true" ? Number.MAX_SAFE_INTEGER : PAGE_SIZE;
+    const storage = getBrowserStorage();
+    if (!storage) return PAGE_SIZE;
+    return storage.getItem(EXPAND_ALL_STORAGE_KEY) === "true" ? Number.MAX_SAFE_INTEGER : PAGE_SIZE;
   });
   const [healthChecking, setHealthChecking] = useState(false);
   const [healthResult, setHealthResult] = useState<{ alive: number; dead: number; skipped: number } | null>(null);
   const [statusFilter, setStatusFilter] = useState<string>(() => {
-    if (typeof localStorage === "undefined") return "all";
-    return localStorage.getItem(STATUS_FILTER_STORAGE_KEY) ?? "all";
+    const storage = getBrowserStorage();
+    if (!storage) return "all";
+    return storage.getItem(STATUS_FILTER_STORAGE_KEY) ?? "all";
   });
   const [refreshingExpired, setRefreshingExpired] = useState(false);
   const [deleteResult, setDeleteResult] = useState<string | null>(null);
@@ -119,21 +131,29 @@ export function AccountList({ accounts, loading, onDelete, onRefresh, refreshing
   }, []);
 
   useEffect(() => {
-    if (typeof localStorage === "undefined") return;
-    localStorage.setItem(STATUS_FILTER_STORAGE_KEY, statusFilter);
+    const storage = getBrowserStorage();
+    if (!storage) return;
+    storage.setItem(STATUS_FILTER_STORAGE_KEY, statusFilter);
   }, [statusFilter]);
 
   useEffect(() => {
-    if (typeof localStorage === "undefined") return;
-    localStorage.setItem(EXPAND_ALL_STORAGE_KEY, String(visibleCount > PAGE_SIZE));
+    const storage = getBrowserStorage();
+    if (!storage) return;
+    storage.setItem(EXPAND_ALL_STORAGE_KEY, String(visibleCount > PAGE_SIZE));
   }, [visibleCount]);
 
+  // Counts are bucketed by derivedStatus so the "rate_limited" filter still
+  // works on cachedQuota-exhausted accounts even though the backend status
+  // is "active". Keep filter semantics consistent with the badge.
   const statusCounts: Record<string, number> = {};
-  for (const a of accounts) statusCounts[a.status] = (statusCounts[a.status] ?? 0) + 1;
+  for (const a of accounts) {
+    const key = derivedStatus(a);
+    statusCounts[key] = (statusCounts[key] ?? 0) + 1;
+  }
 
   const displayAccounts = statusFilter === "all"
     ? accounts
-    : accounts.filter((a) => a.status === statusFilter);
+    : accounts.filter((a) => derivedStatus(a) === statusFilter);
 
   useEffect(() => {
     if (statusFilter !== "all" && !statusCounts[statusFilter]) {

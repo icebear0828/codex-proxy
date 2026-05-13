@@ -135,7 +135,7 @@ describe("E2E: quota auto-refresh", () => {
     clearWarnings("test-acct-1");
   });
 
-  it("markQuotaExhausted causes acquire to skip that account", async () => {
+  it("applyRateLimit429 causes acquire to skip that account", async () => {
     const id1 = pool.addAccount(createValidJwt({
       accountId: "acct-exhaust-1",
       email: "exhaust1@test.com",
@@ -147,8 +147,8 @@ describe("E2E: quota auto-refresh", () => {
       planType: "plus",
     }));
 
-    // Exhaust first account
-    pool.markQuotaExhausted(id1, Math.floor(Date.now() / 1000) + 7200);
+    // Exhaust first account via cachedQuota path
+    pool.applyRateLimit429(id1, { resetsAtSec: Math.floor(Date.now() / 1000) + 7200 });
 
     const acquired = pool.acquire();
     expect(acquired).not.toBeNull();
