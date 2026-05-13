@@ -7,6 +7,7 @@
  *   - proxy-egress-log.ts     — upstream request audit log entries
  *   - proxy-error-handler.ts  — CodexApiError classification + pool state mutations
  *   - proxy-fallback-retry-plan.ts — account fallback retry response planning
+ *   - proxy-implicit-resume-lifecycle.ts — implicit-resume state machine / rollback
  *   - proxy-implicit-resume-request.ts — implicit-resume request apply/restore state
  *   - proxy-request-preparation.ts — request input/default forwarding fields
  *   - proxy-session-context.ts — prompt cache / affinity / implicit-resume derived state
@@ -29,7 +30,6 @@ import type {
   FormatAdapter,
   HandleProxyRequestOptions,
   ProxyRequest,
-  UsageHint,
 } from "./proxy-handler-types.js";
 import { getSessionAffinityMap } from "../../auth/session-affinity.js";
 import { randomUUID } from "crypto";
@@ -38,11 +38,8 @@ import {
   respondWithProxyError,
 } from "./proxy-error-response.js";
 import { buildProxyFallbackRetryPlan } from "./proxy-fallback-retry-plan.js";
-import {
-  applyImplicitResumeRequest,
-  captureImplicitResumeRequestState,
-  restoreImplicitResumeRequestState,
-} from "./proxy-implicit-resume-request.js";
+import { createImplicitResumeLifecycle } from "./proxy-implicit-resume-lifecycle.js";
+import { captureImplicitResumeRequestState } from "./proxy-implicit-resume-request.js";
 import {
   applyProxyRequestForwardingDefaults,
   ensureProxyRequestInputArray,
@@ -53,10 +50,6 @@ import { buildProxySessionContext } from "./proxy-session-context.js";
 import { staggerIfNeeded } from "./proxy-stagger.js";
 import { sendProxyUpstreamAttempt } from "./proxy-upstream-attempt.js";
 import { buildWsPoolContext } from "./proxy-ws-context.js";
-import {
-  evaluateImplicitResume,
-  shouldReplayFullInputAfterImplicitResumeError,
-} from "./proxy-session-helpers.js";
 
 export async function handleProxyRequest(options: HandleProxyRequestOptions): Promise<Response> {
   const { c, accountPool, cookieJar, req, fmt, proxyPool } = options;
@@ -86,43 +79,21 @@ export async function handleProxyRequest(options: HandleProxyRequestOptions): Pr
   const triedEntryIds: string[] = [entryId];
   let modelRetried = false;
   let stripAndRetryDone = false;
-  let activeUsageHint: UsageHint | undefined;
-  let implicitResumeActive = false;
   // Idempotent-release guard: prevents double-release across retry branches
   const released = new Set<string>();
 
-  const resumeEval = evaluateImplicitResume({
-    ...sessionContext.resumeEvaluationInput,
+  const implicitResume = createImplicitResumeLifecycle({
+    request: req,
+    snapshot: originalRequestState,
+    affinityMap,
+    tag: fmt.tag,
+    implicitPrevRespId: sessionContext.implicitPrevRespId,
+    continuationInputStart: sessionContext.continuationInputStart,
+    resumeEvaluationInput: sessionContext.resumeEvaluationInput,
     acquiredEntryId: entryId,
   });
-  if (!resumeEval.active && resumeEval.missingCallIds && resumeEval.missingCallIds.length > 0) {
-    console.warn(
-      `[${fmt.tag}] 隐式续链跳过：上一轮 response 未记录 tool_result 对应的 call_id=` +
-      resumeEval.missingCallIds.slice(0, 3).join(","),
-    );
-  }
-  if (!resumeEval.active && resumeEval.unansweredCallIds && resumeEval.unansweredCallIds.length > 0) {
-    console.warn(
-      `[${fmt.tag}] 隐式续链跳过：上一轮 function_call 未被全部回复，缺 call_id=` +
-      resumeEval.unansweredCallIds.slice(0, 3).join(","),
-    );
-  }
-  if (resumeEval.active) {
-    activeUsageHint = applyImplicitResumeRequest({
-      request: req,
-      implicitPrevRespId: sessionContext.implicitPrevRespId!,
-      continuationInputStart: sessionContext.continuationInputStart,
-      affinityMap,
-    });
-    implicitResumeActive = true;
-  }
-
-  const restoreImplicitResumeRequest = (): void => {
-    if (!implicitResumeActive) return;
-    restoreImplicitResumeRequestState({ request: req, snapshot: originalRequestState });
-    activeUsageHint = undefined;
-    implicitResumeActive = false;
-  };
+  implicitResume.logSkippedWarnings();
+  implicitResume.activate();
 
   {
     const diagnostics = buildRequestDiagnostics({
@@ -136,8 +107,8 @@ export async function handleProxyRequest(options: HandleProxyRequestOptions): Pr
       explicitPrevRespId: sessionContext.explicitPrevRespId,
       implicitPrevRespId: sessionContext.implicitPrevRespId,
       prevRespId: sessionContext.prevRespId,
-      resumeActive: resumeEval.active,
-      resumeReason: resumeEval.reason,
+      resumeActive: implicitResume.evaluation.active,
+      resumeReason: implicitResume.evaluation.reason,
       preferredEntryId: sessionContext.preferredEntryId,
     });
     console.log(diagnostics.summary);
@@ -171,8 +142,8 @@ export async function handleProxyRequest(options: HandleProxyRequestOptions): Pr
         requestId,
         tag: fmt.tag,
         conversationId: sessionContext.chainConversationId,
-        implicitResumeActive,
-        resumeReason: resumeEval.active ? null : resumeEval.reason,
+        implicitResumeActive: implicitResume.isActive(),
+        resumeReason: implicitResume.resumeReasonForAttempt(),
       });
 
       // ── Streaming path ──
@@ -191,7 +162,7 @@ export async function handleProxyRequest(options: HandleProxyRequestOptions): Pr
           affinityMap,
           conversationId: sessionContext.chainConversationId,
           turnState: upstreamTurnState,
-          usageHint: activeUsageHint,
+          usageHint: implicitResume.getUsageHint(),
           variantHash: sessionContext.variantHash,
         });
       }
@@ -213,8 +184,8 @@ export async function handleProxyRequest(options: HandleProxyRequestOptions): Pr
         affinityMap,
         conversationId: sessionContext.chainConversationId,
         turnState: upstreamTurnState,
-        getUsageHint: () => activeUsageHint,
-        restoreImplicitResumeRequest,
+        getUsageHint: () => implicitResume.getUsageHint(),
+        restoreImplicitResumeRequest: implicitResume.restore,
         buildPoolCtx,
         setActiveAccount: (nextEntryId, nextApi) => {
           entryId = nextEntryId;
@@ -229,11 +200,7 @@ export async function handleProxyRequest(options: HandleProxyRequestOptions): Pr
         throw err;
       }
 
-      if (shouldReplayFullInputAfterImplicitResumeError(err, implicitResumeActive)) {
-        console.warn(
-          `[${fmt.tag}] 隐式续链 WebSocket 失败，回退为完整历史重放：${err.causeMessage}`,
-        );
-        restoreImplicitResumeRequest();
+      if (implicitResume.replayFullInputAfterError(err)) {
         continue;
       }
 
@@ -248,7 +215,7 @@ export async function handleProxyRequest(options: HandleProxyRequestOptions): Pr
         stripAndRetryDone = true;
         console.warn(retryRecovery.logMessage);
         if (retryRecovery.staleId) affinityMap.forget(retryRecovery.staleId);
-        restoreImplicitResumeRequest();
+        implicitResume.restore();
         req.codexRequest.previous_response_id = undefined;
         req.codexRequest.turnState = undefined;
         continue;
@@ -272,7 +239,7 @@ export async function handleProxyRequest(options: HandleProxyRequestOptions): Pr
       if (decision.releaseBeforeRetry) {
         releaseAccount(accountPool, entryId, annotateImageGenOutcome(undefined, req.expectsImageGen), released);
       }
-      restoreImplicitResumeRequest();
+      implicitResume.restore();
       if (decision.markModelRetried) {
         modelRetried = true;
       }
