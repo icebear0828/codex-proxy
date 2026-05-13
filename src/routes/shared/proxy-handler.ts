@@ -9,6 +9,7 @@
  *   - proxy-fallback-retry-plan.ts — account fallback retry response planning
  *   - proxy-implicit-resume-request.ts — implicit-resume request apply/restore state
  *   - proxy-request-preparation.ts — request input/default forwarding fields
+ *   - proxy-upstream-attempt.ts — one upstream request attempt + egress/rate-limit capture
  *   - proxy-debug-dump.ts     — opt-in request payload diagnostics
  *   - proxy-request-diagnostics.ts — request summary / large payload logs
  *   - proxy-stagger.ts        — request interval staggering
@@ -18,13 +19,11 @@
  */
 
 import { CodexApiError } from "../../proxy/codex-api.js";
-import { withRetry } from "../../utils/retry.js";
 import { acquireAccount, releaseAccount } from "./account-acquisition.js";
 import { handleCodexApiError } from "./proxy-error-handler.js";
 import { handleStreaming } from "./streaming-handler.js";
 import { handleNonStreaming } from "./non-streaming-handler.js";
 import { annotateImageGenOutcome, buildCodexApi } from "./proxy-handler-utils.js";
-import { dumpProxyRequest } from "./proxy-debug-dump.js";
 import type {
   FormatAdapter,
   HandleProxyRequestOptions,
@@ -48,11 +47,10 @@ import {
   applyProxyRequestForwardingDefaults,
   ensureProxyRequestInputArray,
 } from "./proxy-request-preparation.js";
-import { recordProxyEgressLog } from "./proxy-egress-log.js";
-import { applyParsedRateLimits, applyRateLimitHeaders, type ApplyParsedRateLimitsOptions } from "./proxy-rate-limit.js";
 import { buildRequestDiagnostics } from "./proxy-request-diagnostics.js";
 import { buildProxyRetryRecoveryDecision } from "./proxy-retry-recovery.js";
 import { staggerIfNeeded } from "./proxy-stagger.js";
+import { sendProxyUpstreamAttempt } from "./proxy-upstream-attempt.js";
 import { buildWsPoolContext } from "./proxy-ws-context.js";
 import {
   buildVariantIdentity,
@@ -223,37 +221,19 @@ export async function handleProxyRequest(options: HandleProxyRequestOptions): Pr
 
   for (;;) {
     try {
-      const applyRateLimits = (rateLimits: ApplyParsedRateLimitsOptions["rateLimits"]): void => {
-        applyParsedRateLimits({ accountPool, entryId, rateLimits });
-      };
-
-      const startMs = Date.now();
-      dumpProxyRequest({
+      const { rawResponse, upstreamTurnState } = await sendProxyUpstreamAttempt({
+        accountPool,
+        api: codexApi,
+        request: req,
+        entryId,
+        abortSignal: abortController.signal,
+        buildPoolCtx,
         requestId,
         tag: fmt.tag,
-        entryId,
         conversationId: chainConversationId,
         implicitResumeActive,
         resumeReason: resumeEval.active ? null : resumeEval.reason,
-        payload: req.codexRequest,
       });
-      const rawResponse = await withRetry(
-        () => codexApi.createResponse(req.codexRequest, abortController.signal, applyRateLimits, buildPoolCtx()),
-        { tag: fmt.tag },
-      );
-      const status: number | null = rawResponse.status;
-      recordProxyEgressLog({
-        requestId,
-        request: req,
-        status,
-        startMs,
-      });
-
-      // Capture upstream turn-state for sticky routing
-      const upstreamTurnState = rawResponse.headers.get("x-codex-turn-state") ?? undefined;
-
-      // Extract rate-limit quota from upstream response headers (passive collection — HTTP path)
-      applyRateLimitHeaders({ accountPool, entryId, headers: rawResponse.headers });
 
       // ── Streaming path ──
       if (req.isStreaming) {

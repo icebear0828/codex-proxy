@@ -6,6 +6,7 @@ import { recordProxyEgressLog } from "@src/routes/shared/proxy-egress-log.js";
 
 const ROOT = process.cwd();
 const EGRESS_LOG_MODULE = "src/routes/shared/proxy-egress-log.ts";
+const UPSTREAM_ATTEMPT_MODULE = "src/routes/shared/proxy-upstream-attempt.ts";
 const PROXY_HANDLER_MODULE = "src/routes/shared/proxy-handler.ts";
 const NON_STREAMING_HANDLER_MODULE = "src/routes/shared/non-streaming-handler.ts";
 
@@ -56,8 +57,11 @@ describe("proxy egress log boundary", () => {
 
   it("keeps log-store enqueue wiring out of the proxy orchestrator", () => {
     const proxyHandler = source(PROXY_HANDLER_MODULE);
+    const upstreamAttempt = source(UPSTREAM_ATTEMPT_MODULE);
 
-    expect(importsNamedBinding(proxyHandler, "proxy-egress-log.js", "recordProxyEgressLog", PROXY_HANDLER_MODULE)).toBe(true);
+    expect(importsNamedBinding(proxyHandler, "proxy-upstream-attempt.js", "sendProxyUpstreamAttempt", PROXY_HANDLER_MODULE)).toBe(true);
+    expect(importsNamedBinding(proxyHandler, "proxy-egress-log.js", "recordProxyEgressLog", PROXY_HANDLER_MODULE)).toBe(false);
+    expect(importsNamedBinding(upstreamAttempt, "proxy-egress-log.js", "recordProxyEgressLog", UPSTREAM_ATTEMPT_MODULE)).toBe(true);
     expect(importsNamedBinding(proxyHandler, "entry.js", "enqueueLogEntry", PROXY_HANDLER_MODULE)).toBe(false);
     expect(proxyHandler).not.toContain('path: "/codex/responses"');
   });
