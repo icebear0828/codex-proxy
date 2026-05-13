@@ -8,7 +8,7 @@
 
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { Hono, type Context } from "hono";
-import type { HandleDirectRequestOptions } from "@src/routes/shared/proxy-handler.js";
+import type { HandleDirectRequestOptions } from "@src/routes/shared/proxy-handler-types.js";
 
 // ── Mocks (before imports) ──────────────────────────────────────────
 

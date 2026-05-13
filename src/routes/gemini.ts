@@ -24,9 +24,8 @@ import { getModelCatalog } from "../models/model-store.js";
 import {
   handleProxyRequest,
   handleDirectRequest,
-  type FormatAdapter,
-  type ProxyRequest,
 } from "./shared/proxy-handler.js";
+import type { FormatAdapter, ProxyRequest } from "./shared/proxy-handler-types.js";
 import type { UpstreamRouter } from "../proxy/upstream-router.js";
 
 function makeError(

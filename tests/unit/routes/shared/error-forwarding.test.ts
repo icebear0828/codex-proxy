@@ -4,7 +4,7 @@
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { Hono } from "hono";
-import type { FormatStreamTranslatorOptions, ProxyRequest } from "@src/routes/shared/proxy-handler.js";
+import type { FormatStreamTranslatorOptions, ProxyRequest } from "@src/routes/shared/proxy-handler-types.js";
 import { createMockFormatAdapter } from "@helpers/format-adapter.js";
 
 // ── Mocks ────────────────────────────────────────────────────────────

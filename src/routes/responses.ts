@@ -28,8 +28,8 @@ import {
   handleProxyRequest,
   handleDirectRequest,
   staggerIfNeeded,
-  type FormatAdapter,
 } from "./shared/proxy-handler.js";
+import type { FormatAdapter } from "./shared/proxy-handler-types.js";
 import type { UpstreamRouter } from "../proxy/upstream-router.js";
 import { acquireAccount, releaseAccount } from "./shared/account-acquisition.js";
 import { handleCodexApiError } from "./shared/proxy-error-handler.js";

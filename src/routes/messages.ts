@@ -23,8 +23,8 @@ import { randomUUID } from "crypto";
 import {
   handleProxyRequest,
   handleDirectRequest,
-  type FormatAdapter,
 } from "./shared/proxy-handler.js";
+import type { FormatAdapter } from "./shared/proxy-handler-types.js";
 import { extractAnthropicClientConversationId } from "./shared/anthropic-session-id.js";
 import type { UpstreamRouter } from "../proxy/upstream-router.js";
 import { summarizeRequestForLog } from "../logs/request-summary.js";

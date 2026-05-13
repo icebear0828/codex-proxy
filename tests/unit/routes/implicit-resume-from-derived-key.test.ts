@@ -133,7 +133,8 @@ vi.mock("@src/translation/codex-to-gemini.js", () => ({
 import { AccountPool } from "@src/auth/account-pool.js";
 import { createChatRoutes } from "@src/routes/chat.js";
 import { createGeminiRoutes } from "@src/routes/gemini.js";
-import { handleProxyRequest, type FormatAdapter } from "@src/routes/shared/proxy-handler.js";
+import { handleProxyRequest } from "@src/routes/shared/proxy-handler.js";
+import type { FormatAdapter } from "@src/routes/shared/proxy-handler-types.js";
 import { getSessionAffinityMap } from "@src/auth/session-affinity.js";
 
 // ── Tests ───────────────────────────────────────────────────────────

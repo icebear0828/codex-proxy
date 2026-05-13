@@ -6,7 +6,7 @@
 
 import type { UpstreamAdapter } from "../../proxy/upstream-adapter.js";
 import { CodexApiError } from "../../proxy/codex-types.js";
-import type { FormatAdapter, ResponseMetadata, UsageHint } from "./proxy-handler.js";
+import type { FormatAdapter, ResponseMetadata, UsageHint } from "./proxy-handler-types.js";
 import type { UsageInfo } from "../../translation/codex-event-extractor.js";
 import { debugDump, debugDumpEnabled } from "../../utils/debug-dump.js";
 import { recordStreamCloseEvent } from "../../logs/stream-close-event.js";

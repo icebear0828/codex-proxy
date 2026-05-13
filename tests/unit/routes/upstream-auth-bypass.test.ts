@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { Hono, type Context } from "hono";
 import type { UpstreamAdapter } from "@src/proxy/upstream-adapter.js";
-import type { HandleDirectRequestOptions } from "@src/routes/shared/proxy-handler.js";
+import type { HandleDirectRequestOptions } from "@src/routes/shared/proxy-handler-types.js";
 
 const mockConfig = {
   server: { proxy_api_key: null as string | null },
