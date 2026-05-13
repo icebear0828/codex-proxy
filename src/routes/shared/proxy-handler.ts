@@ -11,6 +11,7 @@
  *   - proxy-implicit-resume-request.ts — implicit-resume request apply/restore state
  *   - proxy-request-preparation.ts — request input/default forwarding fields
  *   - proxy-session-context.ts — prompt cache / affinity / implicit-resume derived state
+ *   - proxy-retry-recovery.ts — same-account retry recovery decision/application
  *   - proxy-upstream-attempt.ts — one upstream request attempt + egress/rate-limit capture
  *   - proxy-debug-dump.ts     — opt-in request payload diagnostics
  *   - proxy-request-diagnostics.ts — request summary / large payload logs
@@ -45,7 +46,10 @@ import {
   ensureProxyRequestInputArray,
 } from "./proxy-request-preparation.js";
 import { buildRequestDiagnostics } from "./proxy-request-diagnostics.js";
-import { buildProxyRetryRecoveryDecision } from "./proxy-retry-recovery.js";
+import {
+  applyProxyRetryRecoveryDecision,
+  buildProxyRetryRecoveryDecision,
+} from "./proxy-retry-recovery.js";
 import { buildProxySessionContext } from "./proxy-session-context.js";
 import { staggerIfNeeded } from "./proxy-stagger.js";
 import { sendProxyUpstreamAttempt } from "./proxy-upstream-attempt.js";
@@ -213,11 +217,12 @@ export async function handleProxyRequest(options: HandleProxyRequestOptions): Pr
       });
       if (retryRecovery.action === "retry") {
         stripAndRetryDone = true;
-        console.warn(retryRecovery.logMessage);
-        if (retryRecovery.staleId) affinityMap.forget(retryRecovery.staleId);
-        implicitResume.restore();
-        req.codexRequest.previous_response_id = undefined;
-        req.codexRequest.turnState = undefined;
+        applyProxyRetryRecoveryDecision({
+          decision: retryRecovery,
+          request: req,
+          affinityMap,
+          restoreImplicitResumeRequest: implicitResume.restore,
+        });
         continue;
       }
 
