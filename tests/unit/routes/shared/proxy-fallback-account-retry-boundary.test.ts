@@ -7,6 +7,7 @@ import { describe, expect, it } from "vitest";
 const ROOT = process.cwd();
 const PROXY_HANDLER_MODULE = "src/routes/shared/proxy-handler.ts";
 const FALLBACK_ACCOUNT_RETRY_MODULE = "src/routes/shared/proxy-fallback-account-retry.ts";
+const ERROR_RETRY_TRANSITION_MODULE = "src/routes/shared/proxy-error-retry-transition.ts";
 
 function source(path: string): string {
   return readFileSync(resolve(ROOT, path), "utf-8");
@@ -50,12 +51,19 @@ describe("proxy fallback account retry boundary", () => {
   it("keeps fallback availability and account reacquire details out of the proxy orchestrator", () => {
     const proxyHandler = source(PROXY_HANDLER_MODULE);
     const fallbackRetry = source(FALLBACK_ACCOUNT_RETRY_MODULE);
+    const errorRetryTransition = source(ERROR_RETRY_TRANSITION_MODULE);
 
     expect(importsNamedBinding(
       proxyHandler,
       "proxy-fallback-account-retry.js",
       "prepareProxyFallbackAccountRetry",
       PROXY_HANDLER_MODULE,
+    )).toBe(false);
+    expect(importsNamedBinding(
+      errorRetryTransition,
+      "proxy-fallback-account-retry.js",
+      "prepareProxyFallbackAccountRetry",
+      ERROR_RETRY_TRANSITION_MODULE,
     )).toBe(true);
     expect(importsNamedBinding(
       proxyHandler,

@@ -6,6 +6,7 @@
  *   - account-acquisition.ts  — acquire / release with idempotent guard
  *   - proxy-egress-log.ts     — upstream request audit log entries
  *   - proxy-error-handler.ts  — CodexApiError classification + pool state mutations
+ *   - proxy-error-retry-transition.ts — CodexApiError retry/release/fallback transition
  *   - proxy-fallback-account-retry.ts — fallback account acquire / API rebuild
  *   - proxy-implicit-resume-lifecycle.ts — implicit-resume state machine / rollback
  *   - proxy-implicit-resume-request.ts — implicit-resume request apply/restore state
@@ -38,7 +39,7 @@ import {
   respondWithNoAccount,
   respondWithProxyError,
 } from "./proxy-error-response.js";
-import { prepareProxyFallbackAccountRetry } from "./proxy-fallback-account-retry.js";
+import { applyProxyErrorRetryTransition } from "./proxy-error-retry-transition.js";
 import { createImplicitResumeLifecycle } from "./proxy-implicit-resume-lifecycle.js";
 import { captureImplicitResumeRequestState } from "./proxy-implicit-resume-request.js";
 import {
@@ -230,49 +231,36 @@ export async function handleProxyRequest(options: HandleProxyRequestOptions): Pr
         err, accountPool, entryId, req.codexRequest.model, fmt.tag, modelRetried,
       );
 
-      if (decision.action === "respond") {
-        releaseAccount(accountPool, entryId, annotateImageGenOutcome(undefined, req.expectsImageGen), released);
-        return respondWithProxyError({
-          c,
-          req,
-          fmt,
-          status: decision.status,
-          message: decision.message,
-        });
-      }
-
-      if (decision.releaseBeforeRetry) {
-        releaseAccount(accountPool, entryId, annotateImageGenOutcome(undefined, req.expectsImageGen), released);
-      }
-      implicitResume.restore();
-      if (decision.markModelRetried) {
-        modelRetried = true;
-      }
-
-      const fallbackRetry = prepareProxyFallbackAccountRetry({
+      const errorRetryTransition = applyProxyErrorRetryTransition({
         accountPool,
+        entryId,
         model: req.codexRequest.model,
         triedEntryIds,
         tag: fmt.tag,
         decision,
+        released,
+        restoreImplicitResumeRequest: implicitResume.restore,
+        modelRetried,
+        expectsImageGen: req.expectsImageGen,
         cookieJar,
         proxyPool,
       });
-      if (fallbackRetry.action === "respond") {
+      if (errorRetryTransition.action === "respond") {
         return respondWithProxyError({
           c,
           req,
           fmt,
-          status: fallbackRetry.status,
-          message: fallbackRetry.message,
-          ...(fallbackRetry.useFormat429 ? { useFormat429: true } : {}),
+          status: errorRetryTransition.status,
+          message: errorRetryTransition.message,
+          ...(errorRetryTransition.useFormat429 ? { useFormat429: true } : {}),
         });
       }
 
-      entryId = fallbackRetry.entryId;
-      triedEntryIds.push(fallbackRetry.entryId);
-      codexApi = fallbackRetry.api;
-      await staggerIfNeeded(fallbackRetry.prevSlotMs);
+      modelRetried = errorRetryTransition.modelRetried;
+      entryId = errorRetryTransition.entryId;
+      triedEntryIds.push(errorRetryTransition.entryId);
+      codexApi = errorRetryTransition.api;
+      await staggerIfNeeded(errorRetryTransition.prevSlotMs);
       continue;
     }
   }
