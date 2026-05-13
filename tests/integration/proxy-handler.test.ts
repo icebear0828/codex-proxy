@@ -7,8 +7,9 @@
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { Hono } from "hono";
-import type { ProxyRequest } from "@src/routes/shared/proxy-handler.js";
+import type { FormatCollectTranslatorOptions, ProxyRequest } from "@src/routes/shared/proxy-handler.js";
 import { createMockFormatAdapter } from "@helpers/format-adapter.js";
+import { getSessionAffinityMap } from "@src/auth/session-affinity.js";
 
 // ── Module-level control for CodexApi.createResponse ──────────────────
 
@@ -164,6 +165,7 @@ function buildTestApp(opts: {
 describe("proxy-handler integration", () => {
   beforeEach(() => {
     mockCreateResponse = null;
+    getSessionAffinityMap().dispose();
     vi.clearAllMocks();
   });
 
@@ -211,6 +213,44 @@ describe("proxy-handler integration", () => {
       input_tokens: 10,
       output_tokens: 20,
     });
+  });
+
+  it("records non-streaming response affinity metadata from collectTranslator", async () => {
+    mockCreateResponse = () =>
+      Promise.resolve(new Response("data: {}\n\n", {
+        headers: { "x-codex-turn-state": "turn-success" },
+      }));
+
+    const accountPool = createMockAccountPool();
+    const fmt = createMockFormatAdapter({
+      collectTranslator: vi.fn(async (options: FormatCollectTranslatorOptions) => {
+        options.onResponseMetadata?.({ functionCallIds: ["call_a", "call_b"] });
+        return {
+          response: { id: "resp_meta", choices: [] },
+          usage: { input_tokens: 33, output_tokens: 4 },
+          responseId: "resp_meta",
+        };
+      }),
+    });
+    const req: ProxyRequest = {
+      ...createDefaultRequest(),
+      codexRequest: {
+        ...createDefaultRequest().codexRequest,
+        prompt_cache_key: "thread-collect",
+      },
+    };
+    const { app } = buildTestApp({ accountPool, fmt, req });
+
+    const res = await app.request("/test", { method: "POST" });
+    expect(res.status).toBe(200);
+
+    const affinityMap = getSessionAffinityMap();
+    expect(affinityMap.lookup("resp_meta")).toBe("e1");
+    expect(affinityMap.lookupConversationId("resp_meta")).toBe("thread-collect");
+    expect(affinityMap.lookupTurnState("resp_meta")).toBe("turn-success");
+    expect(affinityMap.lookupInstructions("resp_meta")).toBe("You are helpful");
+    expect(affinityMap.lookupInputTokens("resp_meta")).toBe(33);
+    expect(affinityMap.lookupFunctionCallIds("resp_meta")).toEqual(["call_a", "call_b"]);
   });
 
   // 3. Streaming success
@@ -825,6 +865,60 @@ describe("proxy-handler integration", () => {
     expect(createCount).toBe(2);
     expect(seenPrevIds[0]).toBe("resp_0e2e6e7917486cfd0069eec8532d988194a3da6379c70abe68");
     expect(seenPrevIds[1]).toBeUndefined();
+  });
+
+  it("recovers when collectTranslator raises previous_response_not_found", async () => {
+    const notFoundBody = JSON.stringify({
+      error: {
+        type: "invalid_request_error",
+        code: "previous_response_not_found",
+        message: "Previous response with id 'resp_collect_stale' not found.",
+      },
+    });
+    const req: ProxyRequest = {
+      ...createDefaultRequest(),
+      codexRequest: {
+        ...createDefaultRequest().codexRequest,
+        previous_response_id: "resp_collect_stale",
+      },
+    };
+    let createCount = 0;
+    const seenPrevIds: Array<string | undefined> = [];
+    mockCreateResponse = () => {
+      createCount++;
+      seenPrevIds.push(req.codexRequest.previous_response_id);
+      return Promise.resolve(new Response("data: {}\n\n"));
+    };
+
+    let collectCount = 0;
+    const fmt = createMockFormatAdapter({
+      collectTranslator: vi.fn(async () => {
+        collectCount++;
+        if (collectCount === 1) {
+          throw new CodexApiError(400, notFoundBody);
+        }
+        return {
+          response: { id: "resp_after_collect_retry", choices: [] },
+          usage: { input_tokens: 7, output_tokens: 3 },
+          responseId: "resp_after_collect_retry",
+        };
+      }),
+    });
+    const accountPool = createMockAccountPool();
+    const { app } = buildTestApp({ accountPool, fmt, req });
+
+    const res = await app.request("/test", { method: "POST" });
+    expect(res.status).toBe(200);
+
+    expect(createCount).toBe(2);
+    expect(collectCount).toBe(2);
+    expect(seenPrevIds[0]).toBe("resp_collect_stale");
+    expect(seenPrevIds[1]).toBeUndefined();
+    expect(accountPool.release).toHaveBeenCalledTimes(1);
+    expect(accountPool.release).toHaveBeenCalledWith("e1", {
+      input_tokens: 7,
+      output_tokens: 3,
+    });
   });
 
   // 17b. previous_response_not_found loop guard — only retry once
