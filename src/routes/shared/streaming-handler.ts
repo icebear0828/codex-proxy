@@ -10,6 +10,7 @@ import type { FormatAdapter, ProxyRequest, UsageHint } from "./proxy-handler-typ
 import { annotateImageGenOutcome } from "./proxy-handler-utils.js";
 import { streamResponse } from "./response-processor.js";
 import { createResponseMetadataCollector } from "./response-metadata-collector.js";
+import { logProxyUsage } from "./proxy-usage-log.js";
 
 export interface HandleStreamingOptions {
   c: Context;
@@ -120,28 +121,14 @@ export function handleStreaming(options: HandleStreamingOptions): Response {
       abortController.abort();
       recordStreamAffinity();
       if (usageInfo) {
-        const uncached = usageInfo.cached_tokens
-          ? usageInfo.input_tokens - usageInfo.cached_tokens
-          : usageInfo.input_tokens;
-        const imgIn = usageInfo.image_input_tokens ?? 0;
-        const imgOut = usageInfo.image_output_tokens ?? 0;
-        const hitPct = usageInfo.input_tokens > 0
-          ? `${((usageInfo.cached_tokens ?? 0) / usageInfo.input_tokens * 100).toFixed(1)}%`
-          : "n/a";
-        console.log(
-          `[${fmt.tag}] Account ${capturedEntryId} | rid=${requestId.slice(0, 8)} | Usage: in=${usageInfo.input_tokens}` +
-          (usageInfo.cached_tokens ? ` (cached=${usageInfo.cached_tokens} uncached=${uncached})` : "") +
-          ` out=${usageInfo.output_tokens}` +
-          (usageInfo.reasoning_tokens ? ` reasoning=${usageInfo.reasoning_tokens}` : "") +
-          (imgIn || imgOut ? ` image=${imgIn}/${imgOut}` : "") +
-          ` | hit=${hitPct}`,
-        );
-        if (usageInfo.input_tokens > 10_000) {
-          console.warn(
-            `[${fmt.tag}] ⚠ High input token count: ${usageInfo.input_tokens} tokens` +
-            (usageInfo.reasoning_tokens ? ` (reasoning=${usageInfo.reasoning_tokens})` : ""),
-          );
-        }
+        logProxyUsage({
+          tag: fmt.tag,
+          entryId: capturedEntryId,
+          requestId,
+          usage: usageInfo,
+          includeImageTokens: true,
+          includeReasoningInHighInputWarning: true,
+        });
       }
       releaseAccount(accountPool, capturedEntryId, annotateImageGenOutcome(usageInfo, req.expectsImageGen), released);
     }

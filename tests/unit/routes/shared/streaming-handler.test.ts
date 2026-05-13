@@ -34,6 +34,7 @@ describe("handleStreaming", () => {
   const affinityMaps: SessionAffinityMap[] = [];
 
   afterEach(() => {
+    vi.restoreAllMocks();
     for (const affinityMap of affinityMaps) {
       affinityMap.dispose();
     }
@@ -42,15 +43,18 @@ describe("handleStreaming", () => {
 
   it("records response affinity, aborts upstream, and releases with annotated usage", async () => {
     const { pool, release } = createMockAccountPool();
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => undefined);
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => undefined);
     const affinityMap = new SessionAffinityMap();
     affinityMaps.push(affinityMap);
     const abortController = new AbortController();
     const fmt = createMockFormatAdapter({
       streamTranslator: vi.fn(async function* (options: FormatStreamTranslatorOptions) {
         options.onUsage({
-          input_tokens: 42,
+          input_tokens: 10_001,
           output_tokens: 7,
           cached_tokens: 10,
+          reasoning_tokens: 5,
           image_input_tokens: 3,
           image_output_tokens: 4,
         });
@@ -87,9 +91,10 @@ describe("handleStreaming", () => {
     expect(abortController.signal.aborted).toBe(true);
     expect(release).toHaveBeenCalledTimes(1);
     expect(release).toHaveBeenCalledWith("entry-stream", {
-      input_tokens: 42,
+      input_tokens: 10_001,
       output_tokens: 7,
       cached_tokens: 10,
+      reasoning_tokens: 5,
       image_input_tokens: 3,
       image_output_tokens: 4,
       image_request_attempted: true,
@@ -99,13 +104,19 @@ describe("handleStreaming", () => {
     expect(affinityMap.lookupConversationId("resp_stream")).toBe("conversation-stream");
     expect(affinityMap.lookupTurnState("resp_stream")).toBe("turn-stream");
     expect(affinityMap.lookupInstructions("resp_stream")).toBe("You are helpful");
-    expect(affinityMap.lookupInputTokens("resp_stream")).toBe(42);
+    expect(affinityMap.lookupInputTokens("resp_stream")).toBe(10_001);
     expect(affinityMap.lookupFunctionCallIds("resp_stream")).toEqual(["call_stream"]);
     expect(affinityMap.lookupLatestResponseIdByConversationId(
       "conversation-stream",
       undefined,
       "variant-stream",
     )).toBe("resp_stream");
+    expect(logSpy).toHaveBeenCalledWith(
+      "[Test] Account entry-stream | rid=request- | Usage: in=10001 (cached=10 uncached=9991) out=7 reasoning=5 image=3/4 | hit=0.1%",
+    );
+    expect(warnSpy).toHaveBeenCalledWith(
+      "[Test] ⚠ High input token count: 10001 tokens (reasoning=5)",
+    );
 
     const call = fmt.streamTranslator.mock.calls[0] ?? [];
     expect(call).toHaveLength(1);
