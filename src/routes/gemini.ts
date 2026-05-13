@@ -23,8 +23,8 @@ import { getConfig } from "../config.js";
 import { getModelCatalog } from "../models/model-store.js";
 import {
   handleProxyRequest,
-  handleDirectRequest,
 } from "./shared/proxy-handler.js";
+import { handleDirectRequest } from "./shared/direct-request-handler.js";
 import type { FormatAdapter, ProxyRequest } from "./shared/proxy-handler-types.js";
 import type { UpstreamRouter } from "../proxy/upstream-router.js";
 

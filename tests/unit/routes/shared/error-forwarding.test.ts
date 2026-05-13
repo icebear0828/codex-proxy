@@ -76,7 +76,8 @@ vi.mock("@src/translation/codex-event-extractor.js", () => {
   return { EmptyResponseError };
 });
 
-import { handleDirectRequest, handleProxyRequest } from "@src/routes/shared/proxy-handler.js";
+import { handleDirectRequest } from "@src/routes/shared/direct-request-handler.js";
+import { handleProxyRequest } from "@src/routes/shared/proxy-handler.js";
 // Both imported — handleDirectRequest for passthrough tests, handleProxyRequest for non-passthrough verification
 import { CodexApiError } from "@src/proxy/codex-api.js";
 

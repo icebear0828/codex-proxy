@@ -72,6 +72,8 @@ const mockHandleDirectRequest = vi.fn(async (options: HandleDirectRequestOptions
 const mockHandleProxyRequest = vi.fn(async (options: { c: Context }) => options.c.json({ proxied: true }));
 vi.mock("@src/routes/shared/proxy-handler.js", () => ({
   handleProxyRequest: (options: { c: Context }) => mockHandleProxyRequest(options),
+}));
+vi.mock("@src/routes/shared/direct-request-handler.js", () => ({
   handleDirectRequest: (options: HandleDirectRequestOptions) => mockHandleDirectRequest(options),
 }));
 

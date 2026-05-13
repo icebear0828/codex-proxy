@@ -26,9 +26,9 @@ import { parseModelName, resolveModelId, getModelInfo, buildDisplayModelName } f
 import { EmptyResponseError, type UsageInfo } from "../translation/codex-event-extractor.js";
 import {
   handleProxyRequest,
-  handleDirectRequest,
   staggerIfNeeded,
 } from "./shared/proxy-handler.js";
+import { handleDirectRequest } from "./shared/direct-request-handler.js";
 import type { FormatAdapter } from "./shared/proxy-handler-types.js";
 import type { UpstreamRouter } from "../proxy/upstream-router.js";
 import { acquireAccount, releaseAccount } from "./shared/account-acquisition.js";

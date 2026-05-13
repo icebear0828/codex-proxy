@@ -22,8 +22,8 @@ import { getRealClientIp } from "../utils/get-real-client-ip.js";
 import { randomUUID } from "crypto";
 import {
   handleProxyRequest,
-  handleDirectRequest,
 } from "./shared/proxy-handler.js";
+import { handleDirectRequest } from "./shared/direct-request-handler.js";
 import type { FormatAdapter } from "./shared/proxy-handler-types.js";
 import { extractAnthropicClientConversationId } from "./shared/anthropic-session-id.js";
 import type { UpstreamRouter } from "../proxy/upstream-router.js";
