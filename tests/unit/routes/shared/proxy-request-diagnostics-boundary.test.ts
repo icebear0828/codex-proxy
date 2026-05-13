@@ -2,7 +2,10 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import * as ts from "typescript";
 import { describe, expect, it } from "vitest";
-import { buildRequestDiagnostics } from "@src/routes/shared/proxy-request-diagnostics.js";
+import {
+  buildRequestDiagnostics,
+  logRequestDiagnostics,
+} from "@src/routes/shared/proxy-request-diagnostics.js";
 
 const ROOT = process.cwd();
 const DIAGNOSTICS_MODULE = "src/routes/shared/proxy-request-diagnostics.ts";
@@ -48,6 +51,7 @@ function importsNamedBinding(content: string, moduleSuffix: string, bindingName:
 describe("proxy request diagnostics boundary", () => {
   it("exports request diagnostic formatting from its own module", () => {
     expect(buildRequestDiagnostics).toBeTypeOf("function");
+    expect(logRequestDiagnostics).toBeTypeOf("function");
     const diagnostics = source(DIAGNOSTICS_MODULE);
 
     expect(diagnostics).toContain("payloadBytes");
@@ -57,8 +61,11 @@ describe("proxy request diagnostics boundary", () => {
   it("keeps request diagnostic formatting out of the proxy orchestrator", () => {
     const proxyHandler = source(PROXY_HANDLER_MODULE);
 
-    expect(importsNamedBinding(proxyHandler, "proxy-request-diagnostics.js", "buildRequestDiagnostics", PROXY_HANDLER_MODULE)).toBe(true);
+    expect(importsNamedBinding(proxyHandler, "proxy-request-diagnostics.js", "logRequestDiagnostics", PROXY_HANDLER_MODULE)).toBe(true);
+    expect(importsNamedBinding(proxyHandler, "proxy-request-diagnostics.js", "buildRequestDiagnostics", PROXY_HANDLER_MODULE)).toBe(false);
     expect(proxyHandler).not.toContain("JSON.stringify(req.codexRequest)");
+    expect(proxyHandler).not.toContain("diagnostics.summary");
+    expect(proxyHandler).not.toContain("largePayloadWarning");
     expect(proxyHandler).not.toContain("Large payload");
     expect(proxyHandler).not.toContain("itemSizes");
   });

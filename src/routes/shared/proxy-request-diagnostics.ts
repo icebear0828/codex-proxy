@@ -22,6 +22,11 @@ export interface RequestDiagnostics {
   largePayloadWarning?: string;
 }
 
+export interface LogRequestDiagnosticsOptions extends BuildRequestDiagnosticsOptions {
+  log?: (message: string) => void;
+  warn?: (message: string) => void;
+}
+
 function itemRole(item: unknown): unknown {
   if (typeof item !== "object" || item === null) {
     return undefined;
@@ -78,4 +83,14 @@ export function buildRequestDiagnostics(options: BuildRequestDiagnosticsOptions)
       `  instructions: ${instrLen}B\n` +
       itemSizes.join("\n"),
   };
+}
+
+export function logRequestDiagnostics(options: LogRequestDiagnosticsOptions): RequestDiagnostics {
+  const { log = console.log, warn = console.warn, ...diagnosticOptions } = options;
+  const diagnostics = buildRequestDiagnostics(diagnosticOptions);
+
+  log(diagnostics.summary);
+  if (diagnostics.largePayloadWarning) warn(diagnostics.largePayloadWarning);
+
+  return diagnostics;
 }
