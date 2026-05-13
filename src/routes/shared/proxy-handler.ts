@@ -9,6 +9,7 @@
  *   - proxy-fallback-retry-plan.ts — account fallback retry response planning
  *   - proxy-implicit-resume-request.ts — implicit-resume request apply/restore state
  *   - proxy-request-preparation.ts — request input/default forwarding fields
+ *   - proxy-session-context.ts — prompt cache / affinity / implicit-resume derived state
  *   - proxy-upstream-attempt.ts — one upstream request attempt + egress/rate-limit capture
  *   - proxy-debug-dump.ts     — opt-in request payload diagnostics
  *   - proxy-request-diagnostics.ts — request summary / large payload logs
@@ -32,7 +33,6 @@ import type {
 } from "./proxy-handler-types.js";
 import { getSessionAffinityMap } from "../../auth/session-affinity.js";
 import { randomUUID } from "crypto";
-import { computeVariantHash } from "./variant-hash.js";
 import {
   respondWithNoAccount,
   respondWithProxyError,
@@ -49,17 +49,12 @@ import {
 } from "./proxy-request-preparation.js";
 import { buildRequestDiagnostics } from "./proxy-request-diagnostics.js";
 import { buildProxyRetryRecoveryDecision } from "./proxy-retry-recovery.js";
+import { buildProxySessionContext } from "./proxy-session-context.js";
 import { staggerIfNeeded } from "./proxy-stagger.js";
 import { sendProxyUpstreamAttempt } from "./proxy-upstream-attempt.js";
 import { buildWsPoolContext } from "./proxy-ws-context.js";
 import {
-  buildVariantIdentity,
   evaluateImplicitResume,
-  getContinuationInputStartIndex,
-  getFunctionCallOutputIds,
-  IMPLICIT_RESUME_MAX_AGE_MS,
-  normalizeInstructions,
-  resolvePromptCacheIdentity,
   shouldReplayFullInputAfterImplicitResumeError,
 } from "./proxy-session-helpers.js";
 
@@ -71,65 +66,17 @@ export async function handleProxyRequest(options: HandleProxyRequestOptions): Pr
   const requestId = c.get("requestId") ?? randomUUID().slice(0, 8);
   ensureProxyRequestInputArray(req);
   const originalRequestState = captureImplicitResumeRequestState(req);
-  const currentInstructions = req.codexRequest.instructions;
-  const explicitPrevRespId = req.codexRequest.previous_response_id;
-  const promptCacheIdentity = resolvePromptCacheIdentity(req.codexRequest, req.clientConversationId);
-  const promptCacheKey = promptCacheIdentity.promptCacheKey;
-  const continuationInputStart = explicitPrevRespId ? 0 : getContinuationInputStartIndex(req.codexRequest.input);
-  const explicitConversationId = explicitPrevRespId ? affinityMap.lookupConversationId(explicitPrevRespId) : null;
-  // effectiveConversationId follows the same identity used by prompt_cache_key:
-  // explicit key > client session > content hash > random fallback.
-  const effectiveConversationId = promptCacheIdentity.conversationId;
-  const chainConversationId = explicitConversationId ?? effectiveConversationId;
-  // Variant fingerprint isolates concurrent shapes of the same conversation
-  // (sub-agents, parallel tool calls) onto independent pool slots + prev_id
-  // chains. See `variant-hash.ts`. Cheap (sha256 over bytes already in memory)
-  // so we always compute it, even on routes that won't use it.
-  const variantIdentity = buildVariantIdentity(req.codexRequest, promptCacheIdentity);
-  const variantHash = computeVariantHash(
-    req.codexRequest.instructions,
-    req.codexRequest.tools,
-    variantIdentity,
-  );
-  const implicitPrevRespId =
-    !explicitPrevRespId &&
-    continuationInputStart > 0 &&
-    effectiveConversationId
-      ? affinityMap.lookupLatestResponseIdByConversationId(
-          effectiveConversationId,
-          IMPLICIT_RESUME_MAX_AGE_MS,
-          variantHash,
-        )
-      : null;
-  const prevRespId = explicitPrevRespId ?? implicitPrevRespId;
-  const implicitStoredInstructions = implicitPrevRespId
-    ? affinityMap.lookupInstructions(implicitPrevRespId)
-    : null;
-  const implicitContinuationInput = req.codexRequest.input.slice(continuationInputStart);
-  const requiredFunctionCallOutputIds = implicitPrevRespId
-    ? getFunctionCallOutputIds(implicitContinuationInput)
-    : [];
-  const implicitStoredFunctionCallIds = implicitPrevRespId
-    ? affinityMap.lookupFunctionCallIds(implicitPrevRespId)
-    : [];
-  // Session affinity: prefer the account that created the previous response
-  const preferredEntryId =
-    explicitPrevRespId
-      ? affinityMap.lookup(explicitPrevRespId)
-      : implicitPrevRespId && normalizeInstructions(currentInstructions) === normalizeInstructions(implicitStoredInstructions)
-        ? affinityMap.lookup(implicitPrevRespId)
-        : null;
+  const sessionContext = buildProxySessionContext({ request: req, affinityMap });
 
   // Turn state: sticky routing token from upstream, echoed back on subsequent requests
-  const explicitTurnState = explicitPrevRespId ? affinityMap.lookupTurnState(explicitPrevRespId) : null;
   applyProxyRequestForwardingDefaults({
     request: req,
-    promptCacheKey,
-    explicitTurnState,
+    promptCacheKey: sessionContext.promptCacheKey,
+    explicitTurnState: sessionContext.explicitTurnState,
   });
 
   // Single acquire call — preferredEntryId is a hint, not a hard requirement
-  const acquired = acquireAccount(accountPool, req.codexRequest.model, undefined, fmt.tag, preferredEntryId ?? undefined);
+  const acquired = acquireAccount(accountPool, req.codexRequest.model, undefined, fmt.tag, sessionContext.preferredEntryId ?? undefined);
   if (!acquired) {
     return respondWithNoAccount({ c, req, fmt });
   }
@@ -145,15 +92,8 @@ export async function handleProxyRequest(options: HandleProxyRequestOptions): Pr
   const released = new Set<string>();
 
   const resumeEval = evaluateImplicitResume({
-    implicitPrevRespId,
-    continuationInputStart,
-    inputLength: req.codexRequest.input.length,
-    preferredEntryId,
+    ...sessionContext.resumeEvaluationInput,
     acquiredEntryId: entryId,
-    currentInstructions,
-    storedInstructions: implicitStoredInstructions,
-    requiredFunctionCallOutputIds,
-    storedFunctionCallIds: implicitStoredFunctionCallIds,
   });
   if (!resumeEval.active && resumeEval.missingCallIds && resumeEval.missingCallIds.length > 0) {
     console.warn(
@@ -170,8 +110,8 @@ export async function handleProxyRequest(options: HandleProxyRequestOptions): Pr
   if (resumeEval.active) {
     activeUsageHint = applyImplicitResumeRequest({
       request: req,
-      implicitPrevRespId: implicitPrevRespId!,
-      continuationInputStart,
+      implicitPrevRespId: sessionContext.implicitPrevRespId!,
+      continuationInputStart: sessionContext.continuationInputStart,
       affinityMap,
     });
     implicitResumeActive = true;
@@ -190,15 +130,15 @@ export async function handleProxyRequest(options: HandleProxyRequestOptions): Pr
       entryId,
       requestId,
       request: req,
-      chainConversationId,
-      promptCacheKey,
-      variantHash,
-      explicitPrevRespId,
-      implicitPrevRespId,
-      prevRespId,
+      chainConversationId: sessionContext.chainConversationId,
+      promptCacheKey: sessionContext.promptCacheKey,
+      variantHash: sessionContext.variantHash,
+      explicitPrevRespId: sessionContext.explicitPrevRespId,
+      implicitPrevRespId: sessionContext.implicitPrevRespId,
+      prevRespId: sessionContext.prevRespId,
       resumeActive: resumeEval.active,
       resumeReason: resumeEval.reason,
-      preferredEntryId,
+      preferredEntryId: sessionContext.preferredEntryId,
     });
     console.log(diagnostics.summary);
     if (diagnostics.largePayloadWarning) console.warn(diagnostics.largePayloadWarning);
@@ -212,9 +152,9 @@ export async function handleProxyRequest(options: HandleProxyRequestOptions): Pr
   const buildPoolCtx = (forEntryId: string = entryId) =>
     buildWsPoolContext({
       useWebSocket: req.codexRequest.useWebSocket,
-      conversationId: chainConversationId,
+      conversationId: sessionContext.chainConversationId,
       entryId: forEntryId,
-      variantHash,
+      variantHash: sessionContext.variantHash,
       requestId,
       tag: fmt.tag,
     });
@@ -230,7 +170,7 @@ export async function handleProxyRequest(options: HandleProxyRequestOptions): Pr
         buildPoolCtx,
         requestId,
         tag: fmt.tag,
-        conversationId: chainConversationId,
+        conversationId: sessionContext.chainConversationId,
         implicitResumeActive,
         resumeReason: resumeEval.active ? null : resumeEval.reason,
       });
@@ -249,10 +189,10 @@ export async function handleProxyRequest(options: HandleProxyRequestOptions): Pr
           released,
           requestId,
           affinityMap,
-          conversationId: chainConversationId,
+          conversationId: sessionContext.chainConversationId,
           turnState: upstreamTurnState,
           usageHint: activeUsageHint,
-          variantHash,
+          variantHash: sessionContext.variantHash,
         });
       }
 
@@ -271,7 +211,7 @@ export async function handleProxyRequest(options: HandleProxyRequestOptions): Pr
         released,
         requestId,
         affinityMap,
-        conversationId: chainConversationId,
+        conversationId: sessionContext.chainConversationId,
         turnState: upstreamTurnState,
         getUsageHint: () => activeUsageHint,
         restoreImplicitResumeRequest,
@@ -281,7 +221,7 @@ export async function handleProxyRequest(options: HandleProxyRequestOptions): Pr
           codexApi = nextApi;
           if (!triedEntryIds.includes(nextEntryId)) triedEntryIds.push(nextEntryId);
         },
-        variantHash,
+        variantHash: sessionContext.variantHash,
       });
     } catch (err) {
       if (!(err instanceof CodexApiError)) {

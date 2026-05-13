@@ -13,6 +13,8 @@ import type { CodexResponsesRequest } from "@src/proxy/codex-types.js";
 import type { ParsedRateLimit } from "@src/proxy/rate-limit-headers.js";
 import { createMockFormatAdapter } from "@helpers/format-adapter.js";
 import { getSessionAffinityMap } from "@src/auth/session-affinity.js";
+import { buildVariantIdentity, resolvePromptCacheIdentity } from "@src/routes/shared/proxy-session-helpers.js";
+import { computeVariantHash } from "@src/routes/shared/variant-hash.js";
 
 // ── Module-level control for CodexApi.createResponse ──────────────────
 
@@ -43,6 +45,21 @@ vi.mock("@src/proxy/codex-api.js", () => {
     }
   }
 
+  class PreviousResponseWebSocketError extends CodexApiError {
+    causeMessage: string;
+    constructor(causeMessage: string) {
+      super(0, JSON.stringify({
+        error: {
+          message:
+            "WebSocket failed while using previous_response_id; HTTP SSE fallback would drop server-side history: " +
+            causeMessage,
+        },
+      }));
+      this.name = "PreviousResponseWebSocketError";
+      this.causeMessage = causeMessage;
+    }
+  }
+
   const CodexApi = vi.fn().mockImplementation(() => ({
     createResponse: vi.fn((
       request: CodexResponsesRequest,
@@ -55,7 +72,7 @@ vi.mock("@src/proxy/codex-api.js", () => {
     }),
   }));
 
-  return { CodexApi, CodexApiError };
+  return { CodexApi, CodexApiError, PreviousResponseWebSocketError };
 });
 
 vi.mock("@src/config.js", () => ({
@@ -105,7 +122,7 @@ vi.mock("@src/translation/codex-event-extractor.js", () => {
 
 // Import after mocks are set up
 import { handleProxyRequest } from "@src/routes/shared/proxy-handler.js";
-import { CodexApiError } from "@src/proxy/codex-api.js";
+import { CodexApiError, PreviousResponseWebSocketError } from "@src/proxy/codex-api.js";
 import { EmptyResponseError, UpstreamPrematureCloseError } from "@src/translation/codex-event-extractor.js";
 
 // ── Helpers ───────────────────────────────────────────────────────────
@@ -936,6 +953,92 @@ describe("proxy-handler integration", () => {
     expect(createCount).toBe(2);
     expect(seenPrevIds[0]).toBe("resp_0e2e6e7917486cfd0069eec8532d988194a3da6379c70abe68");
     expect(seenPrevIds[1]).toBeUndefined();
+  });
+
+  it("replays full original input after implicit previous-response WebSocket failure", async () => {
+    const req: ProxyRequest = {
+      ...createDefaultRequest(),
+      codexRequest: {
+        ...createDefaultRequest().codexRequest,
+        prompt_cache_key: "thread-implicit-ws",
+        input: [
+          { role: "user", content: "first" },
+          { role: "assistant", content: "ok" },
+          { role: "user", content: "continue" },
+        ],
+        turnState: "turn-original",
+        useWebSocket: false,
+      },
+    };
+    const affinityMap = getSessionAffinityMap();
+    const promptCacheIdentity = resolvePromptCacheIdentity(req.codexRequest, req.clientConversationId);
+    const variantHash = computeVariantHash(
+      req.codexRequest.instructions,
+      req.codexRequest.tools,
+      buildVariantIdentity(req.codexRequest, promptCacheIdentity),
+    );
+    affinityMap.record(
+      "resp_implicit_ws",
+      "e1",
+      "thread-implicit-ws",
+      "turn-implicit",
+      "You are helpful",
+      undefined,
+      undefined,
+      variantHash,
+    );
+
+    const seenRequests: Array<{
+      input: CodexResponsesRequest["input"];
+      previousResponseId: string | undefined;
+      turnState: string | undefined;
+      useWebSocket: boolean | undefined;
+    }> = [];
+    let createCount = 0;
+    mockCreateResponse = (request) => {
+      createCount++;
+      seenRequests.push({
+        input: [...request.input],
+        previousResponseId: request.previous_response_id,
+        turnState: request.turnState,
+        useWebSocket: request.useWebSocket,
+      });
+      if (createCount === 1) {
+        return Promise.reject(new PreviousResponseWebSocketError("ws down"));
+      }
+      return Promise.resolve(new Response("data: {}\n\n"));
+    };
+
+    const accountPool = createMockAccountPool();
+    const fmt = createMockFormatAdapter();
+    const { app } = buildTestApp({ accountPool, fmt, req });
+
+    const res = await app.request("/test", { method: "POST" });
+    expect(res.status).toBe(200);
+
+    expect(seenRequests).toEqual([
+      {
+        input: [{ role: "user", content: "continue" }],
+        previousResponseId: "resp_implicit_ws",
+        turnState: "turn-implicit",
+        useWebSocket: true,
+      },
+      {
+        input: [
+          { role: "user", content: "first" },
+          { role: "assistant", content: "ok" },
+          { role: "user", content: "continue" },
+        ],
+        previousResponseId: undefined,
+        turnState: "turn-original",
+        useWebSocket: false,
+      },
+    ]);
+    expect(accountPool.acquire).toHaveBeenCalledTimes(1);
+    expect(accountPool.release).toHaveBeenCalledWith("e1", {
+      input_tokens: 10,
+      output_tokens: 20,
+    });
   });
 
   it("recovers when collectTranslator raises previous_response_not_found", async () => {
