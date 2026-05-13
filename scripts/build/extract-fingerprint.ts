@@ -4,7 +4,7 @@
  * installation (macOS .app or Windows extracted ASAR).
  *
  * Usage:
- *   npx tsx scripts/extract-fingerprint.ts --path "C:/path/to/Codex" [--asar-out ./asar-out]
+ *   npx tsx scripts/build/extract-fingerprint.ts --path "C:/path/to/Codex" [--asar-out ./asar-out]
  *
  * The path can point to:
  *   - A macOS .app bundle (Codex.app)
@@ -16,9 +16,11 @@ import { readFileSync, writeFileSync, existsSync, mkdirSync, readdirSync } from 
 import { resolve, join } from "path";
 import { createHash } from "crypto";
 import { execSync } from "child_process";
+import { createRequire } from "module";
 import yaml from "js-yaml";
 import type { ExtractedFingerprint } from "./types.js";
 
+const requireFromHere = createRequire(import.meta.url);
 const ROOT = resolve(import.meta.dirname, "..", "..");
 const OUTPUT_PATH = resolve(ROOT, "data/extracted-fingerprint.json");
 const PROMPTS_DIR = resolve(ROOT, "data/extracted-prompts");
@@ -35,6 +37,14 @@ interface ExtractionPatterns {
     end_pattern?: string;
     description: string;
   }>;
+}
+
+interface ElectronToChromiumModule {
+  versions: Record<string, string>;
+}
+
+interface JsBeautifyModule {
+  js(content: string, options: { indent_size: number }): string;
 }
 
 function sha256(content: string): string {
@@ -341,7 +351,7 @@ async function main() {
   // Parse --path argument
   const pathIdx = process.argv.indexOf("--path");
   if (pathIdx === -1 || !process.argv[pathIdx + 1]) {
-    console.error("Usage: npx tsx scripts/extract-fingerprint.ts --path <codex-path>");
+    console.error("Usage: npx tsx scripts/build/extract-fingerprint.ts --path <codex-path>");
     console.error("");
     console.error("  <codex-path> can be:");
     console.error("    - macOS: /path/to/Codex.app");
@@ -373,8 +383,8 @@ async function main() {
     const electronMajor = parseInt(electronVersion.replace(/^[^0-9]*/, ""), 10);
     if (!isNaN(electronMajor)) {
       try {
-        const { versions } = await import("electron-to-chromium");
-        const versionMap = versions as Record<string, string>;
+        const { versions } = requireFromHere("electron-to-chromium") as unknown as ElectronToChromiumModule;
+        const versionMap = versions;
         // versions keys use "major.minor" format (e.g. "40.0"), try both
         const chromium = versionMap[`${electronMajor}.0`] ?? versionMap[electronMajor.toString()];
         if (chromium) {
@@ -414,8 +424,8 @@ async function main() {
     if (lineCount < 100 && content.length > 100000) {
       console.log("[extract] main.js appears minified, attempting beautify...");
       try {
-        const jsBeautify = await import("js-beautify");
-        return jsBeautify.default.js(content, { indent_size: 2 });
+        const jsBeautify = requireFromHere("js-beautify") as unknown as JsBeautifyModule;
+        return jsBeautify.js(content, { indent_size: 2 });
       } catch {
         console.warn("[extract] js-beautify not available, using raw content");
         return content;
