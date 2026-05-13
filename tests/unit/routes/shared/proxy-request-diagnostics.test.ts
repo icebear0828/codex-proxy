@@ -1,5 +1,8 @@
-import { describe, expect, it } from "vitest";
-import { buildRequestDiagnostics } from "@src/routes/shared/proxy-request-diagnostics.js";
+import { describe, expect, it, vi } from "vitest";
+import {
+  buildRequestDiagnostics,
+  logRequestDiagnostics,
+} from "@src/routes/shared/proxy-request-diagnostics.js";
 import type { ProxyRequest } from "@src/routes/shared/proxy-handler-types.js";
 
 function createRequest(overrides: Partial<ProxyRequest["codexRequest"]> = {}): ProxyRequest {
@@ -117,5 +120,60 @@ describe("buildRequestDiagnostics", () => {
     expect(diagnostics.largePayloadWarning).toContain("  instructions: 6B");
     expect(diagnostics.largePayloadWarning).toContain("  [0] user ");
     expect(diagnostics.largePayloadWarning).toContain("  [1] message ");
+  });
+
+  it("logs the request summary and optional large-payload warning", () => {
+    const log = vi.fn();
+    const warn = vi.fn();
+    const largeContent = "x".repeat(50_100);
+
+    const diagnostics = logRequestDiagnostics({
+      tag: "Responses",
+      entryId: "entry-1",
+      requestId: "request-abcdef",
+      request: createRequest({
+        instructions: "System",
+        input: [{ role: "user", content: largeContent }],
+      }),
+      chainConversationId: "conversation-abcdef",
+      promptCacheKey: "prompt-cache-abcdef",
+      variantHash: "variant-hash",
+      explicitPrevRespId: undefined,
+      implicitPrevRespId: null,
+      prevRespId: undefined,
+      resumeActive: false,
+      preferredEntryId: null,
+      log,
+      warn,
+    });
+
+    expect(log).toHaveBeenCalledWith(diagnostics.summary);
+    expect(warn).toHaveBeenCalledWith(diagnostics.largePayloadWarning);
+  });
+
+  it("does not warn when the request payload is small", () => {
+    const log = vi.fn();
+    const warn = vi.fn();
+
+    const diagnostics = logRequestDiagnostics({
+      tag: "Responses",
+      entryId: "entry-1",
+      requestId: "request-abcdef",
+      request: createRequest(),
+      chainConversationId: "conversation-abcdef",
+      promptCacheKey: "prompt-cache-abcdef",
+      variantHash: "variant-hash",
+      explicitPrevRespId: undefined,
+      implicitPrevRespId: null,
+      prevRespId: undefined,
+      resumeActive: false,
+      preferredEntryId: null,
+      log,
+      warn,
+    });
+
+    expect(log).toHaveBeenCalledWith(diagnostics.summary);
+    expect(diagnostics.largePayloadWarning).toBeUndefined();
+    expect(warn).not.toHaveBeenCalled();
   });
 });

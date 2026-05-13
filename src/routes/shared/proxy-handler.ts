@@ -46,7 +46,7 @@ import {
   applyProxyRequestForwardingDefaults,
   ensureProxyRequestInputArray,
 } from "./proxy-request-preparation.js";
-import { buildRequestDiagnostics } from "./proxy-request-diagnostics.js";
+import { logRequestDiagnostics } from "./proxy-request-diagnostics.js";
 import {
   applyProxyRetryRecoveryDecision,
   buildProxyRetryRecoveryDecision,
@@ -100,25 +100,21 @@ export async function handleProxyRequest(options: HandleProxyRequestOptions): Pr
   implicitResume.logSkippedWarnings();
   implicitResume.activate();
 
-  {
-    const diagnostics = buildRequestDiagnostics({
-      tag: fmt.tag,
-      entryId,
-      requestId,
-      request: req,
-      chainConversationId: sessionContext.chainConversationId,
-      promptCacheKey: sessionContext.promptCacheKey,
-      variantHash: sessionContext.variantHash,
-      explicitPrevRespId: sessionContext.explicitPrevRespId,
-      implicitPrevRespId: sessionContext.implicitPrevRespId,
-      prevRespId: sessionContext.prevRespId,
-      resumeActive: implicitResume.evaluation.active,
-      resumeReason: implicitResume.evaluation.reason,
-      preferredEntryId: sessionContext.preferredEntryId,
-    });
-    console.log(diagnostics.summary);
-    if (diagnostics.largePayloadWarning) console.warn(diagnostics.largePayloadWarning);
-  }
+  logRequestDiagnostics({
+    tag: fmt.tag,
+    entryId,
+    requestId,
+    request: req,
+    chainConversationId: sessionContext.chainConversationId,
+    promptCacheKey: sessionContext.promptCacheKey,
+    variantHash: sessionContext.variantHash,
+    explicitPrevRespId: sessionContext.explicitPrevRespId,
+    implicitPrevRespId: sessionContext.implicitPrevRespId,
+    prevRespId: sessionContext.prevRespId,
+    resumeActive: implicitResume.evaluation.active,
+    resumeReason: implicitResume.evaluation.reason,
+    preferredEntryId: sessionContext.preferredEntryId,
+  });
 
   const abortController = new AbortController();
   c.req.raw.signal.addEventListener("abort", () => abortController.abort(), { once: true });
