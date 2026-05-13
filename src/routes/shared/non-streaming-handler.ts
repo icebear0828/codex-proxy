@@ -13,6 +13,7 @@ import type { FormatAdapter, ProxyRequest, UsageHint } from "./proxy-handler-typ
 import { annotateImageGenOutcome, stripCodexErrorPrefix } from "./proxy-handler-utils.js";
 import { retryNonStreamingEmptyResponse } from "./non-streaming-empty-response-retry.js";
 import { handleNonStreamingPrematureClose } from "./non-streaming-premature-close.js";
+import { logNonStreamingUsage } from "./non-streaming-usage-log.js";
 
 const MAX_EMPTY_RETRIES = 2;
 
@@ -94,21 +95,7 @@ export async function handleNonStreaming(options: HandleNonStreamingOptions): Pr
         );
       }
       if (result.usage) {
-        const u = result.usage;
-        const uncached = u.cached_tokens ? u.input_tokens - u.cached_tokens : u.input_tokens;
-        const hitPct = u.input_tokens > 0
-          ? `${((u.cached_tokens ?? 0) / u.input_tokens * 100).toFixed(1)}%`
-          : "n/a";
-        console.log(
-          `[${fmt.tag}] Account ${currentEntryId} | rid=${requestId.slice(0, 8)} | Usage: in=${u.input_tokens}` +
-          (u.cached_tokens ? ` (cached=${u.cached_tokens} uncached=${uncached})` : "") +
-          ` out=${u.output_tokens}` +
-          (u.reasoning_tokens ? ` reasoning=${u.reasoning_tokens}` : "") +
-          ` | hit=${hitPct}`,
-        );
-        if (u.input_tokens > 10_000) {
-          console.warn(`[${fmt.tag}] ⚠ High input token count: ${u.input_tokens} tokens`);
-        }
+        logNonStreamingUsage({ tag: fmt.tag, entryId: currentEntryId, requestId, usage: result.usage });
       }
       releaseAccount(accountPool, currentEntryId, annotateImageGenOutcome(result.usage, req.expectsImageGen), released);
       return c.json(result.response);
