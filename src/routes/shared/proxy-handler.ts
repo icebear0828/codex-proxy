@@ -5,6 +5,7 @@
  * Delegates to:
  *   - account-acquisition.ts  — acquire / release with idempotent guard
  *   - proxy-error-handler.ts  — CodexApiError classification + pool state mutations
+ *   - proxy-debug-dump.ts     — opt-in request payload diagnostics
  *   - proxy-request-diagnostics.ts — request summary / large payload logs
  *   - proxy-stagger.ts        — request interval staggering
  *   - proxy-ws-context.ts     — WebSocket pool context construction
@@ -14,13 +15,13 @@
 
 import { CodexApiError } from "../../proxy/codex-api.js";
 import { withRetry } from "../../utils/retry.js";
-import { debugDump, debugDumpEnabled } from "../../utils/debug-dump.js";
 import { acquireAccount, releaseAccount } from "./account-acquisition.js";
 import { handleCodexApiError } from "./proxy-error-handler.js";
 import { isPreviousResponseNotFoundError, isUnansweredFunctionCallError } from "../../proxy/error-classification.js";
 import { handleStreaming } from "./streaming-handler.js";
 import { handleNonStreaming } from "./non-streaming-handler.js";
 import { annotateImageGenOutcome, buildCodexApi, stripCodexErrorPrefix } from "./proxy-handler-utils.js";
+import { dumpProxyRequest } from "./proxy-debug-dump.js";
 import type {
   FormatAdapter,
   HandleProxyRequestOptions,
@@ -230,17 +231,15 @@ export async function handleProxyRequest(options: HandleProxyRequestOptions): Pr
       };
 
       const startMs = Date.now();
-      if (debugDumpEnabled()) {
-        debugDump("request", {
-          rid: requestId,
-          tag: fmt.tag,
-          entryId,
-          conv: chainConversationId ?? null,
-          implicitResumeActive,
-          resumeReason: resumeEval.active ? null : resumeEval.reason,
-          payload: req.codexRequest,
-        });
-      }
+      dumpProxyRequest({
+        requestId,
+        tag: fmt.tag,
+        entryId,
+        conversationId: chainConversationId,
+        implicitResumeActive,
+        resumeReason: resumeEval.active ? null : resumeEval.reason,
+        payload: req.codexRequest,
+      });
       const rawResponse = await withRetry(
         () => codexApi.createResponse(req.codexRequest, abortController.signal, applyRateLimits, buildPoolCtx()),
         { tag: fmt.tag },
