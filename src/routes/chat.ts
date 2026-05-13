@@ -19,8 +19,8 @@ import { getRealClientIp } from "../utils/get-real-client-ip.js";
 import { randomUUID } from "crypto";
 import {
   handleProxyRequest,
-  handleDirectRequest,
 } from "./shared/proxy-handler.js";
+import { handleDirectRequest } from "./shared/direct-request-handler.js";
 import type { FormatAdapter, ProxyRequest } from "./shared/proxy-handler-types.js";
 import type { UpstreamRouter } from "../proxy/upstream-router.js";
 import { summarizeRequestForLog } from "../logs/request-summary.js";

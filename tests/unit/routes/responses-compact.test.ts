@@ -78,12 +78,14 @@ vi.mock("@src/utils/retry.js", () => ({
   withRetry: vi.fn(async (fn: () => Promise<unknown>) => fn()),
 }));
 
-// Mock shared proxy handler
+// Mock shared proxy/direct handlers
 const mockHandleDirectRequest = vi.fn(async (options: HandleDirectRequestOptions) => options.c.json({ ok: true }));
 vi.mock("@src/routes/shared/proxy-handler.js", () => ({
   handleProxyRequest: vi.fn(async (options: { c: Context }) => options.c.json({ ok: true })),
-  handleDirectRequest: (options: HandleDirectRequestOptions) => mockHandleDirectRequest(options),
   staggerIfNeeded: vi.fn(async () => {}),
+}));
+vi.mock("@src/routes/shared/direct-request-handler.js", () => ({
+  handleDirectRequest: (options: HandleDirectRequestOptions) => mockHandleDirectRequest(options),
 }));
 
 // Capture compact requests by mocking CodexApi
