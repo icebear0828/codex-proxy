@@ -5,6 +5,7 @@ import { describe, expect, it } from "vitest";
 type JsonRecord = Record<string, unknown>;
 
 const ROOT = resolve(__dirname, "..", "..", "..");
+const LOCKFILE_PATHS = ["package-lock.json", "web/package-lock.json", "native/package-lock.json"] as const;
 
 function isRecord(value: unknown): value is JsonRecord {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -40,6 +41,26 @@ function requireString(parent: JsonRecord, key: string): string {
     throw new Error(`${key} must be a string`);
   }
   return value;
+}
+
+function collectNonNpmRegistrySources(lockfilePath: string): string[] {
+  const lockfile = readJsonRecord(resolve(ROOT, lockfilePath));
+  const packages = requireRecord(lockfile, "packages");
+  const disallowedSources: string[] = [];
+
+  for (const [packagePath, packageInfo] of Object.entries(packages)) {
+    if (!isRecord(packageInfo)) continue;
+    const resolved = packageInfo.resolved;
+    if (typeof resolved !== "string") continue;
+    if (!resolved.startsWith("http://") && !resolved.startsWith("https://")) continue;
+
+    const host = new URL(resolved).host;
+    if (host !== "registry.npmjs.org") {
+      disallowedSources.push(`${lockfilePath}:${packagePath}:${host}`);
+    }
+  }
+
+  return disallowedSources;
 }
 
 describe("root package boundary", () => {
@@ -144,6 +165,13 @@ describe("root package boundary", () => {
       "scripts/build/**/*.d.ts",
       "scripts/build/**/*.ts",
     ]);
+  });
+
+  it("keeps lockfile tarball sources on the official npm registry", () => {
+    const disallowedSources = LOCKFILE_PATHS.flatMap((lockfilePath) =>
+      collectNonNpmRegistrySources(lockfilePath),
+    );
+    expect(disallowedSources).toEqual([]);
   });
 
   it("rejects accidental Codex Desktop Electron package scripts at the proxy root", () => {
