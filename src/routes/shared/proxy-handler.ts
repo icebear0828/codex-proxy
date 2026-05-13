@@ -5,6 +5,7 @@
  * Delegates to:
  *   - account-acquisition.ts  — acquire / release with idempotent guard
  *   - proxy-error-handler.ts  — CodexApiError classification + pool state mutations
+ *   - proxy-stagger.ts        — request interval staggering
  *   - streaming-handler.ts    — streaming (SSE) response lifecycle
  *   - non-streaming-handler.ts — collect / retry response lifecycle
  */
@@ -24,8 +25,6 @@ import type {
   ProxyRequest,
   UsageHint,
 } from "./proxy-handler-types.js";
-import { getConfig } from "../../config.js";
-import { jitterInt } from "../../utils/jitter.js";
 import { getSessionAffinityMap } from "../../auth/session-affinity.js";
 import { enqueueLogEntry } from "../../logs/entry.js";
 import { randomUUID } from "crypto";
@@ -38,6 +37,7 @@ import {
   respondWithProxyError,
 } from "./proxy-error-response.js";
 import { applyParsedRateLimits, applyRateLimitHeaders, type ApplyParsedRateLimitsOptions } from "./proxy-rate-limit.js";
+import { staggerIfNeeded } from "./proxy-stagger.js";
 import {
   buildVariantIdentity,
   evaluateImplicitResume,
@@ -48,16 +48,6 @@ import {
   resolvePromptCacheIdentity,
   shouldReplayFullInputAfterImplicitResumeError,
 } from "./proxy-session-helpers.js";
-
-/** Sleep if this account had a recent request, to stagger upstream traffic. */
-export async function staggerIfNeeded(prevSlotMs: number | null): Promise<void> {
-  const intervalMs = getConfig().auth.request_interval_ms;
-  if (!intervalMs || prevSlotMs == null) return;
-  const elapsed = Date.now() - prevSlotMs;
-  const target = jitterInt(intervalMs, 0.3);
-  const wait = target - elapsed;
-  if (wait > 0) await new Promise((r) => setTimeout(r, wait));
-}
 
 export async function handleProxyRequest(options: HandleProxyRequestOptions): Promise<Response> {
   const { c, accountPool, cookieJar, req, fmt, proxyPool } = options;
