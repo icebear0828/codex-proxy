@@ -9,6 +9,7 @@ import { releaseAccount } from "./account-acquisition.js";
 import type { FormatAdapter, ProxyRequest, UsageHint } from "./proxy-handler-types.js";
 import { annotateImageGenOutcome } from "./proxy-handler-utils.js";
 import { streamResponse } from "./response-processor.js";
+import { createResponseMetadataCollector } from "./response-metadata-collector.js";
 
 export interface HandleStreamingOptions {
   c: Context;
@@ -55,7 +56,7 @@ export function handleStreaming(options: HandleStreamingOptions): Response {
   const capturedApi = api;
   let usageInfo: UsageInfo | undefined;
   let capturedResponseId: string | null = null;
-  const responseFunctionCallIds = new Set<string>();
+  const metadataCollector = createResponseMetadataCollector();
 
   return stream(c, async (s) => {
     s.onAbort(() => {
@@ -80,7 +81,7 @@ export function handleStreaming(options: HandleStreamingOptions): Response {
         turnState,
         req.codexRequest.instructions ?? undefined,
         usageInfo?.input_tokens,
-        Array.from(responseFunctionCallIds),
+        Array.from(metadataCollector.responseFunctionCallIds),
         variantHash,
       );
     };
@@ -102,9 +103,7 @@ export function handleStreaming(options: HandleStreamingOptions): Response {
         },
         usageHint,
         onResponseMetadata: (metadata) => {
-          for (const callId of metadata.functionCallIds ?? []) {
-            responseFunctionCallIds.add(callId);
-          }
+          metadataCollector.onResponseMetadata(metadata);
           recordStreamAffinity();
         },
         diagnostics: {

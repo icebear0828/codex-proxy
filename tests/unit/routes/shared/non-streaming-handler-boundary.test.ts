@@ -9,6 +9,7 @@ import { handleNonStreamingEmptyResponseExhausted } from "@src/routes/shared/non
 import { handleNonStreamingCollectFailure } from "@src/routes/shared/non-streaming-collect-failure.js";
 import { rethrowNonStreamingCodexApiErrorDuringCollect } from "@src/routes/shared/non-streaming-codex-api-error.js";
 import { releaseNonStreamingSuccessAccount } from "@src/routes/shared/non-streaming-success-release.js";
+import { createResponseMetadataCollector } from "@src/routes/shared/response-metadata-collector.js";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import * as ts from "typescript";
@@ -24,6 +25,7 @@ const EMPTY_RESPONSE_EXHAUSTED_MODULE = "src/routes/shared/non-streaming-empty-r
 const COLLECT_FAILURE_MODULE = "src/routes/shared/non-streaming-collect-failure.ts";
 const CODEX_API_ERROR_MODULE = "src/routes/shared/non-streaming-codex-api-error.ts";
 const SUCCESS_RELEASE_MODULE = "src/routes/shared/non-streaming-success-release.ts";
+const RESPONSE_METADATA_COLLECTOR_MODULE = "src/routes/shared/response-metadata-collector.ts";
 
 function source(path: string): string {
   return readFileSync(resolve(ROOT, path), "utf-8");
@@ -98,6 +100,10 @@ describe("non-streaming handler module boundary", () => {
 
   it("exports the success release helper from its own module", () => {
     expect(releaseNonStreamingSuccessAccount).toBeTypeOf("function");
+  });
+
+  it("exports the response metadata collector helper from its own module", () => {
+    expect(createResponseMetadataCollector).toBeTypeOf("function");
   });
 
   it("keeps empty-response retry reacquire and upstream send details out of the collect handler", () => {
@@ -457,5 +463,40 @@ describe("non-streaming handler module boundary", () => {
     expect(helper).not.toContain("c.status");
     expect(helper).not.toContain("recordNonStreamingSuccessAffinity");
     expect(helper).not.toContain("logNonStreamingUsage");
+  });
+
+  it("keeps response metadata collection details out of the non-streaming collect handler", () => {
+    const handler = source(NON_STREAMING_HANDLER_MODULE);
+
+    expect(importsNamedBinding(
+      handler,
+      "response-metadata-collector.js",
+      "createResponseMetadataCollector",
+      NON_STREAMING_HANDLER_MODULE,
+    )).toBe(true);
+    expect(handler).not.toContain("new Set<string>()");
+    expect(handler).not.toContain("metadata.functionCallIds");
+  });
+
+  it("does not let the response metadata collector helper own response handling or account lifecycle", () => {
+    const helper = source(RESPONSE_METADATA_COLLECTOR_MODULE);
+
+    for (const disallowedSpecifier of [
+      "hono",
+      "./account-acquisition.js",
+      "./proxy-error-response.js",
+      "./streaming-handler.js",
+      "./non-streaming-handler.js",
+      "./response-processor.js",
+      "./non-streaming-affinity.js",
+      "./non-streaming-usage-log.js",
+      "../../logs/entry.js",
+    ]) {
+      expect(importedModuleSpecifiers(helper, RESPONSE_METADATA_COLLECTOR_MODULE)).not.toContain(disallowedSpecifier);
+    }
+    expect(helper).not.toContain("collectTranslator");
+    expect(helper).not.toContain("streamResponse");
+    expect(helper).not.toContain("releaseAccount");
+    expect(helper).not.toContain("c.json");
   });
 });

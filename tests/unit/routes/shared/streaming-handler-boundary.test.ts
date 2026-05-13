@@ -3,6 +3,7 @@ import { resolve } from "node:path";
 import * as ts from "typescript";
 import { describe, expect, it } from "vitest";
 import { handleStreaming } from "@src/routes/shared/streaming-handler.js";
+import { createResponseMetadataCollector } from "@src/routes/shared/response-metadata-collector.js";
 
 const ROOT = process.cwd();
 const STREAMING_HANDLER_MODULE = "src/routes/shared/streaming-handler.ts";
@@ -91,10 +92,19 @@ function exportedNames(content: string, path = "inline.ts"): string[] {
 describe("streaming handler module boundary", () => {
   it("exports the streaming response handler from its own module", () => {
     expect(handleStreaming).toBeTypeOf("function");
+    expect(createResponseMetadataCollector).toBeTypeOf("function");
     const streamingHandler = source(STREAMING_HANDLER_MODULE);
     expect(exportedNames(streamingHandler, STREAMING_HANDLER_MODULE)).toContain("handleStreaming");
     expect(importsNamedBinding(streamingHandler, "response-processor.js", "streamResponse", STREAMING_HANDLER_MODULE)).toBe(true);
     expect(importsNamedBinding(streamingHandler, "stream-close-event.js", "recordStreamCloseEvent", STREAMING_HANDLER_MODULE)).toBe(true);
+    expect(importsNamedBinding(
+      streamingHandler,
+      "response-metadata-collector.js",
+      "createResponseMetadataCollector",
+      STREAMING_HANDLER_MODULE,
+    )).toBe(true);
+    expect(streamingHandler).not.toContain("new Set<string>()");
+    expect(streamingHandler).not.toContain("metadata.functionCallIds");
   });
 
   it("keeps streaming response details out of the runtime proxy handler", () => {
