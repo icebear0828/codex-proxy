@@ -9,6 +9,7 @@ const EGRESS_LOG_MODULE = "src/routes/shared/proxy-egress-log.ts";
 const UPSTREAM_ATTEMPT_MODULE = "src/routes/shared/proxy-upstream-attempt.ts";
 const PROXY_HANDLER_MODULE = "src/routes/shared/proxy-handler.ts";
 const NON_STREAMING_HANDLER_MODULE = "src/routes/shared/non-streaming-handler.ts";
+const NON_STREAMING_EMPTY_RESPONSE_RETRY_MODULE = "src/routes/shared/non-streaming-empty-response-retry.ts";
 
 function source(path: string): string {
   return readFileSync(resolve(ROOT, path), "utf-8");
@@ -68,14 +69,29 @@ describe("proxy egress log boundary", () => {
 
   it("keeps log-store enqueue wiring out of non-streaming retry handling", () => {
     const nonStreamingHandler = source(NON_STREAMING_HANDLER_MODULE);
+    const emptyResponseRetry = source(NON_STREAMING_EMPTY_RESPONSE_RETRY_MODULE);
 
+    expect(importsNamedBinding(
+      nonStreamingHandler,
+      "non-streaming-empty-response-retry.js",
+      "retryNonStreamingEmptyResponse",
+      NON_STREAMING_HANDLER_MODULE,
+    )).toBe(true);
     expect(importsNamedBinding(
       nonStreamingHandler,
       "proxy-egress-log.js",
       "recordProxyEgressLog",
       NON_STREAMING_HANDLER_MODULE,
+    )).toBe(false);
+    expect(importsNamedBinding(
+      emptyResponseRetry,
+      "proxy-egress-log.js",
+      "recordProxyEgressLog",
+      NON_STREAMING_EMPTY_RESPONSE_RETRY_MODULE,
     )).toBe(true);
     expect(importsNamedBinding(nonStreamingHandler, "entry.js", "enqueueLogEntry", NON_STREAMING_HANDLER_MODULE)).toBe(false);
+    expect(importsNamedBinding(emptyResponseRetry, "entry.js", "enqueueLogEntry", NON_STREAMING_EMPTY_RESPONSE_RETRY_MODULE)).toBe(false);
     expect(nonStreamingHandler).not.toContain('path: "/codex/responses"');
+    expect(emptyResponseRetry).not.toContain('path: "/codex/responses"');
   });
 });

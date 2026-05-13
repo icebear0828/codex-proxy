@@ -1,18 +1,18 @@
 import type { Context } from "hono";
+import type { StatusCode } from "hono/utils/http-status";
 import { CodexApiError } from "../../proxy/codex-api.js";
 import type { CodexApi, WsPoolContext } from "../../proxy/codex-api.js";
 import type { AccountPool } from "../../auth/account-pool.js";
 import type { CookieJar } from "../../proxy/cookie-jar.js";
 import type { ProxyPool } from "../../proxy/proxy-pool.js";
 import { EmptyResponseError, UpstreamPrematureCloseError } from "../../translation/codex-event-extractor.js";
-import { withRetry } from "../../utils/retry.js";
-import { acquireAccount, releaseAccount } from "./account-acquisition.js";
+import { releaseAccount } from "./account-acquisition.js";
 import { toErrorStatus } from "./proxy-error-handler.js";
 import { recordStreamCloseEvent } from "../../logs/stream-close-event.js";
 import type { SessionAffinityMap } from "../../auth/session-affinity.js";
 import type { FormatAdapter, ProxyRequest, UsageHint } from "./proxy-handler-types.js";
-import { annotateImageGenOutcome, buildCodexApi, stripCodexErrorPrefix } from "./proxy-handler-utils.js";
-import { recordProxyEgressLog } from "./proxy-egress-log.js";
+import { annotateImageGenOutcome, stripCodexErrorPrefix } from "./proxy-handler-utils.js";
+import { retryNonStreamingEmptyResponse } from "./non-streaming-empty-response-retry.js";
 
 const MAX_EMPTY_RETRIES = 2;
 
@@ -140,52 +140,30 @@ export async function handleNonStreaming(options: HandleNonStreamingOptions): Pr
       }
 
       if (collectErr instanceof EmptyResponseError && attempt <= MAX_EMPTY_RETRIES) {
-        const email = accountPool.getEntry(currentEntryId)?.email ?? "?";
-        console.warn(
-          `[${fmt.tag}] Account ${currentEntryId} (${email}) | Empty response (attempt ${attempt}/${MAX_EMPTY_RETRIES + 1}), switching account...`,
-        );
-        accountPool.recordEmptyResponse(currentEntryId);
-        releaseAccount(accountPool, currentEntryId, annotateImageGenOutcome(collectErr.usage, req.expectsImageGen), released);
-        restoreImplicitResumeRequest?.();
-
-        const newAcquired = acquireAccount(accountPool, req.codexRequest.model, undefined, fmt.tag);
-        if (!newAcquired) {
-          c.status(502);
-          return c.json(fmt.formatError(502, "Codex returned an empty response and no other accounts are available for retry"));
+        const retry = await retryNonStreamingEmptyResponse({
+          accountPool,
+          currentEntryId,
+          collectErr,
+          req,
+          tag: fmt.tag,
+          attempt,
+          maxRetries: MAX_EMPTY_RETRIES,
+          cookieJar,
+          proxyPool,
+          abortSignal: abortController.signal,
+          released,
+          requestId,
+          restoreImplicitResumeRequest,
+          buildPoolCtx,
+          setActiveAccount,
+        });
+        if (retry.action === "respond") {
+          c.status(retry.status as StatusCode);
+          return c.json(fmt.formatError(retry.status, retry.message));
         }
-
-        currentEntryId = newAcquired.entryId;
-        currentApi = buildCodexApi(newAcquired.token, newAcquired.accountId, cookieJar, newAcquired.entryId, proxyPool);
-        setActiveAccount?.(currentEntryId, currentApi);
-        const retryStartMs = Date.now();
-        try {
-          currentRawResponse = await withRetry(
-            () => currentApi.createResponse(req.codexRequest, abortController.signal, undefined, buildPoolCtx?.(currentEntryId)),
-            { tag: fmt.tag },
-          );
-          recordProxyEgressLog({
-            requestId,
-            request: req,
-            status: currentRawResponse.status,
-            startMs: retryStartMs,
-          });
-        } catch (retryErr) {
-          releaseAccount(accountPool, currentEntryId, annotateImageGenOutcome(undefined, req.expectsImageGen), released);
-          const msg = retryErr instanceof Error ? retryErr.message : "Upstream request failed";
-          recordProxyEgressLog({
-            requestId,
-            request: req,
-            status: retryErr instanceof CodexApiError ? retryErr.status : null,
-            error: msg,
-            startMs: retryStartMs,
-          });
-          if (retryErr instanceof CodexApiError) {
-            const code = toErrorStatus(retryErr.status);
-            c.status(code);
-            return c.json(fmt.formatError(code, retryErr.message));
-          }
-          throw retryErr;
-        }
+        currentEntryId = retry.entryId;
+        currentApi = retry.api;
+        currentRawResponse = retry.rawResponse;
         continue;
       }
 
