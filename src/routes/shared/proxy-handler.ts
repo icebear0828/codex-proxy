@@ -24,7 +24,6 @@ import type {
   ProxyRequest,
   UsageHint,
 } from "./proxy-handler-types.js";
-import { parseRateLimitHeaders, rateLimitToQuota, type ParsedRateLimit } from "../../proxy/rate-limit-headers.js";
 import { getConfig } from "../../config.js";
 import { jitterInt } from "../../utils/jitter.js";
 import { getSessionAffinityMap } from "../../auth/session-affinity.js";
@@ -38,6 +37,7 @@ import {
   respondWithNoAccount,
   respondWithProxyError,
 } from "./proxy-error-response.js";
+import { applyParsedRateLimits, applyRateLimitHeaders, type ApplyParsedRateLimitsOptions } from "./proxy-rate-limit.js";
 import {
   buildVariantIdentity,
   evaluateImplicitResume,
@@ -271,24 +271,8 @@ export async function handleProxyRequest(options: HandleProxyRequestOptions): Pr
 
   for (;;) {
     try {
-      // Apply parsed rate-limit data to the account pool (shared by header + WS event paths)
-      const applyRateLimits = (rl: ParsedRateLimit): void => {
-        const entry = accountPool.getEntry(entryId);
-        const quota = rateLimitToQuota(rl, entry?.planType ?? null);
-        accountPool.updateCachedQuota(entryId, quota);
-        if (rl.primary?.reset_at != null) {
-          const windowSec = rl.primary.window_minutes != null ? rl.primary.window_minutes * 60 : null;
-          accountPool.syncRateLimitWindow(entryId, rl.primary.reset_at, windowSec);
-        }
-        // Proactively mark exhausted accounts so they don't get re-selected.
-        // updateCachedQuota above already records the truth; this call only
-        // exists for its side effects (lifecycle.clearLock + WS pool eviction).
-        if (quota.rate_limit.limit_reached && rl.primary?.reset_at != null) {
-          const backoffSec = rl.primary.reset_at - Math.floor(Date.now() / 1000);
-          if (backoffSec > 0) {
-            accountPool.applyRateLimit429(entryId, { resetsAtSec: rl.primary.reset_at });
-          }
-        }
+      const applyRateLimits = (rateLimits: ApplyParsedRateLimitsOptions["rateLimits"]): void => {
+        applyParsedRateLimits({ accountPool, entryId, rateLimits });
       };
 
       const startMs = Date.now();
@@ -329,8 +313,7 @@ export async function handleProxyRequest(options: HandleProxyRequestOptions): Pr
       const upstreamTurnState = rawResponse.headers.get("x-codex-turn-state") ?? undefined;
 
       // Extract rate-limit quota from upstream response headers (passive collection — HTTP path)
-      const rl = parseRateLimitHeaders(rawResponse.headers);
-      if (rl) applyRateLimits(rl);
+      applyRateLimitHeaders({ accountPool, entryId, headers: rawResponse.headers });
 
       // ── Streaming path ──
       if (req.isStreaming) {
