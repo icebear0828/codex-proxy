@@ -9,13 +9,14 @@ import { EmptyResponseError, UpstreamPrematureCloseError } from "../../translati
 import { releaseAccount } from "./account-acquisition.js";
 import type { SessionAffinityMap } from "../../auth/session-affinity.js";
 import type { FormatAdapter, ProxyRequest, UsageHint } from "./proxy-handler-types.js";
-import { annotateImageGenOutcome, stripCodexErrorPrefix } from "./proxy-handler-utils.js";
+import { annotateImageGenOutcome } from "./proxy-handler-utils.js";
 import { retryNonStreamingEmptyResponse } from "./non-streaming-empty-response-retry.js";
 import { handleNonStreamingPrematureClose } from "./non-streaming-premature-close.js";
 import { logNonStreamingUsage } from "./non-streaming-usage-log.js";
 import { recordNonStreamingSuccessAffinity } from "./non-streaming-affinity.js";
 import { handleNonStreamingEmptyResponseExhausted } from "./non-streaming-empty-response-exhausted.js";
 import { handleNonStreamingCollectFailure } from "./non-streaming-collect-failure.js";
+import { rethrowNonStreamingCodexApiErrorDuringCollect } from "./non-streaming-codex-api-error.js";
 
 const MAX_EMPTY_RETRIES = 2;
 
@@ -157,10 +158,11 @@ export async function handleNonStreaming(options: HandleNonStreamingOptions): Pr
       // responsible for the release on the final respond/retry decision (the
       // released Set guards against double-release on terminal paths).
       if (collectErr instanceof CodexApiError) {
-        console.warn(
-          `[${fmt.tag}] Account ${currentEntryId} | upstream ${collectErr.status} during collect: ${stripCodexErrorPrefix(collectErr.message).slice(0, 200)}`,
-        );
-        throw collectErr;
+        rethrowNonStreamingCodexApiErrorDuringCollect({
+          err: collectErr,
+          tag: fmt.tag,
+          entryId: currentEntryId,
+        });
       }
       if (collectErr instanceof EmptyResponseError) {
         const responsePlan = handleNonStreamingEmptyResponseExhausted({

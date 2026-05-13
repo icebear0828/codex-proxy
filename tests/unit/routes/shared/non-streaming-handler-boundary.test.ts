@@ -7,6 +7,7 @@ import { recordNonStreamingSuccessAffinity } from "@src/routes/shared/non-stream
 import { planNonStreamingCollectErrorResponse } from "@src/routes/shared/non-streaming-collect-error-response.js";
 import { handleNonStreamingEmptyResponseExhausted } from "@src/routes/shared/non-streaming-empty-response-exhausted.js";
 import { handleNonStreamingCollectFailure } from "@src/routes/shared/non-streaming-collect-failure.js";
+import { rethrowNonStreamingCodexApiErrorDuringCollect } from "@src/routes/shared/non-streaming-codex-api-error.js";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import * as ts from "typescript";
@@ -20,6 +21,7 @@ const AFFINITY_MODULE = "src/routes/shared/non-streaming-affinity.ts";
 const COLLECT_ERROR_RESPONSE_MODULE = "src/routes/shared/non-streaming-collect-error-response.ts";
 const EMPTY_RESPONSE_EXHAUSTED_MODULE = "src/routes/shared/non-streaming-empty-response-exhausted.ts";
 const COLLECT_FAILURE_MODULE = "src/routes/shared/non-streaming-collect-failure.ts";
+const CODEX_API_ERROR_MODULE = "src/routes/shared/non-streaming-codex-api-error.ts";
 
 function source(path: string): string {
   return readFileSync(resolve(ROOT, path), "utf-8");
@@ -86,6 +88,10 @@ describe("non-streaming handler module boundary", () => {
 
   it("exports the collect failure helper from its own module", () => {
     expect(handleNonStreamingCollectFailure).toBeTypeOf("function");
+  });
+
+  it("exports the CodexApiError collect rethrow helper from its own module", () => {
+    expect(rethrowNonStreamingCodexApiErrorDuringCollect).toBeTypeOf("function");
   });
 
   it("keeps empty-response retry reacquire and upstream send details out of the collect handler", () => {
@@ -335,5 +341,53 @@ describe("non-streaming handler module boundary", () => {
     expect(helper).not.toContain("acquireAccount");
     expect(helper).not.toContain("HTTP/[\\\\d.]");
     expect(helper).not.toContain("Unknown error");
+  });
+
+  it("keeps CodexApiError collect log formatting out of the collect handler", () => {
+    const handler = source(NON_STREAMING_HANDLER_MODULE);
+
+    expect(importsNamedBinding(
+      handler,
+      "non-streaming-codex-api-error.js",
+      "rethrowNonStreamingCodexApiErrorDuringCollect",
+      NON_STREAMING_HANDLER_MODULE,
+    )).toBe(true);
+    expect(importsNamedBinding(
+      handler,
+      "proxy-handler-utils.js",
+      "stripCodexErrorPrefix",
+      NON_STREAMING_HANDLER_MODULE,
+    )).toBe(false);
+    expect(handler).not.toContain("during collect:");
+  });
+
+  it("does not let the CodexApiError collect helper own account lifecycle, retry handling, or HTTP rendering", () => {
+    const helper = source(CODEX_API_ERROR_MODULE);
+
+    expect(importsNamedBinding(
+      helper,
+      "proxy-handler-utils.js",
+      "stripCodexErrorPrefix",
+      CODEX_API_ERROR_MODULE,
+    )).toBe(true);
+    expect(importedModuleSpecifiers(helper, CODEX_API_ERROR_MODULE)).not.toEqual(expect.arrayContaining([
+      "hono",
+      "./account-acquisition.js",
+      "./proxy-error-response.js",
+      "./streaming-handler.js",
+      "./non-streaming-handler.js",
+      "./non-streaming-empty-response-retry.js",
+      "./non-streaming-premature-close.js",
+      "./non-streaming-empty-response-exhausted.js",
+      "./non-streaming-collect-failure.js",
+      "./non-streaming-collect-error-response.js",
+      "../../utils/retry.js",
+      "../../logs/entry.js",
+    ]));
+    expect(helper).not.toContain("releaseAccount");
+    expect(helper).not.toContain("formatError");
+    expect(helper).not.toContain("c.json");
+    expect(helper).not.toContain("c.status");
+    expect(helper).not.toContain("acquireAccount");
   });
 });
