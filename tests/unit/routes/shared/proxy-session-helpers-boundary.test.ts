@@ -7,6 +7,7 @@ import { describe, expect, it } from "vitest";
 const ROOT = process.cwd();
 const SESSION_HELPERS_MODULE = "src/routes/shared/proxy-session-helpers.ts";
 const PROXY_HANDLER_MODULE = "src/routes/shared/proxy-handler.ts";
+const IMPLICIT_RESUME_LIFECYCLE_MODULE = "src/routes/shared/proxy-implicit-resume-lifecycle.ts";
 const IMPLICIT_RESUME_TEST = "tests/unit/routes/shared/proxy-handler-implicit-resume.test.ts";
 const THIS_TEST = "tests/unit/routes/shared/proxy-session-helpers-boundary.test.ts";
 
@@ -252,9 +253,12 @@ describe("proxy session helper boundary", () => {
 
   it("keeps session helper declarations out of the runtime proxy handler", () => {
     const proxyHandler = source(PROXY_HANDLER_MODULE);
+    const lifecycle = source(IMPLICIT_RESUME_LIFECYCLE_MODULE);
+
     expect(declaredSessionHelperNames(proxyHandler, PROXY_HANDLER_MODULE)).toEqual([]);
     expect(sessionHelperReExportNames(proxyHandler, PROXY_HANDLER_MODULE)).toEqual([]);
-    expect(importedModuleSpecifiers(proxyHandler, PROXY_HANDLER_MODULE)).toContain("./proxy-session-helpers.js");
+    expect(importedModuleSpecifiers(proxyHandler, PROXY_HANDLER_MODULE)).not.toContain("./proxy-session-helpers.js");
+    expect(importedModuleSpecifiers(lifecycle, IMPLICIT_RESUME_LIFECYCLE_MODULE)).toContain("./proxy-session-helpers.js");
   });
 
   it("keeps helper unit tests importing the helper module directly", () => {

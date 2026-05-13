@@ -1,11 +1,13 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
+import * as implicitResumeLifecycle from "@src/routes/shared/proxy-implicit-resume-lifecycle.js";
 import * as implicitResumeRequest from "@src/routes/shared/proxy-implicit-resume-request.js";
 import * as ts from "typescript";
 import { describe, expect, it } from "vitest";
 
 const ROOT = process.cwd();
 const PROXY_HANDLER_MODULE = "src/routes/shared/proxy-handler.ts";
+const IMPLICIT_RESUME_LIFECYCLE_MODULE = "src/routes/shared/proxy-implicit-resume-lifecycle.ts";
 const IMPLICIT_RESUME_REQUEST_MODULE = "src/routes/shared/proxy-implicit-resume-request.ts";
 
 function source(path: string): string {
@@ -58,10 +60,12 @@ describe("proxy implicit resume request helper boundary", () => {
     expect(implicitResumeRequest.captureImplicitResumeRequestState).toBeTypeOf("function");
     expect(implicitResumeRequest.applyImplicitResumeRequest).toBeTypeOf("function");
     expect(implicitResumeRequest.restoreImplicitResumeRequestState).toBeTypeOf("function");
+    expect(implicitResumeLifecycle.createImplicitResumeLifecycle).toBeTypeOf("function");
   });
 
   it("keeps implicit-resume request mutation details out of the proxy orchestrator", () => {
     const proxyHandler = source(PROXY_HANDLER_MODULE);
+    const lifecycle = source(IMPLICIT_RESUME_LIFECYCLE_MODULE);
 
     expect(importsNamedBinding(
       proxyHandler,
@@ -71,15 +75,33 @@ describe("proxy implicit resume request helper boundary", () => {
     )).toBe(true);
     expect(importsNamedBinding(
       proxyHandler,
-      "proxy-implicit-resume-request.js",
-      "applyImplicitResumeRequest",
+      "proxy-implicit-resume-lifecycle.js",
+      "createImplicitResumeLifecycle",
       PROXY_HANDLER_MODULE,
     )).toBe(true);
     expect(importsNamedBinding(
       proxyHandler,
       "proxy-implicit-resume-request.js",
+      "applyImplicitResumeRequest",
+      PROXY_HANDLER_MODULE,
+    )).toBe(false);
+    expect(importsNamedBinding(
+      proxyHandler,
+      "proxy-implicit-resume-request.js",
       "restoreImplicitResumeRequestState",
       PROXY_HANDLER_MODULE,
+    )).toBe(false);
+    expect(importsNamedBinding(
+      lifecycle,
+      "proxy-implicit-resume-request.js",
+      "applyImplicitResumeRequest",
+      IMPLICIT_RESUME_LIFECYCLE_MODULE,
+    )).toBe(true);
+    expect(importsNamedBinding(
+      lifecycle,
+      "proxy-implicit-resume-request.js",
+      "restoreImplicitResumeRequestState",
+      IMPLICIT_RESUME_LIFECYCLE_MODULE,
     )).toBe(true);
     expect(proxyHandler).not.toContain("req.codexRequest.previous_response_id = implicitPrevRespId!");
     expect(proxyHandler).not.toContain("req.codexRequest.input = req.codexRequest.input.slice(continuationInputStart)");
@@ -92,6 +114,21 @@ describe("proxy implicit resume request helper boundary", () => {
       "./account-acquisition.js",
       "./proxy-handler-utils.js",
       "./proxy-stagger.js",
+      "./proxy-handler.js",
+      "hono",
+    ]));
+  });
+
+  it("keeps account fallback, retry recovery, and response handling out of the implicit-resume lifecycle", () => {
+    const lifecycle = source(IMPLICIT_RESUME_LIFECYCLE_MODULE);
+
+    expect(importedModuleSpecifiers(lifecycle, IMPLICIT_RESUME_LIFECYCLE_MODULE)).not.toEqual(expect.arrayContaining([
+      "./account-acquisition.js",
+      "./proxy-fallback-retry-plan.js",
+      "./proxy-retry-recovery.js",
+      "./streaming-handler.js",
+      "./non-streaming-handler.js",
+      "./proxy-ws-context.js",
       "./proxy-handler.js",
       "hono",
     ]));
