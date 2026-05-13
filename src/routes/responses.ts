@@ -481,9 +481,9 @@ const PASSTHROUGH_FORMAT: FormatAdapter = {
     },
   }),
   formatStreamError: (status, msg) => buildResponsesStreamError(status, msg),
-  streamTranslator: (api, response, model, onUsage, onResponseId, tupleSchema, _usageHint, _onResponseMetadata, streamContext) =>
+  streamTranslator: ({ api, response, model, onUsage, onResponseId, tupleSchema, streamContext }) =>
     streamPassthrough(api, response, model, onUsage, onResponseId, tupleSchema, streamContext),
-  collectTranslator: (api, response, model, tupleSchema) =>
+  collectTranslator: ({ api, response, model, tupleSchema }) =>
     collectPassthrough(api, response, model, tupleSchema),
 };
 

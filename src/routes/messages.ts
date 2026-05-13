@@ -24,10 +24,7 @@ import {
   handleProxyRequest,
   handleDirectRequest,
   type FormatAdapter,
-  type ResponseMetadata,
-  type UsageHint,
 } from "./shared/proxy-handler.js";
-import type { StreamCloseContextBase } from "../logs/stream-close-event.js";
 import { extractAnthropicClientConversationId } from "./shared/anthropic-session-id.js";
 import type { UpstreamRouter } from "../proxy/upstream-router.js";
 import { summarizeRequestForLog } from "../logs/request-summary.js";
@@ -50,30 +47,23 @@ function makeAnthropicFormat(wantThinking: boolean): FormatAdapter {
       ),
     format429: (msg) => makeError("rate_limit_error", msg),
     formatError: (_status, msg) => makeError("api_error", msg),
-    // streamContext (9th param) is forwarded by response-processor for
-    // adapter-internal premature-close logging. Anthropic doesn't currently
-    // surface its own premature-close events (caught by response-processor's
-    // outer try/catch), so we accept and ignore it.
-    streamTranslator: (
+    streamTranslator: ({
       api,
       response,
       model,
       onUsage,
       onResponseId,
-      _tupleSchema,
-      usageHint?: UsageHint,
-      onResponseMetadata?: (metadata: ResponseMetadata) => void,
-      _streamContext?: StreamCloseContextBase,
-    ) =>
+      usageHint,
+      onResponseMetadata,
+    }) =>
       streamCodexToAnthropic(api, response, model, onUsage, onResponseId, wantThinking, usageHint, onResponseMetadata),
-    collectTranslator: (
+    collectTranslator: ({
       api,
       response,
       model,
-      _tupleSchema,
-      usageHint?: UsageHint,
-      onResponseMetadata?: (metadata: ResponseMetadata) => void,
-    ) =>
+      usageHint,
+      onResponseMetadata,
+    }) =>
       collectCodexToAnthropicResponse(api, response, model, wantThinking, usageHint, onResponseMetadata),
   };
 }

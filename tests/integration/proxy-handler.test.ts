@@ -188,7 +188,9 @@ describe("proxy-handler integration", () => {
   it("returns JSON result from collectTranslator for non-streaming", async () => {
     const accountPool = createMockAccountPool();
     const fmt = createMockFormatAdapter();
-    const { app } = buildTestApp({ accountPool, fmt });
+    const tupleSchema = { type: "array", prefixItems: [] } satisfies Record<string, unknown>;
+    const req = { ...createDefaultRequest(), tupleSchema };
+    const { app } = buildTestApp({ accountPool, fmt, req });
 
     const res = await app.request("/test", { method: "POST" });
     expect(res.status).toBe(200);
@@ -196,6 +198,15 @@ describe("proxy-handler integration", () => {
     const body = await res.json();
     expect(body).toEqual({ id: "resp_1", choices: [] });
     expect(fmt.collectTranslator).toHaveBeenCalled();
+    const call = fmt.collectTranslator.mock.calls[0] ?? [];
+    expect(call).toHaveLength(1);
+    const options = call[0] as Record<string, unknown>;
+    expect(options.api).toBeDefined();
+    expect(options.response).toBeInstanceOf(Response);
+    expect(options.model).toBe("codex");
+    expect(options.tupleSchema).toBe(tupleSchema);
+    expect(options.usageHint).toBeUndefined();
+    expect(typeof options.onResponseMetadata).toBe("function");
     expect(accountPool.release).toHaveBeenCalledWith("e1", {
       input_tokens: 10,
       output_tokens: 20,

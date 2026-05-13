@@ -268,6 +268,32 @@ describe("handleDirectRequest error forwarding", () => {
     expect(fmt.formatError).toHaveBeenCalled();
   });
 
+  it("passes direct collect dependencies as one options object", async () => {
+    const upstreamResponse = new Response("data: {}\n\n");
+    mockUpstreamCreate = () => Promise.resolve(upstreamResponse);
+
+    const app = new Hono();
+    const upstream = createMockUpstream();
+    const tupleSchema = { type: "array", prefixItems: [] } satisfies Record<string, unknown>;
+    const req = { ...createDefaultRequest(), tupleSchema };
+    const fmt = createMockFormatAdapter();
+
+    app.post("/test", (c) => handleDirectRequest({ c, upstream: upstream as never, req, fmt }));
+
+    const res = await app.request("/test", { method: "POST" });
+    expect(res.status).toBe(200);
+
+    const call = fmt.collectTranslator.mock.calls[0] ?? [];
+    expect(call).toHaveLength(1);
+    const options = call[0] as Record<string, unknown>;
+    expect(options.api).toBe(upstream);
+    expect(options.response).toBe(upstreamResponse);
+    expect(options.model).toBe("gpt-4o");
+    expect(options.tupleSchema).toBe(tupleSchema);
+    expect(options.usageHint).toBeUndefined();
+    expect(options.onResponseMetadata).toBeUndefined();
+  });
+
   it("records direct streaming failures with the direct provider and public API path", async () => {
     const app = new Hono();
     const upstream = createMockUpstream({ tag: "openai" });

@@ -70,13 +70,9 @@ const GEMINI_FORMAT: FormatAdapter = {
     ),
   format429: (msg) => makeError(429, msg, "RESOURCE_EXHAUSTED"),
   formatError: (status, msg) => makeError(status, msg),
-  // 9th param `streamContext` is forwarded by response-processor for
-  // adapter-internal premature-close logging. Gemini's translator doesn't
-  // surface its own close events (response-processor's outer try/catch
-  // handles them), so we accept and ignore it.
-  streamTranslator: (api, response, model, onUsage, onResponseId, tupleSchema, _usageHint, _onResponseMetadata, _streamContext) =>
+  streamTranslator: ({ api, response, model, onUsage, onResponseId, tupleSchema }) =>
     streamCodexToGemini(api, response, model, onUsage, onResponseId, tupleSchema),
-  collectTranslator: (api, response, model, tupleSchema) =>
+  collectTranslator: ({ api, response, model, tupleSchema }) =>
     collectCodexToGeminiResponse(api, response, model, tupleSchema),
 };
 

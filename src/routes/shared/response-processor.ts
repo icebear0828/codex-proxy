@@ -133,17 +133,17 @@ export async function streamResponse(
     variantHash: diagnostics?.variantHash,
   };
   try {
-    for await (const chunk of adapter.streamTranslator(
+    for await (const chunk of adapter.streamTranslator({
       api,
-      rawResponse,
+      response: rawResponse,
       model,
       onUsage,
-      onResponseId ?? (() => {}),
+      onResponseId: onResponseId ?? (() => {}),
       tupleSchema,
       usageHint,
       onResponseMetadata,
       streamContext,
-    )) {
+    })) {
       const chunkTrace = inspectStreamChunk(chunk);
       if (debugDumpEnabled()) {
         debugDump("upstream-chunk", {

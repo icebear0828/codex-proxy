@@ -67,6 +67,37 @@ export interface ResponseMetadata {
   functionCallIds?: string[];
 }
 
+export interface FormatStreamTranslatorOptions {
+  api: UpstreamAdapter;
+  response: Response;
+  model: string;
+  onUsage: (u: UsageInfo) => void;
+  onResponseId: (id: string) => void;
+  tupleSchema?: Record<string, unknown> | null;
+  usageHint?: UsageHint;
+  onResponseMetadata?: (metadata: ResponseMetadata) => void;
+  /** Diagnostic context forwarded into adapter-internal premature-close
+   *  records (e.g. `streamPassthrough` in responses.ts) so audit entries
+   *  carry the real rid / account / variantHash instead of falling back
+   *  to the synthetic `"stream-close"` placeholder. */
+  streamContext?: StreamCloseContextBase;
+}
+
+export interface FormatCollectTranslatorOptions {
+  api: UpstreamAdapter;
+  response: Response;
+  model: string;
+  tupleSchema?: Record<string, unknown> | null;
+  usageHint?: UsageHint;
+  onResponseMetadata?: (metadata: ResponseMetadata) => void;
+}
+
+export interface FormatCollectTranslatorResult {
+  response: unknown;
+  usage: UsageInfo;
+  responseId: string | null;
+}
+
 /** Format-specific adapter provided by each route. */
 export interface FormatAdapter {
   tag: string;
@@ -75,33 +106,8 @@ export interface FormatAdapter {
   format429: (message: string) => unknown;
   formatError: (status: number, message: string) => unknown;
   formatStreamError?: (status: number, message: string) => string;
-  streamTranslator: (
-    api: UpstreamAdapter,
-    response: Response,
-    model: string,
-    onUsage: (u: { input_tokens: number; output_tokens: number; cached_tokens?: number; reasoning_tokens?: number; image_input_tokens?: number; image_output_tokens?: number }) => void,
-    onResponseId: (id: string) => void,
-    tupleSchema?: Record<string, unknown> | null,
-    usageHint?: UsageHint,
-    onResponseMetadata?: (metadata: ResponseMetadata) => void,
-    /** Diagnostic context forwarded into adapter-internal premature-close
-     *  records (e.g. `streamPassthrough` in responses.ts) so audit entries
-     *  carry the real rid / account / variantHash instead of falling back
-     *  to the synthetic `"stream-close"` placeholder. */
-    streamContext?: StreamCloseContextBase,
-  ) => AsyncGenerator<string>;
-  collectTranslator: (
-    api: UpstreamAdapter,
-    response: Response,
-    model: string,
-    tupleSchema?: Record<string, unknown> | null,
-    usageHint?: UsageHint,
-    onResponseMetadata?: (metadata: ResponseMetadata) => void,
-  ) => Promise<{
-    response: unknown;
-    usage: { input_tokens: number; output_tokens: number; cached_tokens?: number; reasoning_tokens?: number; image_input_tokens?: number; image_output_tokens?: number };
-    responseId: string | null;
-  }>;
+  streamTranslator: (options: FormatStreamTranslatorOptions) => AsyncGenerator<string>;
+  collectTranslator: (options: FormatCollectTranslatorOptions) => Promise<FormatCollectTranslatorResult>;
 }
 
 export interface HandleProxyRequestOptions {
@@ -917,18 +923,18 @@ async function handleNonStreaming(options: HandleNonStreamingOptions): Promise<R
   for (let attempt = 1; ; attempt++) {
     try {
       const responseFunctionCallIds = new Set<string>();
-      const result = await fmt.collectTranslator(
-        currentApi,
-        currentRawResponse,
-        req.model,
-        req.tupleSchema,
-        getUsageHint?.(),
-        (metadata) => {
+      const result = await fmt.collectTranslator({
+        api: currentApi,
+        response: currentRawResponse,
+        model: req.model,
+        tupleSchema: req.tupleSchema,
+        usageHint: getUsageHint?.(),
+        onResponseMetadata: (metadata) => {
           for (const callId of metadata.functionCallIds ?? []) {
             responseFunctionCallIds.add(callId);
           }
         },
-      );
+      });
       if (result.responseId && affinityMap && conversationId) {
         affinityMap.record(
           result.responseId,
@@ -1206,7 +1212,12 @@ export async function handleDirectRequest(options: HandleDirectRequestOptions): 
 
   // Non-streaming
   try {
-    const result = await fmt.collectTranslator(upstream, rawResponse, req.model, req.tupleSchema);
+    const result = await fmt.collectTranslator({
+      api: upstream,
+      response: rawResponse,
+      model: req.model,
+      tupleSchema: req.tupleSchema,
+    });
     return c.json(result.response);
   } catch (err) {
     abortController.abort();

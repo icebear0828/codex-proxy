@@ -9,10 +9,21 @@ vi.mock("@src/logs/stream-close-event.js", () => ({
 }));
 
 import { streamResponse } from "@src/routes/shared/response-processor.js";
+import type { StreamWriter } from "@src/routes/shared/response-processor.js";
+import type { UpstreamAdapter } from "@src/proxy/upstream-adapter.js";
+import type { CodexResponsesRequest, CodexSSEEvent } from "@src/proxy/codex-api.js";
+import type { FormatAdapter, FormatStreamTranslatorOptions } from "@src/routes/shared/proxy-handler.js";
 
 /* ── Helpers ── */
 
-function createMockStream() {
+interface MockStream extends StreamWriter {
+  written: string[];
+  write: ReturnType<typeof vi.fn>;
+  onAbort: ReturnType<typeof vi.fn>;
+  triggerAbort: () => void;
+}
+
+function createMockStream(): MockStream {
   const written: string[] = [];
   let abortCb: (() => void) | undefined;
   return {
@@ -26,21 +37,36 @@ function createMockStream() {
 function createMockAdapter(options?: {
   streamChunks?: string[];
   streamError?: Error;
-}) {
+}): FormatAdapter {
   const opts = options ?? {};
   return {
     tag: "Test",
-    streamTranslator: vi.fn(async function* () {
+    noAccountStatus: 503,
+    formatNoAccount: vi.fn(() => ({ error: "no_account" })),
+    format429: vi.fn((message: string) => ({ error: "rate_limited", message })),
+    formatError: vi.fn((status: number, message: string) => ({ error: "api_error", status, message })),
+    streamTranslator: vi.fn(async function* (_options: FormatStreamTranslatorOptions) {
       if (opts.streamError) throw opts.streamError;
       for (const chunk of opts.streamChunks ?? ["data: chunk1\n\n", "data: chunk2\n\n"]) {
         yield chunk;
       }
     }),
+    collectTranslator: vi.fn(async () => ({
+      response: {},
+      usage: { input_tokens: 0, output_tokens: 0 },
+      responseId: null,
+    })),
   };
 }
 
-function createMockCodexApi() {
-  return {} as never; // response-processor passes it through, doesn't call methods
+function createMockCodexApi(): UpstreamAdapter {
+  return {
+    tag: "test",
+    createResponse: vi.fn((_req: CodexResponsesRequest, _signal: AbortSignal) =>
+      Promise.resolve(new Response("ok")),
+    ),
+    parseStream: vi.fn(async function* (_response: Response): AsyncGenerator<CodexSSEEvent> {}),
+  };
 }
 
 describe("streamResponse", () => {
@@ -56,9 +82,63 @@ describe("streamResponse", () => {
     const rawResponse = new Response("ok");
     const onUsage = vi.fn();
 
-    await streamResponse(s as never, api, rawResponse, "gpt-5.4", adapter as never, onUsage);
+    await streamResponse(s, api, rawResponse, "gpt-5.4", adapter, onUsage);
 
     expect(s.written).toEqual(["a", "b", "c"]);
+  });
+
+  it("passes translator dependencies as one options object", async () => {
+    const s = createMockStream();
+    const adapter = createMockAdapter({ streamChunks: ["data: done\n\n"] });
+    const api = createMockCodexApi();
+    const rawResponse = new Response("ok");
+    const onUsage = vi.fn();
+    const onResponseId = vi.fn();
+    const onResponseMetadata = vi.fn();
+    const tupleSchema = { type: "array", prefixItems: [] } satisfies Record<string, unknown>;
+    const usageHint = { reusedInputTokensUpperBound: 42 };
+
+    await streamResponse(
+      s,
+      api,
+      rawResponse,
+      "gpt-5.4",
+      adapter,
+      onUsage,
+      tupleSchema,
+      onResponseId,
+      usageHint,
+      onResponseMetadata,
+      {
+        requestId: "rid-options",
+        tag: "Responses",
+        provider: "codex",
+        path: "/codex/responses",
+        accountEntryId: "entry-1",
+        variantHash: "variant-1",
+      },
+    );
+
+    const call = adapter.streamTranslator.mock.calls[0] ?? [];
+    expect(call).toHaveLength(1);
+    const options = call[0] as Record<string, unknown>;
+    expect(options.api).toBe(api);
+    expect(options.response).toBe(rawResponse);
+    expect(options.model).toBe("gpt-5.4");
+    expect(options.onUsage).toBe(onUsage);
+    expect(options.onResponseId).toBe(onResponseId);
+    expect(options.tupleSchema).toBe(tupleSchema);
+    expect(options.usageHint).toBe(usageHint);
+    expect(options.onResponseMetadata).toBe(onResponseMetadata);
+    expect(options.streamContext).toEqual({
+      requestId: "rid-options",
+      tag: "Responses",
+      provider: "codex",
+      path: "/codex/responses",
+      model: "gpt-5.4",
+      accountEntryId: "entry-1",
+      variantHash: "variant-1",
+    });
   });
 
   it("calls onUsage when adapter yields usage via callback", async () => {
@@ -70,16 +150,22 @@ describe("streamResponse", () => {
     // streamTranslator that invokes usage callback
     const adapter = {
       tag: "Test",
-      streamTranslator: vi.fn(async function* (
-        _api: never, _res: Response, _model: string,
-        usageCb: (u: { input_tokens: number; output_tokens: number }) => void,
-      ) {
+      noAccountStatus: 503,
+      formatNoAccount: vi.fn(() => ({ error: "no_account" })),
+      format429: vi.fn((message: string) => ({ error: "rate_limited", message })),
+      formatError: vi.fn((status: number, message: string) => ({ error: "api_error", status, message })),
+      streamTranslator: vi.fn(async function* (options: FormatStreamTranslatorOptions) {
         yield "data: chunk\n\n";
-        usageCb({ input_tokens: 5, output_tokens: 15 });
+        options.onUsage({ input_tokens: 5, output_tokens: 15 });
       }),
+      collectTranslator: vi.fn(async () => ({
+        response: {},
+        usage: { input_tokens: 0, output_tokens: 0 },
+        responseId: null,
+      })),
     };
 
-    await streamResponse(s as never, api, rawResponse, "gpt-5.4", adapter as never, onUsage);
+    await streamResponse(s, api, rawResponse, "gpt-5.4", adapter, onUsage);
 
     expect(onUsage).toHaveBeenCalledWith({ input_tokens: 5, output_tokens: 15 });
   });
@@ -90,7 +176,7 @@ describe("streamResponse", () => {
     const api = createMockCodexApi();
     const rawResponse = new Response("ok");
 
-    await streamResponse(s as never, api, rawResponse, "gpt-5.4", adapter as never, vi.fn());
+    await streamResponse(s, api, rawResponse, "gpt-5.4", adapter, vi.fn());
 
     // Should have attempted to write an error event
     const errorChunk = s.written.find((c) => c.includes("stream_error"));
@@ -107,11 +193,11 @@ describe("streamResponse", () => {
     abortController.abort();
 
     await streamResponse(
-      s as never,
+      s,
       api,
       rawResponse,
       "gpt-5.4",
-      adapter as never,
+      adapter,
       vi.fn(),
       undefined,
       undefined,
@@ -135,7 +221,7 @@ describe("streamResponse", () => {
     const api = createMockCodexApi();
     const rawResponse = new Response("ok");
 
-    await streamResponse(s as never, api, rawResponse, "gpt-5.4", adapter as never, vi.fn());
+    await streamResponse(s, api, rawResponse, "gpt-5.4", adapter, vi.fn());
 
     expect(adapter.formatStreamError).toHaveBeenCalledWith(502, "error sending request for url");
     expect(s.written.at(-1)).toBe(
@@ -151,7 +237,7 @@ describe("streamResponse", () => {
     const rawResponse = new Response("ok");
 
     // Should not throw
-    await streamResponse(s as never, api, rawResponse, "gpt-5.4", adapter as never, vi.fn());
+    await streamResponse(s, api, rawResponse, "gpt-5.4", adapter, vi.fn());
 
     // Only attempted first write which failed
     expect(s.write).toHaveBeenCalledTimes(1);
@@ -173,11 +259,11 @@ describe("streamResponse", () => {
     const rawResponse = new Response("ok");
 
     await streamResponse(
-      s as never,
+      s,
       api,
       rawResponse,
       "gpt-5.4",
-      adapter as never,
+      adapter,
       vi.fn(),
       undefined,
       undefined,
