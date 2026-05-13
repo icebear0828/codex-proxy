@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { handleNonStreaming } from "@src/routes/shared/non-streaming-handler.js";
 import { retryNonStreamingEmptyResponse } from "@src/routes/shared/non-streaming-empty-response-retry.js";
+import { handleNonStreamingPrematureClose } from "@src/routes/shared/non-streaming-premature-close.js";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import * as ts from "typescript";
@@ -8,6 +9,7 @@ import * as ts from "typescript";
 const ROOT = process.cwd();
 const NON_STREAMING_HANDLER_MODULE = "src/routes/shared/non-streaming-handler.ts";
 const EMPTY_RESPONSE_RETRY_MODULE = "src/routes/shared/non-streaming-empty-response-retry.ts";
+const PREMATURE_CLOSE_MODULE = "src/routes/shared/non-streaming-premature-close.ts";
 
 function source(path: string): string {
   return readFileSync(resolve(ROOT, path), "utf-8");
@@ -52,6 +54,10 @@ describe("non-streaming handler module boundary", () => {
     expect(retryNonStreamingEmptyResponse).toBeTypeOf("function");
   });
 
+  it("exports the premature-close helper from its own module", () => {
+    expect(handleNonStreamingPrematureClose).toBeTypeOf("function");
+  });
+
   it("keeps empty-response retry reacquire and upstream send details out of the collect handler", () => {
     const handler = source(NON_STREAMING_HANDLER_MODULE);
 
@@ -75,6 +81,44 @@ describe("non-streaming handler module boundary", () => {
       "./proxy-error-response.js",
       "./streaming-handler.js",
       "./non-streaming-handler.js",
+      "../../logs/entry.js",
+    ]));
+  });
+
+  it("keeps premature-close stream event and release details out of the collect handler", () => {
+    const handler = source(NON_STREAMING_HANDLER_MODULE);
+    const helper = source(PREMATURE_CLOSE_MODULE);
+
+    expect(importsNamedBinding(
+      handler,
+      "non-streaming-premature-close.js",
+      "handleNonStreamingPrematureClose",
+      NON_STREAMING_HANDLER_MODULE,
+    )).toBe(true);
+    expect(importsNamedBinding(
+      handler,
+      "stream-close-event.js",
+      "recordStreamCloseEvent",
+      NON_STREAMING_HANDLER_MODULE,
+    )).toBe(false);
+    expect(importsNamedBinding(
+      helper,
+      "stream-close-event.js",
+      "recordStreamCloseEvent",
+      PREMATURE_CLOSE_MODULE,
+    )).toBe(true);
+    expect(handler).not.toContain("upstream premature close (hadReasoning=");
+  });
+
+  it("does not let the premature-close helper own HTTP rendering or retry handling", () => {
+    const helper = source(PREMATURE_CLOSE_MODULE);
+
+    expect(importedModuleSpecifiers(helper, PREMATURE_CLOSE_MODULE)).not.toEqual(expect.arrayContaining([
+      "hono",
+      "./proxy-error-response.js",
+      "./streaming-handler.js",
+      "./non-streaming-handler.js",
+      "./non-streaming-empty-response-retry.js",
       "../../logs/entry.js",
     ]));
   });

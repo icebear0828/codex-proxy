@@ -8,11 +8,11 @@ import type { ProxyPool } from "../../proxy/proxy-pool.js";
 import { EmptyResponseError, UpstreamPrematureCloseError } from "../../translation/codex-event-extractor.js";
 import { releaseAccount } from "./account-acquisition.js";
 import { toErrorStatus } from "./proxy-error-handler.js";
-import { recordStreamCloseEvent } from "../../logs/stream-close-event.js";
 import type { SessionAffinityMap } from "../../auth/session-affinity.js";
 import type { FormatAdapter, ProxyRequest, UsageHint } from "./proxy-handler-types.js";
 import { annotateImageGenOutcome, stripCodexErrorPrefix } from "./proxy-handler-utils.js";
 import { retryNonStreamingEmptyResponse } from "./non-streaming-empty-response-retry.js";
+import { handleNonStreamingPrematureClose } from "./non-streaming-premature-close.js";
 
 const MAX_EMPTY_RETRIES = 2;
 
@@ -118,25 +118,18 @@ export async function handleNonStreaming(options: HandleNonStreamingOptions): Pr
       // we fail fast with 504. The proxy can't recover this — the client
       // needs to lower reasoning effort or pick a different model.
       if (collectErr instanceof UpstreamPrematureCloseError) {
-        const email = accountPool.getEntry(currentEntryId)?.email ?? "?";
-        console.warn(
-          `[${fmt.tag}] Account ${currentEntryId} (${email}) | upstream premature close (hadReasoning=${collectErr.hadReasoning} events=${collectErr.eventCount}) — failing fast, not retrying`,
-        );
-        recordStreamCloseEvent({
-          kind: "upstream-premature",
-          requestId,
+        const responsePlan = handleNonStreamingPrematureClose({
+          accountPool,
+          entryId: currentEntryId,
+          err: collectErr,
+          req,
           tag: fmt.tag,
-          model: req.model,
-          accountEntryId: currentEntryId,
+          requestId,
+          released,
           variantHash,
-          responseId: collectErr.responseId,
-          eventCount: collectErr.eventCount,
-          hadReasoning: collectErr.hadReasoning,
-          detail: collectErr.message,
         });
-        releaseAccount(accountPool, currentEntryId, annotateImageGenOutcome(undefined, req.expectsImageGen), released);
-        c.status(504);
-        return c.json(fmt.formatError(504, collectErr.message));
+        c.status(responsePlan.status);
+        return c.json(fmt.formatError(responsePlan.status, responsePlan.message));
       }
 
       if (collectErr instanceof EmptyResponseError && attempt <= MAX_EMPTY_RETRIES) {
