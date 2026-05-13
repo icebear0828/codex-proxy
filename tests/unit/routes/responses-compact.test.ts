@@ -82,6 +82,8 @@ vi.mock("@src/utils/retry.js", () => ({
 const mockHandleDirectRequest = vi.fn(async (options: HandleDirectRequestOptions) => options.c.json({ ok: true }));
 vi.mock("@src/routes/shared/proxy-handler.js", () => ({
   handleProxyRequest: vi.fn(async (options: { c: Context }) => options.c.json({ ok: true })),
+}));
+vi.mock("@src/routes/shared/proxy-stagger.js", () => ({
   staggerIfNeeded: vi.fn(async () => {}),
 }));
 vi.mock("@src/routes/shared/direct-request-handler.js", () => ({

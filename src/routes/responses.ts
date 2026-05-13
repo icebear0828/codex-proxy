@@ -24,10 +24,8 @@ import { prepareSchema } from "../translation/shared-utils.js";
 import { reconvertTupleValues } from "../translation/tuple-schema.js";
 import { parseModelName, resolveModelId, getModelInfo, buildDisplayModelName } from "../models/model-store.js";
 import { EmptyResponseError, type UsageInfo } from "../translation/codex-event-extractor.js";
-import {
-  handleProxyRequest,
-  staggerIfNeeded,
-} from "./shared/proxy-handler.js";
+import { handleProxyRequest } from "./shared/proxy-handler.js";
+import { staggerIfNeeded } from "./shared/proxy-stagger.js";
 import { handleDirectRequest } from "./shared/direct-request-handler.js";
 import type { FormatAdapter } from "./shared/proxy-handler-types.js";
 import type { UpstreamRouter } from "../proxy/upstream-router.js";
