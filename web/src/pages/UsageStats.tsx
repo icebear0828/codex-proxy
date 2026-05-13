@@ -119,7 +119,7 @@ function UsageContent({ t, summary, summaryLoading, granularity, setGranularity,
             }}
             class={`px-3 py-1 text-xs font-medium rounded-full border transition-colors ${
               granularity === value
-                ? "bg-primary text-white border-primary"
+                ? "bg-primary-action text-white border-primary-action"
                 : "bg-white dark:bg-card-dark border-gray-200 dark:border-border-dark text-slate-600 dark:text-text-dim hover:border-primary/50"
             }`}
           >
@@ -140,7 +140,7 @@ function UsageContent({ t, summary, summaryLoading, granularity, setGranularity,
             onClick={() => setHours(h)}
             class={`px-3 py-1 text-xs font-medium rounded-full border transition-colors ${
               hours === h
-                ? "bg-primary text-white border-primary"
+                ? "bg-primary-action text-white border-primary-action"
                 : "bg-white dark:bg-card-dark border-gray-200 dark:border-border-dark text-slate-600 dark:text-text-dim hover:border-primary/50"
             }`}
           >

@@ -102,7 +102,7 @@ export function RuleAssign({ proxies, selectedCount, onAssign, onClose }: RuleAs
           <button
             onClick={handleApply}
             disabled={targetIds.size === 0}
-            class="px-4 py-2 text-sm font-medium rounded-lg bg-primary text-white hover:bg-primary-hover transition-colors disabled:opacity-50"
+            class="px-4 py-2 text-sm font-medium rounded-lg bg-primary-action text-white hover:bg-primary-action-hover transition-colors disabled:opacity-50"
           >
             {t("applyBtn")}
           </button>

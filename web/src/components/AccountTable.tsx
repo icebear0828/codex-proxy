@@ -4,27 +4,33 @@ import type { TranslationKey } from "../../../shared/i18n/translations";
 import type { AssignmentAccount } from "../../../shared/hooks/use-proxy-assignments";
 import type { ProxyEntry } from "../../../shared/types";
 
+// Note: AssignmentAccount has no `quota` field, so we cannot derive
+// "rate_limited" from cachedQuota here — the table only knows the backend
+// status string. The filter dropdown and badge therefore reflect raw
+// status. AccountList / AccountCard do derive via `derivedStatus` from
+// `web/src/lib/accountStatus.ts` because they receive full `Account`.
+
 const PAGE_SIZE = 50;
 
 const statusStyles: Record<string, [string, TranslationKey]> = {
   active: [
-    "bg-green-100 text-green-700 border-green-200 dark:bg-[#11281d] dark:text-primary dark:border-[#1a442e]",
+    "bg-success-container text-success border-success/30",
     "active",
   ],
   expired: [
-    "bg-red-100 text-red-600 border-red-200 dark:bg-red-900/20 dark:text-red-400 dark:border-red-800/30",
+    "bg-danger-container text-danger border-danger/30",
     "expired",
   ],
   quota_exhausted: [
-    "bg-orange-100 text-orange-700 border-orange-200 dark:bg-orange-900/20 dark:text-orange-400 dark:border-orange-800/30",
+    "bg-warning-container text-warning border-warning/30",
     "quotaExhausted",
   ],
   rate_limited: [
-    "bg-amber-100 text-amber-700 border-amber-200 dark:bg-amber-900/20 dark:text-amber-400 dark:border-amber-800/30",
+    "bg-warning-container text-warning border-warning/30",
     "rateLimited",
   ],
   refreshing: [
-    "bg-blue-100 text-blue-600 border-blue-200 dark:bg-blue-900/20 dark:text-blue-400 dark:border-blue-800/30",
+    "bg-info-container text-info border-info/30",
     "refreshing",
   ],
   disabled: [
@@ -170,7 +176,6 @@ export function AccountTable({
           <option value="active">{t("active")}</option>
           <option value="expired">{t("expired")}</option>
           <option value="quota_exhausted">{t("quotaExhausted")}</option>
-          <option value="rate_limited">{t("rateLimited")}</option>
           <option value="banned">{t("banned")}</option>
           <option value="disabled">{t("disabled")}</option>
         </select>
@@ -235,7 +240,9 @@ export function AccountTable({
                 </span>
                 {onToggleStatus && (() => {
                   const isEnabled = acct.status !== "disabled";
-                  const canToggle = acct.status === "active" || acct.status === "disabled" || acct.status === "rate_limited" || acct.status === "refreshing" || acct.status === "quota_exhausted";
+                  // "rate_limited" retired as a backend status (now derived from
+                  // cachedQuota); the remaining states still gate the toggle.
+                  const canToggle = acct.status === "active" || acct.status === "disabled" || acct.status === "refreshing" || acct.status === "quota_exhausted";
                   return (
                     <span class="w-12 hidden sm:flex justify-center" onClick={(e) => e.stopPropagation()}>
                       <button
@@ -244,7 +251,7 @@ export function AccountTable({
                         title={canToggle ? (isEnabled ? t("disableAccount") : t("enableAccount")) : undefined}
                         class={`relative inline-flex h-4 w-7 shrink-0 rounded-full border-2 border-transparent transition-colors duration-200 focus:outline-none ${
                           !canToggle ? "opacity-40 cursor-not-allowed" : "cursor-pointer"
-                        } ${isEnabled ? "bg-primary" : "bg-slate-300 dark:bg-slate-600"}`}
+                      } ${isEnabled ? "bg-primary-action" : "bg-slate-300 dark:bg-slate-600"}`}
                       >
                         <span
                           class={`pointer-events-none inline-block h-3 w-3 rounded-full bg-white dark:bg-slate-200 shadow transform transition-transform duration-200 ${

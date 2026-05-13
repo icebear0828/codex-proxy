@@ -4,7 +4,7 @@
  * should throw EmptyResponseError, which triggers retry in handleNonStreaming.
  */
 
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect, vi, beforeEach } from "vitest";
 import { EmptyResponseError } from "@src/translation/codex-event-extractor.js";
 
 vi.mock("@src/config.js", () => ({
@@ -27,6 +27,16 @@ vi.mock("@src/config.js", () => ({
 vi.mock("@src/paths.js", () => ({
   CONFIG_DIR: "/tmp/codex-proxy-test",
   STATE_DIR: "/tmp/codex-proxy-test",
+  getDataDir: () => "/tmp/codex-proxy-test",
+}));
+
+// Capture recordStreamCloseEvent invocations so we can assert the context
+// propagation without touching real disk.
+const recordedCloseEvents: Array<Record<string, unknown>> = [];
+vi.mock("@src/logs/stream-close-event.js", () => ({
+  recordStreamCloseEvent: vi.fn((evt: Record<string, unknown>) => {
+    recordedCloseEvents.push(evt);
+  }),
 }));
 
 import { collectPassthrough, streamPassthrough } from "@src/routes/responses.js";
@@ -64,7 +74,11 @@ function parseSSEEvents(text: string): Array<{ event: string; data: Record<strin
     });
 }
 
-async function collectStreamEvents(events: CodexSSEEvent[], throwAfter?: Error) {
+async function collectStreamEvents(
+  events: CodexSSEEvent[],
+  throwAfter?: Error,
+  streamContext?: Parameters<typeof streamPassthrough>[6],
+) {
   const api = createMockApi(events, throwAfter);
   const chunks: string[] = [];
   for await (const chunk of streamPassthrough(
@@ -73,6 +87,8 @@ async function collectStreamEvents(events: CodexSSEEvent[], throwAfter?: Error) 
     "test-model",
     () => {},
     () => {},
+    undefined,
+    streamContext,
   )) {
     chunks.push(chunk);
   }
@@ -80,6 +96,79 @@ async function collectStreamEvents(events: CodexSSEEvent[], throwAfter?: Error) 
 }
 
 describe("streamPassthrough premature close handling", () => {
+  beforeEach(() => {
+    recordedCloseEvents.length = 0;
+  });
+
+  it("forwards streamContext (rid/account/variantHash) on natural EOF before terminal", async () => {
+    await collectStreamEvents(
+      [{ event: "response.created", data: { response: { id: "resp_ctx_1" } } }],
+      undefined,
+      {
+        requestId: "rid-full-deadbeef",
+        tag: "Responses",
+        model: "gpt-5.5",
+        accountEntryId: "e-42",
+        variantHash: "vh-cafef00d",
+      },
+    );
+
+    expect(recordedCloseEvents).toHaveLength(1);
+    const evt = recordedCloseEvents[0];
+    expect(evt).toMatchObject({
+      kind: "upstream-premature",
+      requestId: "rid-full-deadbeef",
+      tag: "Responses",
+      model: "gpt-5.5",
+      accountEntryId: "e-42",
+      variantHash: "vh-cafef00d",
+      responseId: "resp_ctx_1",
+    });
+  });
+
+  it("forwards streamContext when parseStream throws mid-stream", async () => {
+    await collectStreamEvents(
+      [{ event: "response.created", data: { response: { id: "resp_ctx_2" } } }],
+      new Error("WebSocket closed before terminal event: code=1006"),
+      {
+        requestId: "rid-throw-1",
+        tag: "Responses",
+        model: "gpt-5.4",
+        accountEntryId: "e-7",
+        variantHash: "vh-abc123",
+      },
+    );
+
+    expect(recordedCloseEvents).toHaveLength(1);
+    const evt = recordedCloseEvents[0];
+    expect(evt).toMatchObject({
+      kind: "upstream-premature",
+      requestId: "rid-throw-1",
+      tag: "Responses",
+      model: "gpt-5.4",
+      accountEntryId: "e-7",
+      variantHash: "vh-abc123",
+      responseId: "resp_ctx_2",
+    });
+    expect(evt.detail).toMatch(/code=1006/);
+  });
+
+  it("falls back gracefully when no streamContext is provided", async () => {
+    await collectStreamEvents([
+      { event: "response.created", data: { response: { id: "resp_ctx_none" } } },
+    ]);
+
+    expect(recordedCloseEvents).toHaveLength(1);
+    const evt = recordedCloseEvents[0];
+    expect(evt).toMatchObject({
+      kind: "upstream-premature",
+      tag: "Responses",
+      responseId: "resp_ctx_none",
+    });
+    expect(evt.requestId).toBeUndefined();
+    expect(evt.accountEntryId).toBeUndefined();
+  });
+
   it("emits response.failed when the stream ends before response.completed", async () => {
     const events = await collectStreamEvents([
       { event: "response.created", data: { response: { id: "resp_stream_1" } } },

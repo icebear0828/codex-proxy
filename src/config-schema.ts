@@ -102,6 +102,8 @@ export const ConfigSchema = z.object({
     max_log_bytes: z.number().int().min(1024).default(10 * 1024 * 1024),
   }).default({}),
   usage_stats: z.object({
+    /** How often to record local usage history snapshots. 0 disables history recording. */
+    snapshot_interval_minutes: z.number().int().min(0).default(5),
     /** null means keep usage history forever. */
     history_retention_days: z.number().int().positive().nullable().default(null),
   }).default({}),

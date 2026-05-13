@@ -58,7 +58,7 @@ export function BulkActions({
           </select>
           <button
             onClick={handleApply}
-            class="px-3 py-1.5 text-xs font-medium rounded-lg bg-primary text-white hover:bg-primary-hover transition-colors"
+            class="px-3 py-1.5 text-xs font-medium rounded-lg bg-primary-action text-white hover:bg-primary-action-hover transition-colors"
           >
             {t("applyBtn")}
           </button>

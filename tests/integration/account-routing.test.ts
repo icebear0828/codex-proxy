@@ -204,7 +204,7 @@ describe("account-routing integration", () => {
     // Acquire A and mark it rate limited
     const acqA = pool.acquire()!;
     expect(acqA.entryId).toBe(idA);
-    pool.markRateLimited(acqA.entryId);
+    pool.applyRateLimit429(acqA.entryId);
 
     // Next acquire should skip A and return B
     const acqB = pool.acquire()!;
@@ -219,7 +219,7 @@ describe("account-routing integration", () => {
     expect(acq.entryId).toBe(id);
 
     // Mark rate limited with very short backoff (negative = already expired)
-    pool.markRateLimited(acq.entryId, { retryAfterSec: -1 });
+    pool.applyRateLimit429(acq.entryId, { retryAfterSec: -1 });
 
     // Should auto-recover immediately since backoff has passed
     const recovered = pool.acquire();

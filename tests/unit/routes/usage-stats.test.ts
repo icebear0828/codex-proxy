@@ -156,7 +156,7 @@ describe("usage stats routes", () => {
       const now = Date.now();
       const snapshots: UsageSnapshot[] = [
         {
-          timestamp: new Date(now - 30 * 24 * 3600_000).toISOString(),
+          timestamp: new Date(now - 29 * 24 * 3600_000).toISOString(),
           totals: { input_tokens: 100, output_tokens: 10, request_count: 1, active_accounts: 1 },
         },
         {

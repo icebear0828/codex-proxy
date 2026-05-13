@@ -3,34 +3,35 @@ import { useT, useI18n } from "../../../shared/i18n/context";
 import type { TranslationKey } from "../../../shared/i18n/translations";
 import { formatNumber, formatResetTime, formatWindowDuration } from "../../../shared/utils/format";
 import type { Account, AccountQuotaWindow, ProxyEntry } from "../../../shared/types";
+import { derivedStatus } from "../lib/accountStatus";
 
 const avatarColors = [
-  ["bg-purple-100 dark:bg-[#2a1a3f]", "text-purple-600 dark:text-purple-400"],
-  ["bg-amber-100 dark:bg-[#3d2c16]", "text-amber-600 dark:text-amber-500"],
-  ["bg-blue-100 dark:bg-[#1a2a3f]", "text-blue-600 dark:text-blue-400"],
-  ["bg-emerald-100 dark:bg-[#112a1f]", "text-emerald-600 dark:text-emerald-400"],
-  ["bg-red-100 dark:bg-[#3f1a1a]", "text-red-600 dark:text-red-400"],
+  ["bg-avatar-purple-bg", "text-avatar-purple-text"],
+  ["bg-avatar-amber-bg", "text-avatar-amber-text"],
+  ["bg-avatar-blue-bg", "text-avatar-blue-text"],
+  ["bg-avatar-emerald-bg", "text-avatar-emerald-text"],
+  ["bg-avatar-red-bg", "text-avatar-red-text"],
 ];
 
 const statusStyles: Record<string, [string, string]> = {
   active: [
-    "bg-green-100 text-green-700 border-green-200 dark:bg-[#11281d] dark:text-primary dark:border-[#1a442e]",
+    "bg-success-container text-success border-success/30",
     "active",
   ],
   expired: [
-    "bg-red-100 text-red-600 border-red-200 dark:bg-red-900/20 dark:text-red-400 dark:border-red-800/30",
+    "bg-danger-container text-danger border-danger/30",
     "expired",
   ],
   quota_exhausted: [
-    "bg-orange-100 text-orange-700 border-orange-200 dark:bg-orange-900/20 dark:text-orange-400 dark:border-orange-800/30",
+    "bg-warning-container text-warning border-warning/30",
     "quotaExhausted",
   ],
   rate_limited: [
-    "bg-amber-100 text-amber-700 border-amber-200 dark:bg-amber-900/20 dark:text-amber-400 dark:border-amber-800/30",
+    "bg-warning-container text-warning border-warning/30",
     "rateLimited",
   ],
   refreshing: [
-    "bg-blue-100 text-blue-600 border-blue-200 dark:bg-blue-900/20 dark:text-blue-400 dark:border-blue-800/30",
+    "bg-info-container text-info border-info/30",
     "refreshing",
   ],
   disabled: [
@@ -38,7 +39,7 @@ const statusStyles: Record<string, [string, string]> = {
     "disabled",
   ],
   banned: [
-    "bg-rose-100 text-rose-700 border-rose-300 dark:bg-rose-900/30 dark:text-rose-400 dark:border-rose-800/40",
+    "bg-danger-container text-danger border-danger/40",
     "banned",
   ],
 };
@@ -105,7 +106,8 @@ export function AccountCard({ account, index, onDelete, proxies, onProxyChange, 
   const windowSec = account.quota?.rate_limit?.limit_window_seconds;
   const windowDur = windowSec ? formatWindowDuration(windowSec, lang === "zh") : null;
 
-  const [statusCls, statusKey] = statusStyles[account.status] || statusStyles.disabled;
+  const effectiveStatus = derivedStatus(account);
+  const [statusCls, statusKey] = statusStyles[effectiveStatus] || statusStyles.disabled;
 
   const handleDelete = useCallback(async () => {
     if (!confirm(t("removeConfirm"))) return;
@@ -120,7 +122,7 @@ export function AccountCard({ account, index, onDelete, proxies, onProxyChange, 
     : rl?.used_percent != null ? Math.round(rl.used_percent)
     : (account.status === "active" ? 0 : null);
   const barColor =
-    pct == null ? "bg-primary" : pct >= 90 ? "bg-red-500" : pct >= 60 ? "bg-amber-500" : "bg-primary";
+    pct == null ? "bg-primary-action" : pct >= 90 ? "bg-red-500" : pct >= 60 ? "bg-amber-500" : "bg-primary-action";
   const pctColor =
     pct == null
       ? "text-primary"
@@ -194,7 +196,10 @@ export function AccountCard({ account, index, onDelete, proxies, onProxyChange, 
 
   const [statusToggling, setStatusToggling] = useState(false);
   const isEnabled = account.status !== "disabled";
-  const canToggle = account.status === "active" || account.status === "disabled" || account.status === "rate_limited" || account.status === "refreshing" || account.status === "quota_exhausted";
+  // `rate_limited` is no longer a backend status; toggling is allowed for the
+  // remaining backend states. Cards rendered with derived "rate_limited" badge
+  // have backend status "active" and therefore satisfy this check.
+  const canToggle = account.status === "active" || account.status === "disabled" || account.status === "refreshing" || account.status === "quota_exhausted";
 
   const handleStatusToggle = useCallback(async () => {
     if (!onToggleStatus || !canToggle) return;
@@ -294,7 +299,7 @@ export function AccountCard({ account, index, onDelete, proxies, onProxyChange, 
               title={canToggle ? (isEnabled ? t("disableAccount") : t("enableAccount")) : undefined}
               class={`relative inline-flex h-5 w-9 shrink-0 rounded-full border-2 border-transparent transition-colors duration-200 focus:outline-none ${
                 !canToggle ? "opacity-40 cursor-not-allowed" : "cursor-pointer"
-              } ${isEnabled ? "bg-primary" : "bg-slate-300 dark:bg-slate-600"}`}
+              } ${isEnabled ? "bg-primary-action" : "bg-slate-300 dark:bg-slate-600"}`}
             >
               <span
                 class={`pointer-events-none inline-block h-4 w-4 rounded-full bg-white dark:bg-slate-200 shadow transform transition-transform duration-200 ${
@@ -401,7 +406,7 @@ export function AccountCard({ account, index, onDelete, proxies, onProxyChange, 
                   )}
                 </span>
                 {rl?.limit_reached ? (
-                  <span class="px-2 py-0.5 rounded-full bg-red-100 dark:bg-red-900/20 text-red-600 dark:text-red-400 text-xs font-medium">
+                  <span class="px-2 py-0.5 rounded-full bg-danger-container text-danger text-xs font-medium">
                     {t("limitReached")}
                   </span>
                 ) : pct != null ? (
@@ -436,7 +441,7 @@ export function AccountCard({ account, index, onDelete, proxies, onProxyChange, 
                   )}
                 </span>
                 {srl.limit_reached ? (
-                  <span class="px-2 py-0.5 rounded-full bg-red-100 dark:bg-red-900/20 text-red-600 dark:text-red-400 text-xs font-medium">
+                  <span class="px-2 py-0.5 rounded-full bg-danger-container text-danger text-xs font-medium">
                     {t("limitReached")}
                   </span>
                 ) : sPct != null ? (
@@ -471,7 +476,7 @@ export function AccountCard({ account, index, onDelete, proxies, onProxyChange, 
                   )}
                 </span>
                 {rrl.limit_reached ? (
-                  <span class="px-2 py-0.5 rounded-full bg-red-100 dark:bg-red-900/20 text-red-600 dark:text-red-400 text-xs font-medium">
+                  <span class="px-2 py-0.5 rounded-full bg-danger-container text-danger text-xs font-medium">
                     {t("limitReached")}
                   </span>
                 ) : rPct != null ? (
@@ -526,7 +531,7 @@ export function AccountCard({ account, index, onDelete, proxies, onProxyChange, 
                     )}
                   </span>
                   {bucket.limit_reached ? (
-                    <span class="px-2 py-0.5 rounded-full bg-red-100 dark:bg-red-900/20 text-red-600 dark:text-red-400 text-xs font-medium shrink-0">
+                    <span class="px-2 py-0.5 rounded-full bg-danger-container text-danger text-xs font-medium shrink-0">
                       {t("limitReached")}
                     </span>
                   ) : bPct != null ? (

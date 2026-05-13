@@ -5,7 +5,7 @@ import {
   resolvePromptCacheIdentity,
   shouldActivateImplicitResume,
   shouldReplayFullInputAfterImplicitResumeError,
-} from "@src/routes/shared/proxy-handler.js";
+} from "@src/routes/shared/proxy-session-helpers.js";
 
 function makeCodexRequest(overrides: Partial<CodexResponsesRequest> = {}): CodexResponsesRequest {
   return {

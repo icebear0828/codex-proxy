@@ -15,6 +15,7 @@ import {
 } from "@helpers/e2e-setup.js";
 import { buildTextStreamChunks } from "@helpers/sse.js";
 import { createValidJwt } from "@helpers/jwt.js";
+import { isQuotaExhausted } from "@src/auth/quota-skip.js";
 import type { TlsTransportResponse } from "@src/tls/transport.js";
 
 import { Hono } from "hono";
@@ -229,9 +230,9 @@ describe("secondary quota rotation", () => {
         expect(res.status).toBe(200);
       }
 
-      // Verify accounts 0,1 are now marked rate_limited (proactive marking)
+      // Verify accounts 0,1 are now cachedQuota-exhausted (proactive marking)
       const afterPrime = ctx.accountPool.getAccounts();
-      const limited = afterPrime.filter((a) => a.status === "rate_limited");
+      const limited = afterPrime.filter((a) => isQuotaExhausted(a.quota));
       expect(limited.length).toBeGreaterThanOrEqual(2);
 
       // Record account 2's request count after priming
@@ -253,10 +254,10 @@ describe("secondary quota rotation", () => {
       const acct2After = afterConcurrent.find((a) => a.id === ctx.entryIds[2])!;
       expect(acct2After.usage.request_count - acct2CountBefore).toBe(3);
 
-      // Accounts 0,1 should still be rate_limited with no new requests
+      // Accounts 0,1 should still be cachedQuota-exhausted with no new requests
       for (const id of [ctx.entryIds[0], ctx.entryIds[1]]) {
         const acct = afterConcurrent.find((a) => a.id === id)!;
-        expect(acct.status).toBe("rate_limited");
+        expect(isQuotaExhausted(acct.quota)).toBe(true);
       }
     });
 
@@ -327,8 +328,8 @@ describe("secondary quota rotation", () => {
       const accounts = ctx.accountPool.getAccounts();
       const acct0 = accounts.find((a) => a.id === ctx.entryIds[0])!;
       const acct1 = accounts.find((a) => a.id === ctx.entryIds[1])!;
-      expect(acct0.status).toBe("rate_limited");
-      expect(acct1.status).toBe("rate_limited");
+      expect(isQuotaExhausted(acct0.quota)).toBe(true);
+      expect(isQuotaExhausted(acct1.quota)).toBe(true);
 
       const acct2Before = accounts.find((a) => a.id === ctx.entryIds[2])!;
       const countBefore = acct2Before.usage.request_count;
@@ -370,13 +371,14 @@ describe("secondary quota rotation", () => {
       await chatRequest(ctx.app, defaultBody());
       await chatRequest(ctx.app, defaultBody());
 
-      // Account 0 should be proactively marked
+      // Account 0 should be proactively marked via cachedQuota
       const acct0 = ctx.accountPool.getAccounts().find((a) => a.id === ctx.entryIds[0])!;
-      expect(acct0.status).toBe("rate_limited");
+      expect(isQuotaExhausted(acct0.quota)).toBe(true);
 
       // Account 1 should be healthy
       const acct1 = ctx.accountPool.getAccounts().find((a) => a.id === ctx.entryIds[1])!;
       expect(acct1.status).toBe("active");
+      expect(isQuotaExhausted(acct1.quota)).toBe(false);
 
       const acct1CountBefore = acct1.usage.request_count;
 
@@ -455,15 +457,18 @@ describe("secondary quota rotation", () => {
       await chatRequest(ctx.app, defaultBody());
 
       const acct0 = ctx.accountPool.getAccounts().find((a) => a.id === ctx.entryIds[0])!;
-      expect(acct0.status).toBe("rate_limited");
+      // Both buckets flagged: secondary from passive header collection,
+      // primary from the 429 retry-after. Pool excludes via hasReachedCachedQuota.
+      expect(isQuotaExhausted(acct0.quota)).toBe(true);
+      expect(acct0.quota?.secondary_rate_limit?.limit_reached).toBe(true);
 
-      // rate_limit_until should reflect secondaryResetAt (±30% for jitter + timing)
-      expect(acct0.usage.rate_limit_until).not.toBeNull();
-      const rateLimitUntilSec = new Date(acct0.usage.rate_limit_until!).getTime() / 1000;
-      const expectedBackoff = secondaryResetAt - nowUnix();
-      const actualBackoff = rateLimitUntilSec - nowUnix();
-      expect(actualBackoff).toBeGreaterThan(expectedBackoff * 0.6);
-      expect(actualBackoff).toBeLessThan(expectedBackoff * 1.5);
+      // Account stays excluded at least until the secondary window resets
+      // (the longer of the two locks). The primary reset_at from the 429
+      // retry-after is irrelevant for pool exclusion as long as the secondary
+      // is still limit_reached.
+      const secondaryReset = acct0.quota?.secondary_rate_limit?.reset_at;
+      expect(secondaryReset).toBeGreaterThanOrEqual(secondaryResetAt - 5);
+      expect(secondaryReset).toBeLessThanOrEqual(secondaryResetAt + 5);
     });
   });
 
@@ -475,17 +480,17 @@ describe("secondary quota rotation", () => {
       vi.mocked(getMockTransport().post).mockClear();
     });
 
-    it("returns 401 when all accounts are rate_limited (not authenticated)", async () => {
+    it("returns 401 when all accounts are cachedQuota-exhausted (not authenticated)", async () => {
       ctx = buildApp(3);
 
-      // Mark all accounts as rate_limited with long backoff
+      // Mark all accounts as quota-exhausted with long backoff
       for (const id of ctx.entryIds) {
-        ctx.accountPool.markRateLimited(id, { retryAfterSec: 7200 });
+        ctx.accountPool.applyRateLimit429(id, { retryAfterSec: 7200 });
       }
 
       // Verify all marked
       const accounts = ctx.accountPool.getAccounts();
-      expect(accounts.every((a) => a.status === "rate_limited")).toBe(true);
+      expect(accounts.every((a) => isQuotaExhausted(a.quota))).toBe(true);
 
       // Fire 6 concurrent requests — all should get 401 (isAuthenticated=false)
       const responses = await Promise.all(
@@ -522,7 +527,7 @@ describe("secondary quota rotation", () => {
           },
           code_review_rate_limit: null,
         });
-        ctx.accountPool.markRateLimited(id, { retryAfterSec: 604800 });
+        ctx.accountPool.applyRateLimit429(id, { retryAfterSec: 604800 });
       }
 
       const responses = await Promise.all(

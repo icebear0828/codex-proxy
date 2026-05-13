@@ -19,10 +19,9 @@ import { getRealClientIp } from "../utils/get-real-client-ip.js";
 import { randomUUID } from "crypto";
 import {
   handleProxyRequest,
-  handleDirectRequest,
-  type FormatAdapter,
-  type ProxyRequest,
 } from "./shared/proxy-handler.js";
+import { handleDirectRequest } from "./shared/direct-request-handler.js";
+import type { FormatAdapter, ProxyRequest } from "./shared/proxy-handler-types.js";
 import type { UpstreamRouter } from "../proxy/upstream-router.js";
 import { summarizeRequestForLog } from "../logs/request-summary.js";
 
@@ -55,9 +54,9 @@ function makeOpenAIFormat(wantReasoning: boolean): FormatAdapter {
         code: "codex_api_error",
       },
     }),
-    streamTranslator: (api, response, model, onUsage, onResponseId, tupleSchema) =>
+    streamTranslator: ({ api, response, model, onUsage, onResponseId, tupleSchema }) =>
       streamCodexToOpenAI(api, response, model, onUsage, onResponseId, wantReasoning, tupleSchema),
-    collectTranslator: (api, response, model, tupleSchema) =>
+    collectTranslator: ({ api, response, model, tupleSchema }) =>
       collectCodexResponse(api, response, model, wantReasoning, tupleSchema),
   };
 }
@@ -151,7 +150,7 @@ export function createChatRoutes(
         model: req.model,
         codexRequest: { ...codexRequest, model: req.model },
       };
-      return handleDirectRequest(c, routeMatch.adapter, directReq, fmt);
+      return handleDirectRequest({ c, upstream: routeMatch.adapter, req: directReq, fmt });
     }
 
     // Auth check for Codex route only
@@ -169,7 +168,7 @@ export function createChatRoutes(
 
     const summary = accountPool.getPoolSummary();
     if (summary.active === 0) {
-      return handleProxyRequest(c, accountPool, cookieJar, proxyReq, fmt, proxyPool);
+      return handleProxyRequest({ c, accountPool, cookieJar, req: proxyReq, fmt, proxyPool });
     }
 
     const config = getConfig();
@@ -189,7 +188,7 @@ export function createChatRoutes(
       }
     }
 
-    return handleProxyRequest(c, accountPool, cookieJar, proxyReq, fmt, proxyPool);
+    return handleProxyRequest({ c, accountPool, cookieJar, req: proxyReq, fmt, proxyPool });
   });
 
   return app;

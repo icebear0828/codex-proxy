@@ -176,7 +176,7 @@ export function UpdateModal({
               <button
                 onClick={onApply}
                 disabled={applying}
-                class="px-4 py-2 text-xs font-semibold bg-primary text-white rounded-lg hover:bg-primary-hover disabled:opacity-50 transition-colors flex items-center gap-1.5"
+                class="px-4 py-2 text-xs font-semibold bg-primary-action text-white rounded-lg hover:bg-primary-action-hover disabled:opacity-50 transition-colors flex items-center gap-1.5"
               >
                 {applying && (
                   <svg class="size-3.5 animate-spin" viewBox="0 0 24 24" fill="none">
@@ -190,7 +190,7 @@ export function UpdateModal({
               <div class="flex flex-col items-end gap-1.5">
                 <button
                   onClick={() => { navigator.clipboard.writeText("docker compose pull && docker compose up -d"); }}
-                  class="px-4 py-2 text-xs font-semibold bg-primary text-white rounded-lg hover:bg-primary-hover transition-colors"
+                  class="px-4 py-2 text-xs font-semibold bg-primary-action text-white rounded-lg hover:bg-primary-action-hover transition-colors"
                 >
                   {t("copy")} docker compose pull && docker compose up -d
                 </button>
@@ -205,7 +205,7 @@ export function UpdateModal({
                   href={release.url}
                   target="_blank"
                   rel="noopener noreferrer"
-                  class="px-4 py-2 text-xs font-semibold bg-primary text-white rounded-lg hover:bg-primary-hover transition-colors"
+                  class="px-4 py-2 text-xs font-semibold bg-primary-action text-white rounded-lg hover:bg-primary-action-hover transition-colors"
                 >
                   {t("electronDownloadBtn")}
                 </a>

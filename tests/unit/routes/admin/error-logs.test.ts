@@ -34,6 +34,10 @@ vi.mock("@src/config.js", () => ({
 beforeEach(() => {
   tmpDataDir = mkdtempSync(resolve(tmpdir(), "errlog-routes-"));
   mockConfig.observability.local_error_log = true;
+  // Re-enable disk writes under Vitest (suppressed by default in
+  // `appendErrorLog` to keep stray test runs from polluting the
+  // developer's `data/error-log.jsonl`).
+  process.env.VITEST_FORCE_APPEND_ERROR_LOG = "1";
   vi.resetModules();
 });
 
@@ -41,6 +45,7 @@ afterEach(() => {
   if (existsSync(tmpDataDir)) {
     rmSync(tmpDataDir, { recursive: true, force: true });
   }
+  delete process.env.VITEST_FORCE_APPEND_ERROR_LOG;
   vi.clearAllMocks();
 });
 
@@ -75,6 +80,35 @@ describe("GET /admin/error-logs", () => {
     expect(typeErr.count).toBe(2);
     const rangeErr = body.groups.find((g) => g.name === "RangeError")!;
     expect(rangeErr.count).toBe(1);
+  });
+
+  it("includes sample context in grouped errors for dashboard diagnostics", async () => {
+    const { appendErrorLog } = await import("@src/logs/error-log.js");
+    appendErrorLog({
+      source: "server",
+      error: { name: "StreamUpstreamPrematureClose", message: "closed early" },
+      context: {
+        requestId: "rid-stream-1",
+        accountEntryId: "acct-42",
+        variantHash: "vh-cafef00d",
+      },
+    });
+
+    const app = await buildApp();
+    const res = await app.request("/admin/error-logs");
+    expect(res.status).toBe(200);
+
+    const body = await res.json() as {
+      groups: Array<{ name: string; sample_context?: Record<string, unknown> }>;
+    };
+    expect(body.groups[0]).toMatchObject({
+      name: "StreamUpstreamPrematureClose",
+      sample_context: {
+        requestId: "rid-stream-1",
+        accountEntryId: "acct-42",
+        variantHash: "vh-cafef00d",
+      },
+    });
   });
 
   it("returns empty groups when no log exists", async () => {

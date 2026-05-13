@@ -1,10 +1,8 @@
 /**
  * SnapshotTimer — periodically records usage stats snapshots for the dashboard.
  *
- * Previously this module also polled GET /codex/usage for each account.
- * That active polling was removed because quota data is now collected passively
- * from response headers on every proxied request (see proxy-handler.ts +
- * rate-limit-headers.ts).  Only the local snapshot recording remains.
+ * Quota refresh can be disabled independently; usage history still needs
+ * local snapshots so the dashboard can show historical windows.
  */
 
 import { getConfig } from "../config.js";
@@ -28,10 +26,10 @@ export class SnapshotTimer {
   start(): void {
     this.stopped = false;
     const config = getConfig();
-    const intervalMin = config.quota.refresh_interval_minutes;
+    const intervalMin = config.usage_stats.snapshot_interval_minutes;
 
     if (intervalMin === 0) {
-      console.log("[SnapshotTimer] Disabled (refresh_interval_minutes = 0)");
+      console.log("[SnapshotTimer] Disabled (usage_stats.snapshot_interval_minutes = 0)");
       return;
     }
 
@@ -62,7 +60,12 @@ export class SnapshotTimer {
   private scheduleNext(): void {
     if (this.stopped) return;
     const config = getConfig();
-    const intervalMs = jitter(config.quota.refresh_interval_minutes * 60 * 1000, 0.15);
+    const intervalMin = config.usage_stats.snapshot_interval_minutes;
+    if (intervalMin === 0) {
+      this.timer = null;
+      return;
+    }
+    const intervalMs = jitter(intervalMin * 60 * 1000, 0.15);
     this.timer = setTimeout(() => this.tick(), intervalMs);
   }
 }

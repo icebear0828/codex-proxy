@@ -6,7 +6,6 @@ export type AccountStatus =
   | "active"
   | "expired"
   | "quota_exhausted"
-  | "rate_limited"
   | "refreshing"
   | "disabled"
   | "banned";
@@ -27,7 +26,12 @@ export interface AccountUsage {
   image_request_failed_count?: number;
   empty_response_count: number;
   last_used: string | null;
-  rate_limit_until: string | null;
+  /**
+   * Legacy local-lock field, retired. Reads survive on disk to support
+   * in-place migration; new code MUST consult cachedQuota.*.limit_reached
+   * instead. Removed from runtime mutation by `migrateLegacyRateLimit`.
+   */
+  rate_limit_until?: string | null;
   /** Tracks the current rate limit window end (Unix seconds). When window rolls over, counters reset. */
   window_reset_at?: number | null;
   /** Per-window request count (resets when window expires). */

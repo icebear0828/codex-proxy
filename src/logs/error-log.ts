@@ -54,6 +54,7 @@ export interface ErrorGroup {
   last_seen: string;
   source: ErrorSource;
   sample_stack?: string;
+  sample_context?: Record<string, unknown>;
 }
 
 export interface AppendInput {
@@ -81,8 +82,15 @@ function readObservabilityConfig(): ObservabilityConfig {
 }
 
 function readAppVersion(): string {
-  const cfg = getConfig() as { client?: { app_version?: string } };
-  return cfg.client?.app_version ?? "unknown";
+  try {
+    const cfg = getConfig() as { client?: { app_version?: string } };
+    return cfg.client?.app_version ?? "unknown";
+  } catch {
+    // Config may not be loaded yet during early boot, accounts quarantine,
+    // or unit-test paths that exercise log helpers without booting the server.
+    // Keep logging best-effort so those events still reach error-log.jsonl.
+    return "unknown";
+  }
 }
 
 function ensureDataDir(): string {
@@ -130,6 +138,15 @@ function rotateIfNeeded(maxBytes: number): void {
  * write itself fails (we never want logging to break the caller).
  */
 export function appendErrorLog(input: AppendInput): void {
+  // Under Vitest, never touch the real data dir. Integration tests that
+  // pass through `recordStreamCloseEvent` (proxy-handler / response-processor
+  // paths) don't always mock `@src/paths.js`, and we don't want a stray
+  // `npm test` to write into the developer's `data/error-log.jsonl`.
+  // Test files that intentionally exercise the writer (e.g. `error-log.test.ts`,
+  // `stream-close-event.test.ts`) override this via the `__forceAppendInTests`
+  // hatch below.
+  if (process.env.VITEST && !process.env.VITEST_FORCE_APPEND_ERROR_LOG) return;
+
   let cfg: ObservabilityConfig;
   try {
     cfg = readObservabilityConfig();
@@ -217,7 +234,13 @@ export function groupErrorLog(entries: ErrorLogEntry[]): ErrorGroup[] {
     const existing = groups.get(sig);
     if (existing) {
       existing.count += 1;
-      if (e.ts > existing.last_seen) existing.last_seen = e.ts;
+      if (e.ts > existing.last_seen) {
+        existing.last_seen = e.ts;
+        existing.message = e.error.message;
+        existing.source = e.source;
+        existing.sample_stack = e.error.stack;
+        existing.sample_context = e.context;
+      }
       if (e.ts < existing.first_seen) existing.first_seen = e.ts;
     } else {
       groups.set(sig, {
@@ -229,6 +252,7 @@ export function groupErrorLog(entries: ErrorLogEntry[]): ErrorGroup[] {
         last_seen: e.ts,
         source: e.source,
         sample_stack: e.error.stack,
+        sample_context: e.context,
       });
     }
   }
