@@ -16,7 +16,7 @@ import { handleNonStreamingEmptyResponseExhausted } from "./non-streaming-empty-
 import { handleNonStreamingCollectFailure } from "./non-streaming-collect-failure.js";
 import { rethrowNonStreamingCodexApiErrorDuringCollect } from "./non-streaming-codex-api-error.js";
 import { releaseNonStreamingSuccessAccount } from "./non-streaming-success-release.js";
-import { createResponseMetadataCollector } from "./response-metadata-collector.js";
+import { collectNonStreamingResponse } from "./non-streaming-collect-response.js";
 
 const MAX_EMPTY_RETRIES = 2;
 
@@ -72,15 +72,14 @@ export async function handleNonStreaming(options: HandleNonStreamingOptions): Pr
 
   for (let attempt = 1; ; attempt++) {
     try {
-      const metadataCollector = createResponseMetadataCollector();
-      const result = await fmt.collectTranslator({
+      const collected = await collectNonStreamingResponse({
+        fmt,
         api: currentApi,
-        response: currentRawResponse,
-        model: req.model,
-        tupleSchema: req.tupleSchema,
+        rawResponse: currentRawResponse,
+        req,
         usageHint: getUsageHint?.(),
-        onResponseMetadata: metadataCollector.onResponseMetadata,
       });
+      const { result, responseFunctionCallIds } = collected;
       recordNonStreamingSuccessAffinity({
         affinityMap,
         responseId: result.responseId,
@@ -89,7 +88,7 @@ export async function handleNonStreaming(options: HandleNonStreamingOptions): Pr
         turnState,
         instructions: req.codexRequest.instructions ?? undefined,
         inputTokens: result.usage.input_tokens,
-        responseFunctionCallIds: metadataCollector.responseFunctionCallIds,
+        responseFunctionCallIds,
         variantHash,
       });
       if (result.usage) {
