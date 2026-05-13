@@ -6,6 +6,7 @@ export interface RecordProxyEgressLogOptions {
   request: ProxyRequest;
   status: number | null;
   startMs: number;
+  error?: string;
   nowMs?: () => number;
 }
 
@@ -21,6 +22,7 @@ export function recordProxyEgressLog(options: RecordProxyEgressLogOptions): void
     status: options.status,
     latencyMs: nowMs() - options.startMs,
     stream: options.request.isStreaming,
+    ...(options.error !== undefined ? { error: options.error } : {}),
     request: {
       model: options.request.codexRequest.model,
       stream: options.request.codexRequest.stream,
