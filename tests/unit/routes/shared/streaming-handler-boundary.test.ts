@@ -4,6 +4,7 @@ import * as ts from "typescript";
 import { describe, expect, it } from "vitest";
 import { handleStreaming } from "@src/routes/shared/streaming-handler.js";
 import { createResponseMetadataCollector } from "@src/routes/shared/response-metadata-collector.js";
+import { logProxyUsage } from "@src/routes/shared/proxy-usage-log.js";
 
 const ROOT = process.cwd();
 const STREAMING_HANDLER_MODULE = "src/routes/shared/streaming-handler.ts";
@@ -93,6 +94,7 @@ describe("streaming handler module boundary", () => {
   it("exports the streaming response handler from its own module", () => {
     expect(handleStreaming).toBeTypeOf("function");
     expect(createResponseMetadataCollector).toBeTypeOf("function");
+    expect(logProxyUsage).toBeTypeOf("function");
     const streamingHandler = source(STREAMING_HANDLER_MODULE);
     expect(exportedNames(streamingHandler, STREAMING_HANDLER_MODULE)).toContain("handleStreaming");
     expect(importsNamedBinding(streamingHandler, "response-processor.js", "streamResponse", STREAMING_HANDLER_MODULE)).toBe(true);
@@ -103,8 +105,17 @@ describe("streaming handler module boundary", () => {
       "createResponseMetadataCollector",
       STREAMING_HANDLER_MODULE,
     )).toBe(true);
+    expect(importsNamedBinding(
+      streamingHandler,
+      "proxy-usage-log.js",
+      "logProxyUsage",
+      STREAMING_HANDLER_MODULE,
+    )).toBe(true);
     expect(streamingHandler).not.toContain("new Set<string>()");
     expect(streamingHandler).not.toContain("metadata.functionCallIds");
+    expect(streamingHandler).not.toContain("High input token count");
+    expect(streamingHandler).not.toContain("cached=");
+    expect(streamingHandler).not.toContain("image=");
   });
 
   it("keeps streaming response details out of the runtime proxy handler", () => {
