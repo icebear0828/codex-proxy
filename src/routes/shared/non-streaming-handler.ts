@@ -6,10 +6,8 @@ import type { AccountPool } from "../../auth/account-pool.js";
 import type { CookieJar } from "../../proxy/cookie-jar.js";
 import type { ProxyPool } from "../../proxy/proxy-pool.js";
 import { EmptyResponseError, UpstreamPrematureCloseError } from "../../translation/codex-event-extractor.js";
-import { releaseAccount } from "./account-acquisition.js";
 import type { SessionAffinityMap } from "../../auth/session-affinity.js";
 import type { FormatAdapter, ProxyRequest, UsageHint } from "./proxy-handler-types.js";
-import { annotateImageGenOutcome } from "./proxy-handler-utils.js";
 import { retryNonStreamingEmptyResponse } from "./non-streaming-empty-response-retry.js";
 import { handleNonStreamingPrematureClose } from "./non-streaming-premature-close.js";
 import { logNonStreamingUsage } from "./non-streaming-usage-log.js";
@@ -17,6 +15,7 @@ import { recordNonStreamingSuccessAffinity } from "./non-streaming-affinity.js";
 import { handleNonStreamingEmptyResponseExhausted } from "./non-streaming-empty-response-exhausted.js";
 import { handleNonStreamingCollectFailure } from "./non-streaming-collect-failure.js";
 import { rethrowNonStreamingCodexApiErrorDuringCollect } from "./non-streaming-codex-api-error.js";
+import { releaseNonStreamingSuccessAccount } from "./non-streaming-success-release.js";
 
 const MAX_EMPTY_RETRIES = 2;
 
@@ -99,7 +98,13 @@ export async function handleNonStreaming(options: HandleNonStreamingOptions): Pr
       if (result.usage) {
         logNonStreamingUsage({ tag: fmt.tag, entryId: currentEntryId, requestId, usage: result.usage });
       }
-      releaseAccount(accountPool, currentEntryId, annotateImageGenOutcome(result.usage, req.expectsImageGen), released);
+      releaseNonStreamingSuccessAccount({
+        accountPool,
+        entryId: currentEntryId,
+        usage: result.usage,
+        expectsImageGen: req.expectsImageGen,
+        released,
+      });
       return c.json(result.response);
     } catch (collectErr) {
       // Upstream FIN'd mid-reasoning (typically gpt-5.5 xhigh > 120 s cap).

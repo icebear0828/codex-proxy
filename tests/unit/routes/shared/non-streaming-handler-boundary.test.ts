@@ -8,6 +8,7 @@ import { planNonStreamingCollectErrorResponse } from "@src/routes/shared/non-str
 import { handleNonStreamingEmptyResponseExhausted } from "@src/routes/shared/non-streaming-empty-response-exhausted.js";
 import { handleNonStreamingCollectFailure } from "@src/routes/shared/non-streaming-collect-failure.js";
 import { rethrowNonStreamingCodexApiErrorDuringCollect } from "@src/routes/shared/non-streaming-codex-api-error.js";
+import { releaseNonStreamingSuccessAccount } from "@src/routes/shared/non-streaming-success-release.js";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import * as ts from "typescript";
@@ -22,6 +23,7 @@ const COLLECT_ERROR_RESPONSE_MODULE = "src/routes/shared/non-streaming-collect-e
 const EMPTY_RESPONSE_EXHAUSTED_MODULE = "src/routes/shared/non-streaming-empty-response-exhausted.ts";
 const COLLECT_FAILURE_MODULE = "src/routes/shared/non-streaming-collect-failure.ts";
 const CODEX_API_ERROR_MODULE = "src/routes/shared/non-streaming-codex-api-error.ts";
+const SUCCESS_RELEASE_MODULE = "src/routes/shared/non-streaming-success-release.ts";
 
 function source(path: string): string {
   return readFileSync(resolve(ROOT, path), "utf-8");
@@ -92,6 +94,10 @@ describe("non-streaming handler module boundary", () => {
 
   it("exports the CodexApiError collect rethrow helper from its own module", () => {
     expect(rethrowNonStreamingCodexApiErrorDuringCollect).toBeTypeOf("function");
+  });
+
+  it("exports the success release helper from its own module", () => {
+    expect(releaseNonStreamingSuccessAccount).toBeTypeOf("function");
   });
 
   it("keeps empty-response retry reacquire and upstream send details out of the collect handler", () => {
@@ -389,5 +395,67 @@ describe("non-streaming handler module boundary", () => {
     expect(helper).not.toContain("c.json");
     expect(helper).not.toContain("c.status");
     expect(helper).not.toContain("acquireAccount");
+  });
+
+  it("keeps success release details out of the collect handler", () => {
+    const handler = source(NON_STREAMING_HANDLER_MODULE);
+
+    expect(importsNamedBinding(
+      handler,
+      "non-streaming-success-release.js",
+      "releaseNonStreamingSuccessAccount",
+      NON_STREAMING_HANDLER_MODULE,
+    )).toBe(true);
+    expect(importsNamedBinding(handler, "account-acquisition.js", "releaseAccount", NON_STREAMING_HANDLER_MODULE)).toBe(false);
+    expect(importsNamedBinding(
+      handler,
+      "proxy-handler-utils.js",
+      "annotateImageGenOutcome",
+      NON_STREAMING_HANDLER_MODULE,
+    )).toBe(false);
+    expect(handler).not.toContain("releaseAccount(accountPool");
+  });
+
+  it("does not let the success release helper own HTTP rendering, retry handling, logging, or affinity", () => {
+    const helper = source(SUCCESS_RELEASE_MODULE);
+    const importedSpecifiers = importedModuleSpecifiers(helper, SUCCESS_RELEASE_MODULE);
+
+    expect(importsNamedBinding(
+      helper,
+      "account-acquisition.js",
+      "releaseAccount",
+      SUCCESS_RELEASE_MODULE,
+    )).toBe(true);
+    expect(importsNamedBinding(
+      helper,
+      "proxy-handler-utils.js",
+      "annotateImageGenOutcome",
+      SUCCESS_RELEASE_MODULE,
+    )).toBe(true);
+    for (const disallowedSpecifier of [
+      "hono",
+      "./proxy-error-response.js",
+      "./streaming-handler.js",
+      "./non-streaming-handler.js",
+      "./non-streaming-empty-response-retry.js",
+      "./non-streaming-premature-close.js",
+      "./non-streaming-empty-response-exhausted.js",
+      "./non-streaming-collect-failure.js",
+      "./non-streaming-collect-error-response.js",
+      "./non-streaming-codex-api-error.js",
+      "./non-streaming-usage-log.js",
+      "./non-streaming-affinity.js",
+      "../../utils/retry.js",
+      "../../logs/entry.js",
+    ]) {
+      expect(importedSpecifiers).not.toContain(disallowedSpecifier);
+    }
+    expect(helper).not.toContain("collectTranslator");
+    expect(helper).not.toContain("createResponse");
+    expect(helper).not.toContain("formatError");
+    expect(helper).not.toContain("c.json");
+    expect(helper).not.toContain("c.status");
+    expect(helper).not.toContain("recordNonStreamingSuccessAffinity");
+    expect(helper).not.toContain("logNonStreamingUsage");
   });
 });
