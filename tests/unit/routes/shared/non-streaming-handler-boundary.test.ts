@@ -6,6 +6,7 @@ import { logNonStreamingUsage } from "@src/routes/shared/non-streaming-usage-log
 import { recordNonStreamingSuccessAffinity } from "@src/routes/shared/non-streaming-affinity.js";
 import { planNonStreamingCollectErrorResponse } from "@src/routes/shared/non-streaming-collect-error-response.js";
 import { handleNonStreamingEmptyResponseExhausted } from "@src/routes/shared/non-streaming-empty-response-exhausted.js";
+import { handleNonStreamingCollectFailure } from "@src/routes/shared/non-streaming-collect-failure.js";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import * as ts from "typescript";
@@ -18,6 +19,7 @@ const USAGE_LOG_MODULE = "src/routes/shared/non-streaming-usage-log.ts";
 const AFFINITY_MODULE = "src/routes/shared/non-streaming-affinity.ts";
 const COLLECT_ERROR_RESPONSE_MODULE = "src/routes/shared/non-streaming-collect-error-response.ts";
 const EMPTY_RESPONSE_EXHAUSTED_MODULE = "src/routes/shared/non-streaming-empty-response-exhausted.ts";
+const COLLECT_FAILURE_MODULE = "src/routes/shared/non-streaming-collect-failure.ts";
 
 function source(path: string): string {
   return readFileSync(resolve(ROOT, path), "utf-8");
@@ -80,6 +82,10 @@ describe("non-streaming handler module boundary", () => {
 
   it("exports the exhausted empty-response helper from its own module", () => {
     expect(handleNonStreamingEmptyResponseExhausted).toBeTypeOf("function");
+  });
+
+  it("exports the collect failure helper from its own module", () => {
+    expect(handleNonStreamingCollectFailure).toBeTypeOf("function");
   });
 
   it("keeps empty-response retry reacquire and upstream send details out of the collect handler", () => {
@@ -218,10 +224,16 @@ describe("non-streaming handler module boundary", () => {
 
     expect(importsNamedBinding(
       handler,
+      "non-streaming-collect-failure.js",
+      "handleNonStreamingCollectFailure",
+      NON_STREAMING_HANDLER_MODULE,
+    )).toBe(true);
+    expect(importsNamedBinding(
+      handler,
       "non-streaming-collect-error-response.js",
       "planNonStreamingCollectErrorResponse",
       NON_STREAMING_HANDLER_MODULE,
-    )).toBe(true);
+    )).toBe(false);
     expect(importsNamedBinding(handler, "proxy-error-handler.js", "toErrorStatus", NON_STREAMING_HANDLER_MODULE)).toBe(false);
     expect(handler).not.toContain("HTTP/[\\\\d.]");
     expect(handler).not.toContain("Unknown error");
@@ -284,5 +296,44 @@ describe("non-streaming handler module boundary", () => {
     expect(helper).not.toContain("c.json");
     expect(helper).not.toContain("c.status");
     expect(helper).not.toContain("acquireAccount");
+  });
+
+  it("keeps generic collect failure release details out of the collect handler", () => {
+    const handler = source(NON_STREAMING_HANDLER_MODULE);
+
+    expect(handler).not.toContain("annotateImageGenOutcome(undefined, req.expectsImageGen)");
+  });
+
+  it("does not let the collect failure helper own HTTP rendering, retry handling, or upstream sends", () => {
+    const helper = source(COLLECT_FAILURE_MODULE);
+
+    expect(importsNamedBinding(
+      helper,
+      "non-streaming-collect-error-response.js",
+      "planNonStreamingCollectErrorResponse",
+      COLLECT_FAILURE_MODULE,
+    )).toBe(true);
+    expect(importedModuleSpecifiers(helper, COLLECT_FAILURE_MODULE)).not.toEqual(expect.arrayContaining([
+      "hono",
+      "../../proxy/codex-api.js",
+      "./proxy-error-response.js",
+      "./streaming-handler.js",
+      "./non-streaming-handler.js",
+      "./non-streaming-empty-response-retry.js",
+      "./non-streaming-premature-close.js",
+      "./non-streaming-empty-response-exhausted.js",
+      "./non-streaming-usage-log.js",
+      "./non-streaming-affinity.js",
+      "../../utils/retry.js",
+      "../../logs/entry.js",
+    ]));
+    expect(helper).not.toContain("collectTranslator");
+    expect(helper).not.toContain("createResponse");
+    expect(helper).not.toContain("formatError");
+    expect(helper).not.toContain("c.json");
+    expect(helper).not.toContain("c.status");
+    expect(helper).not.toContain("acquireAccount");
+    expect(helper).not.toContain("HTTP/[\\\\d.]");
+    expect(helper).not.toContain("Unknown error");
   });
 });

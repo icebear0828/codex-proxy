@@ -14,8 +14,8 @@ import { retryNonStreamingEmptyResponse } from "./non-streaming-empty-response-r
 import { handleNonStreamingPrematureClose } from "./non-streaming-premature-close.js";
 import { logNonStreamingUsage } from "./non-streaming-usage-log.js";
 import { recordNonStreamingSuccessAffinity } from "./non-streaming-affinity.js";
-import { planNonStreamingCollectErrorResponse } from "./non-streaming-collect-error-response.js";
 import { handleNonStreamingEmptyResponseExhausted } from "./non-streaming-empty-response-exhausted.js";
+import { handleNonStreamingCollectFailure } from "./non-streaming-collect-failure.js";
 
 const MAX_EMPTY_RETRIES = 2;
 
@@ -175,8 +175,13 @@ export async function handleNonStreaming(options: HandleNonStreamingOptions): Pr
         c.status(responsePlan.status);
         return c.json(fmt.formatError(responsePlan.status, responsePlan.message));
       }
-      releaseAccount(accountPool, currentEntryId, annotateImageGenOutcome(undefined, req.expectsImageGen), released);
-      const responsePlan = planNonStreamingCollectErrorResponse(collectErr);
+      const responsePlan = handleNonStreamingCollectFailure({
+        accountPool,
+        entryId: currentEntryId,
+        req,
+        collectErr,
+        released,
+      });
       c.status(responsePlan.status);
       return c.json(fmt.formatError(responsePlan.status, responsePlan.message));
     }
