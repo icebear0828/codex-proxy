@@ -664,25 +664,29 @@ export async function handleProxyRequest(options: HandleProxyRequestOptions): Pr
             );
           };
           try {
-            await streamResponse(
-              s, capturedApi, rawResponse, req.model, fmt,
-              (u) => {
+            await streamResponse({
+              writer: s,
+              api: capturedApi,
+              response: rawResponse,
+              model: req.model,
+              adapter: fmt,
+              onUsage: (u) => {
                 usageInfo = u;
                 recordStreamAffinity();
               },
-              req.tupleSchema,
-              (id) => {
+              tupleSchema: req.tupleSchema,
+              onResponseId: (id) => {
                 capturedResponseId = id;
                 recordStreamAffinity();
               },
-              activeUsageHint,
-              (metadata) => {
+              usageHint: activeUsageHint,
+              onResponseMetadata: (metadata) => {
                 for (const callId of metadata.functionCallIds ?? []) {
                   responseFunctionCallIds.add(callId);
                 }
                 recordStreamAffinity();
               },
-              {
+              diagnostics: {
                 requestId: requestId.slice(0, 8),
                 tag: fmt.tag,
                 provider: "codex",
@@ -691,7 +695,7 @@ export async function handleProxyRequest(options: HandleProxyRequestOptions): Pr
                 variantHash,
                 abortSignal: abortController.signal,
               },
-            );
+            });
           } finally {
             abortController.abort();
             recordStreamAffinity();
@@ -1188,25 +1192,23 @@ export async function handleDirectRequest(options: HandleDirectRequestOptions): 
         });
         abortController.abort();
       });
-      await streamResponse(
-        s,
-        upstream,
-        rawResponse,
-        req.model,
-        fmt,
-        () => {},
-        req.tupleSchema,
-        () => {},
-        undefined,
-        undefined,
-        {
+      await streamResponse({
+        writer: s,
+        api: upstream,
+        response: rawResponse,
+        model: req.model,
+        adapter: fmt,
+        onUsage: () => {},
+        tupleSchema: req.tupleSchema,
+        onResponseId: () => {},
+        diagnostics: {
           requestId: requestId.slice(0, 8),
           tag: fmt.tag,
           provider: upstream.tag,
           path: "/v1/responses",
           abortSignal: abortController.signal,
         },
-      );
+      });
     });
   }
 

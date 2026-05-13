@@ -27,6 +27,20 @@ export interface StreamDiagnostics {
   abortSignal?: AbortSignal;
 }
 
+export interface StreamResponseOptions {
+  writer: StreamWriter;
+  api: UpstreamAdapter;
+  response: Response;
+  model: string;
+  adapter: FormatAdapter;
+  onUsage: (u: UsageInfo) => void;
+  tupleSchema?: Record<string, unknown> | null;
+  onResponseId?: (id: string) => void;
+  usageHint?: UsageHint;
+  onResponseMetadata?: (metadata: ResponseMetadata) => void;
+  diagnostics?: StreamDiagnostics;
+}
+
 interface WrittenStreamTrace {
   chunks: number;
   bytes: number;
@@ -100,19 +114,20 @@ function streamErrorStatus(err: unknown): number {
  * Handles: client disconnect (stops reading upstream), stream errors
  * (sends error SSE event before closing).
  */
-export async function streamResponse(
-  s: StreamWriter,
-  api: UpstreamAdapter,
-  rawResponse: Response,
-  model: string,
-  adapter: FormatAdapter,
-  onUsage: (u: UsageInfo) => void,
-  tupleSchema?: Record<string, unknown> | null,
-  onResponseId?: (id: string) => void,
-  usageHint?: UsageHint,
-  onResponseMetadata?: (metadata: ResponseMetadata) => void,
-  diagnostics?: StreamDiagnostics,
-): Promise<void> {
+export async function streamResponse(options: StreamResponseOptions): Promise<void> {
+  const {
+    writer,
+    api,
+    response,
+    model,
+    adapter,
+    onUsage,
+    tupleSchema,
+    onResponseId,
+    usageHint,
+    onResponseMetadata,
+    diagnostics,
+  } = options;
   const written: WrittenStreamTrace = {
     chunks: 0,
     bytes: 0,
@@ -135,7 +150,7 @@ export async function streamResponse(
   try {
     for await (const chunk of adapter.streamTranslator({
       api,
-      response: rawResponse,
+      response,
       model,
       onUsage,
       onResponseId: onResponseId ?? (() => {}),
@@ -155,7 +170,7 @@ export async function streamResponse(
         });
       }
       try {
-        await s.write(chunk);
+        await writer.write(chunk);
         applyWrittenChunkTrace(written, chunkTrace);
       } catch (writeErr) {
         const errMsg = writeErr instanceof Error ? writeErr.message : String(writeErr);
@@ -246,7 +261,7 @@ export async function streamResponse(
     });
     // Send error SSE event to client before closing
     try {
-      await s.write(
+      await writer.write(
         adapter.formatStreamError?.(responseStatus, errMsg) ??
           `data: ${JSON.stringify({ error: { message: errMsg, type: "stream_error" } })}\n\n`,
       );
