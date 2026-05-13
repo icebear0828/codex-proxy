@@ -111,6 +111,204 @@ describe("loadMergedConfig", () => {
       "utf-8",
     );
   });
+
+  it("applies persisted Codex version state on cold config load", () => {
+    mockExistsSync.mockImplementation((path) => {
+      const filePath = String(path);
+      return filePath.endsWith("version-state.json") || filePath.endsWith("extracted-fingerprint.json");
+    });
+    mockReadFileSync.mockImplementation((path) => {
+      const filePath = String(path);
+      if (filePath.endsWith("default.yaml")) {
+        return [
+          "client:",
+          "  originator: Codex Desktop",
+          "  app_version: 26.318.11754",
+          "  build_number: \"1100\"",
+          "  platform: darwin",
+          "  arch: arm64",
+          "  chromium_version: \"144\"",
+        ].join("\n");
+      }
+      if (filePath.endsWith("version-state.json")) {
+        return JSON.stringify({
+          app_version: "26.506.31421",
+          build_number: "2620",
+        });
+      }
+      if (filePath.endsWith("extracted-fingerprint.json")) {
+        return JSON.stringify({
+          app_version: "26.506.31421",
+          build_number: "2620",
+          chromium_version: "146",
+        });
+      }
+      throw new Error(`unexpected read: ${filePath}`);
+    });
+
+    const { raw } = loadMergedConfig();
+
+    expect(raw.client).toMatchObject({
+      originator: "Codex Desktop",
+      app_version: "26.506.31421",
+      build_number: "2620",
+      chromium_version: "146",
+    });
+  });
+
+  it("keeps explicit local app/build overrides and applies matching extracted chromium", () => {
+    mockExistsSync.mockReturnValue(true);
+    mockReadFileSync.mockImplementation((path) => {
+      const filePath = String(path);
+      if (filePath.endsWith("default.yaml")) {
+        return [
+          "client:",
+          "  app_version: 26.318.11754",
+          "  build_number: \"1100\"",
+          "  chromium_version: \"144\"",
+        ].join("\n");
+      }
+      if (filePath.endsWith("local.yaml")) {
+        return [
+          "client:",
+          "  app_version: 26.local",
+          "  build_number: \"local-build\"",
+        ].join("\n");
+      }
+      if (filePath.endsWith("version-state.json")) {
+        return JSON.stringify({
+          app_version: "26.506.31421",
+          build_number: "2620",
+          chromium_version: "146",
+        });
+      }
+      if (filePath.endsWith("extracted-fingerprint.json")) {
+        return JSON.stringify({
+          app_version: "26.local",
+          build_number: "local-build",
+          chromium_version: "147",
+        });
+      }
+      throw new Error(`unexpected read: ${filePath}`);
+    });
+
+    const { raw } = loadMergedConfig();
+
+    expect(raw.client).toMatchObject({
+      app_version: "26.local",
+      build_number: "local-build",
+      chromium_version: "147",
+    });
+  });
+
+  it("keeps explicit local chromium override over extracted state", () => {
+    mockExistsSync.mockReturnValue(true);
+    mockReadFileSync.mockImplementation((path) => {
+      const filePath = String(path);
+      if (filePath.endsWith("default.yaml")) {
+        return [
+          "client:",
+          "  app_version: 26.318.11754",
+          "  build_number: \"1100\"",
+          "  chromium_version: \"144\"",
+        ].join("\n");
+      }
+      if (filePath.endsWith("local.yaml")) {
+        return [
+          "client:",
+          "  app_version: 26.local",
+          "  build_number: \"local-build\"",
+          "  chromium_version: \"local-chrome\"",
+        ].join("\n");
+      }
+      if (filePath.endsWith("version-state.json")) {
+        return JSON.stringify({
+          app_version: "26.local",
+          build_number: "local-build",
+          chromium_version: "146",
+        });
+      }
+      if (filePath.endsWith("extracted-fingerprint.json")) {
+        return JSON.stringify({
+          app_version: "26.local",
+          build_number: "local-build",
+          chromium_version: "147",
+        });
+      }
+      throw new Error(`unexpected read: ${filePath}`);
+    });
+
+    const { raw } = loadMergedConfig();
+
+    expect(raw.client).toMatchObject({
+      app_version: "26.local",
+      build_number: "local-build",
+      chromium_version: "local-chrome",
+    });
+  });
+
+  it("keeps default client versions when persisted version state is malformed", () => {
+    mockExistsSync.mockImplementation((path) => String(path).endsWith("version-state.json"));
+    mockReadFileSync.mockImplementation((path) => {
+      const filePath = String(path);
+      if (filePath.endsWith("default.yaml")) {
+        return [
+          "client:",
+          "  app_version: 26.318.11754",
+          "  build_number: \"1100\"",
+          "  chromium_version: \"144\"",
+        ].join("\n");
+      }
+      if (filePath.endsWith("version-state.json")) {
+        return "{ not valid json";
+      }
+      throw new Error(`unexpected read: ${filePath}`);
+    });
+
+    const { raw } = loadMergedConfig();
+
+    expect(raw.client).toMatchObject({
+      app_version: "26.318.11754",
+      build_number: "1100",
+      chromium_version: "144",
+    });
+  });
+
+  it("keeps default chromium when extracted fingerprint JSON is malformed", () => {
+    mockExistsSync.mockImplementation((path) => {
+      const filePath = String(path);
+      return filePath.endsWith("version-state.json") || filePath.endsWith("extracted-fingerprint.json");
+    });
+    mockReadFileSync.mockImplementation((path) => {
+      const filePath = String(path);
+      if (filePath.endsWith("default.yaml")) {
+        return [
+          "client:",
+          "  app_version: 26.318.11754",
+          "  build_number: \"1100\"",
+          "  chromium_version: \"144\"",
+        ].join("\n");
+      }
+      if (filePath.endsWith("version-state.json")) {
+        return JSON.stringify({
+          app_version: "26.506.31421",
+          build_number: "2620",
+        });
+      }
+      if (filePath.endsWith("extracted-fingerprint.json")) {
+        return "{ not valid json";
+      }
+      throw new Error(`unexpected read: ${filePath}`);
+    });
+
+    const { raw } = loadMergedConfig();
+
+    expect(raw.client).toMatchObject({
+      app_version: "26.506.31421",
+      build_number: "2620",
+      chromium_version: "144",
+    });
+  });
 });
 
 // ── applyEnvOverrides ────────────────────────────────────────────

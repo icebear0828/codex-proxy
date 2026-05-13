@@ -187,6 +187,13 @@ describe("update scripts path resolution", () => {
     expect(script("apply-update.ts")).not.toContain('model.includes("codex")');
   });
 
+  it("keeps originator extraction importable for focused unit tests", () => {
+    const content = script("extract-fingerprint.ts");
+    expect(content).toContain("export function extractOriginatorFromMainJs");
+    expect(content).toContain("pathToFileURL");
+    expect(content).toContain("import.meta.url === pathToFileURL");
+  });
+
   it("extracts every current gpt model id shape from quoted Desktop source strings", () => {
     const patterns = readYamlRecord(resolve(ROOT, "config/extraction-patterns.yaml"));
     const mainJs = requireRecord(patterns, "main_js");

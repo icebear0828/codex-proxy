@@ -14,6 +14,7 @@
 
 import { readFileSync, writeFileSync, existsSync, mkdirSync, readdirSync, rmSync } from "fs";
 import { resolve, join } from "path";
+import { pathToFileURL } from "url";
 import { createHash } from "crypto";
 import { createRequire } from "module";
 import asar from "@electron/asar";
@@ -47,8 +48,17 @@ interface JsBeautifyModule {
   js(content: string, options: { indent_size: number }): string;
 }
 
+interface OriginatorPattern {
+  pattern?: string;
+  group?: number;
+}
+
 function sha256(content: string): string {
   return `sha256:${createHash("sha256").update(content, "utf-8").digest("hex").slice(0, 16)}`;
+}
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
 function loadPatterns(): ExtractionPatterns {
@@ -142,6 +152,35 @@ function extractFromPackageJson(root: string): {
   };
 }
 
+export function extractOriginatorFromMainJs(
+  content: string,
+  originatorPattern?: OriginatorPattern,
+): string | null {
+  const desktopOriginatorBinding = content.match(/desktopOriginator\s*:\s*([A-Za-z_$][\w$]*)/);
+  if (desktopOriginatorBinding?.[1]) {
+    const variableName = escapeRegExp(desktopOriginatorBinding[1]);
+    const assignment = content.match(
+      new RegExp(`(?:\\b(?:var|let|const)\\s+)?${variableName}\\s*=\\s*["'\`](Codex [^"'\`]+)["'\`]`),
+    );
+    if (assignment?.[1]) return assignment[1];
+  }
+
+  const directDesktopOriginator = content.match(/desktopOriginator\s*:\s*["'`](Codex [^"'`]+)["'`]/);
+  if (directDesktopOriginator?.[1]) return directDesktopOriginator[1];
+
+  const exactDesktop = content.match(/\b[A-Za-z_$][\w$]*\s*=\s*["'`](Codex Desktop)["'`]/);
+  if (exactDesktop?.[1]) return exactDesktop[1];
+
+  if (!originatorPattern?.pattern) return null;
+  const re = new RegExp(originatorPattern.pattern, "g");
+  const group = originatorPattern.group ?? 0;
+  for (const match of content.matchAll(re)) {
+    const candidate = match[group] ?? match[0];
+    if (!candidate.endsWith(".app")) return candidate;
+  }
+  return null;
+}
+
 /**
  * Step B: Extract values from main.js using patterns
  */
@@ -171,12 +210,7 @@ function extractFromMainJs(
   }
 
   // Originator
-  let originator: string | null = null;
-  const origPattern = patterns.originator;
-  if (origPattern?.pattern) {
-    const m = content.match(new RegExp(origPattern.pattern));
-    if (m) originator = m[origPattern.group ?? 0] ?? m[0];
-  }
+  const originator = extractOriginatorFromMainJs(content, patterns.originator);
 
   // Fail fast on critical fields
   if (!originator) {
@@ -494,14 +528,11 @@ async function main() {
         const jsFiles = readdirSync(buildDir).filter((f) => f.endsWith(".js"));
         for (const file of jsFiles) {
           const content = readFileSync(join(buildDir, file), "utf-8");
-          const origPattern = patterns.main_js.originator;
-          if (origPattern?.pattern) {
-            const m = content.match(new RegExp(origPattern.pattern));
-            if (m) {
-              mainJsResults.originator = m[origPattern.group ?? 0] ?? m[0];
-              console.log(`[extract] Originator found in fallback file: ${file}`);
-              break;
-            }
+          const originator = extractOriginatorFromMainJs(content, patterns.main_js.originator);
+          if (originator) {
+            mainJsResults.originator = originator;
+            console.log(`[extract] Originator found in fallback file: ${file}`);
+            break;
           }
         }
       }
@@ -577,7 +608,9 @@ async function main() {
   console.log("[extract] Done.");
 }
 
-main().catch((err) => {
-  console.error("[extract] Fatal:", err);
-  process.exit(1);
-});
+if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {
+  main().catch((err) => {
+    console.error("[extract] Fatal:", err);
+    process.exit(1);
+  });
+}
