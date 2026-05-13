@@ -6,6 +6,7 @@
  *   - account-acquisition.ts  — acquire / release with idempotent guard
  *   - proxy-egress-log.ts     — upstream request audit log entries
  *   - proxy-error-handler.ts  — CodexApiError classification + pool state mutations
+ *   - proxy-fallback-retry-plan.ts — account fallback retry response planning
  *   - proxy-debug-dump.ts     — opt-in request payload diagnostics
  *   - proxy-request-diagnostics.ts — request summary / large payload logs
  *   - proxy-stagger.ts        — request interval staggering
@@ -32,10 +33,10 @@ import { getSessionAffinityMap } from "../../auth/session-affinity.js";
 import { randomUUID } from "crypto";
 import { computeVariantHash } from "./variant-hash.js";
 import {
-  buildAccountExhaustionDetail,
   respondWithNoAccount,
   respondWithProxyError,
 } from "./proxy-error-response.js";
+import { buildProxyFallbackRetryPlan } from "./proxy-fallback-retry-plan.js";
 import { recordProxyEgressLog } from "./proxy-egress-log.js";
 import { applyParsedRateLimits, applyRateLimitHeaders, type ApplyParsedRateLimitsOptions } from "./proxy-rate-limit.js";
 import { buildRequestDiagnostics } from "./proxy-request-diagnostics.js";
@@ -361,19 +362,21 @@ export async function handleProxyRequest(options: HandleProxyRequestOptions): Pr
         modelRetried = true;
       }
 
-      // Early exit: skip acquire overhead when no active accounts remain.
-      // Lock already cleared by handleCodexApiError (markRateLimited/markStatus
-      // → clearLock), so no releaseAccount call needed — matches existing !retry path.
-      if (!accountPool.hasAvailableAccounts(triedEntryIds)) {
-        const summary = accountPool.getPoolSummary();
-        const detail = buildAccountExhaustionDetail(summary, decision.message);
+      const fallbackAvailability = accountPool.hasAvailableAccounts(triedEntryIds)
+        ? { available: true } as const
+        : { available: false, summary: accountPool.getPoolSummary() } as const;
+      const fallbackPlan = buildProxyFallbackRetryPlan({
+        decision,
+        availability: fallbackAvailability,
+      });
+      if (fallbackPlan.action === "respond") {
         return respondWithProxyError({
           c,
           req,
           fmt,
-          status: decision.status,
-          message: detail,
-          useFormat429: decision.useFormat429,
+          status: fallbackPlan.status,
+          message: fallbackPlan.message,
+          ...(fallbackPlan.useFormat429 ? { useFormat429: true } : {}),
         });
       }
 

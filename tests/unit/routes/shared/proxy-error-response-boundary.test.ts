@@ -73,7 +73,7 @@ describe("proxy error response module boundary", () => {
 
     expect(importsNamedBinding(proxyHandler, "proxy-error-response.js", "respondWithNoAccount", PROXY_HANDLER_MODULE)).toBe(true);
     expect(importsNamedBinding(proxyHandler, "proxy-error-response.js", "respondWithProxyError", PROXY_HANDLER_MODULE)).toBe(true);
-    expect(importsNamedBinding(proxyHandler, "proxy-error-response.js", "buildAccountExhaustionDetail", PROXY_HANDLER_MODULE)).toBe(true);
+    expect(importsNamedBinding(proxyHandler, "proxy-error-response.js", "buildAccountExhaustionDetail", PROXY_HANDLER_MODULE)).toBe(false);
     expect(importedModuleSpecifiers(proxyHandler, PROXY_HANDLER_MODULE)).not.toEqual(expect.arrayContaining([
       "hono/utils/http-status",
       "./stream-error-response.js",

@@ -811,6 +811,7 @@ describe("proxy-handler integration", () => {
     const message = fmt.format429.mock.calls[0][0] as string;
     expect(message).toContain("All accounts exhausted");
     expect(message).toContain("2 rate-limited");
+    expect(accountPool.acquire).toHaveBeenCalledTimes(1);
   });
 
   // 17. previous_response_not_found: should strip previous_response_id and retry
