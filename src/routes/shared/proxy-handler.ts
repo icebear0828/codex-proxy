@@ -6,7 +6,7 @@
  *   - account-acquisition.ts  — acquire / release with idempotent guard
  *   - proxy-egress-log.ts     — upstream request audit log entries
  *   - proxy-error-handler.ts  — CodexApiError classification + pool state mutations
- *   - proxy-fallback-retry-plan.ts — account fallback retry response planning
+ *   - proxy-fallback-account-retry.ts — fallback account acquire / API rebuild
  *   - proxy-implicit-resume-lifecycle.ts — implicit-resume state machine / rollback
  *   - proxy-implicit-resume-request.ts — implicit-resume request apply/restore state
  *   - proxy-request-preparation.ts — request input/default forwarding fields
@@ -37,7 +37,7 @@ import {
   respondWithNoAccount,
   respondWithProxyError,
 } from "./proxy-error-response.js";
-import { buildProxyFallbackRetryPlan } from "./proxy-fallback-retry-plan.js";
+import { prepareProxyFallbackAccountRetry } from "./proxy-fallback-account-retry.js";
 import { createImplicitResumeLifecycle } from "./proxy-implicit-resume-lifecycle.js";
 import { captureImplicitResumeRequestState } from "./proxy-implicit-resume-request.js";
 import {
@@ -244,41 +244,30 @@ export async function handleProxyRequest(options: HandleProxyRequestOptions): Pr
         modelRetried = true;
       }
 
-      const fallbackAvailability = accountPool.hasAvailableAccounts(triedEntryIds)
-        ? { available: true } as const
-        : { available: false, summary: accountPool.getPoolSummary() } as const;
-      const fallbackPlan = buildProxyFallbackRetryPlan({
+      const fallbackRetry = prepareProxyFallbackAccountRetry({
+        accountPool,
+        model: req.codexRequest.model,
+        triedEntryIds,
+        tag: fmt.tag,
         decision,
-        availability: fallbackAvailability,
+        cookieJar,
+        proxyPool,
       });
-      if (fallbackPlan.action === "respond") {
+      if (fallbackRetry.action === "respond") {
         return respondWithProxyError({
           c,
           req,
           fmt,
-          status: fallbackPlan.status,
-          message: fallbackPlan.message,
-          ...(fallbackPlan.useFormat429 ? { useFormat429: true } : {}),
+          status: fallbackRetry.status,
+          message: fallbackRetry.message,
+          ...(fallbackRetry.useFormat429 ? { useFormat429: true } : {}),
         });
       }
 
-      const retry = acquireAccount(accountPool, req.codexRequest.model, triedEntryIds, fmt.tag);
-      if (!retry) {
-        return respondWithProxyError({
-          c,
-          req,
-          fmt,
-          status: decision.status,
-          message: decision.message,
-          useFormat429: decision.useFormat429,
-        });
-      }
-
-      entryId = retry.entryId;
-      triedEntryIds.push(retry.entryId);
-      codexApi = buildCodexApi(retry.token, retry.accountId, cookieJar, retry.entryId, proxyPool);
-      console.log(`[${fmt.tag}] Fallback → account ${retry.entryId}`);
-      await staggerIfNeeded(retry.prevSlotMs);
+      entryId = fallbackRetry.entryId;
+      triedEntryIds.push(fallbackRetry.entryId);
+      codexApi = fallbackRetry.api;
+      await staggerIfNeeded(fallbackRetry.prevSlotMs);
       continue;
     }
   }

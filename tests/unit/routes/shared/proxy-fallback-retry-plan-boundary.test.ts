@@ -6,6 +6,7 @@ import { describe, expect, it } from "vitest";
 
 const ROOT = process.cwd();
 const FALLBACK_RETRY_PLAN_MODULE = "src/routes/shared/proxy-fallback-retry-plan.ts";
+const FALLBACK_ACCOUNT_RETRY_MODULE = "src/routes/shared/proxy-fallback-account-retry.ts";
 const PROXY_HANDLER_MODULE = "src/routes/shared/proxy-handler.ts";
 
 function source(path: string): string {
@@ -80,12 +81,19 @@ describe("proxy fallback retry plan module boundary", () => {
 
   it("keeps account exhaustion response planning out of the proxy orchestrator", () => {
     const proxyHandler = source(PROXY_HANDLER_MODULE);
+    const fallbackAccountRetry = source(FALLBACK_ACCOUNT_RETRY_MODULE);
 
     expect(importsNamedBinding(
       proxyHandler,
       "proxy-fallback-retry-plan.js",
       "buildProxyFallbackRetryPlan",
       PROXY_HANDLER_MODULE,
+    )).toBe(false);
+    expect(importsNamedBinding(
+      fallbackAccountRetry,
+      "proxy-fallback-retry-plan.js",
+      "buildProxyFallbackRetryPlan",
+      FALLBACK_ACCOUNT_RETRY_MODULE,
     )).toBe(true);
     expect(importsNamedBindingFromAnyModule(
       proxyHandler,

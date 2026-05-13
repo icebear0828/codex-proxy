@@ -529,6 +529,46 @@ describe("proxy-handler integration", () => {
     expect(accountPool.release).toHaveBeenCalledWith("e1", undefined);
   });
 
+  it("releases model-not-supported account before retrying a fallback account", async () => {
+    let upstreamCalls = 0;
+    mockCreateResponse = () => {
+      upstreamCalls++;
+      if (upstreamCalls === 1) {
+        return Promise.reject(new CodexApiError(400, JSON.stringify({
+          error: { message: "Model gpt-5.4 is not supported on this plan" },
+        })));
+      }
+      return Promise.resolve(new Response("data: {}\n\n"));
+    };
+
+    const accountPool = createMockAccountPool({
+      acquire: vi.fn()
+        .mockReturnValueOnce({ entryId: "e1", token: "tok1", accountId: "acc1" })
+        .mockReturnValueOnce({ entryId: "e2", token: "tok2", accountId: "acc2" }),
+    });
+    const fmt = createMockFormatAdapter();
+    const { app } = buildTestApp({ accountPool, fmt });
+
+    const res = await app.request("/test", { method: "POST" });
+    expect(res.status).toBe(200);
+
+    expect(accountPool.acquire).toHaveBeenNthCalledWith(1, {
+      model: "codex",
+      excludeIds: undefined,
+      preferredEntryId: undefined,
+    });
+    expect(accountPool.acquire).toHaveBeenNthCalledWith(2, {
+      model: "codex",
+      excludeIds: ["e1"],
+      preferredEntryId: undefined,
+    });
+    expect(accountPool.release).toHaveBeenNthCalledWith(1, "e1", undefined);
+    expect(accountPool.release).toHaveBeenNthCalledWith(2, "e2", {
+      input_tokens: 10,
+      output_tokens: 20,
+    });
+  });
+
   // 5b. CodexApiError 403 (non-CF) → marks banned, tries fallback
   it("handles 403 ban by marking banned and trying next account", async () => {
     mockCreateResponse = () =>
