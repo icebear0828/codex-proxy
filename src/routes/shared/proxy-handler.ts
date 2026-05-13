@@ -7,6 +7,7 @@
  *   - proxy-egress-log.ts     — upstream request audit log entries
  *   - proxy-error-handler.ts  — CodexApiError classification + pool state mutations
  *   - proxy-fallback-retry-plan.ts — account fallback retry response planning
+ *   - proxy-implicit-resume-request.ts — implicit-resume request apply/restore state
  *   - proxy-debug-dump.ts     — opt-in request payload diagnostics
  *   - proxy-request-diagnostics.ts — request summary / large payload logs
  *   - proxy-stagger.ts        — request interval staggering
@@ -37,6 +38,11 @@ import {
   respondWithProxyError,
 } from "./proxy-error-response.js";
 import { buildProxyFallbackRetryPlan } from "./proxy-fallback-retry-plan.js";
+import {
+  applyImplicitResumeRequest,
+  captureImplicitResumeRequestState,
+  restoreImplicitResumeRequestState,
+} from "./proxy-implicit-resume-request.js";
 import { recordProxyEgressLog } from "./proxy-egress-log.js";
 import { applyParsedRateLimits, applyRateLimitHeaders, type ApplyParsedRateLimitsOptions } from "./proxy-rate-limit.js";
 import { buildRequestDiagnostics } from "./proxy-request-diagnostics.js";
@@ -63,10 +69,7 @@ export async function handleProxyRequest(options: HandleProxyRequestOptions): Pr
   if (!Array.isArray(req.codexRequest.input)) {
     req.codexRequest.input = [];
   }
-  const originalInput = req.codexRequest.input;
-  const originalPreviousResponseId = req.codexRequest.previous_response_id;
-  const originalTurnState = req.codexRequest.turnState;
-  const originalUseWebSocket = req.codexRequest.useWebSocket;
+  const originalRequestState = captureImplicitResumeRequestState(req);
   const currentInstructions = req.codexRequest.instructions;
   const explicitPrevRespId = req.codexRequest.previous_response_id;
   const promptCacheIdentity = resolvePromptCacheIdentity(req.codexRequest, req.clientConversationId);
@@ -169,24 +172,18 @@ export async function handleProxyRequest(options: HandleProxyRequestOptions): Pr
     );
   }
   if (resumeEval.active) {
-    req.codexRequest.previous_response_id = implicitPrevRespId!;
-    req.codexRequest.useWebSocket = true;
-    req.codexRequest.input = req.codexRequest.input.slice(continuationInputStart);
-    const implicitTurnState = affinityMap.lookupTurnState(implicitPrevRespId!);
-    if (implicitTurnState) req.codexRequest.turnState = implicitTurnState;
-    activeUsageHint = {
-      reusedInputTokensUpperBound: affinityMap.lookupInputTokens(implicitPrevRespId!) ?? undefined,
-    };
+    activeUsageHint = applyImplicitResumeRequest({
+      request: req,
+      implicitPrevRespId: implicitPrevRespId!,
+      continuationInputStart,
+      affinityMap,
+    });
     implicitResumeActive = true;
   }
 
   const restoreImplicitResumeRequest = (): void => {
     if (!implicitResumeActive) return;
-    req.codexRequest.previous_response_id = originalPreviousResponseId;
-    req.codexRequest.turnState = originalTurnState;
-    req.codexRequest.useWebSocket = originalUseWebSocket;
-    req.codexRequest.input = originalInput;
-    req.codexRequest.instructions = currentInstructions;
+    restoreImplicitResumeRequestState({ request: req, snapshot: originalRequestState });
     activeUsageHint = undefined;
     implicitResumeActive = false;
   };
