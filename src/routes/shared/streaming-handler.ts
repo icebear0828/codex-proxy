@@ -1,0 +1,150 @@
+import type { Context } from "hono";
+import { stream } from "hono/streaming";
+import type { AccountPool } from "../../auth/account-pool.js";
+import type { SessionAffinityMap } from "../../auth/session-affinity.js";
+import type { CodexApi } from "../../proxy/codex-api.js";
+import { recordStreamCloseEvent } from "../../logs/stream-close-event.js";
+import type { UsageInfo } from "../../translation/codex-event-extractor.js";
+import { releaseAccount } from "./account-acquisition.js";
+import type { FormatAdapter, ProxyRequest, UsageHint } from "./proxy-handler-types.js";
+import { annotateImageGenOutcome } from "./proxy-handler-utils.js";
+import { streamResponse } from "./response-processor.js";
+
+export interface HandleStreamingOptions {
+  c: Context;
+  accountPool: AccountPool;
+  req: ProxyRequest;
+  fmt: FormatAdapter;
+  api: CodexApi;
+  response: Response;
+  entryId: string;
+  abortController: AbortController;
+  released: Set<string>;
+  requestId: string;
+  affinityMap: SessionAffinityMap;
+  conversationId: string;
+  turnState?: string;
+  usageHint?: UsageHint;
+  variantHash: string;
+}
+
+export function handleStreaming(options: HandleStreamingOptions): Response {
+  const {
+    c,
+    accountPool,
+    req,
+    fmt,
+    api,
+    response,
+    entryId,
+    abortController,
+    released,
+    requestId,
+    affinityMap,
+    conversationId,
+    turnState,
+    usageHint,
+    variantHash,
+  } = options;
+
+  c.header("Content-Type", "text/event-stream");
+  c.header("Cache-Control", "no-cache");
+  c.header("Connection", "keep-alive");
+
+  const capturedEntryId = entryId;
+  const capturedApi = api;
+  let usageInfo: UsageInfo | undefined;
+  let capturedResponseId: string | null = null;
+  const responseFunctionCallIds = new Set<string>();
+
+  return stream(c, async (s) => {
+    s.onAbort(() => {
+      console.warn(`[stream-client-abort] rid=${requestId.slice(0, 8)} tag=${fmt.tag} model=${req.model}`);
+      recordStreamCloseEvent({
+        kind: "client-abort",
+        requestId,
+        tag: fmt.tag,
+        model: req.model,
+        accountEntryId: capturedEntryId,
+        variantHash,
+        responseId: capturedResponseId ?? null,
+      });
+      abortController.abort();
+    });
+    const recordStreamAffinity = (): void => {
+      if (!capturedResponseId) return;
+      affinityMap.record(
+        capturedResponseId,
+        capturedEntryId,
+        conversationId,
+        turnState,
+        req.codexRequest.instructions ?? undefined,
+        usageInfo?.input_tokens,
+        Array.from(responseFunctionCallIds),
+        variantHash,
+      );
+    };
+    try {
+      await streamResponse({
+        writer: s,
+        api: capturedApi,
+        response,
+        model: req.model,
+        adapter: fmt,
+        onUsage: (u) => {
+          usageInfo = u;
+          recordStreamAffinity();
+        },
+        tupleSchema: req.tupleSchema,
+        onResponseId: (id) => {
+          capturedResponseId = id;
+          recordStreamAffinity();
+        },
+        usageHint,
+        onResponseMetadata: (metadata) => {
+          for (const callId of metadata.functionCallIds ?? []) {
+            responseFunctionCallIds.add(callId);
+          }
+          recordStreamAffinity();
+        },
+        diagnostics: {
+          requestId: requestId.slice(0, 8),
+          tag: fmt.tag,
+          provider: "codex",
+          path: "/codex/responses",
+          accountEntryId: capturedEntryId,
+          variantHash,
+          abortSignal: abortController.signal,
+        },
+      });
+    } finally {
+      abortController.abort();
+      recordStreamAffinity();
+      if (usageInfo) {
+        const uncached = usageInfo.cached_tokens
+          ? usageInfo.input_tokens - usageInfo.cached_tokens
+          : usageInfo.input_tokens;
+        const imgIn = usageInfo.image_input_tokens ?? 0;
+        const imgOut = usageInfo.image_output_tokens ?? 0;
+        const hitPct = usageInfo.input_tokens > 0
+          ? `${((usageInfo.cached_tokens ?? 0) / usageInfo.input_tokens * 100).toFixed(1)}%`
+          : "n/a";
+        console.log(
+          `[${fmt.tag}] Account ${capturedEntryId} | rid=${requestId.slice(0, 8)} | Usage: in=${usageInfo.input_tokens}` +
+          (usageInfo.cached_tokens ? ` (cached=${usageInfo.cached_tokens} uncached=${uncached})` : "") +
+          ` out=${usageInfo.output_tokens}` +
+          (usageInfo.reasoning_tokens ? ` reasoning=${usageInfo.reasoning_tokens}` : "") +
+          (imgIn || imgOut ? ` image=${imgIn}/${imgOut}` : "") +
+          ` | hit=${hitPct}`,
+        );
+        if (usageInfo.input_tokens > 10_000) {
+          console.warn(
+            `[${fmt.tag}] ⚠ High input token count: ${usageInfo.input_tokens} tokens` +
+            (usageInfo.reasoning_tokens ? ` (reasoning=${usageInfo.reasoning_tokens})` : ""),
+          );
+        }
+      }
+      releaseAccount(accountPool, capturedEntryId, annotateImageGenOutcome(usageInfo, req.expectsImageGen), released);
+    }
+  });
+}
