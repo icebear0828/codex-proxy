@@ -18,10 +18,9 @@ import { CodexApiError } from "../../proxy/codex-api.js";
 import { withRetry } from "../../utils/retry.js";
 import { acquireAccount, releaseAccount } from "./account-acquisition.js";
 import { handleCodexApiError } from "./proxy-error-handler.js";
-import { isPreviousResponseNotFoundError, isUnansweredFunctionCallError } from "../../proxy/error-classification.js";
 import { handleStreaming } from "./streaming-handler.js";
 import { handleNonStreaming } from "./non-streaming-handler.js";
-import { annotateImageGenOutcome, buildCodexApi, stripCodexErrorPrefix } from "./proxy-handler-utils.js";
+import { annotateImageGenOutcome, buildCodexApi } from "./proxy-handler-utils.js";
 import { dumpProxyRequest } from "./proxy-debug-dump.js";
 import type {
   FormatAdapter,
@@ -40,6 +39,7 @@ import {
 import { recordProxyEgressLog } from "./proxy-egress-log.js";
 import { applyParsedRateLimits, applyRateLimitHeaders, type ApplyParsedRateLimitsOptions } from "./proxy-rate-limit.js";
 import { buildRequestDiagnostics } from "./proxy-request-diagnostics.js";
+import { buildProxyRetryRecoveryDecision } from "./proxy-retry-recovery.js";
 import { staggerIfNeeded } from "./proxy-stagger.js";
 import { buildWsPoolContext } from "./proxy-ws-context.js";
 import {
@@ -321,35 +321,17 @@ export async function handleProxyRequest(options: HandleProxyRequestOptions): Pr
         continue;
       }
 
-      // previous_response_id stale (account doesn't recognise it / map lost on
-      // restart / cross-account routing): drop the ID and retry once on the
-      // same account. For implicit-resume requests this also restores the
-      // full input history; for explicit ones the client's own input is sent
-      // verbatim (server-side history is lost but the request still completes).
-      if (!stripAndRetryDone && isPreviousResponseNotFoundError(err)) {
+      const retryRecovery = buildProxyRetryRecoveryDecision({
+        err,
+        tag: fmt.tag,
+        entryId,
+        stripAndRetryDone,
+        previousResponseId: req.codexRequest.previous_response_id,
+      });
+      if (retryRecovery.action === "retry") {
         stripAndRetryDone = true;
-        const staleId = req.codexRequest.previous_response_id;
-        console.warn(
-          `[${fmt.tag}] Account ${entryId} | previous_response_not_found (id=${staleId ?? "?"}), stripping and retrying same account`,
-        );
-        if (staleId) affinityMap.forget(staleId);
-        restoreImplicitResumeRequest();
-        req.codexRequest.previous_response_id = undefined;
-        req.codexRequest.turnState = undefined;
-        continue;
-      }
-
-      // Upstream rejected because a stored function_call from the previous
-      // response was not answered with a function_call_output. Recovery is the
-      // same as previous_response_not_found: drop previous_response_id, replay
-      // full history, retry once on the same account.
-      if (!stripAndRetryDone && isUnansweredFunctionCallError(err)) {
-        stripAndRetryDone = true;
-        const staleId = req.codexRequest.previous_response_id;
-        console.warn(
-          `[${fmt.tag}] Account ${entryId} | unanswered_function_call (id=${staleId ?? "?"}): ${stripCodexErrorPrefix(err.message).slice(0, 200)}, stripping and retrying same account`,
-        );
-        if (staleId) affinityMap.forget(staleId);
+        console.warn(retryRecovery.logMessage);
+        if (retryRecovery.staleId) affinityMap.forget(retryRecovery.staleId);
         restoreImplicitResumeRequest();
         req.codexRequest.previous_response_id = undefined;
         req.codexRequest.turnState = undefined;
