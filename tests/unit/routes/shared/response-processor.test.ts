@@ -12,7 +12,7 @@ import { streamResponse } from "@src/routes/shared/response-processor.js";
 import type { StreamWriter } from "@src/routes/shared/response-processor.js";
 import type { UpstreamAdapter } from "@src/proxy/upstream-adapter.js";
 import type { CodexResponsesRequest, CodexSSEEvent } from "@src/proxy/codex-api.js";
-import type { FormatAdapter, FormatStreamTranslatorOptions } from "@src/routes/shared/proxy-handler.js";
+import type { FormatAdapter, FormatStreamTranslatorOptions } from "@src/routes/shared/proxy-handler-types.js";
 
 /* ── Helpers ── */
 

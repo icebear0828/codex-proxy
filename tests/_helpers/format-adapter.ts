@@ -3,7 +3,7 @@ import type {
   FormatAdapter,
   FormatCollectTranslatorOptions,
   FormatStreamTranslatorOptions,
-} from "@src/routes/shared/proxy-handler.js";
+} from "@src/routes/shared/proxy-handler-types.js";
 
 export function createMockFormatAdapter(overrides?: Partial<FormatAdapter>): FormatAdapter {
   return {

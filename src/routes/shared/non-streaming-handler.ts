@@ -11,7 +11,7 @@ import { toErrorStatus } from "./proxy-error-handler.js";
 import { enqueueLogEntry } from "../../logs/entry.js";
 import { recordStreamCloseEvent } from "../../logs/stream-close-event.js";
 import type { SessionAffinityMap } from "../../auth/session-affinity.js";
-import type { FormatAdapter, ProxyRequest, UsageHint } from "./proxy-handler.js";
+import type { FormatAdapter, ProxyRequest, UsageHint } from "./proxy-handler-types.js";
 import { annotateImageGenOutcome, buildCodexApi, stripCodexErrorPrefix } from "./proxy-handler-utils.js";
 
 const MAX_EMPTY_RETRIES = 2;

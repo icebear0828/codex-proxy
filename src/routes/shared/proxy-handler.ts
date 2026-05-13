@@ -17,10 +17,6 @@ import {
   PreviousResponseWebSocketError,
 } from "../../proxy/codex-api.js";
 import type { CodexResponsesRequest } from "../../proxy/codex-api.js";
-import type { UpstreamAdapter } from "../../proxy/upstream-adapter.js";
-import type { AccountPool } from "../../auth/account-pool.js";
-import type { CookieJar } from "../../proxy/cookie-jar.js";
-import type { ProxyPool } from "../../proxy/proxy-pool.js";
 import { withRetry } from "../../utils/retry.js";
 import { debugDump, debugDumpEnabled } from "../../utils/debug-dump.js";
 import { acquireAccount, releaseAccount } from "./account-acquisition.js";
@@ -30,101 +26,24 @@ import { streamResponse } from "./response-processor.js";
 import { handleNonStreaming } from "./non-streaming-handler.js";
 import { annotateImageGenOutcome, buildCodexApi, stripCodexErrorPrefix } from "./proxy-handler-utils.js";
 import type { UsageInfo } from "../../translation/codex-event-extractor.js";
+import type {
+  FormatAdapter,
+  HandleDirectRequestOptions,
+  HandleProxyRequestOptions,
+  ProxyRequest,
+  UsageHint,
+} from "./proxy-handler-types.js";
 import { parseRateLimitHeaders, rateLimitToQuota, type ParsedRateLimit } from "../../proxy/rate-limit-headers.js";
 import { getConfig } from "../../config.js";
 import { jitterInt } from "../../utils/jitter.js";
 import { getSessionAffinityMap } from "../../auth/session-affinity.js";
 import { enqueueLogEntry } from "../../logs/entry.js";
-import { recordStreamCloseEvent, type StreamCloseContextBase } from "../../logs/stream-close-event.js";
+import { recordStreamCloseEvent } from "../../logs/stream-close-event.js";
 import { randomUUID } from "crypto";
 import { deriveStableConversationKey } from "./stable-conversation-key.js";
 import { computeVariantHash } from "./variant-hash.js";
 import { getWsPool } from "../../proxy/ws-pool.js";
 import type { WsPoolContext } from "../../proxy/codex-api.js";
-
-/** Data prepared by each route after parsing and translating the request. */
-export interface ProxyRequest {
-  codexRequest: CodexResponsesRequest;
-  model: string;
-  isStreaming: boolean;
-  /** Stable client-side conversation/session identifier when the upstream client provides one. */
-  clientConversationId?: string;
-  /** Original schema before tuple→object conversion (for response reconversion). */
-  tupleSchema?: Record<string, unknown> | null;
-  /** Whether this is a new conversation (no previous_response_id) — used for cache reporting. */
-  isNewConversation?: boolean;
-  /** True iff the request declared `tools: [{type: "image_generation"}]`.
-   *  Used to attribute success/failure to the image_generation request counters
-   *  even when the upstream call fails before the first SSE event arrives. */
-  expectsImageGen?: boolean;
-}
-
-export interface UsageHint {
-  reusedInputTokensUpperBound?: number;
-}
-
-export interface ResponseMetadata {
-  functionCallIds?: string[];
-}
-
-export interface FormatStreamTranslatorOptions {
-  api: UpstreamAdapter;
-  response: Response;
-  model: string;
-  onUsage: (u: UsageInfo) => void;
-  onResponseId: (id: string) => void;
-  tupleSchema?: Record<string, unknown> | null;
-  usageHint?: UsageHint;
-  onResponseMetadata?: (metadata: ResponseMetadata) => void;
-  /** Diagnostic context forwarded into adapter-internal premature-close
-   *  records (e.g. `streamPassthrough` in responses.ts) so audit entries
-   *  carry the real rid / account / variantHash instead of falling back
-   *  to the synthetic `"stream-close"` placeholder. */
-  streamContext?: StreamCloseContextBase;
-}
-
-export interface FormatCollectTranslatorOptions {
-  api: UpstreamAdapter;
-  response: Response;
-  model: string;
-  tupleSchema?: Record<string, unknown> | null;
-  usageHint?: UsageHint;
-  onResponseMetadata?: (metadata: ResponseMetadata) => void;
-}
-
-export interface FormatCollectTranslatorResult {
-  response: unknown;
-  usage: UsageInfo;
-  responseId: string | null;
-}
-
-/** Format-specific adapter provided by each route. */
-export interface FormatAdapter {
-  tag: string;
-  noAccountStatus: StatusCode;
-  formatNoAccount: () => unknown;
-  format429: (message: string) => unknown;
-  formatError: (status: number, message: string) => unknown;
-  formatStreamError?: (status: number, message: string) => string;
-  streamTranslator: (options: FormatStreamTranslatorOptions) => AsyncGenerator<string>;
-  collectTranslator: (options: FormatCollectTranslatorOptions) => Promise<FormatCollectTranslatorResult>;
-}
-
-export interface HandleProxyRequestOptions {
-  c: Context;
-  accountPool: AccountPool;
-  cookieJar?: CookieJar;
-  req: ProxyRequest;
-  fmt: FormatAdapter;
-  proxyPool?: ProxyPool;
-}
-
-export interface HandleDirectRequestOptions {
-  c: Context;
-  upstream: UpstreamAdapter;
-  req: ProxyRequest;
-  fmt: FormatAdapter;
-}
 
 /** Upper bound on how stale an implicit-resume `previous_response_id` may be.
  *  Must stay in sync with `DEFAULT_POOL_CONFIG.maxAgeMs` (3_300_000 ms) in
