@@ -59,6 +59,19 @@ jobs:
             exit 0
           fi
 
+          RUNTIME_CHANGED_FILES=$(git diff --name-only "${LAST_TAG}..HEAD" -- . \
+            ':(exclude).github/**' \
+            ':(exclude)tests/**' \
+            ':(exclude)README.md' \
+            ':(exclude)README_EN.md' \
+            ':(exclude)CHANGELOG.md' \
+            ':(exclude)DESIGN.md')
+          if [ -z "$RUNTIME_CHANGED_FILES" ]; then
+            echo "No runtime files changed since $LAST_TAG, skipping"
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
           echo "Found $NEW_COMMITS new commit(s) since $LAST_TAG"
           echo "skip=false" >> "$GITHUB_OUTPUT"
           echo "last_tag=$LAST_TAG" >> "$GITHUB_OUTPUT"
