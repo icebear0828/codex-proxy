@@ -46,6 +46,7 @@ export async function* streamCodexToOpenAI(
   onResponseId?: (id: string) => void,
   wantReasoning?: boolean,
   tupleSchema?: Record<string, unknown> | null,
+  onResponseCompleted?: (id?: string) => void,
 ): AsyncGenerator<string> {
   const chunkId = `chatcmpl-${randomUUID().replace(/-/g, "").slice(0, 24)}`;
   const created = Math.floor(Date.now() / 1000);
@@ -247,6 +248,7 @@ export async function* streamCodexToOpenAI(
         }
 
         if (evt.usage) onUsage?.(evt.usage);
+        onResponseCompleted?.(evt.responseId);
         // Inject error text if stream completed with no content
         if (!hasContent) {
           yield formatSSE({

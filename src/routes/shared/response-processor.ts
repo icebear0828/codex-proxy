@@ -43,6 +43,7 @@ export interface StreamResponseOptions {
   onUsage: (u: UsageInfo) => void;
   tupleSchema?: Record<string, unknown> | null;
   onResponseId?: (id: string) => void;
+  onResponseCompleted?: (id?: string) => void;
   usageHint?: UsageHint;
   onResponseMetadata?: (metadata: ResponseMetadata) => void;
   diagnostics?: StreamDiagnostics;
@@ -64,6 +65,7 @@ export async function streamResponse(options: StreamResponseOptions): Promise<vo
     onUsage,
     tupleSchema,
     onResponseId,
+    onResponseCompleted,
     usageHint,
     onResponseMetadata,
     diagnostics,
@@ -81,6 +83,7 @@ export async function streamResponse(options: StreamResponseOptions): Promise<vo
     model,
     accountEntryId: diagnostics?.accountEntryId,
     variantHash: diagnostics?.variantHash,
+    ...(diagnostics?.abortSignal ? { abortSignal: diagnostics.abortSignal } : {}),
   };
   try {
     for await (const chunk of adapter.streamTranslator({
@@ -89,6 +92,7 @@ export async function streamResponse(options: StreamResponseOptions): Promise<vo
       model,
       onUsage,
       onResponseId: onResponseId ?? (() => {}),
+      onResponseCompleted,
       tupleSchema,
       usageHint,
       onResponseMetadata,

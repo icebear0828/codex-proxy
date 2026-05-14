@@ -10,7 +10,7 @@
 # Last updated: 2026-05-08 (Codex runtime context metadata)
 
 models:
-  # ── GPT-5.5 (newest general-purpose, Plus-only) ─────────────────────
+  # ── GPT-5.5 (general-purpose flagship) ──────────────────────────────
   - id: gpt-5.5
     displayName: GPT-5.5
     description: Latest general-purpose flagship

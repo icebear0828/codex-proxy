@@ -4,24 +4,25 @@
  * Priority (highest to lowest):
  *   0. ApiKeyPool entry matching the exact model name
  *   1. Explicit provider prefix: "openai:gpt-4o", "anthropic:claude-3-5-sonnet"
- *   2. model_routing config table: { "deepseek-chat": "deepseek" }
- *   3. Known Codex model IDs and aliases
- *   4. Custom provider `models` list
- *   5. Built-in name pattern rules: "claude-*" → anthropic, "gemini-*" → gemini
- *   6. Default (codex)
+ *   2. Model aliases: { "claude-opus-4-7": "gpt-5.5" }
+ *   3. model_routing config table: { "deepseek-chat": "deepseek" }
+ *   4. Known Codex model IDs
+ *   5. Custom provider `models` list
+ *   6. Built-in name pattern rules: "claude-*" → anthropic, "gemini-*" → gemini
+ *   7. Default (codex)
  */
 
 import type { UpstreamAdapter } from "./upstream-adapter.js";
 import type { ApiKeyPool, ApiKeyEntry } from "../auth/api-key-pool.js";
-import { getModelAliases, getModelInfo } from "../models/model-store.js";
+import { getModelAliases, getModelInfo, stripKnownModelSuffixes } from "../models/model-store.js";
 
 /** Factory that creates an UpstreamAdapter for a given ApiKeyEntry. */
 export type AdapterFactory = (entry: ApiKeyEntry) => UpstreamAdapter;
 
 export type UpstreamRouteMatch =
-  | { kind: "api-key"; adapter: UpstreamAdapter; entry: ApiKeyEntry }
-  | { kind: "adapter"; adapter: UpstreamAdapter }
-  | { kind: "codex"; adapter?: UpstreamAdapter }
+  | { kind: "api-key"; adapter: UpstreamAdapter; entry: ApiKeyEntry; resolvedModel?: string }
+  | { kind: "adapter"; adapter: UpstreamAdapter; resolvedModel?: string }
+  | { kind: "codex"; adapter?: UpstreamAdapter; resolvedModel?: string }
   | { kind: "not-found" };
 
 export class UpstreamRouter {
@@ -56,6 +57,10 @@ export class UpstreamRouter {
   }
 
   resolveMatch(model: string): UpstreamRouteMatch {
+    return this.resolveMatchInternal(model.trim(), new Set<string>());
+  }
+
+  private resolveMatchInternal(model: string, seenAliases: Set<string>): UpstreamRouteMatch {
     const explicitProvider = this.splitExplicitProvider(model);
 
     if (this.apiKeyPool && this.adapterFactory) {
@@ -72,6 +77,30 @@ export class UpstreamRouter {
     if (explicitProvider) {
       const adapter = this.adapters.get(explicitProvider.tag);
       if (adapter) return { kind: "adapter", adapter };
+    }
+
+    const aliases = getModelAliases();
+    const aliasTarget = aliases[model]?.trim();
+    if (aliasTarget) {
+      if (seenAliases.has(model) || seenAliases.has(aliasTarget)) {
+        return { kind: "not-found" };
+      }
+      seenAliases.add(model);
+      const match = this.resolveMatchInternal(aliasTarget, seenAliases);
+      return withResolvedModel(match, match.kind === "not-found" ? aliasTarget : match.resolvedModel ?? aliasTarget);
+    }
+
+    const suffixBase = stripKnownModelSuffixes(model).modelName;
+    const suffixAliasTarget = suffixBase !== model ? aliases[suffixBase]?.trim() : undefined;
+    if (suffixAliasTarget) {
+      if (seenAliases.has(suffixBase) || seenAliases.has(suffixAliasTarget)) {
+        return { kind: "not-found" };
+      }
+      seenAliases.add(suffixBase);
+      const match = this.resolveMatchInternal(suffixAliasTarget, seenAliases);
+      if (match.kind === "codex") {
+        return withResolvedModel(match, match.resolvedModel ?? suffixAliasTarget);
+      }
     }
 
     const routedTag = this.modelRouting[model];
@@ -115,6 +144,10 @@ export class UpstreamRouter {
     const trimmed = model.trim();
     if (aliases[trimmed]) return true;
     if (getModelInfo(trimmed)) return true;
+
+    const stripped = stripKnownModelSuffixes(trimmed);
+    if (stripped.modelName !== trimmed && getModelInfo(stripped.modelName)) return true;
+
     if (/^(gpt|o\d|codex)/i.test(trimmed)) return true;
 
     const colonIdx = trimmed.indexOf(":");
@@ -142,4 +175,10 @@ function pickLeastRecentlyUsed(entries: ApiKeyEntry[]): ApiKeyEntry {
     if (!best.lastUsedAt || e.lastUsedAt < best.lastUsedAt) best = e;
   }
   return best;
+}
+
+function withResolvedModel(match: UpstreamRouteMatch, resolvedModel: string): UpstreamRouteMatch {
+  if (match.kind === "not-found") return match;
+  if (match.resolvedModel) return match;
+  return { ...match, resolvedModel };
 }

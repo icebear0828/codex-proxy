@@ -67,6 +67,7 @@ export async function* streamCodexToAnthropic(
   wantThinking?: boolean,
   usageHint?: CacheUsageHint,
   onResponseMetadata?: (metadata: ResponseMetadata) => void,
+  onResponseCompleted?: (id?: string) => void,
 ): AsyncGenerator<string> {
   const msgId = `msg_${randomUUID().replace(/-/g, "").slice(0, 24)}`;
   let outputTokens = 0;
@@ -248,6 +249,7 @@ export async function* streamCodexToAnthropic(
             reasoning_tokens: evt.usage.reasoning_tokens,
           });
         }
+        onResponseCompleted?.(evt.responseId);
         // Inject error text if stream completed with no content
         if (!hasContent) {
           yield* ensureTextBlock();
