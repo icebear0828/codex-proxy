@@ -54,8 +54,8 @@ function makeOpenAIFormat(wantReasoning: boolean): FormatAdapter {
         code: "codex_api_error",
       },
     }),
-    streamTranslator: ({ api, response, model, onUsage, onResponseId, tupleSchema }) =>
-      streamCodexToOpenAI(api, response, model, onUsage, onResponseId, wantReasoning, tupleSchema),
+    streamTranslator: ({ api, response, model, onUsage, onResponseId, onResponseCompleted, tupleSchema }) =>
+      streamCodexToOpenAI(api, response, model, onUsage, onResponseId, wantReasoning, tupleSchema, onResponseCompleted),
     collectTranslator: ({ api, response, model, tupleSchema }) =>
       collectCodexResponse(api, response, model, wantReasoning, tupleSchema),
   };
@@ -145,10 +145,11 @@ export function createChatRoutes(
     });
 
     if (routeMatch.kind === "api-key" || routeMatch.kind === "adapter") {
+      const directModel = routeMatch.resolvedModel ?? req.model;
       const directReq = {
         ...proxyReq,
-        model: req.model,
-        codexRequest: { ...codexRequest, model: req.model },
+        model: directModel,
+        codexRequest: { ...codexRequest, model: directModel },
       };
       return handleDirectRequest({ c, upstream: routeMatch.adapter, req: directReq, fmt });
     }

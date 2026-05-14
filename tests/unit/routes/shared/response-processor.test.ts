@@ -101,6 +101,7 @@ describe("streamResponse", () => {
     const rawResponse = new Response("ok");
     const onUsage = vi.fn();
     const onResponseId = vi.fn();
+    const onResponseCompleted = vi.fn();
     const onResponseMetadata = vi.fn();
     const tupleSchema = { type: "array", prefixItems: [] } satisfies Record<string, unknown>;
     const usageHint = { reusedInputTokensUpperBound: 42 };
@@ -114,6 +115,7 @@ describe("streamResponse", () => {
       onUsage,
       tupleSchema,
       onResponseId,
+      onResponseCompleted,
       usageHint,
       onResponseMetadata,
       diagnostics: {
@@ -134,6 +136,7 @@ describe("streamResponse", () => {
     expect(options.model).toBe("gpt-5.4");
     expect(options.onUsage).toBe(onUsage);
     expect(options.onResponseId).toBe(onResponseId);
+    expect(options.onResponseCompleted).toBe(onResponseCompleted);
     expect(options.tupleSchema).toBe(tupleSchema);
     expect(options.usageHint).toBe(usageHint);
     expect(options.onResponseMetadata).toBe(onResponseMetadata);
@@ -146,6 +149,32 @@ describe("streamResponse", () => {
       accountEntryId: "entry-1",
       variantHash: "variant-1",
     });
+  });
+
+  it("forwards the abort signal to adapter stream context", async () => {
+    const s = createMockStream();
+    const adapter = createMockAdapter({ streamChunks: ["data: done\n\n"] });
+    const api = createMockCodexApi();
+    const rawResponse = new Response("ok");
+    const abortController = new AbortController();
+
+    await streamResponse({
+      writer: s,
+      api,
+      response: rawResponse,
+      model: "gpt-5.4",
+      adapter,
+      onUsage: vi.fn(),
+      diagnostics: {
+        requestId: "rid-abort-signal",
+        tag: "Responses",
+        abortSignal: abortController.signal,
+      },
+    });
+
+    const call = adapter.streamTranslator.mock.calls[0] ?? [];
+    const options = call[0] as FormatStreamTranslatorOptions;
+    expect(options.streamContext?.abortSignal).toBe(abortController.signal);
   });
 
   it("calls onUsage when adapter yields usage via callback", async () => {

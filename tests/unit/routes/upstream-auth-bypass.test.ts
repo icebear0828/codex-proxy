@@ -219,6 +219,92 @@ describe("upstream direct routing without Codex auth", () => {
     pool.destroy();
   });
 
+  it.each([
+    {
+      name: "chat",
+      formatTag: "Chat",
+      requestedModel: "my-openai",
+      resolvedModel: "openai:gpt-4o",
+      makeApp: (pool: AccountPool, adapter: UpstreamAdapter, resolvedModel: string) =>
+        createChatRoutes(pool, undefined, undefined, {
+          resolveMatch: vi.fn(() => ({ kind: "adapter", adapter, resolvedModel })),
+          resolve: vi.fn(() => adapter),
+        } as never),
+      path: "/v1/chat/completions",
+      headers: { "Content-Type": "application/json" },
+      body: {
+        model: "my-openai",
+        messages: [{ role: "user", content: "hello" }],
+      },
+    },
+    {
+      name: "messages",
+      formatTag: "Messages",
+      requestedModel: "claude-sonnet-local",
+      resolvedModel: "anthropic:claude-sonnet-4-5",
+      makeApp: (pool: AccountPool, adapter: UpstreamAdapter, resolvedModel: string) =>
+        createMessagesRoutes(pool, undefined, undefined, {
+          resolveMatch: vi.fn(() => ({ kind: "adapter", adapter, resolvedModel })),
+        } as never),
+      path: "/v1/messages",
+      headers: { "Content-Type": "application/json", "anthropic-version": "2023-06-01" },
+      body: {
+        model: "claude-sonnet-local",
+        max_tokens: 16,
+        messages: [{ role: "user", content: "hello" }],
+      },
+    },
+    {
+      name: "responses",
+      formatTag: "Responses",
+      requestedModel: "my-deepseek",
+      resolvedModel: "deepseek-chat",
+      makeApp: (pool: AccountPool, adapter: UpstreamAdapter, resolvedModel: string) =>
+        createResponsesRoutes(pool, undefined, undefined, {
+          resolveMatch: vi.fn(() => ({ kind: "adapter", adapter, resolvedModel })),
+        } as never),
+      path: "/v1/responses",
+      headers: { "Content-Type": "application/json" },
+      body: {
+        model: "my-deepseek",
+        input: [{ role: "user", content: "hello" }],
+      },
+    },
+    {
+      name: "gemini",
+      formatTag: "Gemini",
+      requestedModel: "gemini-local",
+      resolvedModel: "gemini:gemini-2.5-pro",
+      makeApp: (pool: AccountPool, adapter: UpstreamAdapter, resolvedModel: string) =>
+        createGeminiRoutes(pool, undefined, undefined, {
+          resolveMatch: vi.fn(() => ({ kind: "adapter", adapter, resolvedModel })),
+        } as never),
+      path: "/v1beta/models/gemini-local:generateContent",
+      headers: { "Content-Type": "application/json" },
+      body: {
+        contents: [{ role: "user", parts: [{ text: "hello" }] }],
+      },
+    },
+  ])("passes resolved alias target to $name direct upstream requests", async (testCase) => {
+    const pool = new AccountPool();
+    const adapter = createSentinelAdapter(`mapped-${testCase.name}`);
+    const app = testCase.makeApp(pool, adapter, testCase.resolvedModel);
+
+    const res = await app.request(testCase.path, {
+      method: "POST",
+      headers: testCase.headers,
+      body: JSON.stringify(testCase.body),
+    });
+
+    expect(res.status).toBe(200);
+    expectDirectOptions({
+      adapter,
+      model: testCase.resolvedModel,
+      formatTag: testCase.formatTag,
+    });
+    pool.destroy();
+  });
+
   it("allows Anthropic messages direct upstream routing without local accounts", async () => {
     const pool = new AccountPool();
     const app = createMessagesRoutes(pool, undefined, undefined, {

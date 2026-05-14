@@ -57,6 +57,7 @@ export function handleStreaming(options: HandleStreamingOptions): Response {
   const capturedApi = api;
   let usageInfo: UsageInfo | undefined;
   let capturedResponseId: string | null = null;
+  let responseCompleted = false;
   const metadataCollector = createResponseMetadataCollector();
 
   return stream(c, async (s) => {
@@ -75,6 +76,7 @@ export function handleStreaming(options: HandleStreamingOptions): Response {
     });
     const recordStreamAffinity = (): void => {
       if (!capturedResponseId) return;
+      if (!responseCompleted) return;
       affinityMap.record(
         capturedResponseId,
         capturedEntryId,
@@ -100,6 +102,11 @@ export function handleStreaming(options: HandleStreamingOptions): Response {
         tupleSchema: req.tupleSchema,
         onResponseId: (id) => {
           capturedResponseId = id;
+          recordStreamAffinity();
+        },
+        onResponseCompleted: (id) => {
+          if (id) capturedResponseId = id;
+          responseCompleted = true;
           recordStreamAffinity();
         },
         usageHint,

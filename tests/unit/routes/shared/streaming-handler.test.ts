@@ -60,6 +60,7 @@ describe("handleStreaming", () => {
         });
         options.onResponseId("resp_stream");
         options.onResponseMetadata?.({ functionCallIds: ["call_stream"] });
+        options.onResponseCompleted?.("resp_stream");
         yield "event: response.completed\ndata: {}\n\n";
       }),
     });
@@ -130,5 +131,47 @@ describe("handleStreaming", () => {
       accountEntryId: "entry-stream",
       variantHash: "variant-stream",
     });
+  });
+
+  it("does not record response affinity before upstream completion", async () => {
+    const { pool } = createMockAccountPool();
+    const affinityMap = new SessionAffinityMap();
+    affinityMaps.push(affinityMap);
+    const abortController = new AbortController();
+    const fmt = createMockFormatAdapter({
+      streamTranslator: vi.fn(async function* (options: FormatStreamTranslatorOptions) {
+        options.onResponseId("resp_partial");
+        yield "event: response.created\ndata: {\"response\":{\"id\":\"resp_partial\"}}\n\n";
+        yield "event: response.failed\ndata: {\"response\":{\"id\":\"resp_partial\",\"status\":\"failed\"}}\n\n";
+      }),
+    });
+    const app = new Hono();
+
+    app.get("/stream", (c) => handleStreaming({
+      c,
+      accountPool: pool,
+      req: createStreamingRequest(),
+      fmt,
+      api: {} as unknown as CodexApi,
+      response: new Response(""),
+      entryId: "entry-stream",
+      abortController,
+      released: new Set<string>(),
+      requestId: "request-stream-123",
+      affinityMap,
+      conversationId: "conversation-stream",
+      variantHash: "variant-stream",
+    }));
+
+    const res = await app.request("/stream");
+    const text = await res.text();
+
+    expect(text).toContain("event: response.failed");
+    expect(affinityMap.lookup("resp_partial")).toBeNull();
+    expect(affinityMap.lookupLatestResponseIdByConversationId(
+      "conversation-stream",
+      undefined,
+      "variant-stream",
+    )).toBeNull();
   });
 });

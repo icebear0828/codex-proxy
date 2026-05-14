@@ -30,6 +30,7 @@ export async function* streamCodexToGemini(
   onUsage?: (usage: UsageInfo) => void,
   onResponseId?: (id: string) => void,
   tupleSchema?: Record<string, unknown> | null,
+  onResponseCompleted?: (id?: string) => void,
 ): AsyncGenerator<string> {
   let inputTokens = 0;
   let outputTokens = 0;
@@ -126,6 +127,7 @@ export async function* streamCodexToGemini(
           cachedTokens = evt.usage.cached_tokens;
           onUsage?.({ input_tokens: inputTokens, output_tokens: outputTokens, cached_tokens: cachedTokens, reasoning_tokens: evt.usage.reasoning_tokens });
         }
+        onResponseCompleted?.(evt.responseId);
 
         // Inject error text if stream completed with no content
         if (!hasContent) {
