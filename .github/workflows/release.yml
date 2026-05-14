@@ -281,6 +281,9 @@ jobs:
         env:
           RELEASE_DIR: packages/electron/release
           MAC_ARCH: x64
+          # x64 app startup runs through Rosetta on macOS runners and can
+          # legitimately take just over the default 90s smoke timeout.
+          SMOKE_TIMEOUT: 180
           SMOKE_LOG: ${{ runner.temp }}/electron-smoke.log
         run: bash .github/scripts/electron-smoke.sh
 

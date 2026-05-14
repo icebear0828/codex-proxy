@@ -12,7 +12,7 @@
 
 import { describe, it, expect, beforeAll } from "vitest";
 import { execFileSync } from "child_process";
-import { existsSync, statSync } from "fs";
+import { existsSync, readFileSync, statSync } from "fs";
 import { resolve } from "path";
 
 const SCRIPT = resolve(__dirname, "..", "..", "..", ".github", "scripts", "electron-smoke.sh");
@@ -112,5 +112,18 @@ describe("electron-smoke.sh script", () => {
     });
     expect(result.status).not.toBe(0);
     expect(result.stderr + result.stdout).toContain("Unsupported RUNNER_OS");
+  });
+
+  it("gives mac x64 packaged smoke extra startup time", () => {
+    const workflow = readFileSync(
+      resolve(__dirname, "..", "..", "..", ".github", "workflows", "release.yml"),
+      "utf-8",
+    );
+    const block = workflow.match(
+      /- name: Smoke test packaged binary \(mac-x64\)[\s\S]*?run: bash \.github\/scripts\/electron-smoke\.sh/,
+    )?.[0] ?? "";
+
+    expect(block).toContain("MAC_ARCH: x64");
+    expect(block).toContain("SMOKE_TIMEOUT: 180");
   });
 });
