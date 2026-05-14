@@ -36,8 +36,9 @@ jobs:
           fi
 
           # Only count meaningful commits since last stable (mirror bump-electron.yml filter)
+          SKIP_RELEASE_PATTERN="^(chore|docs|ci|test|refactor|style)(\\(.*\\))?:|^fix: generate stable notes from dev promotion history"
           NEW_COMMITS=$(git log "${LAST_STABLE}..HEAD" --no-merges \
-            --pretty=format:"%s" | grep -cvE "^(chore|docs|ci|test|refactor|style)" || true)
+            --pretty=format:"%s" | grep -cvE "$SKIP_RELEASE_PATTERN" || true)
           if [ "$NEW_COMMITS" -eq 0 ]; then
             echo "No meaningful commits since $LAST_STABLE, skipping"
             echo "skip=true" >> "$GITHUB_OUTPUT"
