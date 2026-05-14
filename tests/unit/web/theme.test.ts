@@ -156,6 +156,30 @@ describe("Theme CSS", () => {
       }
     });
 
+    it("uses the green palette for primary action/status tokens instead of dark emerald", () => {
+      const root = getRootVars();
+      const dark = getDarkVars();
+
+      expect(root["--primary"]).toBe("21 128 61");
+      expect(root["--primary-hover"]).toBe("22 101 52");
+      expect(root["--primary-action"]).toBe("21 128 61");
+      expect(root["--primary-action-hover"]).toBe("22 101 52");
+      expect(root["--success"]).toBe("21 128 61");
+      expect(root["--avatar-emerald-text"]).toBe("21 128 61");
+      expect(root["--avatar-emerald-bg"]).toBe("220 252 231");
+
+      expect(dark["--primary"]).toBe("74 222 128");
+      expect(dark["--primary-hover"]).toBe("34 197 94");
+      expect(dark["--primary-action"]).toBe("21 128 61");
+      expect(dark["--primary-action-hover"]).toBe("22 101 52");
+      expect(dark["--success"]).toBe("74 222 128");
+      expect(dark["--avatar-emerald-text"]).toBe("74 222 128");
+      expect(dark["--avatar-emerald-bg"]).toBe("20 83 45");
+
+      expect(root["--primary-action"]).not.toBe("4 120 87");
+      expect(dark["--primary-action"]).not.toBe("4 120 87");
+    });
+
     it("keeps primary/action/status color pairs WCAG AA contrast-safe", () => {
       const root = getRootVars();
       const dark = getDarkVars();

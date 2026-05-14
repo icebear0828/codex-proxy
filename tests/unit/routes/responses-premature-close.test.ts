@@ -153,6 +153,27 @@ describe("streamPassthrough premature close handling", () => {
     expect(evt.detail).toMatch(/code=1006/);
   });
 
+  it("does not record upstream-premature when client abort caused the stream error", async () => {
+    const abortController = new AbortController();
+    abortController.abort();
+
+    const events = await collectStreamEvents(
+      [{ event: "response.created", data: { response: { id: "resp_abort_1" } } }],
+      new Error("Aborted during WebSocket stream"),
+      {
+        requestId: "rid-client-abort",
+        tag: "Responses",
+        model: "gpt-5.5",
+        accountEntryId: "entry-client-abort",
+        variantHash: "vh-client-abort",
+        abortSignal: abortController.signal,
+      },
+    );
+
+    expect(events.map((event) => event.event)).toEqual(["response.created"]);
+    expect(recordedCloseEvents).toEqual([]);
+  });
+
   it("falls back gracefully when no streamContext is provided", async () => {
     await collectStreamEvents([
       { event: "response.created", data: { response: { id: "resp_ctx_none" } } },
@@ -239,6 +260,39 @@ describe("streamPassthrough premature close handling", () => {
       "response.created",
       "response.completed",
     ]);
+  });
+
+  it("signals response completion only on response.completed", async () => {
+    const onCompleted = vi.fn();
+    const api = createMockApi([
+      { event: "response.created", data: { response: { id: "resp_complete_signal" } } },
+      {
+        event: "response.completed",
+        data: {
+          response: {
+            id: "resp_complete_signal",
+            output: [],
+            usage: { input_tokens: 10, output_tokens: 20 },
+          },
+        },
+      },
+    ]);
+
+    for await (const _chunk of streamPassthrough(
+      api as never,
+      new Response("ok"),
+      "test-model",
+      () => {},
+      () => {},
+      undefined,
+      undefined,
+      onCompleted,
+    )) {
+      // Drain the generator.
+    }
+
+    expect(onCompleted).toHaveBeenCalledTimes(1);
+    expect(onCompleted).toHaveBeenCalledWith("resp_complete_signal");
   });
 
   it("does not synthesize response.failed after upstream response.failed", async () => {

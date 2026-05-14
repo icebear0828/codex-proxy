@@ -9,6 +9,7 @@ export interface GeneralSettingsData {
   suppress_desktop_directives: boolean;
   default_model: string;
   default_reasoning_effort: string | null;
+  model_aliases: Record<string, string>;
   refresh_enabled: boolean;
   refresh_margin_seconds: number;
   refresh_concurrency: number;
@@ -75,6 +76,7 @@ export function useGeneralSettings(apiKey: string | null) {
         suppress_desktop_directives: result.suppress_desktop_directives,
         default_model: result.default_model,
         default_reasoning_effort: result.default_reasoning_effort,
+        model_aliases: result.model_aliases,
         refresh_enabled: result.refresh_enabled,
         refresh_margin_seconds: result.refresh_margin_seconds,
         refresh_concurrency: result.refresh_concurrency,

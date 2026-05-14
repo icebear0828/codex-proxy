@@ -6,6 +6,24 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { readFileSync } from "fs";
 import { resolve } from "path";
 
+const mockConfiguredAliases: Record<string, string> = {};
+const mockCustomModels: Array<
+  string | {
+    id: string;
+    display_name?: string;
+    description?: string;
+    supported_reasoning_efforts?: string[];
+    default_reasoning_effort?: string;
+    input_modalities?: string[];
+    output_modalities?: string[];
+    supports_personality?: boolean;
+    context_window?: number;
+    max_context_window?: number;
+    max_output_tokens?: number;
+    truncation_policy_limit?: number;
+  }
+> = [];
+
 vi.mock("fs", () => ({
   readFileSync: vi.fn(),
   writeFile: vi.fn((_path: string, _data: string, _enc: string, cb: (err: Error | null) => void) => cb(null)),
@@ -24,6 +42,8 @@ vi.mock("@src/config.js", () => ({
       default: "gpt-5.3-codex",
       default_reasoning_effort: null,
       default_service_tier: null,
+      aliases: mockConfiguredAliases,
+      custom_models: mockCustomModels,
     },
   })),
 }));
@@ -114,6 +134,10 @@ aliases:
 
 describe("ModelStore", () => {
   beforeEach(() => {
+    for (const key of Object.keys(mockConfiguredAliases)) {
+      delete mockConfiguredAliases[key];
+    }
+    mockCustomModels.length = 0;
     vi.mocked(readFileSync).mockReturnValue(FIXTURE_YAML);
     loadStaticModels("/tmp/test-config");
   });
@@ -133,6 +157,62 @@ describe("ModelStore", () => {
       expect(aliases["claude-sonnet-4-6"]).toBe("gpt-5.4");
       expect(aliases["claude-haiku-4-5"]).toBe("gpt-5.3-codex");
     });
+
+    it("overlays model.aliases from local config on top of static aliases", () => {
+      mockConfiguredAliases["claude-sonnet-4-6"] = "openai:gpt-4o";
+      mockConfiguredAliases["my-free-model"] = "gpt-5.5";
+      loadStaticModels("/tmp/test-config");
+
+      const aliases = getModelAliases();
+      expect(aliases["claude-sonnet-4-6"]).toBe("openai:gpt-4o");
+      expect(aliases["my-free-model"]).toBe("gpt-5.5");
+      expect(resolveModelId("my-free-model")).toBe("gpt-5.5");
+    });
+
+    it("adds custom models from local config to the catalog", () => {
+      mockCustomModels.push(
+        "local-simple",
+        {
+          id: "local-rich",
+          display_name: "Local Rich",
+          description: "Local rich model",
+          supported_reasoning_efforts: ["low", "high"],
+          default_reasoning_effort: "high",
+          input_modalities: ["text", "image"],
+          output_modalities: ["text"],
+          supports_personality: true,
+          context_window: 12345,
+          max_context_window: 23456,
+          max_output_tokens: 3456,
+          truncation_policy_limit: 4567,
+        },
+      );
+      loadStaticModels("/tmp/test-config");
+
+      const simple = getModelInfo("local-simple");
+      expect(simple).toBeDefined();
+      expect(simple!.displayName).toBe("local-simple");
+      expect(simple!.defaultReasoningEffort).toBe("medium");
+      expect(simple!.source).toBe("custom");
+
+      const rich = getModelInfo("local-rich");
+      expect(rich).toBeDefined();
+      expect(rich!.displayName).toBe("Local Rich");
+      expect(rich!.description).toBe("Local rich model");
+      expect(rich!.supportedReasoningEfforts).toEqual([
+        { reasoningEffort: "low", description: "low" },
+        { reasoningEffort: "high", description: "high" },
+      ]);
+      expect(rich!.defaultReasoningEffort).toBe("high");
+      expect(rich!.inputModalities).toEqual(["text", "image"]);
+      expect(rich!.outputModalities).toEqual(["text"]);
+      expect(rich!.supportsPersonality).toBe(true);
+      expect(rich!.contextWindow).toBe(12345);
+      expect(rich!.maxContextWindow).toBe(23456);
+      expect(rich!.maxOutputTokens).toBe(3456);
+      expect(rich!.truncationPolicyLimit).toBe(4567);
+      expect(getModelCatalog().some((m) => m.id === "local-rich")).toBe(true);
+    });
   });
 
   describe("resolveModelId", () => {
@@ -148,6 +228,13 @@ describe("ModelStore", () => {
 
     it("returns known model ID as-is", () => {
       expect(resolveModelId("gpt-5.4")).toBe("gpt-5.4");
+    });
+
+    it("returns custom model IDs as-is", () => {
+      mockCustomModels.push("local-simple");
+      loadStaticModels("/tmp/test-config");
+
+      expect(resolveModelId("local-simple")).toBe("local-simple");
     });
 
     it("falls back to config default for unknown model", () => {
@@ -202,6 +289,16 @@ describe("ModelStore", () => {
       expect(result.serviceTier).toBe("fast");
     });
 
+    it("strips suffix from custom models", () => {
+      mockCustomModels.push("local-simple");
+      loadStaticModels("/tmp/test-config");
+
+      const result = parseModelName("local-simple-high-fast");
+      expect(result.modelId).toBe("local-simple");
+      expect(result.serviceTier).toBe("fast");
+      expect(result.reasoningEffort).toBe("high");
+    });
+
     it("falls back to config default for fully unknown name", () => {
       const result = parseModelName("totally-unknown");
       expect(result.modelId).toBe("gpt-5.3-codex");
@@ -254,6 +351,14 @@ describe("ModelStore", () => {
     it("accepts aliases with suffixes", () => {
       expect(isRecognizedModelName("codex-high")).toBe(true);
       expect(isRecognizedModelName("codex-fast")).toBe(true);
+    });
+
+    it("accepts custom models with suffixes", () => {
+      mockCustomModels.push("local-simple");
+      loadStaticModels("/tmp/test-config");
+
+      expect(isRecognizedModelName("local-simple")).toBe(true);
+      expect(isRecognizedModelName("local-simple-high-fast")).toBe(true);
     });
 
     it("rejects unknown model names even with valid-looking suffixes", () => {

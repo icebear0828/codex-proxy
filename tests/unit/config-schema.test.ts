@@ -38,6 +38,8 @@ describe("ConfigSchema", () => {
     expect(result.auth.request_interval_ms).toBe(50);
     expect(result.model.default).toBe("gpt-5.4");
     expect(result.model.default_reasoning_effort).toBeNull();
+    expect(result.model.aliases).toEqual({});
+    expect(result.model.custom_models).toEqual([]);
     expect(result.tls.force_http11).toBe(false);
     expect(result.usage_stats.snapshot_interval_minutes).toBe(5);
     expect(result.usage_stats.history_retention_days).toBeNull();
@@ -68,7 +70,30 @@ describe("ConfigSchema", () => {
     const result = ConfigSchema.parse({
       api: { timeout_seconds: 120 },
       client: { platform: "linux" },
-      model: { default: "gpt-5.4" },
+      model: {
+        default: "gpt-5.4",
+        aliases: {
+          "claude-opus-4-7": "gpt-5.5",
+          "my-openai": "openai:gpt-4o",
+        },
+        custom_models: [
+          "local-simple",
+          {
+            id: "local-rich",
+            display_name: "Local Rich",
+            description: "Local rich model",
+            supported_reasoning_efforts: ["low", "high"],
+            default_reasoning_effort: "high",
+            input_modalities: ["text", "image"],
+            output_modalities: ["text"],
+            supports_personality: true,
+            context_window: 12345,
+            max_context_window: 23456,
+            max_output_tokens: 3456,
+            truncation_policy_limit: 4567,
+          },
+        ],
+      },
       auth: { rotation_strategy: "round_robin", max_concurrent_per_account: null },
       server: { port: 3000, proxy_api_key: "sk-test" },
       session: { ttl_minutes: 120 },
@@ -94,6 +119,27 @@ describe("ConfigSchema", () => {
     expect(result.api.timeout_seconds).toBe(120);
     expect(result.client.platform).toBe("linux");
     expect(result.model.default).toBe("gpt-5.4");
+    expect(result.model.aliases).toEqual({
+      "claude-opus-4-7": "gpt-5.5",
+      "my-openai": "openai:gpt-4o",
+    });
+    expect(result.model.custom_models).toEqual([
+      "local-simple",
+      {
+        id: "local-rich",
+        display_name: "Local Rich",
+        description: "Local rich model",
+        supported_reasoning_efforts: ["low", "high"],
+        default_reasoning_effort: "high",
+        input_modalities: ["text", "image"],
+        output_modalities: ["text"],
+        supports_personality: true,
+        context_window: 12345,
+        max_context_window: 23456,
+        max_output_tokens: 3456,
+        truncation_policy_limit: 4567,
+      },
+    ]);
     expect(result.auth.rotation_strategy).toBe("round_robin");
     expect(result.auth.max_concurrent_per_account).toBeNull();
     expect(result.server.port).toBe(3000);

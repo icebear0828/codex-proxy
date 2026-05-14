@@ -8,6 +8,12 @@ import type { UpstreamAdapter } from "../../proxy/upstream-adapter.js";
 import type { UsageInfo } from "../../translation/codex-event-extractor.js";
 import type { StreamCloseContextBase } from "../../logs/stream-close-event.js";
 
+export interface StreamTranslatorContext extends StreamCloseContextBase {
+  /** Request abort signal so format-specific translators can distinguish a
+   *  downstream client abort from a genuine upstream premature close. */
+  abortSignal?: AbortSignal;
+}
+
 /** Data prepared by each route after parsing and translating the request. */
 export interface ProxyRequest {
   codexRequest: CodexResponsesRequest;
@@ -39,6 +45,7 @@ export interface FormatStreamTranslatorOptions {
   model: string;
   onUsage: (u: UsageInfo) => void;
   onResponseId: (id: string) => void;
+  onResponseCompleted?: (id?: string) => void;
   tupleSchema?: Record<string, unknown> | null;
   usageHint?: UsageHint;
   onResponseMetadata?: (metadata: ResponseMetadata) => void;
@@ -46,7 +53,7 @@ export interface FormatStreamTranslatorOptions {
    *  records (e.g. `streamPassthrough` in responses.ts) so audit entries
    *  carry the real rid / account / variantHash instead of falling back
    *  to the synthetic `"stream-close"` placeholder. */
-  streamContext?: StreamCloseContextBase;
+  streamContext?: StreamTranslatorContext;
 }
 
 export interface FormatCollectTranslatorOptions {

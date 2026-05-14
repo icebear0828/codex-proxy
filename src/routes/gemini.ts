@@ -69,8 +69,8 @@ const GEMINI_FORMAT: FormatAdapter = {
     ),
   format429: (msg) => makeError(429, msg, "RESOURCE_EXHAUSTED"),
   formatError: (status, msg) => makeError(status, msg),
-  streamTranslator: ({ api, response, model, onUsage, onResponseId, tupleSchema }) =>
-    streamCodexToGemini(api, response, model, onUsage, onResponseId, tupleSchema),
+  streamTranslator: ({ api, response, model, onUsage, onResponseId, onResponseCompleted, tupleSchema }) =>
+    streamCodexToGemini(api, response, model, onUsage, onResponseId, tupleSchema, onResponseCompleted),
   collectTranslator: ({ api, response, model, tupleSchema }) =>
     collectCodexToGeminiResponse(api, response, model, tupleSchema),
 };
@@ -168,7 +168,12 @@ export function createGeminiRoutes(
     };
 
     if (routeMatch?.kind === "api-key" || routeMatch?.kind === "adapter") {
-      const directReq = { ...proxyReq, codexRequest: { ...codexRequest, model: geminiModel } };
+      const directModel = routeMatch.resolvedModel ?? geminiModel;
+      const directReq = {
+        ...proxyReq,
+        model: directModel,
+        codexRequest: { ...codexRequest, model: directModel },
+      };
       return handleDirectRequest({ c, upstream: routeMatch.adapter, req: directReq, fmt: GEMINI_FORMAT });
     }
 

@@ -38,6 +38,24 @@ const OfficialAgentAuthSchema = z.discriminatedUnion("type", [
   }
 });
 
+const CustomModelSchema = z.union([
+  z.string().trim().min(1),
+  z.object({
+    id: z.string().trim().min(1),
+    display_name: z.string().trim().min(1).optional(),
+    description: z.string().optional(),
+    supported_reasoning_efforts: z.array(z.string().trim().min(1)).optional(),
+    default_reasoning_effort: z.string().trim().min(1).optional(),
+    input_modalities: z.array(z.string().trim().min(1)).optional(),
+    output_modalities: z.array(z.string().trim().min(1)).optional(),
+    supports_personality: z.boolean().optional(),
+    context_window: z.number().int().positive().optional(),
+    max_context_window: z.number().int().positive().optional(),
+    max_output_tokens: z.number().int().positive().optional(),
+    truncation_policy_limit: z.number().int().positive().optional(),
+  }),
+]);
+
 function isWebSocketUrl(value: string): boolean {
   try {
     const url = new URL(value);
@@ -64,6 +82,8 @@ export const ConfigSchema = z.object({
     default: z.string().default("gpt-5.4"),
     default_reasoning_effort: z.string().nullable().default(null),
     default_service_tier: z.string().nullable().default(null),
+    aliases: z.record(z.string(), z.string()).default({}),
+    custom_models: z.array(CustomModelSchema).default([]),
     inject_desktop_context: z.boolean().default(false),
     suppress_desktop_directives: z.boolean().default(true),
   }),

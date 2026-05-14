@@ -18,7 +18,8 @@
     <a href="#-核心功能">核心功能</a> &bull;
     <a href="#-可用模型">可用模型</a> &bull;
     <a href="#-客户端接入">客户端接入</a> &bull;
-    <a href="#-配置说明">配置说明</a>
+    <a href="#-配置说明">配置说明</a> &bull;
+    <a href="#-贡献致谢">贡献致谢</a>
   </p>
 
   <p>
@@ -215,24 +216,24 @@ curl http://localhost:8080/v1/chat/completions \
 
 | 模型 ID | 推理等级 | 当前上下文 | 最大上下文 | 最大输出 | 输出 | 说明 |
 |---------|---------|------------|------------|----------|------|------|
-| `gpt-5.5` | low / medium / high / xhigh | 272,000 | 272,000 | 128,000 | 文本 | 通用旗舰（Plus+） |
-| `gpt-5.4` | low / medium / high / xhigh | 272,000 | 1,000,000 | 128,000 | 文本 | 最新旗舰模型（默认） |
-| `gpt-5.4-mini` | low / medium / high / xhigh | 400,000 | 未公开 | 128,000 | 文本 | 5.4 轻量版 |
-| `gpt-5.3-codex` | low / medium / high / xhigh | 400,000 | 未公开 | 128,000 | 文本 | 5.3 编程优化模型 |
-| `gpt-5.2` | low / medium / high / xhigh | 400,000 | 未公开 | 128,000 | 文本 | 专业工作 + 长时间代理 |
-| `gpt-5-codex` | low / medium / high | 400,000 | 未公开 | 128,000 | 文本 | GPT-5 编程模型 |
-| `gpt-5-codex-mini` | medium / high | 未公开 | 未公开 | 未公开 | 文本 | 轻量编程模型 |
-| `gpt-oss-120b` | low / medium / high | 131,072 | 未公开 | 未公开 | 文本 | 开源 120B 模型 |
-| `gpt-oss-20b` | low / medium / high | 131,072 | 未公开 | 未公开 | 文本 | 开源 20B 模型 |
-| `gpt-image-2` | — | — | — | — | 图像 | 图像生成后端（Plus+，通过 `image_generation` 工具调用） |
+| `gpt-5.5` | low / medium / high / xhigh | 272,000 | 272,000 | 128,000 | 文本 | 复杂编码、研究和真实工作流旗舰模型 |
+| `gpt-5.4` | low / medium / high / xhigh | 272,000 | 1,000,000 | 128,000 | 文本 | 日常编码强模型（默认） |
+| `gpt-5.4-mini` | low / medium / high / xhigh | 400,000 | — | 128,000 | 文本 | 5.4 轻量版 |
+| `gpt-5.3-codex` | low / medium / high / xhigh | 400,000 | — | 128,000 | 文本 | 5.3 编程优化模型 |
+| `gpt-5.2` | low / medium / high / xhigh | 400,000 | — | 128,000 | 文本 | 专业工作 + 长时间代理 |
+| `gpt-5-codex` | low / medium / high | 400,000 | — | 128,000 | 文本 | GPT-5 编程优化模型 |
+| `gpt-5-codex-mini` | medium / high | — | — | — | 文本 | 轻量 Codex / CLI 编程模型 |
+| `gpt-oss-120b` | low / medium / high | 131,072 | — | — | 文本 | 开源 120B 模型 |
+| `gpt-oss-20b` | low / medium / high | 131,072 | — | — | 文本 | 开源 20B 模型 |
+| `gpt-image-2` | — | — | — | — | 图像 | 图像生成工具后端（通过 `image_generation` 调用） |
 
 > **后缀**：任意 chat 模型名后追加 `-fast` 启用 Fast 模式，`-high`/`-low` 切换推理等级。例如：`gpt-5.4-fast`、`gpt-5.4-high-fast`。图像模型（`gpt-image-2`）不支持后缀。
 >
-> **Plan Routing**：不同 plan（free/plus/team/business）的账号自动路由到各自支持的模型。模型列表由后端动态获取，自动同步。
+> **Plan Routing**：不同 plan（free/plus/team/business）的账号自动路由到各自支持的模型，模型可用性以登录账号对应的 Codex 后端返回为准，不要按旧的 Plus-only 表理解。模型列表由后端动态获取，自动同步；只要模型出现在 Dashboard / `/v1/models/catalog` 中，就可以作为请求里的 `model` 使用。
 >
 > **前端模型选择 ≠ 配置文件**：Dashboard 中切换模型只影响前端展示和 API 示例中的模型名，**不会修改** `config/default.yaml` 或 `data/local.yaml` 中的 `model.default`。实际使用哪个模型取决于客户端请求中的 `model` 字段（如 Cursor、Claude Code 等自行指定），配置文件中的 `model.default` 仅在客户端未指定模型时作为兜底。
 >
-> **Max token 说明**：上表是 Codex 运行时模型目录元数据，用于展示和客户端参考；运行时从 Codex 后端拉到的模型信息会覆盖静态值，并保留 `contextWindow`、`maxContextWindow`、`maxOutputTokens`、`truncationPolicyLimit`。实测 2026-05-08 的 Codex 后端对 `gpt-5.5` 回传 `context_window=272000`、`max_context_window=272000`、`truncation_policy.limit=10000`，对 `gpt-5.4` 回传 `context_window=272000`、`max_context_window=1000000`、`truncation_policy.limit=10000`，可能和公开模型页不同。请求体里的 `context_window` / `max_context_window` / `truncation_policy` / `max_output_tokens` 都不是可用开关；直接转发给 Codex 原生接口会返回 `400 Unsupported parameter`。
+> **Max token 说明**：上表跟随当前 `config/models.yaml` 和 Codex runtime `/v1/models/catalog` 元数据；`—` 表示当前目录未返回该字段，不代表模型不可用。运行时从 Codex 后端拉到的模型信息会覆盖静态值，并保留 `contextWindow`、`maxContextWindow`、`maxOutputTokens`、`truncationPolicyLimit`。请求体里的 `context_window` / `max_context_window` / `truncation_policy` / `max_output_tokens` 都不是可用开关；直接转发给 Codex 原生接口会返回 `400 Unsupported parameter`。
 
 ### 🖼️ 图像生成
 
@@ -324,13 +325,18 @@ model_provider = "proxy_codex"
  }
 ```
 
-默认映射在 `config/models.yaml` 的 `aliases` 里，可自行改：
+内置 Claude 形态模型名会映射到 Codex 模型。自定义映射请写到 `data/local.yaml`，不要改 `config/models.yaml`：
 ```yaml
-aliases:
-  claude-opus-4-7: gpt-5.5
-  claude-sonnet-4-6: gpt-5.4
-  claude-haiku-4-5: gpt-5.3-codex
+model:
+  aliases:
+    claude-opus-4-7: gpt-5.5
+    claude-sonnet-4-6: gpt-5.4
+    claude-haiku-4-5: gpt-5.3-codex
+    my-openai: openai:gpt-4o
+    my-deepseek: deepseek-chat
 ```
+
+alias 左边是客户端请求里填写的模型名，右边是真正发给上游的模型名。右侧可以是 Codex 模型 ID、带 provider 前缀的模型（如 `openai:gpt-4o` / `anthropic:claude-sonnet-4-5` / `gemini:gemini-2.5-pro`），也可以是已通过 `model_routing` 绑定到自定义 provider 的模型名（如 `deepseek-chat`）。别名会出现在 `/v1/models`，请求进入直连 provider 时会自动把模型名改写成映射目标。
 
 > 💡 **排查提示 (Windows)**: 如果使用 `127.0.0.1` 时 Claude Desktop 提示 `ERR_CONNECTION_REFUSED`（而使用 `localhost` 提示 URL 格式错误），说明 Node.js 在你的系统上默认只绑定了 IPv6。请进入 Codex Proxy 控制面板的设置页面，将 **Host** 修改为 `127.0.0.1`，或在 `data/local.yaml` 中添加 `server: { host: "127.0.0.1" }` 后重启代理。
 > 
@@ -506,13 +512,57 @@ for await (const chunk of stream) {
 | `server` | `host`, `port`, `proxy_api_key` | 监听地址与 API 密钥 |
 | `api` | `base_url`, `timeout_seconds` | 上游 API 地址与超时 |
 | `client` | `app_version`, `build_number`, `chromium_version` | 模拟的 Codex Desktop 版本 |
-| `model` | `default`, `default_reasoning_effort`, `inject_desktop_context` | 默认模型与推理配置 |
+| `model` | `default`, `default_reasoning_effort`, `default_service_tier`, `aliases`, `custom_models`, `inject_desktop_context` | 默认模型、推理配置、模型映射与自定义模型目录 |
 | `auth` | `rotation_strategy`, `rate_limit_backoff_seconds` | 轮换策略与限流退避 |
 | `tls` | `proxy_url`, `force_http11` | TLS 代理与 HTTP 版本 |
 | `quota` | `refresh_interval_minutes`, `warning_thresholds`, `skip_exhausted` | 用量快照、阈值配置与耗尽账号跳过 |
 | `session` | `ttl_minutes`, `cleanup_interval_minutes` | Dashboard session 管理 |
 | `ollama` | `enabled`, `host`, `port`, `version`, `disable_vision` | Ollama 兼容桥接 |
 | `official_agent` | `enabled`, `api_key`, `app_server_url`, `auth` | 官方 Codex app-server 桥接，用于复用 Chrome/browser 插件 |
+
+### 模型映射
+
+`model.aliases` 用来把客户端里的模型名映射成真实上游模型，适合 Claude Desktop / Cursor / Continue 等客户端只能选择固定模型名、或你希望暴露更短别名的场景。
+
+也可以直接在 Dashboard → Settings → **模型映射** 中添加 / 删除映射。保存后会写入 `data/local.yaml` 并热加载到后端，不需要修改 `config/default.yaml`。
+
+```yaml
+model:
+  aliases:
+    claude-opus-4-7: gpt-5.5
+    sonnet-local: gpt-5.4
+    openai-fast: openai:gpt-4o
+    deepseek-local: deepseek-chat
+
+providers:
+  custom:
+    deepseek:
+      api_key: "sk-..."
+      base_url: "https://api.deepseek.com/v1"
+      models: ["deepseek-chat"]
+model_routing:
+  deepseek-chat: deepseek
+```
+
+映射解析发生在 `model_routing` 和内置 Claude/Gemini 自动路由之前。映射到 Codex 模型时仍支持 `-fast` / `-high` 等后缀；映射到第三方 provider 时，直连请求会把 `model` 字段改写成右侧目标值。
+
+如果你还需要把完全自定义的 Codex-compatible 模型 ID 加入模型目录，可在 `data/local.yaml` 中配置 `model.custom_models`。简单字符串会使用默认 text/medium 元数据；对象写法可补 display name、推理等级、上下文和输出上限：
+
+```yaml
+model:
+  custom_models:
+    - local-simple
+    - id: local-rich
+      display_name: Local Rich
+      description: Local rich model
+      supported_reasoning_efforts: [low, high]
+      default_reasoning_effort: high
+      input_modalities: [text, image]
+      output_modalities: [text]
+      context_window: 12345
+      max_context_window: 23456
+      max_output_tokens: 3456
+```
 
 ### 配额轮转
 
@@ -839,6 +889,14 @@ curl -X POST http://localhost:8080/auth/accounts/import \
 ## ☕ 赞赏 & 交流
 
 觉得有帮助？请作者喝杯咖啡，或加入微信交流群获取使用帮助。二维码见 [页面顶部](#)。
+
+## 🙏 贡献致谢
+
+Codex Proxy 主要由个人维护，但一路上收到了很多社区帮助。特别感谢这些通过代码、文档、修复或 PR 参与建设的贡献者：
+
+[@SsuJojo](https://github.com/SsuJojo) · [@TutuchanXD](https://github.com/TutuchanXD) · [@kanweiwei](https://github.com/kanweiwei) · [@et2010](https://github.com/et2010) · [@d-demand-priv](https://github.com/d-demand-priv) · [@hangox](https://github.com/hangox) · [@jarvisluk](https://github.com/jarvisluk) · [@jeasonstudio](https://github.com/jeasonstudio) · [@JPClaw12](https://github.com/JPClaw12) · [@lezi-fun](https://github.com/lezi-fun) · [@lookvincent](https://github.com/lookvincent) · [@pocper1](https://github.com/pocper1) · [@woai66](https://github.com/woai66) · [@xsShuang](https://github.com/xsShuang) · [@yuwei5380](https://github.com/yuwei5380)
+
+也感谢所有在 [Issues](https://github.com/icebear0828/codex-proxy/issues) 里提交 bug 复现、日志、兼容性反馈和功能建议的用户。这些反馈直接推动了账号轮换、代理兼容、Dashboard、Ollama Bridge、模型兼容和错误观测等能力的迭代。
 
 ## ⭐ Star History
 

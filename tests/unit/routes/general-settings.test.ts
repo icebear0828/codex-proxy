@@ -10,6 +10,7 @@ const mockConfig = {
   model: {
     default: "gpt-5.4",
     default_reasoning_effort: null as string | null,
+    aliases: {} as Record<string, string>,
     inject_desktop_context: false,
     suppress_desktop_directives: true,
   },
@@ -124,6 +125,7 @@ describe("GET /admin/general-settings", () => {
       proxy_url: null,
       force_http11: false,
       default_model: "gpt-5.4",
+      model_aliases: {},
       refresh_enabled: true,
       auto_update: true,
       auto_download: false,
@@ -172,12 +174,58 @@ describe("POST /admin/general-settings", () => {
     expect(data.success).toBe(true);
     expect(data.restart_required).toBe(false);
     expect(mutateYaml).toHaveBeenCalledOnce();
+    expect(reloadAllConfigs).toHaveBeenCalledOnce();
     const mutate = vi.mocked(mutateYaml).mock.calls[0]?.[1];
     const localConfig: Record<string, unknown> = {};
     mutate?.(localConfig);
     expect(localConfig).toEqual({
       update: { show_update_dialog: true },
     });
+  });
+
+  it("persists custom model aliases into local model aliases", async () => {
+    const app = makeApp();
+    const res = await app.request("/admin/general-settings", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        model_aliases: {
+          "sonnet-local": "gpt-5.4",
+          "openai-fast": "openai:gpt-4o",
+        },
+      }),
+    });
+
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(data.success).toBe(true);
+    expect(data.restart_required).toBe(false);
+    expect(mutateYaml).toHaveBeenCalledOnce();
+    expect(reloadAllConfigs).toHaveBeenCalledOnce();
+    const mutate = vi.mocked(mutateYaml).mock.calls[0]?.[1];
+    const localConfig: Record<string, unknown> = {};
+    mutate?.(localConfig);
+    expect(localConfig).toEqual({
+      model: {
+        aliases: {
+          "sonnet-local": "gpt-5.4",
+          "openai-fast": "openai:gpt-4o",
+        },
+      },
+    });
+  });
+
+  it("rejects empty custom model alias names", async () => {
+    const app = makeApp();
+    const res = await app.request("/admin/general-settings", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ model_aliases: { "  ": "gpt-5.4" } }),
+    });
+
+    expect(res.status).toBe(400);
+    const data = await res.json();
+    expect(data.error).toContain("model_aliases");
   });
 
   it("persists finite usage history retention without requiring restart", async () => {
