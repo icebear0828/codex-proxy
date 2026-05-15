@@ -134,7 +134,7 @@ export async function handleProxyRequest(options: HandleProxyRequestOptions): Pr
       releaseAccount(accountPool, entryId, undefined, released);
       return respondWithProxyError({
         c, req, fmt,
-        status: 413 as any,
+        status: 413,
         message:
           `Context too large for full-history replay ` +
           `(${(diagnostics.payloadBytes / 1024).toFixed(0)}KB, ${inputItemCount} items). ` +

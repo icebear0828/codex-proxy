@@ -304,6 +304,60 @@ describe("proxy-handler integration", () => {
     )).toBeNull();
   });
 
+  it("blocks oversized full-history replay when implicit resume is missing tool calls", async () => {
+    const createSpy = vi.fn<MockCreateResponse>(async () => new Response("data: {}\n\n"));
+    mockCreateResponse = createSpy;
+
+    const req: ProxyRequest = {
+      ...createDefaultRequest(),
+      codexRequest: {
+        ...createDefaultRequest().codexRequest,
+        prompt_cache_key: "thread-large-missing-tools",
+        input: [
+          { role: "user", content: "first" },
+          { type: "function_call", call_id: "call_expected", name: "read_file", arguments: "{}" },
+          { type: "function_call_output", call_id: "call_missing", output: "{}" },
+          ...Array.from({ length: 80 }, (_, index) => ({
+            role: "user" as const,
+            content: `padding message ${index}`,
+          })),
+        ],
+      },
+    };
+    const promptCacheIdentity = resolvePromptCacheIdentity(req.codexRequest, req.clientConversationId);
+    const variantHash = computeVariantHash(
+      req.codexRequest.instructions,
+      req.codexRequest.tools,
+      buildVariantIdentity(req.codexRequest, promptCacheIdentity),
+    );
+    getSessionAffinityMap().record(
+      "resp_prev_missing_tools",
+      "e1",
+      "thread-large-missing-tools",
+      undefined,
+      "You are helpful",
+      21,
+      ["call_expected"],
+      variantHash,
+    );
+
+    const accountPool = createMockAccountPool();
+    const fmt = createMockFormatAdapter();
+    const { app } = buildTestApp({ accountPool, fmt, req });
+
+    const res = await app.request("/test", { method: "POST" });
+    expect(res.status).toBe(413);
+    expect(createSpy).not.toHaveBeenCalled();
+    expect(accountPool.release).toHaveBeenCalledWith("e1", undefined);
+
+    const body = await res.json();
+    expect(body).toMatchObject({
+      error: "api_error",
+      status: 413,
+    });
+    expect(body.message).toContain("Implicit resume failed: missing_tool_calls");
+  });
+
   // 3. Streaming success
   it("returns text/event-stream with SSE chunks for streaming", async () => {
     const accountPool = createMockAccountPool();
