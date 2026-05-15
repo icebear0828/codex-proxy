@@ -86,7 +86,7 @@ function ErrorRow({ group }: { group: ErrorGroup }) {
 
 export function ErrorsPage() {
   const t = useT();
-  const { groups, count, loading, error, refresh, markAllSeen } = useErrorLogs();
+  const { groups, count, loading, error, refresh, markAllSeen, clearAll } = useErrorLogs();
 
   return (
     <section class="flex flex-col gap-4">
@@ -112,6 +112,22 @@ export function ErrorsPage() {
               class="px-3 py-1.5 rounded-lg bg-primary/10 hover:bg-primary/20 text-primary text-xs font-semibold transition-colors"
             >
               {t("errorsMarkSeen")} ({count.unread})
+            </button>
+          )}
+          {groups.length > 0 && (
+            <button
+              type="button"
+              onClick={() => void clearAll()}
+              aria-label={t("errorsClear")}
+              title={t("errorsClear")}
+              class="inline-flex size-8 items-center justify-center rounded-lg border border-red-200 text-red-600 hover:bg-red-50 dark:border-red-700/30 dark:text-red-400 dark:hover:bg-red-900/20 transition-colors"
+            >
+              <svg class="size-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M3 6h18" />
+                <path stroke-linecap="round" stroke-linejoin="round" d="M8 6V4h8v2" />
+                <path stroke-linecap="round" stroke-linejoin="round" d="M19 6l-1 14H6L5 6" />
+                <path stroke-linecap="round" stroke-linejoin="round" d="M10 11v5m4-5v5" />
+              </svg>
             </button>
           )}
         </div>
