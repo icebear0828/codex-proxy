@@ -19,6 +19,8 @@
 
 ### Fixed
 
+- Claude Code 的 `Read` 工具参数里如果 `pages` 传成空字符串或空白字符串，会在 Codex → Anthropic 转换时被自动剔除，避免 GPT-5.5 反复触发 `Read tool validation error: Invalid pages parameter: ""` 并重试隔离工作树；对应单测覆盖流式与非流式两条路径，以及非空 PDF 页码范围保留（`src/translation/codex-to-anthropic.ts`、`tests/unit/translation/codex-to-anthropic-read-pages.test.ts`）。
+
 - Release bump workflows now require runtime file changes in addition to meaningful commit subjects before tagging a beta or stable build. This prevents squash-promotion history divergence from re-counting old dev commits, and prevents workflow/docs/test-only fixes from producing empty Electron releases (`.github/workflows/bump-electron.yml`, `.github/workflows/bump-electron-beta.yml`, `tests/unit/ci/package-boundary.test.ts`).
 - Release bump workflows now skip the release-notes workflow hotfix subject itself, so promoting the stable-notes CI fix to `master` does not create an empty desktop release on the next scheduled bump (`.github/workflows/bump-electron.yml`, `.github/workflows/bump-electron-beta.yml`, `tests/unit/ci/package-boundary.test.ts`).
 - 修复 stable release notes 在手动 squash promotion 后只写 `fix: promote dev release fixes to master`、漏掉 dev 原始 PR 的问题：`release.yml` 改为调用 `.github/scripts/generate-release-notes.sh`，stable tag 若只有 promotion 内容且运行时代码树与 `origin/dev` 一致（忽略 README/package 版本文件），会回退使用 dev history 生成说明；新增单测覆盖正常 stable tag 与 squash promotion 两条路径（`.github/workflows/release.yml`、`.github/scripts/generate-release-notes.sh`、`tests/unit/ci/release-notes-script.test.ts`）。
