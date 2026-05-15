@@ -100,7 +100,7 @@ export async function handleProxyRequest(options: HandleProxyRequestOptions): Pr
   implicitResume.logSkippedWarnings();
   implicitResume.activate();
 
-  logRequestDiagnostics({
+  const diagnostics = logRequestDiagnostics({
     tag: fmt.tag,
     entryId,
     requestId,
@@ -115,6 +115,34 @@ export async function handleProxyRequest(options: HandleProxyRequestOptions): Pr
     resumeReason: implicitResume.evaluation.reason,
     preferredEntryId: sessionContext.preferredEntryId,
   });
+
+  // Guard: when implicit resume fails due to missing tool calls, block runaway
+  // full-history replays that would burn massive token budgets silently.
+  const PAYLOAD_GUARD_BYTES = 250_000;
+  const PAYLOAD_GUARD_ITEMS = 80;
+  if (
+    implicitResume.evaluation.reason === "missing_tool_calls" ||
+    implicitResume.evaluation.reason === "unanswered_tool_calls"
+  ) {
+    const inputItemCount = req.codexRequest.input?.length ?? 0;
+    if (diagnostics.payloadBytes > PAYLOAD_GUARD_BYTES || inputItemCount > PAYLOAD_GUARD_ITEMS) {
+      console.warn(
+        `[${fmt.tag}] ⛔ Payload guard: blocking ${(diagnostics.payloadBytes / 1024).toFixed(0)}KB / ${inputItemCount} items ` +
+        `full-history replay (resume=${implicitResume.evaluation.reason}). ` +
+        `Client should compact the conversation.`,
+      );
+      releaseAccount(accountPool, entryId, undefined, released);
+      return respondWithProxyError({
+        c, req, fmt,
+        status: 413,
+        message:
+          `Context too large for full-history replay ` +
+          `(${(diagnostics.payloadBytes / 1024).toFixed(0)}KB, ${inputItemCount} items). ` +
+          `Implicit resume failed: ${implicitResume.evaluation.reason}. ` +
+          `Please compact or restart the conversation.`,
+      });
+    }
+  }
 
   const abortController = new AbortController();
   c.req.raw.signal.addEventListener("abort", () => abortController.abort(), { once: true });
