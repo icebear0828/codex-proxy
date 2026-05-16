@@ -389,7 +389,16 @@ export function AccountList({ accounts, loading, onDelete, onRefresh, refreshing
           </div>
         ) : (
           displayAccounts.slice(0, visibleCount).map((acct, i) => (
-            <AccountCard key={acct.id} account={acct} index={i} onDelete={onDelete} proxies={proxies} onProxyChange={onProxyChange} selected={selectedIds.has(acct.id)} onToggleSelect={toggleSelect} onRefreshQuota={async (id) => { await fetch(`/auth/accounts/${encodeURIComponent(id)}/refresh`, { method: "POST" }); onRefresh(); }} onToggleStatus={onToggleStatus} onUpdateLabel={onUpdateLabel} />
+            <AccountCard key={acct.id} account={acct} index={i} onDelete={onDelete} proxies={proxies} onProxyChange={onProxyChange} selected={selectedIds.has(acct.id)} onToggleSelect={toggleSelect} onRefreshQuota={async (id) => {
+              // Two-step refresh: probe (token + status) then quota (cachedQuota write-back).
+              // The /quota endpoint is what surfaces upstream window resets and the
+              // credits block on Pro / PAYG accounts — without it, "Refresh" only
+              // re-validates the access token and the on-screen quota stays stale.
+              const encoded = encodeURIComponent(id);
+              await fetch(`/auth/accounts/${encoded}/refresh`, { method: "POST" });
+              await fetch(`/auth/accounts/${encoded}/quota`).catch(() => undefined);
+              onRefresh();
+            }} onToggleStatus={onToggleStatus} onUpdateLabel={onUpdateLabel} />
           ))
         )}
       </div>

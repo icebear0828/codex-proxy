@@ -187,7 +187,14 @@ export function createAccountRoutes(pool: AccountPool, scheduler: RefreshSchedul
     if (entry.status !== "active") { c.status(409); return c.json({ error: `Account is ${entry.status}, cannot query quota` }); }
     try {
       const usage = await new CodexApi(entry.token, entry.accountId, cookieJar, id, proxyPool?.resolveProxyUrl(id)).getUsage();
-      return c.json({ quota: toQuota(usage), raw: usage });
+      const quota = toQuota(usage);
+      // Persist the fresh quota so the dashboard reflects upstream reality
+      // (especially after OpenAI does a window reset / promo refresh) without
+      // waiting for the next proxied /codex/responses request to passively
+      // refill cachedQuota via response headers. Also the only path that
+      // carries the credits block — the header path doesn't include it.
+      pool.updateCachedQuota(id, quota);
+      return c.json({ quota, raw: usage });
     } catch (err) {
       // Auto-mark invalidated/banned accounts
       if (isTokenInvalidError(err)) {
