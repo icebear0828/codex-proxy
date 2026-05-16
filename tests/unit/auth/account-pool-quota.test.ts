@@ -57,6 +57,45 @@ describe("AccountPool quota methods", () => {
       // Should not throw
       pool.updateCachedQuota("nonexistent", makeQuota());
     });
+
+    it("preserves existing credits when new quota lacks them (header-driven passive update)", () => {
+      const id = pool.addAccount(createValidJwt({ accountId: "credits-1", planType: "pro" }));
+      // First write: full quota WITH credits (from /codex/usage body, toQuota path).
+      pool.updateCachedQuota(id, makeQuota({
+        credits: { has_credits: true, unlimited: false, overage_limit_reached: false, balance: 99.5 },
+      }));
+      // Second write: header-driven quota without credits (rateLimitToQuota path).
+      // Must preserve the previously known balance, not wipe it.
+      pool.updateCachedQuota(id, makeQuota({
+        rate_limit: {
+          allowed: true,
+          limit_reached: false,
+          used_percent: 60,
+          reset_at: Math.floor(Date.now() / 1000) + 1800,
+          limit_window_seconds: 3600,
+        },
+      }));
+      const entry = pool.getEntry(id);
+      expect(entry?.cachedQuota?.credits).toEqual({
+        has_credits: true,
+        unlimited: false,
+        overage_limit_reached: false,
+        balance: 99.5,
+      });
+      expect(entry?.cachedQuota?.rate_limit.used_percent).toBe(60);
+    });
+
+    it("overwrites credits when new quota explicitly provides them", () => {
+      const id = pool.addAccount(createValidJwt({ accountId: "credits-2", planType: "pro" }));
+      pool.updateCachedQuota(id, makeQuota({
+        credits: { has_credits: true, unlimited: false, overage_limit_reached: false, balance: 100 },
+      }));
+      pool.updateCachedQuota(id, makeQuota({
+        credits: { has_credits: true, unlimited: false, overage_limit_reached: false, balance: 42 },
+      }));
+      const entry = pool.getEntry(id);
+      expect(entry?.cachedQuota?.credits?.balance).toBe(42);
+    });
   });
 
   describe("applyRateLimit429 (replaces markQuotaExhausted)", () => {

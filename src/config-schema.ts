@@ -126,6 +126,10 @@ export const ConfigSchema = z.object({
     snapshot_interval_minutes: z.number().int().min(0).default(5),
     /** null means keep usage history forever. */
     history_retention_days: z.number().int().positive().nullable().default(null),
+    /** Conversion rate for displaying Codex credits as USD on the dashboard.
+     *  Default 25 matches the public rate card (1000 credits = $40 → $0.04/credit).
+     *  Set to 0 to suppress USD rendering and only show raw credit numbers. */
+    credits_per_usd: z.number().min(0).default(25),
   }).default({}),
   session: z.object({
     ttl_minutes: z.number().min(1).default(1440),

@@ -1,9 +1,20 @@
 import { useCallback, useState } from "preact/hooks";
 import { useT, useI18n } from "../../../shared/i18n/context";
 import type { TranslationKey } from "../../../shared/i18n/translations";
-import { formatNumber, formatResetTime, formatWindowDuration } from "../../../shared/utils/format";
+import {
+  creditsToUsd,
+  formatCredits,
+  formatNumber,
+  formatResetTime,
+  formatUsd,
+  formatWindowDuration,
+} from "../../../shared/utils/format";
 import type { Account, AccountQuotaWindow, ProxyEntry } from "../../../shared/types";
 import { derivedStatus } from "../lib/accountStatus";
+
+/** Default credit→USD rate matching the config schema default (1000 credits = $40).
+ *  Surfacing this through a settings hook lives in a follow-up PR. */
+const DEFAULT_CREDITS_PER_USD = 25;
 
 const avatarColors = [
   ["bg-avatar-purple-bg", "text-avatar-purple-text"],
@@ -177,6 +188,15 @@ export function AccountCard({ account, index, onDelete, proxies, onProxyChange, 
       return !isReviewLimitName(bucket.limit_id) && !isReviewLimitName(bucket.limit_name);
     })
     .sort((a, b) => limitLabel(a).localeCompare(limitLabel(b)));
+
+  // Credits — only render for accounts that actually carry a credit pool
+  // (Pro / PAYG / Team with explicit balance). Plus accounts have
+  // has_credits=false and a "0" balance that conveys no useful info.
+  const creditsInfo = q?.credits;
+  const showCredits = !!creditsInfo && (creditsInfo.has_credits || creditsInfo.unlimited);
+  const creditUsd = showCredits && !creditsInfo!.unlimited
+    ? creditsToUsd(creditsInfo!.balance, DEFAULT_CREDITS_PER_USD)
+    : null;
 
   const [quotaRefreshing, setQuotaRefreshing] = useState(false);
 
@@ -461,6 +481,30 @@ export function AccountCard({ account, index, onDelete, proxies, onProxyChange, 
                 <p class="text-xs text-slate-400 dark:text-text-dim mt-1">
                   {t("resetsAt")} {sResetAt}
                 </p>
+              )}
+            </div>
+          )}
+
+          {/* Credit balance (Pro / PAYG / Team — accounts with has_credits=true). */}
+          {showCredits && (
+            <div data-testid="credit-balance" class="flex justify-between text-[0.78rem]">
+              <span class="text-slate-500 dark:text-text-dim">
+                {t("creditsBalance")}
+              </span>
+              {creditsInfo!.unlimited ? (
+                <span class="font-medium text-emerald-500">{t("creditsUnlimited")}</span>
+              ) : (
+                <span class={`font-medium ${creditsInfo!.overage_limit_reached ? "text-red-500" : "text-primary"}`}>
+                  {formatCredits(creditsInfo!.balance)}
+                  {creditUsd != null && (
+                    <span class="ml-1 text-slate-400 dark:text-text-dim/70 text-[0.65rem]">
+                      ({formatUsd(creditUsd)})
+                    </span>
+                  )}
+                  {creditsInfo!.overage_limit_reached && (
+                    <span class="ml-2 text-xs">· {t("creditsOverageReached")}</span>
+                  )}
+                </span>
               )}
             </div>
           )}

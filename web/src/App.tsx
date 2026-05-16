@@ -7,6 +7,7 @@ import { Header } from "./components/Header";
 import { UpdateModal } from "./components/UpdateModal";
 import { AddAccount } from "./components/AddAccount";
 import { AccountList } from "./components/AccountList";
+import { PoolOverview } from "./components/PoolOverview";
 import { SettingsTab } from "./components/SettingsTab";
 import { ProxyPool } from "./components/ProxyPool";
 import { Footer } from "./components/Footer";
@@ -162,6 +163,7 @@ function Dashboard() {
 
           {activeTab === "" && (
             <div class="flex flex-col gap-6">
+              <PoolOverview accounts={accounts.list} />
               <AccountList
                 accounts={accounts.list}
                 loading={accounts.loading}

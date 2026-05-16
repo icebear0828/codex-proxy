@@ -121,13 +121,41 @@ export interface CodexUsageAdditionalRateLimit {
   rate_limit: CodexUsageRateLimit | null;
 }
 
+/** Credit accounting block from /backend-api/codex/usage.
+ *  Populated for Pro / Pay-As-You-Go accounts; for Plus accounts the
+ *  block is present but has_credits=false and balance="0". */
+export interface CodexUsageCredits {
+  has_credits: boolean;
+  unlimited: boolean;
+  overage_limit_reached: boolean;
+  /** Decimal string. Upstream returns "0", "12.345", etc. */
+  balance: string;
+  /** Approximate remaining messages, tuple of [low, high]. */
+  approx_local_messages?: [number, number];
+  approx_cloud_messages?: [number, number];
+}
+
+/** Per-account spend control (if user set a hard limit). */
+export interface CodexUsageSpendControl {
+  reached: boolean;
+  individual_limit: number | string | null;
+}
+
+/** Diagnostic about which limit type was hit when limit_reached=true. */
+export interface CodexUsageRateLimitReachedType {
+  type: string;
+  details: string | null;
+}
+
 export interface CodexUsageResponse {
   plan_type: string;
   rate_limit: CodexUsageRateLimit;
   code_review_rate_limit: CodexUsageRateLimit | null;
   additional_rate_limits?: CodexUsageAdditionalRateLimit[] | null;
-  credits: unknown;
-  promo: unknown;
+  credits?: CodexUsageCredits | null;
+  spend_control?: CodexUsageSpendControl | null;
+  rate_limit_reached_type?: CodexUsageRateLimitReachedType | null;
+  promo?: unknown;
 }
 
 export class CodexApiError extends Error {

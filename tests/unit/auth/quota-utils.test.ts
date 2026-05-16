@@ -228,4 +228,62 @@ describe("toQuota", () => {
     expect(quota.rate_limit.reset_at).toBeNull();
     expect(quota.rate_limit.limit_window_seconds).toBeNull();
   });
+
+  describe("credits", () => {
+    it("carries credits block through when present (Plus shape: has_credits=false, balance=0)", () => {
+      const quota = toQuota(makeUsageResponse({
+        credits: {
+          has_credits: false,
+          unlimited: false,
+          overage_limit_reached: false,
+          balance: "0",
+        },
+      }));
+      expect(quota.credits).toEqual({
+        has_credits: false,
+        unlimited: false,
+        overage_limit_reached: false,
+        balance: 0,
+      });
+    });
+
+    it("parses decimal-string balance into number for Pro / PAYG accounts", () => {
+      const quota = toQuota(makeUsageResponse({
+        credits: {
+          has_credits: true,
+          unlimited: false,
+          overage_limit_reached: false,
+          balance: "247.50",
+        },
+      }));
+      expect(quota.credits?.has_credits).toBe(true);
+      expect(quota.credits?.balance).toBe(247.5);
+    });
+
+    it("emits null credits when upstream omits the block", () => {
+      const quota = toQuota(makeUsageResponse({ credits: null }));
+      expect(quota.credits).toBeNull();
+    });
+
+    it("emits null credits when upstream sends a malformed block (defensive)", () => {
+      const quota = toQuota(makeUsageResponse({
+        // Simulate a future upstream schema where balance is missing entirely
+        credits: { has_credits: true } as unknown as NonNullable<CodexUsageResponse["credits"]>,
+      }));
+      expect(quota.credits).toBeNull();
+    });
+
+    it("passes unlimited and overage_limit_reached flags through", () => {
+      const quota = toQuota(makeUsageResponse({
+        credits: {
+          has_credits: true,
+          unlimited: true,
+          overage_limit_reached: true,
+          balance: "0",
+        },
+      }));
+      expect(quota.credits?.unlimited).toBe(true);
+      expect(quota.credits?.overage_limit_reached).toBe(true);
+    });
+  });
 });

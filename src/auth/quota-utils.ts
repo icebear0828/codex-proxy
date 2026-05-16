@@ -3,8 +3,24 @@
  * Converts CodexUsageResponse (raw backend) → CodexQuota (normalized).
  */
 
-import type { CodexQuota } from "./types.js";
-import type { CodexUsageRateLimit, CodexUsageResponse } from "../proxy/codex-api.js";
+import type { CodexQuota, CodexQuotaCredits } from "./types.js";
+import type { CodexUsageCredits, CodexUsageRateLimit, CodexUsageResponse } from "../proxy/codex-api.js";
+
+function normalizeCredits(raw: CodexUsageCredits | null | undefined): CodexQuotaCredits | null {
+  if (!raw) return null;
+  // balance must be parseable — upstream always sends a decimal string,
+  // but defensively reject malformed payloads so the dashboard never
+  // shows NaN credits.
+  if (typeof raw.balance !== "string") return null;
+  const balance = Number(raw.balance);
+  if (!Number.isFinite(balance)) return null;
+  return {
+    has_credits: Boolean(raw.has_credits),
+    unlimited: Boolean(raw.unlimited),
+    overage_limit_reached: Boolean(raw.overage_limit_reached),
+    balance,
+  };
+}
 
 function isReviewLimitId(value: string | null | undefined): boolean {
   const normalized = (value ?? "").trim().toLowerCase().replace(/[-\s]+/g, "_");
@@ -82,5 +98,6 @@ export function toQuota(usage: CodexUsageResponse): CodexQuota {
     rate_limits_by_limit_id: Object.keys(rateLimitsByLimitId).length > 0
       ? rateLimitsByLimitId
       : null,
+    credits: normalizeCredits(usage.credits),
   };
 }

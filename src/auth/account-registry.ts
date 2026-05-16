@@ -450,7 +450,15 @@ export class AccountRegistry {
   updateCachedQuota(entryId: string, quota: CodexQuota): void {
     const entry = this.accounts.get(entryId);
     if (!entry) return;
-    entry.cachedQuota = quota;
+    // Preserve previously known credits when the incoming quota lacks them.
+    // The passive header-driven path (rateLimitToQuota in proxy-rate-limit.ts)
+    // does not carry credit balance — only /codex/usage body (toQuota) does.
+    // Without this merge, every /codex/responses call would wipe credits.
+    if (quota.credits === undefined && entry.cachedQuota?.credits != null) {
+      entry.cachedQuota = { ...quota, credits: entry.cachedQuota.credits };
+    } else {
+      entry.cachedQuota = quota;
+    }
     entry.quotaFetchedAt = new Date().toISOString();
     this.schedulePersist();
   }

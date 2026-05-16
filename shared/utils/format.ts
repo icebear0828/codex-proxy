@@ -4,6 +4,33 @@ export function formatNumber(n: number): string {
   return String(n);
 }
 
+/** Format a Codex credit balance: "0", "12.34", "1.2k". Always strip trailing zeros. */
+export function formatCredits(credits: number): string {
+  if (!Number.isFinite(credits)) return "0";
+  if (credits >= 1000) return (credits / 1000).toFixed(1).replace(/\.0$/, "") + "k";
+  if (credits === 0) return "0";
+  // Two decimals for small numbers, but trim trailing zeros so 5.00 → "5".
+  return credits.toFixed(2).replace(/\.?0+$/, "");
+}
+
+/** Convert credits to USD using the configured per-USD rate.
+ *  Returns null when conversion is disabled (creditsPerUsd <= 0). */
+export function creditsToUsd(credits: number, creditsPerUsd: number): number | null {
+  if (!Number.isFinite(credits) || !Number.isFinite(creditsPerUsd) || creditsPerUsd <= 0) {
+    return null;
+  }
+  return credits / creditsPerUsd;
+}
+
+/** Format a USD amount with $ sign and two decimals. "$12.34" / "$1.2k". */
+export function formatUsd(usd: number): string {
+  if (!Number.isFinite(usd)) return "$0";
+  const sign = usd < 0 ? "-" : "";
+  const abs = Math.abs(usd);
+  if (abs >= 1000) return sign + "$" + (abs / 1000).toFixed(1).replace(/\.0$/, "") + "k";
+  return sign + "$" + abs.toFixed(2);
+}
+
 export function formatWindowDuration(seconds: number, isZh: boolean): string {
   if (seconds >= 86400) {
     const days = Math.floor(seconds / 86400);
