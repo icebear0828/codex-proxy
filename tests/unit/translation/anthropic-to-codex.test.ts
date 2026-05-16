@@ -106,6 +106,66 @@ describe("translateAnthropicToCodexRequest", () => {
       expect(result.instructions).toBe("Keep answers short.");
     });
 
+    // Real Claude Code 2.1.84 emits the billing header as a standalone block[0]
+    // with per-request rotating cc_version + cch. Tests must prove the strip is
+    // invariant across that rotation, otherwise the cache-buster leaks into
+    // `instructions` and tanks upstream prompt cache.
+    it.each([
+      "x-anthropic-billing-header: cc_version=2.1.84.c8e; cc_entrypoint=cli; cch=da09b;",
+      "x-anthropic-billing-header: cc_version=2.1.84.76b; cc_entrypoint=cli; cch=46d1d;",
+      "x-anthropic-billing-header: cc_version=2.1.84.f51; cc_entrypoint=cli; cch=3c1ed;",
+      "x-anthropic-billing-header: cc_version=2.1.84.5b4; cc_entrypoint=cli; cch=8f29c;",
+      "x-anthropic-billing-header: cc_version=2.1.84.4f3; cc_entrypoint=cli; cch=d1658;",
+    ])("strips Claude Code billing header variant: %s", (billingText) => {
+      const result = translateAnthropicToCodexRequest(
+        makeRequest({
+          system: [
+            { type: "text" as const, text: billingText },
+            {
+              type: "text" as const,
+              text: "You are Claude Code, Anthropic's official CLI for Claude.",
+              cache_control: { type: "ephemeral" },
+            },
+            {
+              type: "text" as const,
+              text: "\nYou are an interactive agent that helps users with software engineering tasks.",
+              cache_control: { type: "ephemeral" },
+            },
+          ],
+        }),
+      );
+      expect(result.instructions).toBe(
+        "You are Claude Code, Anthropic's official CLI for Claude.\n\nYou are an interactive agent that helps users with software engineering tasks.",
+      );
+      expect(result.instructions).not.toMatch(/cch=|cc_version=|x-anthropic-billing/);
+    });
+
+    it("produces identical instructions across rotating cc_version + cch values", () => {
+      const baseSystem = (billingText: string) => [
+        { type: "text" as const, text: billingText },
+        {
+          type: "text" as const,
+          text: "You are Claude Code, Anthropic's official CLI for Claude.",
+          cache_control: { type: "ephemeral" as const },
+        },
+      ];
+      const a = translateAnthropicToCodexRequest(
+        makeRequest({
+          system: baseSystem(
+            "x-anthropic-billing-header: cc_version=2.1.84.c8e; cc_entrypoint=cli; cch=da09b;",
+          ),
+        }),
+      );
+      const b = translateAnthropicToCodexRequest(
+        makeRequest({
+          system: baseSystem(
+            "x-anthropic-billing-header: cc_version=2.1.84.4f3; cc_entrypoint=cli; cch=d1658;",
+          ),
+        }),
+      );
+      expect(a.instructions).toBe(b.instructions);
+    });
+
     it("falls back to default instructions when no system provided", () => {
       const result = translateAnthropicToCodexRequest(makeRequest());
       expect(result.instructions).toBe("You are a helpful assistant.");
