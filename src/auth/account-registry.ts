@@ -293,13 +293,23 @@ export class AccountRegistry {
 
   isAuthenticated(): boolean {
     const now = new Date();
+    // Mirror hasAvailableAccounts: skip_exhausted defaults to true per schema.
+    // Using !== false (vs === true) lets call sites with minimal config mocks
+    // observe the same default behavior as production.
+    const skipExhausted = getConfig().quota?.skip_exhausted !== false;
     for (const entry of this.accounts.values()) {
       this.refreshStatus(entry, now);
-      // "Authenticated" used to imply "has a usable account". After retiring
-      // status="rate_limited", we treat any cachedQuota-exhausted account as
-      // unusable too — otherwise an all-exhausted pool would falsely report
-      // authenticated and produce confusing 4xx on requests.
-      if (entry.status === "active" && !hasReachedCachedQuota(entry)) return true;
+      // "Authenticated" implies "has a usable account". Gate the cachedQuota
+      // check on quota.skip_exhausted to stay consistent with hasAvailableAccounts
+      // and AccountLifecycle.acquire(): when skip_exhausted=false the operator
+      // has opted into still acquiring quota-exhausted accounts, so they remain
+      // usable and we must report authenticated.
+      if (
+        entry.status === "active" &&
+        (!skipExhausted || !hasReachedCachedQuota(entry))
+      ) {
+        return true;
+      }
     }
     return false;
   }
