@@ -27,7 +27,7 @@ auth:
   oauth_auth_endpoint: https://auth.openai.com/oauth/authorize
   oauth_token_endpoint: https://auth.openai.com/oauth/token
 server:
-  host: "::"
+  host: "127.0.0.1"
   port: 8080
   proxy_api_key: null
   trust_proxy: false
