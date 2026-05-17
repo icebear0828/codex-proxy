@@ -218,6 +218,9 @@ export async function* streamCodexToAnthropic(
     }
 
     if (evt.functionCallDelta) {
+      // Drop Read deltas and buffer until functionCallDone, where the full
+      // arguments can be sanitized atomically (e.g. stripping empty `pages`).
+      // Partial JSON cannot be safely rewritten mid-stream.
       if (functionCallNames.get(evt.functionCallDelta.callId) === "Read") {
         continue;
       }
