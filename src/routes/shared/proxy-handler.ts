@@ -252,7 +252,7 @@ export async function handleProxyRequest(options: HandleProxyRequestOptions): Pr
       }
 
       const decision = handleCodexApiError(
-        err, accountPool, entryId, req.codexRequest.model, fmt.tag, modelRetried,
+        err, accountPool, entryId, req.codexRequest.model, fmt.tag, modelRetried, cookieJar,
       );
 
       const errorRetryTransition = applyProxyErrorRetryTransition({
