@@ -143,6 +143,32 @@ describe("account import/export", () => {
     expect(data.accounts[0]).not.toHaveProperty("email");
   });
 
+  it("GET /auth/accounts/export?format=sub2api returns Sub2API-compatible payload", async () => {
+    const id = pool.addAccount("tokenSUB21234567890", "rt_sub2api");
+    pool.setLabel(id, "Sub2API Label");
+
+    const res = await app.request("/auth/accounts/export?format=sub2api");
+    expect(res.status).toBe(200);
+    const data = await res.json() as {
+      type: string;
+      version: number;
+      accounts: Array<{
+        name: string;
+        platform: string;
+        type: string;
+        credentials: { access_token: string; refresh_token?: string };
+      }>;
+    };
+    expect(data.type).toBe("sub2api-data");
+    expect(data.version).toBe(1);
+    expect(data.accounts).toHaveLength(1);
+    expect(data.accounts[0].name).toBe("Sub2API Label");
+    expect(data.accounts[0].platform).toBe("openai");
+    expect(data.accounts[0].type).toBe("oauth");
+    expect(data.accounts[0].credentials.access_token).toBe("tokenSUB21234567890");
+    expect(data.accounts[0].credentials.refresh_token).toBe("rt_sub2api");
+  });
+
   it("GET /auth/accounts/export?ids= filters server-side", async () => {
     const id1 = pool.addAccount("tokenAAAA1234567890");
     pool.addAccount("tokenBBBB1234567890");
@@ -152,6 +178,36 @@ describe("account import/export", () => {
     const data = await res.json() as { accounts: Array<{ id: string }> };
     expect(data.accounts).toHaveLength(1);
     expect(data.accounts[0].id).toBe(id1);
+  });
+
+  it("GET /auth/accounts/:id/quota caches successful active quota responses", async () => {
+    const id = pool.addAccount("tokenQUOT1234567890");
+    const { CodexApi } = await import("@src/proxy/codex-api.js");
+    const getUsageSpy = vi.spyOn(CodexApi.prototype, "getUsage").mockResolvedValueOnce({
+      plan_type: "plus",
+      rate_limit: {
+        allowed: true,
+        limit_reached: false,
+        primary_window: {
+          used_percent: 64,
+          reset_at: 1700000000,
+          limit_window_seconds: 18_000,
+          reset_after_seconds: 100,
+        },
+        secondary_window: null,
+      },
+      code_review_rate_limit: null,
+      credits: null,
+      promo: null,
+    });
+
+    const res = await app.request(`/auth/accounts/${id}/quota`);
+
+    expect(res.status).toBe(200);
+    const body = await res.json() as { quota: { rate_limit: { remaining_percent: number } } };
+    expect(body.quota.rate_limit.remaining_percent).toBe(36);
+    expect(pool.getEntry(id)?.cachedQuota?.rate_limit.remaining_percent).toBe(36);
+    getUsageSpy.mockRestore();
   });
 
   // ── Import ─────────────────────────────────────────────
@@ -250,6 +306,57 @@ describe("account import/export", () => {
     // Verify refreshToken was passed
     const entries = pool.getAllEntries();
     expect(entries[0].refreshToken).toBe("refresh_abc");
+  });
+
+  it("POST /auth/accounts/import accepts Sub2API export JSON", async () => {
+    const res = await app.request("/auth/accounts/import", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        type: "sub2api-data",
+        version: 1,
+        accounts: [
+          {
+            name: "Imported Sub2API",
+            platform: "openai",
+            type: "oauth",
+            credentials: {
+              access_token: "tokenS2AI1234567890",
+              refresh_token: "rt_s2ai",
+            },
+          },
+        ],
+      }),
+    });
+
+    expect(res.status).toBe(200);
+    const data = await res.json() as { added: number; failed: number };
+    expect(data.added).toBe(1);
+    expect(data.failed).toBe(0);
+    const entry = pool.getAllEntries()[0];
+    expect(entry.token).toBe("tokenS2AI1234567890");
+    expect(entry.refreshToken).toBe("rt_s2ai");
+    expect(entry.label).toBe("Imported Sub2API");
+  });
+
+  it("POST /auth/accounts/import accepts text/plain token lines", async () => {
+    const res = await app.request("/auth/accounts/import", {
+      method: "POST",
+      headers: { "Content-Type": "text/plain" },
+      body: [
+        "tokenTEXT1234567890",
+        "{\"accessToken\":\"tokenJSON1234567890\",\"refreshToken\":\"rt_json\"}",
+      ].join("\n"),
+    });
+
+    expect(res.status).toBe(200);
+    const data = await res.json() as { added: number; failed: number };
+    expect(data.added).toBe(2);
+    expect(data.failed).toBe(0);
+    expect(pool.getAllEntries().map((entry) => entry.token)).toEqual([
+      "tokenTEXT1234567890",
+      "tokenJSON1234567890",
+    ]);
   });
 
   it("POST /auth/accounts/import rejects empty accounts array", async () => {
