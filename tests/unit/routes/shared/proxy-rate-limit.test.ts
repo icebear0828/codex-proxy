@@ -46,6 +46,7 @@ describe("applyParsedRateLimits", () => {
       plan_type: "team",
       rate_limit: {
         used_percent: 42,
+        remaining_percent: 58,
         reset_at: 1_700_000_000,
         limit_window_seconds: 18_000,
         allowed: true,
@@ -53,6 +54,7 @@ describe("applyParsedRateLimits", () => {
       },
       secondary_rate_limit: {
         used_percent: 18,
+        remaining_percent: 82,
         reset_at: 1_700_500_000,
         limit_window_seconds: 604_800,
         limit_reached: false,
