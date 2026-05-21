@@ -23,7 +23,7 @@ describe("cors middleware", () => {
 
     expect(res.status).toBe(204);
     expect(res.headers.get("Access-Control-Allow-Origin")).toBe("http://127.0.0.1:5173");
-    expect(res.headers.get("Vary")).toBe("Origin");
+    expect(res.headers.get("Vary")).toBe("Origin, Access-Control-Request-Method, Access-Control-Request-Headers");
   });
 
   it("does not expose admin routes to loopback web origins", async () => {
