@@ -242,6 +242,18 @@ describe("translateGeminiToCodexRequest", () => {
     expect(result.reasoning?.effort).toBe("medium");
   });
 
+  it("does not forward maxOutputTokens to Codex", () => {
+    const result = translateGeminiToCodexRequest(
+      makeRequest({
+        generationConfig: {
+          maxOutputTokens: 8192,
+        },
+      }),
+      "gpt-5.4",
+    );
+    expect(result).not.toHaveProperty("max_output_tokens");
+  });
+
   it("maps model suffix -fast to service_tier", () => {
     const result = translateGeminiToCodexRequest(makeRequest(), "gpt-5.4-fast");
     expect(result.service_tier).toBe("fast");

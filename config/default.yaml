@@ -3,15 +3,17 @@ api:
   timeout_seconds: 600
 client:
   originator: Codex Desktop
-  app_version: 26.318.11754
-  build_number: "1100"
+  app_version: 26.506.31421
+  build_number: "2620"
   platform: darwin
   arch: arm64
-  chromium_version: "144"
+  chromium_version: "146"
 model:
   default: gpt-5.4
   default_reasoning_effort: null
   default_service_tier: null
+  aliases: {}
+  custom_models: []
   inject_desktop_context: false
   suppress_desktop_directives: false
 auth:
@@ -34,6 +36,11 @@ logs:
   capacity: 2000
   capture_body: false
   llm_only: true
+usage_stats:
+  # 0 = disable local usage history snapshots
+  snapshot_interval_minutes: 5
+  # null = keep usage history forever
+  history_retention_days: null
 session:
   ttl_minutes: 60
   cleanup_interval_minutes: 5
@@ -54,6 +61,7 @@ quota:
   skip_exhausted: true
 update:
   auto_update: true
+  show_update_dialog: false
   # allow_prerelease: false  # set true to receive beta builds (vX.Y.Z-beta.SHA) from the dev branch
 ollama:
   enabled: false
@@ -61,3 +69,10 @@ ollama:
   port: 11434
   version: "0.18.3"
   disable_vision: false
+official_agent:
+  enabled: false
+  api_key: null
+  app_server_url: ws://127.0.0.1:4500
+  request_timeout_ms: 30000
+  auth:
+    type: none

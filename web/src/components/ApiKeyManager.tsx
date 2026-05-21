@@ -5,7 +5,7 @@
 
 import { useState, useCallback, useMemo, useRef } from "preact/hooks";
 import { useApiKeys } from "../../../shared/hooks/use-api-keys";
-import type { ApiKeyProvider, ApiKeyEntry, CatalogModel } from "../../../shared/hooks/use-api-keys";
+import type { ApiKeyCapability, ApiKeyProvider, ApiKeyEntry, CatalogModel } from "../../../shared/hooks/use-api-keys";
 
 const CUSTOM_MODELS_HINT = "请先输入key和url，将会获取模型列表";
 const CUSTOM_MODELS_FALLBACK_HINT = "模型列表获取失败，请手动输入模型名";
@@ -16,6 +16,11 @@ const PROVIDER_OPTIONS: Array<{ value: ApiKeyProvider; label: string }> = [
   { value: "gemini", label: "Google Gemini" },
   { value: "openrouter", label: "OpenRouter" },
   { value: "custom", label: "Custom" },
+];
+
+const CAPABILITY_OPTIONS: Array<{ value: ApiKeyCapability; label: string }> = [
+  { value: "chat", label: "Chat" },
+  { value: "embeddings", label: "Embeddings" },
 ];
 
 type CustomModelStatus = "idle" | "loading" | "loaded" | "fallback";
@@ -46,7 +51,14 @@ function renderModelChecklist(models: CatalogModel[], selectedModelSet: Set<stri
 }
 
 function AddKeyForm({ onAdd, catalog, fetchCustomModels }: {
-  onAdd: (input: { provider: ApiKeyProvider; models: string[]; apiKey: string; baseUrl?: string; label?: string }) => Promise<{ ok: boolean; error?: string }>;
+  onAdd: (input: {
+    provider: ApiKeyProvider;
+    models: string[];
+    apiKey: string;
+    baseUrl?: string;
+    label?: string;
+    capabilities?: ApiKeyCapability[];
+  }) => Promise<{ ok: boolean; error?: string }>;
   catalog: Record<string, { displayName: string; defaultBaseUrl: string; models: Array<{ id: string; displayName: string }> }>;
   fetchCustomModels: (input: { provider: "custom"; apiKey: string; baseUrl: string }) => Promise<{ ok: true; models: CatalogModel[] } | { ok: false; error: string }>;
 }) {
@@ -56,6 +68,7 @@ function AddKeyForm({ onAdd, catalog, fetchCustomModels }: {
   const [baseUrl, setBaseUrl] = useState("");
   const [label, setLabel] = useState("");
   const [manualModelsInput, setManualModelsInput] = useState("");
+  const [capabilities, setCapabilities] = useState<ApiKeyCapability[]>(["chat"]);
   const [customModels, setCustomModels] = useState<CatalogModel[]>([]);
   const [customModelStatus, setCustomModelStatus] = useState<CustomModelStatus>("idle");
   const [customModelMessage, setCustomModelMessage] = useState(CUSTOM_MODELS_HINT);
@@ -67,6 +80,7 @@ function AddKeyForm({ onAdd, catalog, fetchCustomModels }: {
   const isCustom = provider === "custom";
   const providerCatalog = !isCustom ? catalog[provider]?.models ?? [] : [];
   const selectedModelSet = useMemo(() => new Set(selectedModels), [selectedModels]);
+  const selectedCapabilitySet = useMemo(() => new Set(capabilities), [capabilities]);
 
   const resetCustomModels = useCallback((status: CustomModelStatus = "idle", message = CUSTOM_MODELS_HINT) => {
     setCustomModels([]);
@@ -79,6 +93,12 @@ function AddKeyForm({ onAdd, catalog, fetchCustomModels }: {
     setSelectedModels((prev) => prev.includes(modelId)
       ? prev.filter((id) => id !== modelId)
       : [...prev, modelId]);
+  };
+
+  const handleCapabilityToggle = (capability: ApiKeyCapability) => {
+    setCapabilities((prev) => prev.includes(capability)
+      ? prev.filter((item) => item !== capability)
+      : [...prev, capability]);
   };
 
   const triggerCustomModelFetch = useCallback(async () => {
@@ -136,7 +156,7 @@ function AddKeyForm({ onAdd, catalog, fetchCustomModels }: {
     const normalizedManualModels = normalizeCustomModelInput(manualModelsInput);
     const models = isCustom && customModelStatus === "fallback"
       ? normalizedManualModels
-      : selectedModels;
+      : [...new Set([...selectedModels, ...normalizedManualModels])];
 
     if (models.length === 0 || !normalizedApiKey) {
       setError(isCustom && customModelStatus === "fallback"
@@ -148,6 +168,10 @@ function AddKeyForm({ onAdd, catalog, fetchCustomModels }: {
       setError("Base URL is required for custom providers");
       return;
     }
+    if (capabilities.length === 0) {
+      setError("Select at least one capability");
+      return;
+    }
 
     setAdding(true);
     const result = await onAdd({
@@ -156,6 +180,7 @@ function AddKeyForm({ onAdd, catalog, fetchCustomModels }: {
       apiKey: normalizedApiKey,
       baseUrl: isCustom ? normalizedBaseUrl : undefined,
       label: label.trim() || undefined,
+      capabilities,
     });
     setAdding(false);
     if (result.ok) {
@@ -164,6 +189,7 @@ function AddKeyForm({ onAdd, catalog, fetchCustomModels }: {
       setBaseUrl("");
       setLabel("");
       setManualModelsInput("");
+      setCapabilities(["chat"]);
       resetCustomModels();
     } else {
       setError(result.error || "Failed to add key");
@@ -185,6 +211,7 @@ function AddKeyForm({ onAdd, catalog, fetchCustomModels }: {
               setApiKey("");
               setLabel("");
               setManualModelsInput("");
+              setCapabilities(["chat"]);
               latestResolvedSignatureRef.current = "";
               resetCustomModels();
             }}
@@ -234,6 +261,31 @@ function AddKeyForm({ onAdd, catalog, fetchCustomModels }: {
             )}
           </div>
         )}
+        {(!isCustom || customModelStatus === "loaded") && (
+          <input
+            type="text"
+            value={manualModelsInput}
+            onInput={(e) => setManualModelsInput((e.target as HTMLInputElement).value)}
+            placeholder="manual-model-1, manual-model-2"
+            class="px-2.5 py-1.5 text-sm rounded-lg border border-gray-200 dark:border-border-dark bg-slate-50 dark:bg-bg-dark text-slate-800 dark:text-text-main"
+          />
+        )}
+      </div>
+
+      <div class="flex flex-col gap-1">
+        <label class="text-[0.7rem] font-medium text-slate-500 dark:text-text-dim">Capabilities</label>
+        <div class="flex flex-wrap gap-2">
+          {CAPABILITY_OPTIONS.map((option) => (
+            <label key={option.value} class="flex items-center gap-2 px-2.5 py-1.5 rounded-lg border border-gray-200 dark:border-border-dark bg-slate-50 dark:bg-bg-dark text-sm text-slate-700 dark:text-text-main">
+              <input
+                type="checkbox"
+                checked={selectedCapabilitySet.has(option.value)}
+                onChange={() => handleCapabilityToggle(option.value)}
+              />
+              <span>{option.label}</span>
+            </label>
+          ))}
+        </div>
       </div>
 
       {isCustom && (
@@ -268,7 +320,7 @@ function AddKeyForm({ onAdd, catalog, fetchCustomModels }: {
         <button
           type="submit"
           disabled={adding}
-          class="px-4 py-1.5 text-sm font-medium text-white bg-primary hover:bg-primary-hover rounded-lg transition-colors disabled:opacity-40 whitespace-nowrap"
+          class="px-4 py-1.5 text-sm font-medium text-white bg-primary-action hover:bg-primary-action-hover rounded-lg transition-colors disabled:opacity-40 whitespace-nowrap"
         >
           {adding ? "Adding..." : "Add Key"}
         </button>
@@ -283,10 +335,10 @@ export { AddKeyForm };
 
 function providerBadgeColor(provider: ApiKeyProvider): string {
   switch (provider) {
-    case "anthropic": return "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400";
-    case "openai": return "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400";
-    case "gemini": return "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400";
-    case "openrouter": return "bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400";
+    case "anthropic": return "bg-warning-container text-warning";
+    case "openai": return "bg-success-container text-success";
+    case "gemini": return "bg-info-container text-info";
+    case "openrouter": return "bg-avatar-purple-bg text-avatar-purple-text";
     default: return "bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400";
   }
 }
@@ -313,6 +365,10 @@ function KeyRow({ entry, onDelete, onToggle }: {
           {entry.label}
         </span>
       )}
+
+      <span class="text-xs text-slate-400 dark:text-text-dim">
+        {entry.capabilities.join(", ")}
+      </span>
 
       <span class="text-xs font-mono text-slate-400 dark:text-text-dim ml-auto hidden sm:inline">
         {entry.apiKey}

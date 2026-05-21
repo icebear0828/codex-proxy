@@ -80,6 +80,15 @@ function renderLogsPage() {
   );
 }
 
+function hasAncestorClass(element: Element, className: string): boolean {
+  let current: Element | null = element;
+  while (current) {
+    if (current.classList.contains(className)) return true;
+    current = current.parentElement;
+  }
+  return false;
+}
+
 afterEach(() => {
   cleanup();
 });
@@ -147,5 +156,20 @@ describe("LogsPage", () => {
 
     fireEvent.click(screen.getByText("Only record LLM logs (click to toggle)"));
     expect(save).toHaveBeenCalledWith({ logs_llm_only: false });
+  });
+
+  it("keeps the log list constrained on narrow screens", () => {
+    mockLogs.useLogs.mockReturnValue(makeLogsState());
+    mockGeneralSettings.useGeneralSettings.mockReturnValue(makeGeneralSettings());
+
+    renderLogsPage();
+
+    const timeHeader = screen.getByText("Time");
+    expect(hasAncestorClass(timeHeader, "overflow-x-auto")).toBe(true);
+    expect(hasAncestorClass(timeHeader, "min-w-[520px]")).toBe(true);
+
+    const detailsPanel = screen.getByText("Details").parentElement?.parentElement;
+    expect(detailsPanel?.className).toContain("w-full");
+    expect(detailsPanel?.className).toContain("lg:w-[360px]");
   });
 });

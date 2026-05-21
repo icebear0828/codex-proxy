@@ -38,11 +38,16 @@ describe("ConfigSchema", () => {
     expect(result.auth.request_interval_ms).toBe(50);
     expect(result.model.default).toBe("gpt-5.4");
     expect(result.model.default_reasoning_effort).toBeNull();
+    expect(result.model.aliases).toEqual({});
+    expect(result.model.custom_models).toEqual([]);
     expect(result.tls.force_http11).toBe(false);
+    expect(result.usage_stats.snapshot_interval_minutes).toBe(5);
+    expect(result.usage_stats.history_retention_days).toBeNull();
     expect(result.quota.refresh_interval_minutes).toBe(5);
     expect(result.quota.warning_thresholds.primary).toEqual([80, 90]);
     expect(result.quota.skip_exhausted).toBe(true);
     expect(result.update.auto_update).toBe(true);
+    expect(result.update.show_update_dialog).toBe(false);
     expect(result.update.allow_prerelease).toBe(false);
     expect(result.session.ttl_minutes).toBe(1440);
     expect(result.ollama).toEqual({
@@ -52,19 +57,49 @@ describe("ConfigSchema", () => {
       version: "0.18.3",
       disable_vision: false,
     });
+    expect(result.official_agent).toEqual({
+      enabled: false,
+      api_key: null,
+      app_server_url: "ws://127.0.0.1:4500",
+      request_timeout_ms: 30000,
+      auth: { type: "none" },
+    });
   });
 
   it("respects overridden values", () => {
     const result = ConfigSchema.parse({
       api: { timeout_seconds: 120 },
       client: { platform: "linux" },
-      model: { default: "gpt-5.4" },
+      model: {
+        default: "gpt-5.4",
+        aliases: {
+          "claude-opus-4-7": "gpt-5.5",
+          "my-openai": "openai:gpt-4o",
+        },
+        custom_models: [
+          "local-simple",
+          {
+            id: "local-rich",
+            display_name: "Local Rich",
+            description: "Local rich model",
+            supported_reasoning_efforts: ["low", "high"],
+            default_reasoning_effort: "high",
+            input_modalities: ["text", "image"],
+            output_modalities: ["text"],
+            supports_personality: true,
+            context_window: 12345,
+            max_context_window: 23456,
+            max_output_tokens: 3456,
+            truncation_policy_limit: 4567,
+          },
+        ],
+      },
       auth: { rotation_strategy: "round_robin", max_concurrent_per_account: null },
       server: { port: 3000, proxy_api_key: "sk-test" },
       session: { ttl_minutes: 120 },
       tls: { force_http11: true },
       quota: { skip_exhausted: false },
-      update: { auto_update: false, allow_prerelease: true },
+      update: { auto_update: false, show_update_dialog: true, allow_prerelease: true },
       ollama: {
         enabled: true,
         host: "0.0.0.0",
@@ -72,11 +107,39 @@ describe("ConfigSchema", () => {
         version: "0.20.1",
         disable_vision: true,
       },
+      official_agent: {
+        enabled: true,
+        api_key: "agent-key",
+        app_server_url: "ws://127.0.0.1:4777",
+        request_timeout_ms: 5000,
+        auth: { type: "capability_token", token_file: "/tmp/codex-token" },
+      },
     });
 
     expect(result.api.timeout_seconds).toBe(120);
     expect(result.client.platform).toBe("linux");
     expect(result.model.default).toBe("gpt-5.4");
+    expect(result.model.aliases).toEqual({
+      "claude-opus-4-7": "gpt-5.5",
+      "my-openai": "openai:gpt-4o",
+    });
+    expect(result.model.custom_models).toEqual([
+      "local-simple",
+      {
+        id: "local-rich",
+        display_name: "Local Rich",
+        description: "Local rich model",
+        supported_reasoning_efforts: ["low", "high"],
+        default_reasoning_effort: "high",
+        input_modalities: ["text", "image"],
+        output_modalities: ["text"],
+        supports_personality: true,
+        context_window: 12345,
+        max_context_window: 23456,
+        max_output_tokens: 3456,
+        truncation_policy_limit: 4567,
+      },
+    ]);
     expect(result.auth.rotation_strategy).toBe("round_robin");
     expect(result.auth.max_concurrent_per_account).toBeNull();
     expect(result.server.port).toBe(3000);
@@ -84,6 +147,7 @@ describe("ConfigSchema", () => {
     expect(result.tls.force_http11).toBe(true);
     expect(result.quota.skip_exhausted).toBe(false);
     expect(result.update.auto_update).toBe(false);
+    expect(result.update.show_update_dialog).toBe(true);
     expect(result.update.allow_prerelease).toBe(true);
     expect(result.ollama).toEqual({
       enabled: true,
@@ -92,6 +156,34 @@ describe("ConfigSchema", () => {
       version: "0.20.1",
       disable_vision: true,
     });
+    expect(result.official_agent.enabled).toBe(true);
+    expect(result.official_agent.api_key).toBe("agent-key");
+    expect(result.official_agent.app_server_url).toBe("ws://127.0.0.1:4777");
+    expect(result.official_agent.auth).toEqual({ type: "capability_token", token_file: "/tmp/codex-token" });
+  });
+
+  it("rejects non-websocket official agent URLs", () => {
+    const result = ConfigSchema.safeParse({
+      api: {}, client: {}, model: {}, auth: {}, server: {}, session: {},
+      official_agent: { app_server_url: "http://127.0.0.1:4500" },
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it("requires official agent capability token material", () => {
+    const result = ConfigSchema.safeParse({
+      api: {}, client: {}, model: {}, auth: {}, server: {}, session: {},
+      official_agent: { auth: { type: "capability_token" } },
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it("requires official agent signed bearer secret material", () => {
+    const result = ConfigSchema.safeParse({
+      api: {}, client: {}, model: {}, auth: {}, server: {}, session: {},
+      official_agent: { auth: { type: "signed_bearer_token" } },
+    });
+    expect(result.success).toBe(false);
   });
 
   it("rejects port out of range", () => {
@@ -162,6 +254,7 @@ describe("ConfigSchema", () => {
     });
     expect(result.quota.concurrency).toBe(10);
     expect(result.update.auto_update).toBe(true);
+    expect(result.update.show_update_dialog).toBe(false);
   });
 });
 

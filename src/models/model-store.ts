@@ -6,7 +6,8 @@
  *   2. applyBackendModels() — merge backend-fetched models (backend wins for shared IDs)
  *   3. getters — runtime reads from mutable state
  *
- * Aliases always come from YAML (user-customizable), never from backend.
+ * Aliases come from the static YAML baseline plus local `model.aliases`
+ * overrides; backend model refreshes never replace them.
  *
  * The ModelStore class owns all state. Module-level free functions delegate
  * to a default instance for backward compatibility.
@@ -16,6 +17,7 @@ import { readFileSync, writeFile, existsSync, mkdirSync } from "fs";
 import { resolve } from "path";
 import yaml from "js-yaml";
 import { getConfig } from "../config.js";
+import type { AppConfig } from "../config-schema.js";
 import { getConfigDir, getDataDir } from "../paths.js";
 
 // ── Types ────────────────────────────────────────────────────────────
@@ -32,8 +34,16 @@ export interface CodexModelInfo {
   outputModalities?: string[];
   supportsPersonality: boolean;
   upgrade: string | null;
+  /** Maximum total context window in tokens, when known. */
+  contextWindow?: number;
+  /** Maximum expandable context window reported by the Codex backend, when known. */
+  maxContextWindow?: number;
+  /** Maximum configurable output token budget, when known. */
+  maxOutputTokens?: number;
+  /** Backend truncation policy limit, when reported. */
+  truncationPolicyLimit?: number;
   /** Where this model entry came from */
-  source?: "static" | "backend";
+  source?: "static" | "backend" | "custom";
 }
 
 interface ModelsConfig {
@@ -69,10 +79,23 @@ export interface BackendModelEntry {
   upgrade?: string | null;
   prefer_websockets?: boolean;
   context_window?: number;
+  contextWindow?: number;
+  max_context_window?: number;
+  maxContextWindow?: number;
+  max_output_tokens?: number;
+  maxOutputTokens?: number;
+  truncation_policy?: {
+    limit?: number;
+  };
+  truncationPolicy?: {
+    limit?: number;
+  };
   available_in_plans?: string[];
   priority?: number;
   visibility?: string;
 }
+
+type ConfiguredCustomModel = AppConfig["model"]["custom_models"][number];
 
 export interface ParsedModelName {
   modelId: string;
@@ -90,7 +113,7 @@ interface NormalizedModelWithMeta extends CodexModelInfo {
 const SERVICE_TIER_SUFFIXES = new Set(["fast", "flex"]);
 const EFFORT_SUFFIXES = new Set(["none", "minimal", "low", "medium", "high", "xhigh"]);
 
-function stripKnownModelSuffixes(input: string): {
+export function stripKnownModelSuffixes(input: string): {
   modelName: string;
   serviceTier: string | null;
   reasoningEffort: string | null;
@@ -118,6 +141,17 @@ function stripKnownModelSuffixes(input: string): {
   return { modelName: remaining, serviceTier, reasoningEffort };
 }
 
+function normalizeAliases(input: Record<string, string> | undefined): Record<string, string> {
+  const aliases: Record<string, string> = {};
+  if (!input) return aliases;
+  for (const [rawKey, rawValue] of Object.entries(input)) {
+    const key = rawKey.trim();
+    const value = rawValue.trim();
+    if (key && value) aliases[key] = value;
+  }
+  return aliases;
+}
+
 // ── Class ────────────────────────────────────────────────────────────
 
 export class ModelStore {
@@ -140,7 +174,10 @@ export class ModelStore {
     const raw = yaml.load(readFileSync(configPath, "utf-8")) as ModelsConfig;
 
     this.catalog = (raw.models ?? []).map((m) => ({ ...m, source: "static" as const }));
-    this.aliases = raw.aliases ?? {};
+    this.aliases = {
+      ...normalizeAliases(raw.aliases),
+      ...this.getConfiguredAliases(),
+    };
     this.planModelMap = new Map();
     this.modelPlanIndex = new Map();
     console.log(`[ModelStore] Loaded ${this.catalog.length} static models, ${Object.keys(this.aliases).length} aliases`);
@@ -167,6 +204,11 @@ export class ModelStore {
       }
     } catch {
       // Cache missing or corrupt — safe to ignore, backend fetch will repopulate
+    }
+
+    const customCount = this.applyConfiguredCustomModels();
+    if (customCount > 0) {
+      console.log(`[ModelStore] Applied ${customCount} custom models from local config`);
     }
   }
 
@@ -205,7 +247,7 @@ export class ModelStore {
 
     for (const m of this.catalog) {
       if (!seenIds.has(m.id)) {
-        merged.push({ ...m, source: "static" });
+        merged.push({ ...m, source: m.source ?? "static" });
       }
     }
 
@@ -255,8 +297,9 @@ export class ModelStore {
 
   resolveModelId(input: string): string {
     const trimmed = input.trim();
-    if (this.aliases[trimmed]) return this.aliases[trimmed];
-    if (this.catalog.some((m) => m.id === trimmed)) return trimmed;
+    const resolved = this.resolveAliasChain(trimmed);
+    if (resolved !== trimmed) return resolved;
+    if (this.catalog.some((m) => m.id === resolved)) return resolved;
     return this.defaultModelFn();
   }
 
@@ -375,6 +418,57 @@ export class ModelStore {
       }
     });
   }
+
+  private getConfiguredAliases(): Record<string, string> {
+    try {
+      return normalizeAliases(getConfig().model.aliases);
+    } catch {
+      return {};
+    }
+  }
+
+  private getConfiguredCustomModels(): ConfiguredCustomModel[] {
+    try {
+      const customModels = getConfig().model.custom_models;
+      return Array.isArray(customModels) ? customModels : [];
+    } catch {
+      return [];
+    }
+  }
+
+  private applyConfiguredCustomModels(): number {
+    let applied = 0;
+
+    for (const raw of this.getConfiguredCustomModels()) {
+      const model = normalizeCustomModel(raw);
+      if (!model) continue;
+
+      const existingIndex = this.catalog.findIndex((entry) => entry.id === model.id);
+      if (existingIndex >= 0) {
+        this.catalog[existingIndex] = model;
+      } else {
+        this.catalog.push(model);
+      }
+      applied++;
+    }
+
+    return applied;
+  }
+
+  private resolveAliasChain(input: string): string {
+    let current = input.trim();
+    const seen = new Set<string>();
+
+    for (let depth = 0; depth < 20; depth++) {
+      const target = this.aliases[current]?.trim();
+      if (!target) return current;
+      if (seen.has(current) || seen.has(target)) return input.trim();
+      seen.add(current);
+      current = target;
+    }
+
+    return input.trim();
+  }
 }
 
 // ── Helpers (module-level, stateless) ─────────────────────────────
@@ -414,7 +508,92 @@ function normalizeBackendModel(raw: BackendModelEntry): NormalizedModelWithMeta 
   // Only set outputModalities when backend provided it — otherwise the spread
   // in applyBackendModels would clobber the static catalog value with undefined.
   if (raw.output_modalities) out.outputModalities = raw.output_modalities;
+  if (typeof raw.context_window === "number") {
+    out.contextWindow = raw.context_window;
+  } else if (typeof raw.contextWindow === "number") {
+    out.contextWindow = raw.contextWindow;
+  }
+  if (typeof raw.max_context_window === "number") {
+    out.maxContextWindow = raw.max_context_window;
+  } else if (typeof raw.maxContextWindow === "number") {
+    out.maxContextWindow = raw.maxContextWindow;
+  }
+  if (typeof raw.max_output_tokens === "number") {
+    out.maxOutputTokens = raw.max_output_tokens;
+  } else if (typeof raw.maxOutputTokens === "number") {
+    out.maxOutputTokens = raw.maxOutputTokens;
+  }
+  if (typeof raw.truncation_policy?.limit === "number") {
+    out.truncationPolicyLimit = raw.truncation_policy.limit;
+  } else if (typeof raw.truncationPolicy?.limit === "number") {
+    out.truncationPolicyLimit = raw.truncationPolicy.limit;
+  }
   return out;
+}
+
+function normalizeCustomModel(raw: ConfiguredCustomModel): CodexModelInfo | null {
+  if (typeof raw === "string") {
+    const id = raw.trim();
+    if (!id) return null;
+
+    return buildCustomModel({
+      id,
+      displayName: id,
+      description: "Custom Codex-compatible model",
+      supportedReasoningEfforts: [{ reasoningEffort: "medium", description: "Default" }],
+      defaultReasoningEffort: "medium",
+      inputModalities: ["text"],
+      outputModalities: ["text"],
+      supportsPersonality: false,
+    });
+  }
+
+  const id = raw.id.trim();
+  if (!id) return null;
+
+  const supportedReasoningEfforts = (raw.supported_reasoning_efforts ?? ["medium"]).map((effort) => {
+    const reasoningEffort = effort.trim();
+    return { reasoningEffort, description: reasoningEffort };
+  });
+
+  const model = buildCustomModel({
+    id,
+    displayName: raw.display_name ?? id,
+    description: raw.description ?? "Custom Codex-compatible model",
+    supportedReasoningEfforts,
+    defaultReasoningEffort: raw.default_reasoning_effort ?? "medium",
+    inputModalities: raw.input_modalities ?? ["text"],
+    outputModalities: raw.output_modalities ?? ["text"],
+    supportsPersonality: raw.supports_personality ?? false,
+  });
+
+  if (typeof raw.context_window === "number") model.contextWindow = raw.context_window;
+  if (typeof raw.max_context_window === "number") model.maxContextWindow = raw.max_context_window;
+  if (typeof raw.max_output_tokens === "number") model.maxOutputTokens = raw.max_output_tokens;
+  if (typeof raw.truncation_policy_limit === "number") model.truncationPolicyLimit = raw.truncation_policy_limit;
+
+  return model;
+}
+
+function buildCustomModel(
+  input: Pick<
+    CodexModelInfo,
+    | "id"
+    | "displayName"
+    | "description"
+    | "supportedReasoningEfforts"
+    | "defaultReasoningEffort"
+    | "inputModalities"
+    | "outputModalities"
+    | "supportsPersonality"
+  >,
+): CodexModelInfo {
+  return {
+    ...input,
+    isDefault: false,
+    upgrade: null,
+    source: "custom",
+  };
 }
 
 // ── Default instance + backward-compatible free functions ─────────

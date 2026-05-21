@@ -39,9 +39,12 @@ interface HeaderProps {
   commit?: string | null;
   hasUpdate?: boolean;
   onLogout?: () => void;
+  /** Number of unread errors. When > 0, show a clickable badge that
+   *  navigates to the Errors tab. */
+  unreadErrors?: number;
 }
 
-export function Header({ onAddAccount, onCheckUpdate, onOpenUpdateModal, checking, updateStatusMsg, updateStatusColor, version, commit, hasUpdate, onLogout }: HeaderProps) {
+export function Header({ onAddAccount, onCheckUpdate, onOpenUpdateModal, checking, updateStatusMsg, updateStatusColor, version, commit, hasUpdate, onLogout, unreadErrors }: HeaderProps) {
   const { lang, toggleLang, t } = useI18n();
   const { isDark, toggle: toggleTheme } = useTheme();
 
@@ -51,7 +54,7 @@ export function Header({ onAddAccount, onCheckUpdate, onOpenUpdateModal, checkin
         <div class="flex w-full max-w-[960px] items-center justify-between">
           {/* Logo & Title */}
           <div class="flex items-center gap-3">
-            <div class="flex items-center justify-center size-8 rounded-full bg-primary/10 text-primary border border-primary/20">
+            <div class="flex items-center justify-center size-8 rounded-full bg-primary-container text-primary border border-primary/20">
               <svg class="size-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                 <path stroke-linecap="round" stroke-linejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
               </svg>
@@ -60,7 +63,23 @@ export function Header({ onAddAccount, onCheckUpdate, onOpenUpdateModal, checkin
           </div>
           {/* Actions */}
           <div class="flex items-center gap-2">
-            <div class="hidden sm:flex items-center gap-2 px-3 py-1.5 rounded-full bg-primary/10 border border-primary/20">
+            {/* Unread error badge — appears only when there's something to show. */}
+            {unreadErrors !== undefined && unreadErrors > 0 && (
+              <a
+                href="#/errors"
+                title={t("errorsBadgeTooltip")}
+                class="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-red-50 border border-red-200 text-red-700 dark:bg-red-900/20 dark:border-red-700/30 dark:text-red-400 hover:bg-red-100 dark:hover:bg-red-900/30 transition-colors"
+              >
+                <span class="relative flex h-2.5 w-2.5">
+                  <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-500 opacity-75" />
+                  <span class="relative inline-flex rounded-full h-2.5 w-2.5 bg-red-500" />
+                </span>
+                <span class="text-xs font-semibold">
+                  {unreadErrors > 99 ? "99+" : unreadErrors} {t("errorsBadge")}
+                </span>
+              </a>
+            )}
+            <div class="hidden sm:flex items-center gap-2 px-3 py-1.5 rounded-full bg-primary-container border border-primary/20">
               <span class="relative flex h-2.5 w-2.5">
                 <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-primary opacity-75" />
                 <span class="relative inline-flex rounded-full h-2.5 w-2.5 bg-primary" />
@@ -129,7 +148,7 @@ export function Header({ onAddAccount, onCheckUpdate, onOpenUpdateModal, checkin
             </button>
             <button
               onClick={onAddAccount}
-              class="flex items-center gap-2 px-4 py-2 bg-primary hover:bg-primary-hover text-white text-xs font-semibold rounded-lg transition-colors shadow-sm active:scale-95"
+              class="flex items-center gap-2 px-4 py-2 bg-primary-action hover:bg-primary-action-hover text-white text-xs font-semibold rounded-lg transition-colors shadow-sm active:scale-95"
             >
               <svg class="size-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
                 <path stroke-linecap="round" stroke-linejoin="round" d="M12 4.5v15m7.5-7.5h-15" />

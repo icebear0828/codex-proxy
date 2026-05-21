@@ -80,6 +80,37 @@ export function isPreviousResponseNotFoundError(err: unknown): boolean {
     || (lower.includes("previous response with id") && lower.includes("not found"));
 }
 
+/**
+ * Check if an error indicates a stored function_call from the previous response
+ * was not answered with a function_call_output in the current request. Upstream
+ * surfaces this as 400 with message "No tool output found for function call call_X".
+ *
+ * Recovered the same way as previous_response_not_found: drop previous_response_id,
+ * resend full input history, retry on the same account.
+ */
+export function isUnansweredFunctionCallError(err: unknown): boolean {
+  if (!isCodexLike(err)) return false;
+  if (err.status !== 400) return false;
+  const haystack = (err.body + " " + err.message).toLowerCase();
+  return haystack.includes("no tool output found for function call");
+}
+
+/**
+ * Detects Cloudflare path-level bot blocks that surface as empty-body 404s.
+ *
+ * Cloudflare's Bot Management can "hide" a guarded path (e.g. /codex/responses)
+ * by returning 404 with no body when the session's __cf_bm cookie or
+ * fingerprint no longer matches what it issued — this is its standard
+ * "stealth deny" pattern (more deniable than 403). The distinguishing
+ * signal is the empty body: real Codex 404s from upstream always carry a
+ * JSON error payload.
+ */
+export function isCfPathBlockError(err: unknown): boolean {
+  if (!isCodexLike(err)) return false;
+  if (err.status !== 404) return false;
+  return err.body.trim().length === 0;
+}
+
 /** Check if a CodexApiError indicates the model is not supported on the account's plan. */
 export function isModelNotSupportedError(err: CodexLikeError): boolean {
   if (err.status < 400 || err.status >= 500 || err.status === 429) return false;

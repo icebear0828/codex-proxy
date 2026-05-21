@@ -34,6 +34,7 @@ export interface UsageDataPoint {
 }
 
 export type Granularity = "raw" | "five_min" | "hourly" | "daily";
+export type UsageHistoryRange = number | "all";
 
 /** 15 s fetch hard timeout — stops the dashboard from showing "—" forever
  *  when an extension, service worker, or upstream stall blackholes the
@@ -63,7 +64,7 @@ export function useUsageSummary(refreshIntervalMs = 30_000) {
   return { summary, loading };
 }
 
-export function useUsageHistory(granularity: Granularity, hours: number, refreshIntervalMs = 60_000) {
+export function useUsageHistory(granularity: Granularity, hours: UsageHistoryRange, refreshIntervalMs = 60_000) {
   const [dataPoints, setDataPoints] = useState<UsageDataPoint[]>([]);
   const [loading, setLoading] = useState(true);
 

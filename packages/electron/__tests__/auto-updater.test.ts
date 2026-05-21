@@ -95,6 +95,21 @@ describe("auto-updater state machine", () => {
     expect(mockAutoUpdater.autoDownload).toBe(false);
   });
 
+  it("does not schedule update checks when autoUpdate is explicitly false", () => {
+    initAutoUpdater({ ...mockOptions, autoUpdate: false });
+
+    vi.advanceTimersByTime(30_000);
+    vi.advanceTimersByTime(4 * 60 * 60 * 1000);
+
+    expect(mockAutoUpdater.checkForUpdates).not.toHaveBeenCalled();
+  });
+
+  it("enables prerelease updates when explicitly configured", () => {
+    initAutoUpdater({ ...mockOptions, allowPrerelease: true });
+
+    expect(mockAutoUpdater.allowPrerelease).toBe(true);
+  });
+
   it("schedules initial check after 30s delay", () => {
     initAutoUpdater(mockOptions);
 
@@ -261,8 +276,18 @@ describe("auto-updater state machine", () => {
     expect(mockWin.setProgressBar).toHaveBeenCalledWith(-1);
   });
 
-  it("shows download dialog when autoDownload=false (default)", () => {
+  it("skips update-available dialog by default", () => {
     initAutoUpdater({ ...mockOptions, autoUpdate: true });
+
+    mockAutoUpdater.emit("update-available", { version: "3.0.0" });
+
+    const state = getAutoUpdateState();
+    expect(state.updateAvailable).toBe(true);
+    expect(mockDialog.showMessageBox).not.toHaveBeenCalled();
+  });
+
+  it("shows update-available dialog when explicitly enabled", () => {
+    initAutoUpdater({ ...mockOptions, autoUpdate: true, showUpdateDialog: true });
 
     mockAutoUpdater.emit("update-available", { version: "3.0.0" });
 
@@ -279,6 +304,14 @@ describe("auto-updater state machine", () => {
     const state = getAutoUpdateState();
     expect(state.updateAvailable).toBe(true);
     // autoDownload silently handles it — no dialog
+    expect(mockDialog.showMessageBox).not.toHaveBeenCalled();
+  });
+
+  it("skips update-downloaded dialog by default", () => {
+    initAutoUpdater(mockOptions);
+
+    mockAutoUpdater.emit("update-downloaded", { version: "3.0.0" });
+
     expect(mockDialog.showMessageBox).not.toHaveBeenCalled();
   });
 });

@@ -100,6 +100,12 @@ describe("dashboard-auth middleware", () => {
     expect(res.status).toBe(200);
   });
 
+  it("passes through for /official-agent/* API routes", async () => {
+    const app = createApp();
+    const res = await app.request("/official-agent/apps");
+    expect(res.status).toBe(200);
+  });
+
   it("passes through for dashboard auth endpoints", async () => {
     const app = createApp();
     for (const path of ["/auth/dashboard-login", "/auth/dashboard-logout", "/auth/dashboard-status"]) {

@@ -4,7 +4,7 @@
  * installation (macOS .app or Windows extracted ASAR).
  *
  * Usage:
- *   npx tsx scripts/extract-fingerprint.ts --path "C:/path/to/Codex" [--asar-out ./asar-out]
+ *   npx tsx scripts/build/extract-fingerprint.ts --path "C:/path/to/Codex" [--asar-out ./asar-out]
  *
  * The path can point to:
  *   - A macOS .app bundle (Codex.app)
@@ -12,14 +12,17 @@
  *   - A Windows install dir containing resources/app.asar
  */
 
-import { readFileSync, writeFileSync, existsSync, mkdirSync, readdirSync } from "fs";
+import { readFileSync, writeFileSync, existsSync, mkdirSync, readdirSync, rmSync } from "fs";
 import { resolve, join } from "path";
+import { pathToFileURL } from "url";
 import { createHash } from "crypto";
-import { execSync } from "child_process";
+import { createRequire } from "module";
+import asar from "@electron/asar";
 import yaml from "js-yaml";
 import type { ExtractedFingerprint } from "./types.js";
 
-const ROOT = resolve(import.meta.dirname, "..");
+const requireFromHere = createRequire(import.meta.url);
+const ROOT = resolve(import.meta.dirname, "..", "..");
 const OUTPUT_PATH = resolve(ROOT, "data/extracted-fingerprint.json");
 const PROMPTS_DIR = resolve(ROOT, "data/extracted-prompts");
 const PATTERNS_PATH = resolve(ROOT, "config/extraction-patterns.yaml");
@@ -37,13 +40,37 @@ interface ExtractionPatterns {
   }>;
 }
 
+interface ElectronToChromiumModule {
+  versions: Record<string, string>;
+}
+
+interface JsBeautifyModule {
+  js(content: string, options: { indent_size: number }): string;
+}
+
+interface OriginatorPattern {
+  pattern?: string;
+  group?: number;
+}
+
 function sha256(content: string): string {
   return `sha256:${createHash("sha256").update(content, "utf-8").digest("hex").slice(0, 16)}`;
+}
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
 function loadPatterns(): ExtractionPatterns {
   const raw = yaml.load(readFileSync(PATTERNS_PATH, "utf-8")) as ExtractionPatterns;
   return raw;
+}
+
+function asRecord(value: unknown, label: string): Record<string, unknown> {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    throw new Error(`${label} must be an object`);
+  }
+  return value as Record<string, unknown>;
 }
 
 /**
@@ -87,10 +114,11 @@ function findAsarRoot(inputPath: string): string {
 
 function extractAsar(asarPath: string): string {
   const outDir = resolve(ROOT, ".asar-out");
+  if (existsSync(outDir)) {
+    rmSync(outDir, { recursive: true, force: true });
+  }
   console.log(`[extract] Extracting ASAR: ${asarPath} → ${outDir}`);
-  execSync(`npx @electron/asar extract "${asarPath}" "${outDir}"`, {
-    stdio: "inherit",
-  });
+  asar.extractAll(asarPath, outDir);
   return outDir;
 }
 
@@ -104,14 +132,53 @@ function extractFromPackageJson(root: string): {
   electronVersion: string | null;
 } {
   const pkgPath = join(root, "package.json");
-  const pkg = JSON.parse(readFileSync(pkgPath, "utf-8"));
+  const pkg = asRecord(JSON.parse(readFileSync(pkgPath, "utf-8")) as unknown, pkgPath);
+  const buildNumber = pkg.codexBuildNumber;
+
+  if (typeof buildNumber !== "string" && typeof buildNumber !== "number") {
+    throw new Error(`Expected a Codex Desktop package at ${root}: missing codexBuildNumber`);
+  }
+
+  const devDependencies = typeof pkg.devDependencies === "object" && pkg.devDependencies !== null && !Array.isArray(pkg.devDependencies)
+    ? pkg.devDependencies as Record<string, unknown>
+    : {};
+  const electronVersion = devDependencies.electron;
 
   return {
-    version: pkg.version ?? "unknown",
-    buildNumber: String(pkg.codexBuildNumber ?? "unknown"),
-    sparkleFeedUrl: pkg.codexSparkleFeedUrl ?? null,
-    electronVersion: pkg.devDependencies?.electron ?? null,
+    version: typeof pkg.version === "string" ? pkg.version : "unknown",
+    buildNumber: String(buildNumber),
+    sparkleFeedUrl: typeof pkg.codexSparkleFeedUrl === "string" ? pkg.codexSparkleFeedUrl : null,
+    electronVersion: typeof electronVersion === "string" ? electronVersion : null,
   };
+}
+
+export function extractOriginatorFromMainJs(
+  content: string,
+  originatorPattern?: OriginatorPattern,
+): string | null {
+  const desktopOriginatorBinding = content.match(/desktopOriginator\s*:\s*([A-Za-z_$][\w$]*)/);
+  if (desktopOriginatorBinding?.[1]) {
+    const variableName = escapeRegExp(desktopOriginatorBinding[1]);
+    const assignment = content.match(
+      new RegExp(`(?:\\b(?:var|let|const)\\s+)?${variableName}\\s*=\\s*["'\`](Codex [^"'\`]+)["'\`]`),
+    );
+    if (assignment?.[1]) return assignment[1];
+  }
+
+  const directDesktopOriginator = content.match(/desktopOriginator\s*:\s*["'`](Codex [^"'`]+)["'`]/);
+  if (directDesktopOriginator?.[1]) return directDesktopOriginator[1];
+
+  const exactDesktop = content.match(/\b[A-Za-z_$][\w$]*\s*=\s*["'`](Codex Desktop)["'`]/);
+  if (exactDesktop?.[1]) return exactDesktop[1];
+
+  if (!originatorPattern?.pattern) return null;
+  const re = new RegExp(originatorPattern.pattern, "g");
+  const group = originatorPattern.group ?? 0;
+  for (const match of content.matchAll(re)) {
+    const candidate = match[group] ?? match[0];
+    if (!candidate.endsWith(".app")) return candidate;
+  }
+  return null;
 }
 
 /**
@@ -123,6 +190,7 @@ function extractFromMainJs(
 ): {
   apiBaseUrl: string | null;
   originator: string | null;
+  models: string[];
   whamEndpoints: string[];
   userAgentContains: string;
 } {
@@ -142,18 +210,24 @@ function extractFromMainJs(
   }
 
   // Originator
-  let originator: string | null = null;
-  const origPattern = patterns.originator;
-  if (origPattern?.pattern) {
-    const m = content.match(new RegExp(origPattern.pattern));
-    if (m) originator = m[origPattern.group ?? 0] ?? m[0];
-  }
+  const originator = extractOriginatorFromMainJs(content, patterns.originator);
 
   // Fail fast on critical fields
   if (!originator) {
     console.error("[extract] CRITICAL: Failed to extract originator from main.js");
     console.error("[extract] The extraction pattern may need updating for this version.");
     throw new Error("Failed to extract critical field: originator");
+  }
+
+  // Models — deduplicate, use capture group if specified
+  const models: Set<string> = new Set();
+  const modelPattern = patterns.models;
+  if (modelPattern?.pattern) {
+    const re = new RegExp(modelPattern.pattern, "g");
+    const groupIdx = modelPattern.group ?? 0;
+    for (const m of content.matchAll(re)) {
+      models.add(m[groupIdx] ?? m[0]);
+    }
   }
 
   // WHAM endpoints — deduplicate, use capture group if specified
@@ -170,6 +244,7 @@ function extractFromMainJs(
   return {
     apiBaseUrl,
     originator,
+    models: [...models].sort(),
     whamEndpoints: [...endpoints].sort(),
     userAgentContains: "Codex Desktop/",
   };
@@ -341,7 +416,7 @@ async function main() {
   // Parse --path argument
   const pathIdx = process.argv.indexOf("--path");
   if (pathIdx === -1 || !process.argv[pathIdx + 1]) {
-    console.error("Usage: npx tsx scripts/extract-fingerprint.ts --path <codex-path>");
+    console.error("Usage: npx tsx scripts/build/extract-fingerprint.ts --path <codex-path>");
     console.error("");
     console.error("  <codex-path> can be:");
     console.error("    - macOS: /path/to/Codex.app");
@@ -373,8 +448,8 @@ async function main() {
     const electronMajor = parseInt(electronVersion.replace(/^[^0-9]*/, ""), 10);
     if (!isNaN(electronMajor)) {
       try {
-        const { versions } = await import("electron-to-chromium");
-        const versionMap = versions as Record<string, string>;
+        const { versions } = requireFromHere("electron-to-chromium") as unknown as ElectronToChromiumModule;
+        const versionMap = versions;
         // versions keys use "major.minor" format (e.g. "40.0"), try both
         const chromium = versionMap[`${electronMajor}.0`] ?? versionMap[electronMajor.toString()];
         if (chromium) {
@@ -414,8 +489,8 @@ async function main() {
     if (lineCount < 100 && content.length > 100000) {
       console.log("[extract] main.js appears minified, attempting beautify...");
       try {
-        const jsBeautify = await import("js-beautify");
-        return jsBeautify.default.js(content, { indent_size: 2 });
+        const jsBeautify = requireFromHere("js-beautify") as unknown as JsBeautifyModule;
+        return jsBeautify.js(content, { indent_size: 2 });
       } catch {
         console.warn("[extract] js-beautify not available, using raw content");
         return content;
@@ -427,6 +502,7 @@ async function main() {
   let mainJsResults = {
     apiBaseUrl: null as string | null,
     originator: null as string | null,
+    models: [] as string[],
     whamEndpoints: [] as string[],
     userAgentContains: "Codex Desktop/",
   };
@@ -452,14 +528,11 @@ async function main() {
         const jsFiles = readdirSync(buildDir).filter((f) => f.endsWith(".js"));
         for (const file of jsFiles) {
           const content = readFileSync(join(buildDir, file), "utf-8");
-          const origPattern = patterns.main_js.originator;
-          if (origPattern?.pattern) {
-            const m = content.match(new RegExp(origPattern.pattern));
-            if (m) {
-              mainJsResults.originator = m[origPattern.group ?? 0] ?? m[0];
-              console.log(`[extract] Originator found in fallback file: ${file}`);
-              break;
-            }
+          const originator = extractOriginatorFromMainJs(content, patterns.main_js.originator);
+          if (originator) {
+            mainJsResults.originator = originator;
+            console.log(`[extract] Originator found in fallback file: ${file}`);
+            break;
           }
         }
       }
@@ -470,10 +543,19 @@ async function main() {
         const m = mainJs.match(new RegExp(apiPattern.pattern));
         if (m) mainJsResults.apiBaseUrl = m[0];
       }
+      const modelPattern = patterns.main_js.models;
+      if (modelPattern?.pattern) {
+        const re = new RegExp(modelPattern.pattern, "g");
+        const groupIdx = modelPattern.group ?? 0;
+        mainJsResults.models = [...mainJs.matchAll(re)]
+          .map((match) => match[groupIdx] ?? match[0])
+          .sort();
+      }
     }
 
     console.log(`  API base URL:  ${mainJsResults.apiBaseUrl}`);
     console.log(`  originator:    ${mainJsResults.originator}`);
+    console.log(`  models:        ${mainJsResults.models.join(", ")}`);
     console.log(`  WHAM endpoints: ${mainJsResults.whamEndpoints.length} found`);
 
     // Extract system prompts
@@ -499,6 +581,7 @@ async function main() {
     chromium_version: chromiumVersion,
     api_base_url: mainJsResults.apiBaseUrl,
     originator: mainJsResults.originator,
+    models: mainJsResults.models,
     wham_endpoints: mainJsResults.whamEndpoints,
     user_agent_contains: mainJsResults.userAgentContains,
     sparkle_feed_url: sparkleFeedUrl,
@@ -525,7 +608,9 @@ async function main() {
   console.log("[extract] Done.");
 }
 
-main().catch((err) => {
-  console.error("[extract] Fatal:", err);
-  process.exit(1);
-});
+if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {
+  main().catch((err) => {
+    console.error("[extract] Fatal:", err);
+    process.exit(1);
+  });
+}

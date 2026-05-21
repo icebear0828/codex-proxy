@@ -72,6 +72,7 @@ interface InFlightSession {
   controller: ReadableStreamDefaultController<Uint8Array>;
   onRateLimits: ((rl: ParsedRateLimit) => void) | undefined;
   earlyDecisionMade: boolean;
+  sawTerminalEvent: boolean;
   /** Resolves the outer send() Promise with the SSE Response.
    *  Closes over the freshly-built ReadableStream so callers don't need to
    *  pass it back in. */
@@ -137,6 +138,10 @@ function classifyWsErrorEvent(msg: Record<string, unknown>): { status: number; c
   const lower = codeRaw.toLowerCase();
   const status = ROTATABLE_ERROR_CODES[lower];
   return status ? { status, code: lower } : null;
+}
+
+function isTerminalWsEvent(type: string): boolean {
+  return type === "response.completed" || type === "response.failed" || type === "error";
 }
 
 // ── PersistentWs ───────────────────────────────────────────────────
@@ -303,6 +308,7 @@ export class PersistentWs {
             controller,
             onRateLimits: opts.onRateLimits,
             earlyDecisionMade: false,
+            sawTerminalEvent: false,
             resolveResponse: () => resolve(this.buildResponse(stream)),
             reject: wrappedReject,
             abortListener: null,
@@ -425,7 +431,8 @@ export class PersistentWs {
       const sse = `event: ${type}\ndata: ${raw}\n\n`;
       sess.controller.enqueue(this.encoder.encode(sse));
 
-      if (type === "response.completed" || type === "response.failed" || type === "error") {
+      if (isTerminalWsEvent(type)) {
+        sess.sawTerminalEvent = true;
         queueMicrotask(() => this.releaseAfterTerminalFrame());
       }
     } else {
@@ -476,7 +483,16 @@ export class PersistentWs {
           (reasonStr ? ` reason=${reasonStr}` : ""),
       ));
     } else if (sess && !sess.streamClosed) {
-      try { sess.controller.close(); } catch { /* already closed */ }
+      if (sess.sawTerminalEvent) {
+        try { sess.controller.close(); } catch { /* already closed */ }
+      } else {
+        try {
+          sess.controller.error(new Error(
+            `WebSocket closed before terminal event: code=${code}` +
+              (reasonStr ? ` reason=${reasonStr}` : ""),
+          ));
+        } catch { /* already closed */ }
+      }
       sess.streamClosed = true;
     }
     this.markDead(`closed code=${code}${reasonStr ? ` reason=${reasonStr}` : ""}`);
@@ -518,7 +534,7 @@ export interface WsPoolConfig {
 
 export const DEFAULT_WS_POOL_CONFIG: WsPoolConfig = {
   enabled: true,
-  maxAgeMs: 3_300_000, // 55 minutes (under server's 60-min hard cap)
+  maxAgeMs: 3_300_000, // 55 minutes (under server's 60-min hard cap). Mirrored in `IMPLICIT_RESUME_MAX_AGE_MS` (proxy-session-helpers.ts) — keep them in sync.
   maxPerAccount: 8,
 };
 

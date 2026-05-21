@@ -154,7 +154,7 @@ export function ImportExport({ onExport, onImportPreview, onApplyImport }: Impor
                 <button
                   onClick={handleApply}
                   disabled={importing}
-                  class="px-4 py-2 text-sm font-medium rounded-lg bg-primary text-white hover:bg-primary-hover transition-colors disabled:opacity-50"
+                  class="px-4 py-2 text-sm font-medium rounded-lg bg-primary-action text-white hover:bg-primary-action-hover transition-colors disabled:opacity-50"
                 >
                   {importing ? "..." : t("confirmApply")}
                 </button>

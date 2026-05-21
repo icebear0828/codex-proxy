@@ -87,7 +87,7 @@ describe("ws-transport close behavior", () => {
     expect(output).not.toContain("premature_close");
   });
 
-  it("closes stream when WS closes without terminal event", async () => {
+  it("errors stream when WS closes without terminal event", async () => {
     vi.doMock("ws", () => ({
       default: createMockWsClass([
         { type: "response.created", response: { id: "resp_1" } },
@@ -102,8 +102,8 @@ describe("ws-transport close behavior", () => {
       { type: "response.create", model: "test", instructions: "", input: [] },
     );
 
-    // Stream should still close (not hang) even without terminal event
-    const output = await collectSSE(response);
-    expect(output).toContain("event: response.created");
+    await expect(collectSSE(response)).rejects.toThrow(
+      "WebSocket closed before terminal event",
+    );
   });
 });

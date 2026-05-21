@@ -1,13 +1,22 @@
 export interface AccountQuotaWindow {
   used_percent?: number | null;
+  remaining_percent?: number | null;
   limit_reached?: boolean;
   reset_at?: number | null;
   limit_window_seconds?: number | null;
 }
 
 export interface AccountQuota {
+  plan_type?: string;
   rate_limit?: AccountQuotaWindow;
   secondary_rate_limit?: AccountQuotaWindow | null;
+  code_review_rate_limit?: (AccountQuotaWindow & { allowed?: boolean }) | null;
+  rate_limits_by_limit_id?: Record<string, AccountQuotaWindow & {
+    limit_id?: string;
+    limit_name?: string | null;
+    allowed?: boolean;
+    secondary_rate_limit?: AccountQuotaWindow | null;
+  }> | null;
 }
 
 export interface QuotaWarning {

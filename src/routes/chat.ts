@@ -1,4 +1,5 @@
 import { Hono } from "hono";
+import type { Context } from "hono";
 import { ChatCompletionRequestSchema } from "../types/openai.js";
 import type { AccountPool } from "../auth/account-pool.js";
 import type { CookieJar } from "../proxy/cookie-jar.js";
@@ -19,10 +20,9 @@ import { getRealClientIp } from "../utils/get-real-client-ip.js";
 import { randomUUID } from "crypto";
 import {
   handleProxyRequest,
-  handleDirectRequest,
-  type FormatAdapter,
-  type ProxyRequest,
 } from "./shared/proxy-handler.js";
+import { handleDirectRequest } from "./shared/direct-request-handler.js";
+import type { FormatAdapter, ProxyRequest } from "./shared/proxy-handler-types.js";
 import type { UpstreamRouter } from "../proxy/upstream-router.js";
 import { summarizeRequestForLog } from "../logs/request-summary.js";
 
@@ -55,9 +55,9 @@ function makeOpenAIFormat(wantReasoning: boolean): FormatAdapter {
         code: "codex_api_error",
       },
     }),
-    streamTranslator: (api, response, model, onUsage, onResponseId, tupleSchema) =>
-      streamCodexToOpenAI(api, response, model, onUsage, onResponseId, wantReasoning, tupleSchema),
-    collectTranslator: (api, response, model, tupleSchema) =>
+    streamTranslator: ({ api, response, model, onUsage, onResponseId, onResponseCompleted, tupleSchema }) =>
+      streamCodexToOpenAI(api, response, model, onUsage, onResponseId, wantReasoning, tupleSchema, onResponseCompleted),
+    collectTranslator: ({ api, response, model, tupleSchema }) =>
       collectCodexResponse(api, response, model, wantReasoning, tupleSchema),
   };
 }
@@ -71,6 +71,27 @@ function formatModelNotFound(model: string) {
       code: "model_not_found",
     },
   };
+}
+
+function checkProxyApiKey(c: Context, accountPool: AccountPool) {
+  const config = getConfig();
+  if (!config.server.proxy_api_key) return null;
+
+  const authHeader = c.req.header("Authorization");
+  const providedKey = authHeader?.replace("Bearer ", "");
+  if (!providedKey || !accountPool.validateProxyApiKey(providedKey)) {
+    c.status(401);
+    return c.json({
+      error: {
+        message: "Invalid proxy API key",
+        type: "invalid_request_error",
+        param: null,
+        code: "invalid_api_key",
+      },
+    });
+  }
+
+  return null;
 }
 
 export function createChatRoutes(
@@ -146,12 +167,16 @@ export function createChatRoutes(
     });
 
     if (routeMatch.kind === "api-key" || routeMatch.kind === "adapter") {
+      const authError = checkProxyApiKey(c, accountPool);
+      if (authError) return authError;
+
+      const directModel = routeMatch.resolvedModel ?? req.model;
       const directReq = {
         ...proxyReq,
-        model: req.model,
-        codexRequest: { ...codexRequest, model: req.model },
+        model: directModel,
+        codexRequest: { ...codexRequest, model: directModel },
       };
-      return handleDirectRequest(c, routeMatch.adapter, directReq, fmt);
+      return handleDirectRequest({ c, upstream: routeMatch.adapter, req: directReq, fmt });
     }
 
     // Auth check for Codex route only
@@ -169,27 +194,13 @@ export function createChatRoutes(
 
     const summary = accountPool.getPoolSummary();
     if (summary.active === 0) {
-      return handleProxyRequest(c, accountPool, cookieJar, proxyReq, fmt, proxyPool);
+      return handleProxyRequest({ c, accountPool, cookieJar, req: proxyReq, fmt, proxyPool });
     }
 
-    const config = getConfig();
-    if (config.server.proxy_api_key) {
-      const authHeader = c.req.header("Authorization");
-      const providedKey = authHeader?.replace("Bearer ", "");
-      if (!providedKey || !accountPool.validateProxyApiKey(providedKey)) {
-        c.status(401);
-        return c.json({
-          error: {
-            message: "Invalid proxy API key",
-            type: "invalid_request_error",
-            param: null,
-            code: "invalid_api_key",
-          },
-        });
-      }
-    }
+    const authError = checkProxyApiKey(c, accountPool);
+    if (authError) return authError;
 
-    return handleProxyRequest(c, accountPool, cookieJar, proxyReq, fmt, proxyPool);
+    return handleProxyRequest({ c, accountPool, cookieJar, req: proxyReq, fmt, proxyPool });
   });
 
   return app;

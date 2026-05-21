@@ -25,6 +25,7 @@ interface AutoUpdaterOptions {
   rebuildTrayMenu: () => void;
   autoUpdate?: boolean;
   autoDownload?: boolean;
+  showUpdateDialog?: boolean;
   allowPrerelease?: boolean;
 }
 
@@ -53,9 +54,11 @@ export function getAutoUpdateState(): AutoUpdateState {
 export function initAutoUpdater(options: AutoUpdaterOptions): void {
   const isAutoUpdate = options.autoUpdate ?? true;
   const isAutoDownload = (options.autoDownload ?? false) && !IS_MAC;
+  const shouldShowUpdateDialog = options.showUpdateDialog ?? false;
 
-  // auto_download: true  → download silently, prompt to restart
-  // auto_download: false → prompt before downloading (default)
+  // auto_download: true  → download silently
+  // auto_download: false → keep installer download/manual action in tray/menu
+  // show_update_dialog: true → opt in to update/restart prompts
   // macOS always false — ad-hoc signed zips can't be auto-installed
   autoUpdater.autoDownload = isAutoDownload;
   autoUpdater.autoInstallOnAppQuit = !IS_MAC;
@@ -78,6 +81,9 @@ export function initAutoUpdater(options: AutoUpdaterOptions): void {
 
     // autoDownload handles it silently — no dialog needed
     if (isAutoDownload) return;
+
+    // Default: keep update discovery silent; tray/menu still exposes actions.
+    if (!shouldShowUpdateDialog) return;
 
     // Don't re-prompt if user already dismissed this version
     if (info.version === dismissedVersion) return;
@@ -143,6 +149,8 @@ export function initAutoUpdater(options: AutoUpdaterOptions): void {
     // Clear dock/taskbar progress bar
     if (win) win.setProgressBar(-1);
 
+    if (!shouldShowUpdateDialog) return;
+
     const readyOptions = {
       type: "info" as const,
       title: "Update Ready",
@@ -172,20 +180,22 @@ export function initAutoUpdater(options: AutoUpdaterOptions): void {
     if (win) win.setProgressBar(-1);
   });
 
-  // Initial check after delay
-  initialTimer = setTimeout(() => {
-    autoUpdater.checkForUpdates().catch((err: Error) => {
-      console.warn("[AutoUpdater] Initial check failed:", err.message);
-    });
-  }, INITIAL_DELAY_MS);
+  if (isAutoUpdate) {
+    // Initial check after delay
+    initialTimer = setTimeout(() => {
+      autoUpdater.checkForUpdates().catch((err: Error) => {
+        console.warn("[AutoUpdater] Initial check failed:", err.message);
+      });
+    }, INITIAL_DELAY_MS);
 
-  // Periodic check
-  checkTimer = setInterval(() => {
-    autoUpdater.checkForUpdates().catch((err: Error) => {
-      console.warn("[AutoUpdater] Periodic check failed:", err.message);
-    });
-  }, CHECK_INTERVAL_MS);
-  if (checkTimer.unref) checkTimer.unref();
+    // Periodic check
+    checkTimer = setInterval(() => {
+      autoUpdater.checkForUpdates().catch((err: Error) => {
+        console.warn("[AutoUpdater] Periodic check failed:", err.message);
+      });
+    }, CHECK_INTERVAL_MS);
+    if (checkTimer.unref) checkTimer.unref();
+  }
 }
 
 export function checkForUpdateManual(): void {

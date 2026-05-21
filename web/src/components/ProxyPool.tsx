@@ -7,11 +7,11 @@ const PROTOCOLS = ["http", "https", "socks5", "socks5h"] as const;
 
 const statusStyles: Record<string, [string, TranslationKey]> = {
   active: [
-    "bg-green-100 text-green-700 border-green-200 dark:bg-[#11281d] dark:text-primary dark:border-[#1a442e]",
+    "bg-success-container text-success border-success/30",
     "proxyActive",
   ],
   unreachable: [
-    "bg-red-100 text-red-600 border-red-200 dark:bg-red-900/20 dark:text-red-400 dark:border-red-800/30",
+    "bg-danger-container text-danger border-danger/30",
     "proxyUnreachable",
   ],
   disabled: [
@@ -180,7 +180,7 @@ export function ProxyPool({ proxies }: ProxyPoolProps) {
           </button>
           <button
             onClick={() => setShowAdd(!showAdd)}
-            class="px-3 py-1.5 text-xs font-medium rounded-lg bg-primary text-white hover:bg-primary/90 transition-colors"
+            class="px-3 py-1.5 text-xs font-medium rounded-lg bg-primary-action text-white hover:bg-primary-action-hover transition-colors"
           >
             {t("addProxy")}
           </button>
@@ -215,7 +215,7 @@ export function ProxyPool({ proxies }: ProxyPoolProps) {
                 disabled={importing || !importYaml.trim()}
                 class={`px-4 py-1.5 text-xs font-medium rounded-lg transition-colors whitespace-nowrap ${
                   !importing && importYaml.trim()
-                    ? "bg-primary text-white hover:bg-primary/90 cursor-pointer"
+                    ? "bg-primary-action text-white hover:bg-primary-action-hover cursor-pointer"
                     : "bg-slate-100 dark:bg-[#21262d] text-slate-400 dark:text-text-dim cursor-not-allowed"
                 }`}
               >
@@ -286,7 +286,7 @@ export function ProxyPool({ proxies }: ProxyPoolProps) {
             <div class="ml-auto">
               <button
                 onClick={handleAdd}
-                class="px-4 py-2 text-sm font-medium rounded-lg bg-primary text-white hover:bg-primary/90 transition-colors whitespace-nowrap"
+                class="px-4 py-2 text-sm font-medium rounded-lg bg-primary-action text-white hover:bg-primary-action-hover transition-colors whitespace-nowrap"
               >
                 {t("addProxy")}
               </button>

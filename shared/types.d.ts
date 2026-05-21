@@ -8,6 +8,15 @@ export interface AccountQuota {
     rate_limit?: AccountQuotaWindow;
     /** Secondary rate limit window (e.g. weekly cap). */
     secondary_rate_limit?: AccountQuotaWindow | null;
+    code_review_rate_limit?: (AccountQuotaWindow & {
+        allowed?: boolean;
+    }) | null;
+    rate_limits_by_limit_id?: Record<string, AccountQuotaWindow & {
+        limit_id?: string;
+        limit_name?: string | null;
+        allowed?: boolean;
+        secondary_rate_limit?: AccountQuotaWindow | null;
+    }> | null;
 }
 export interface Account {
     id: string;

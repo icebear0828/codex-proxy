@@ -112,7 +112,7 @@ describe("constructor DI: initialToken", () => {
 });
 
 describe("constructor DI: rateLimitBackoffSeconds", () => {
-  it("uses injected backoff in markRateLimited", () => {
+  it("uses injected backoff in applyRateLimit429 when no retry-after hint provided", () => {
     const pool = new AccountPool({
       persistence: createMemoryPersistence(),
       rotationStrategy: "least_used",
@@ -124,20 +124,17 @@ describe("constructor DI: rateLimitBackoffSeconds", () => {
     pool.addAccount(token);
     const acq = pool.acquire()!;
 
-    const before = Date.now();
-    pool.markRateLimited(acq.entryId);
-    const after = Date.now();
+    const beforeSec = Math.floor(Date.now() / 1000);
+    pool.applyRateLimit429(acq.entryId);
+    const afterSec = Math.ceil(Date.now() / 1000);
 
-    // Account should be rate-limited
     const info = pool.getAccounts()[0];
-    expect(info.status).toBe("rate_limited");
+    expect(info.quota?.rate_limit.limit_reached).toBe(true);
 
-    // rate_limit_until should be ~5 seconds from now (jitter adds ±20%)
-    const until = new Date(info.usage.rate_limit_until!).getTime();
-    const expectedMin = before + 5 * 1000 * 0.7; // generous margin for jitter
-    const expectedMax = after + 5 * 1000 * 1.3;
-    expect(until).toBeGreaterThanOrEqual(expectedMin);
-    expect(until).toBeLessThanOrEqual(expectedMax);
+    // reset_at should be ~5 seconds from now (jitter adds ±20%)
+    const resetAt = info.quota!.rate_limit.reset_at!;
+    expect(resetAt).toBeGreaterThanOrEqual(beforeSec + 5 * 0.7);
+    expect(resetAt).toBeLessThanOrEqual(afterSec + 5 * 1.3);
   });
 
   it("retryAfterSec overrides instance backoff", () => {
@@ -152,13 +149,13 @@ describe("constructor DI: rateLimitBackoffSeconds", () => {
     pool.addAccount(token);
     const acq = pool.acquire()!;
 
-    const before = Date.now();
-    pool.markRateLimited(acq.entryId, { retryAfterSec: 120 });
+    const beforeSec = Math.floor(Date.now() / 1000);
+    pool.applyRateLimit429(acq.entryId, { retryAfterSec: 120 });
 
     const info = pool.getAccounts()[0];
-    const until = new Date(info.usage.rate_limit_until!).getTime();
+    const resetAt = info.quota!.rate_limit.reset_at!;
     // Should be ~120s, not ~5s
-    expect(until).toBeGreaterThan(before + 60_000);
+    expect(resetAt).toBeGreaterThan(beforeSec + 60);
   });
 });
 

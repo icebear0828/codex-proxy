@@ -18,6 +18,7 @@ import type {
   AnthropicUsage,
 } from "../types/anthropic.js";
 import { iterateCodexEvents, EmptyResponseError, type UsageInfo } from "./codex-event-extractor.js";
+import { codexApiErrorFromEvent } from "./codex-api-error-from-event.js";
 
 interface CacheUsageHint {
   reusedInputTokensUpperBound?: number;
@@ -66,6 +67,7 @@ export async function* streamCodexToAnthropic(
   wantThinking?: boolean,
   usageHint?: CacheUsageHint,
   onResponseMetadata?: (metadata: ResponseMetadata) => void,
+  onResponseCompleted?: (id?: string) => void,
 ): AsyncGenerator<string> {
   const msgId = `msg_${randomUUID().replace(/-/g, "").slice(0, 24)}`;
   let outputTokens = 0;
@@ -141,20 +143,7 @@ export async function* streamCodexToAnthropic(
 
     // Handle upstream error events
     if (evt.error) {
-      yield* closeThinkingIfOpen();
-      yield* ensureTextBlock();
-      yield formatSSE("content_block_delta", {
-        type: "content_block_delta",
-        index: contentIndex,
-        delta: { type: "text_delta", text: `[Error] ${evt.error.code}: ${evt.error.message}` },
-      });
-      yield* closeBlock("text");
-      yield formatSSE("error", {
-        type: "error",
-        error: { type: "api_error", message: `${evt.error.code}: ${evt.error.message}` },
-      });
-      yield formatSSE("message_stop", { type: "message_stop" });
-      return;
+      throw codexApiErrorFromEvent(evt.error);
     }
 
     // Handle reasoning delta → thinking block (only if client wants thinking)
@@ -260,6 +249,7 @@ export async function* streamCodexToAnthropic(
             reasoning_tokens: evt.usage.reasoning_tokens,
           });
         }
+        onResponseCompleted?.(evt.responseId);
         // Inject error text if stream completed with no content
         if (!hasContent) {
           yield* ensureTextBlock();
@@ -330,7 +320,7 @@ export async function collectCodexToAnthropicResponse(
   for await (const evt of iterateCodexEvents(codexApi, rawResponse)) {
     if (evt.responseId) responseId = evt.responseId;
     if (evt.error) {
-      throw new Error(`Codex API error: ${evt.error.code}: ${evt.error.message}`);
+      throw codexApiErrorFromEvent(evt.error);
     }
     if (evt.textDelta) fullText += evt.textDelta;
     if (evt.reasoningDelta) fullReasoning += evt.reasoningDelta;

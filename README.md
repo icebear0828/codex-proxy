@@ -18,7 +18,8 @@
     <a href="#-核心功能">核心功能</a> &bull;
     <a href="#-可用模型">可用模型</a> &bull;
     <a href="#-客户端接入">客户端接入</a> &bull;
-    <a href="#-配置说明">配置说明</a>
+    <a href="#-配置说明">配置说明</a> &bull;
+    <a href="#-贡献致谢">贡献致谢</a>
   </p>
 
   <p>
@@ -145,16 +146,16 @@ curl http://localhost:8080/v1/chat/completions \
 - 自动完成 Chat Completions / Anthropic / Gemini ↔ Codex Responses API 双向协议转换
 - **Structured Outputs** — `response_format`（`json_object` / `json_schema`）和 Gemini `responseMimeType`
 - **Function Calling** — 原生 `function_call` / `tool_calls` 支持（所有协议）
-- 若使用自定义 API Keys，则仅兼容 OpenAI（`/v1/chat/completions`）格式。
+- **第三方 API Keys** — 支持 OpenAI / Anthropic / Gemini / OpenRouter / 自定义 OpenAI-compatible Provider，并按模型路由直通上游。
 
 ### 🔐 账号管理与智能轮换
 - **OAuth PKCE 登录** — 浏览器一键授权，无需手动复制 Token
 - **多账号轮换** — `least_used`（最少使用优先）、`round_robin`（轮询）、`sticky`（粘性）三种策略
 - **Plan Routing** — 不同 plan（free/plus/team/business）的账号自动路由到各自支持的模型
 - **Token 自动续期** — JWT 到期前自动刷新，指数退避重试
-- **配额自动刷新** — 后台每 5 分钟拉取各账号额度，达到阈值时弹出预警横幅；额度耗尽自动跳过
+- **配额采集** — 默认从上游响应头和 WebSocket rate limit 事件被动更新账号额度；用户手动查询单账号额度时会调用 `/backend-api/wham/usage`，并把 `remaining_percent = 100 - used_percent` 写入缓存。
 - **封禁检测** — 上游 403 自动标记 banned；401 token 吊销自动过期并切换账号
-- **Relay 中转站** — 支持接入第三方 API 中转站（API Key + baseUrl），自动按 `format` 决定直通或翻译
+- **API Key Provider 池** — 支持通过 Dashboard 管理第三方 API Key、模型列表、导入导出和启停状态。
 - **Web 控制面板** — 账号管理、用量统计、批量操作，中英双语；远程访问需 Dashboard 登录门
 
 ### 🌐 代理池
@@ -195,8 +196,8 @@ curl http://localhost:8080/v1/chat/completions \
 │                                                          │
 │  ┌──────────┐  ┌───────────────┐  ┌──────────────────┐  │
 │  │   Auth   │  │  Fingerprint  │  │   Model Store    │  │
-│  │ OAuth/JWT│  │ Rust (rustls) │  │ Static + Dynamic │  │
-│  │  Relay   │  │  Headers/UA   │  │  Plan Routing    │  │
+│  │OAuth/API │  │ Rust (rustls) │  │ Static + Dynamic │  │
+│  │ API Keys │  │  Headers/UA   │  │  Plan Routing    │  │
 │  └──────────┘  └───────────────┘  └──────────────────┘  │
 │                                                          │
 └──────────────────────────────────────────────────────────┘
@@ -207,30 +208,32 @@ curl http://localhost:8080/v1/chat/completions \
                           │
                    ┌──────┴──────┐
                    ▼             ▼
-              chatgpt.com   Relay 中转站
+             chatgpt.com   第三方 Provider
          /backend-api/codex  (第三方 API)
 ```
 
 ## 📦 可用模型
 
-| 模型 ID | 推理等级 | 输出 | 说明 |
-|---------|---------|------|------|
-| `gpt-5.5` | low / medium / high / xhigh | 文本 | 通用旗舰（Plus+） |
-| `gpt-5.4` | low / medium / high / xhigh | 文本 | 最新旗舰模型（默认） |
-| `gpt-5.4-mini` | low / medium / high / xhigh | 文本 | 5.4 轻量版 |
-| `gpt-5.3-codex` | low / medium / high / xhigh | 文本 | 5.3 编程优化模型 |
-| `gpt-5.2` | low / medium / high / xhigh | 文本 | 专业工作 + 长时间代理 |
-| `gpt-5-codex` | low / medium / high | 文本 | GPT-5 编程模型 |
-| `gpt-5-codex-mini` | medium / high | 文本 | 轻量编程模型 |
-| `gpt-oss-120b` | low / medium / high | 文本 | 开源 120B 模型 |
-| `gpt-oss-20b` | low / medium / high | 文本 | 开源 20B 模型 |
-| `gpt-image-2` | — | 图像 | 图像生成后端（Plus+，通过 `image_generation` 工具调用） |
+| 模型 ID | 推理等级 | 当前上下文 | 最大上下文 | 最大输出 | 输出 | 说明 |
+|---------|---------|------------|------------|----------|------|------|
+| `gpt-5.5` | low / medium / high / xhigh | 272,000 | 272,000 | 128,000 | 文本 | 复杂编码、研究和真实工作流旗舰模型 |
+| `gpt-5.4` | low / medium / high / xhigh | 272,000 | 1,000,000 | 128,000 | 文本 | 日常编码强模型（默认） |
+| `gpt-5.4-mini` | low / medium / high / xhigh | 400,000 | — | 128,000 | 文本 | 5.4 轻量版 |
+| `gpt-5.3-codex` | low / medium / high / xhigh | 400,000 | — | 128,000 | 文本 | 5.3 编程优化模型 |
+| `gpt-5.2` | low / medium / high / xhigh | 400,000 | — | 128,000 | 文本 | 专业工作 + 长时间代理 |
+| `gpt-5-codex` | low / medium / high | 400,000 | — | 128,000 | 文本 | GPT-5 编程优化模型 |
+| `gpt-5-codex-mini` | medium / high | — | — | — | 文本 | 轻量 Codex / CLI 编程模型 |
+| `gpt-oss-120b` | low / medium / high | 131,072 | — | — | 文本 | 开源 120B 模型 |
+| `gpt-oss-20b` | low / medium / high | 131,072 | — | — | 文本 | 开源 20B 模型 |
+| `gpt-image-2` | — | — | — | — | 图像 | 图像生成工具后端（通过 `image_generation` 调用） |
 
 > **后缀**：任意 chat 模型名后追加 `-fast` 启用 Fast 模式，`-high`/`-low` 切换推理等级。例如：`gpt-5.4-fast`、`gpt-5.4-high-fast`。图像模型（`gpt-image-2`）不支持后缀。
 >
-> **Plan Routing**：不同 plan（free/plus/team/business）的账号自动路由到各自支持的模型。模型列表由后端动态获取，自动同步。
+> **Plan Routing**：不同 plan（free/plus/team/business）的账号自动路由到各自支持的模型，模型可用性以登录账号对应的 Codex 后端返回为准，不要按旧的 Plus-only 表理解。模型列表由后端动态获取，自动同步；只要模型出现在 Dashboard / `/v1/models/catalog` 中，就可以作为请求里的 `model` 使用。
 >
 > **前端模型选择 ≠ 配置文件**：Dashboard 中切换模型只影响前端展示和 API 示例中的模型名，**不会修改** `config/default.yaml` 或 `data/local.yaml` 中的 `model.default`。实际使用哪个模型取决于客户端请求中的 `model` 字段（如 Cursor、Claude Code 等自行指定），配置文件中的 `model.default` 仅在客户端未指定模型时作为兜底。
+>
+> **Max token 说明**：上表跟随当前 `config/models.yaml` 和 Codex runtime `/v1/models/catalog` 元数据；`—` 表示当前目录未返回该字段，不代表模型不可用。运行时从 Codex 后端拉到的模型信息会覆盖静态值，并保留 `contextWindow`、`maxContextWindow`、`maxOutputTokens`、`truncationPolicyLimit`。请求体里的 `context_window` / `max_context_window` / `truncation_policy` / `max_output_tokens` 都不是可用开关；直接转发给 Codex 原生接口会返回 `400 Unsupported parameter`。
 
 ### 🖼️ 图像生成
 
@@ -256,6 +259,8 @@ curl -N http://localhost:8080/v1/responses \
 
 **编辑模式**（带参考图）：在 user message 的 `content` 里追加 `{"type":"input_image","image_url":"data:image/png;base64,..."}` 即可。
 
+> `/v1/chat/completions` 兼容路径会接受 `image_generation` 工具，避免 OpenAI 客户端因 schema 失败；但图像 payload 只有 `/v1/responses` 会稳定透出 `image_generation_call.result`。需要拿到图片字节时请使用 `/v1/responses`。
+
 ## 🔗 客户端接入
 
 > 所有客户端的 API Key 均从控制面板 (`http://localhost:8080`) 获取。模型名填具体 ID（默认 `gpt-5.4`）或任意 [可用模型](#-可用模型) ID。
@@ -271,7 +276,7 @@ claude
 
 > 控制面板的 **Anthropic SDK Setup** 卡片可一键复制环境变量（含 Opus / Sonnet / Haiku 层级模型配置）。
 >
-> 推荐模型：Opus → `gpt-5.4`，Sonnet → `gpt-5.3-codex`，Haiku → `gpt-5.4-mini`。
+> 推荐模型：Opus → `gpt-5.5`，Sonnet → `gpt-5.4`，Haiku → `gpt-5.3-codex`。
 >
 > ⚠️ 配置不生效？请参考 **[Claude Code 配置避坑指南](.github/guides/claude-code-setup.md)**（AUTH_TOKEN 劫持、API Key 黑名单等常见问题）。
 
@@ -302,22 +307,36 @@ model_provider = "proxy_codex"
 3. **填写配置**：
    - **Endpoint**: `http://127.0.0.1:8080`
    - **API Key**: 你的 API Key
-   - **Model**: `gpt-5.4` (或 `anthropic/claude-3-5-sonnet-20241022` 这种 Anthropic 格式 ID)
+   - **Model**: `claude-opus-4-7` / `claude-sonnet-4-6` / `claude-haiku-4-5`
 
 > 或手动修改配置文件（Windows 下路径通常在 `%APPDATA%\Claude-3p\configLibrary\` 目录下的 JSON 文件，Mac 为 `~/Library/Application Support/Claude-3p/configLibrary/`），添加如下字段：
 ```json
  {
+   "disableDeploymentModeChooser": true,
    "inferenceProvider": "gateway",
    "inferenceGatewayBaseUrl": "http://127.0.0.1:8080",
    "inferenceGatewayApiKey": "your-api-key",
    "inferenceGatewayAuthScheme": "bearer",
    "inferenceModels": [
-     { "name": "gpt-5.4" },
-     { "name": "gpt-5.3-codex" },
-     { "name": "gpt-5.4-mini" }
+     "claude-opus-4-7",
+     "claude-sonnet-4-6",
+     "claude-haiku-4-5"
    ]
  }
 ```
+
+内置 Claude 形态模型名会映射到 Codex 模型。自定义映射请写到 `data/local.yaml`，不要改 `config/models.yaml`：
+```yaml
+model:
+  aliases:
+    claude-opus-4-7: gpt-5.5
+    claude-sonnet-4-6: gpt-5.4
+    claude-haiku-4-5: gpt-5.3-codex
+    my-openai: openai:gpt-4o
+    my-deepseek: deepseek-chat
+```
+
+alias 左边是客户端请求里填写的模型名，右边是真正发给上游的模型名。右侧可以是 Codex 模型 ID、带 provider 前缀的模型（如 `openai:gpt-4o` / `anthropic:claude-sonnet-4-5` / `gemini:gemini-2.5-pro`），也可以是已通过 `model_routing` 绑定到自定义 provider 的模型名（如 `deepseek-chat`）。别名会出现在 `/v1/models`，请求进入直连 provider 时会自动把模型名改写成映射目标。
 
 > 💡 **排查提示 (Windows)**: 如果使用 `127.0.0.1` 时 Claude Desktop 提示 `ERR_CONNECTION_REFUSED`（而使用 `localhost` 提示 URL 格式错误），说明 Node.js 在你的系统上默认只绑定了 IPv6。请进入 Codex Proxy 控制面板的设置页面，将 **Host** 修改为 `127.0.0.1`，或在 `data/local.yaml` 中添加 `server: { host: "127.0.0.1" }` 后重启代理。
 > 
@@ -493,16 +512,74 @@ for await (const chunk of stream) {
 | `server` | `host`, `port`, `proxy_api_key` | 监听地址与 API 密钥 |
 | `api` | `base_url`, `timeout_seconds` | 上游 API 地址与超时 |
 | `client` | `app_version`, `build_number`, `chromium_version` | 模拟的 Codex Desktop 版本 |
-| `model` | `default`, `default_reasoning_effort`, `inject_desktop_context` | 默认模型与推理配置 |
+| `model` | `default`, `default_reasoning_effort`, `default_service_tier`, `aliases`, `custom_models`, `inject_desktop_context` | 默认模型、推理配置、模型映射与自定义模型目录 |
 | `auth` | `rotation_strategy`, `rate_limit_backoff_seconds` | 轮换策略与限流退避 |
 | `tls` | `proxy_url`, `force_http11` | TLS 代理与 HTTP 版本 |
-| `quota` | `refresh_interval_minutes`, `warning_thresholds`, `skip_exhausted` | 额度刷新与预警 |
+| `quota` | `refresh_interval_minutes`, `warning_thresholds`, `skip_exhausted` | 用量快照、阈值配置与耗尽账号跳过 |
 | `session` | `ttl_minutes`, `cleanup_interval_minutes` | Dashboard session 管理 |
 | `ollama` | `enabled`, `host`, `port`, `version`, `disable_vision` | Ollama 兼容桥接 |
+| `official_agent` | `enabled`, `api_key`, `app_server_url`, `auth` | 官方 Codex app-server 桥接，用于复用 Chrome/browser 插件 |
+
+### 模型映射
+
+`model.aliases` 用来把客户端里的模型名映射成真实上游模型，适合 Claude Desktop / Cursor / Continue 等客户端只能选择固定模型名、或你希望暴露更短别名的场景。
+
+也可以直接在 Dashboard → Settings → **模型映射** 中添加 / 删除映射。保存后会写入 `data/local.yaml` 并热加载到后端，不需要修改 `config/default.yaml`。
+
+```yaml
+model:
+  aliases:
+    claude-opus-4-7: gpt-5.5
+    sonnet-local: gpt-5.4
+    openai-fast: openai:gpt-4o
+    deepseek-local: deepseek-chat
+
+providers:
+  custom:
+    deepseek:
+      api_key: "sk-..."
+      base_url: "https://api.deepseek.com/v1"
+      models: ["deepseek-chat"]
+model_routing:
+  deepseek-chat: deepseek
+```
+
+映射解析发生在 `model_routing` 和内置 Claude/Gemini 自动路由之前。映射到 Codex 模型时仍支持 `-fast` / `-high` 等后缀；映射到第三方 provider 时，直连请求会把 `model` 字段改写成右侧目标值。
+
+如果你还需要把完全自定义的 Codex-compatible 模型 ID 加入模型目录，可在 `data/local.yaml` 中配置 `model.custom_models`。简单字符串会使用默认 text/medium 元数据；对象写法可补 display name、推理等级、上下文和输出上限：
+
+```yaml
+model:
+  custom_models:
+    - local-simple
+    - id: local-rich
+      display_name: Local Rich
+      description: Local rich model
+      supported_reasoning_efforts: [low, high]
+      default_reasoning_effort: high
+      input_modalities: [text, image]
+      output_modalities: [text]
+      context_window: 12345
+      max_context_window: 23456
+      max_output_tokens: 3456
+```
+
+### 配额轮转
+
+`quota.skip_exhausted: true` 时，账号池会在选择账号前跳过缓存额度已经耗尽的账号；这个过滤发生在 session affinity / `preferredEntryId` 之前，所以长对话也不会强行粘到已耗尽账号上。
+
+当前跳过条件是缓存额度里的 `rate_limit.limit_reached === true`、`secondary_rate_limit.limit_reached === true` 或 `code_review_rate_limit.limit_reached === true`。如果只是 `used_percent` 接近 100（例如 99%）但上游还没标记 `limit_reached`，代理仍会继续使用该账号；真正打到上游 429 后，账号会进入 `rate_limited` 退避并切换到其他可用账号。secondary / code review 窗口自己的 `reset_at` 过期后会从缓存中清除，避免账号被永久跳过。
 
 ### 局域网访问
 
-默认监听 `127.0.0.1`（仅本机）。如需局域网内其他设备访问，在 `data/local.yaml` 中添加：
+源码/容器默认配置监听 `::`（IPv6 unspecified，通常也覆盖本机访问）；Electron 启动时会传入 `127.0.0.1`，除非 `data/local.yaml` 显式覆盖。建议需要仅本机访问时写入：
+
+```yaml
+server:
+  host: "127.0.0.1"
+```
+
+如需局域网内其他设备访问，在 `data/local.yaml` 中添加：
 
 ```yaml
 server:
@@ -534,10 +611,10 @@ tls:
 ```yaml
 server:
   proxy_api_key: "pwd"    # 自定义密钥，客户端用 Bearer pwd 访问
-  # proxy_api_key: null   # null = 自动生成 codex-proxy-xxxx 格式密钥
+  # proxy_api_key: null   # null = 不配置全局密钥；已登录账号仍会生成 account-level codex-proxy-xxxx 密钥
 ```
 
-当前密钥始终显示在控制面板的 API Configuration 区域。
+首次启动如果缺少 `data/local.yaml`，程序会自动创建 `server.proxy_api_key: pwd`。当前可用密钥显示在控制面板的 API Configuration 区域。
 
 ### Ollama Bridge 配置
 
@@ -568,6 +645,67 @@ Docker 部署时，如果希望宿主机访问 `11434`：
 
 浏览器 CORS 访问仅允许 `localhost`、`127.x.x.x`、`::1` 等 loopback origin；非本机网页来源不能读取桥接响应。Bridge 会为 `/v1/*` 直通请求注入已配置的 Codex Proxy API Key，因此暴露到 localhost 之外时，相当于也把主代理 API 以无鉴权方式暴露出去。
 
+### Official Agent Bridge 配置
+
+该桥接用于连接本机官方 `codex app-server`，从而复用 Codex app 的官方 Chrome/browser 插件、审批和 app mention 能力。默认关闭，不影响现有 `/v1/*` 模型代理。
+
+先启动官方 app-server：
+
+```bash
+codex app-server --listen ws://127.0.0.1:4500
+```
+
+然后在 `data/local.yaml` 启用：
+
+```yaml
+server:
+  proxy_api_key: "your-api-key"
+
+official_agent:
+  enabled: true
+  api_key: "your-official-agent-key"
+  app_server_url: ws://127.0.0.1:4500
+  auth:
+    type: none
+```
+
+如果 app-server 使用 capability token：
+
+```bash
+codex app-server --listen ws://127.0.0.1:4500 \
+  --ws-auth capability-token \
+  --ws-token-file /absolute/path/to/token
+```
+
+对应配置：
+
+```yaml
+server:
+  proxy_api_key: "your-api-key"
+
+official_agent:
+  enabled: true
+  api_key: "your-official-agent-key"
+  app_server_url: ws://127.0.0.1:4500
+  auth:
+    type: capability_token
+    token_file: /absolute/path/to/token
+```
+
+可用端点：
+
+```bash
+curl http://localhost:8080/official-agent/apps \
+  -H "Authorization: Bearer your-official-agent-key"
+```
+
+```bash
+curl -N http://localhost:8080/official-agent/threads/{threadId}/turns \
+  -H "Authorization: Bearer your-official-agent-key" \
+  -H "Content-Type: application/json" \
+  -d '{"text":"Open localhost:8080 and inspect the dashboard","app":{"id":"chrome","name":"Chrome"}}'
+```
+
 ### 环境变量覆盖
 
 | 环境变量 | 覆盖配置 |
@@ -585,7 +723,7 @@ Docker 部署时，如果希望宿主机访问 `11434`：
 ## 📡 API 端点
 
 <details>
-<summary>点击展开完整端点列表</summary>
+<summary>点击展开主要端点列表</summary>
 
 **协议端点**
 
@@ -593,8 +731,13 @@ Docker 部署时，如果希望宿主机访问 `11434`：
 |------|------|------|
 | `/v1/chat/completions` | POST | OpenAI 格式聊天补全 |
 | `/v1/responses` | POST | Codex Responses API 直通 |
+| `/v1/responses/compact` | POST | Codex compact 响应代理 |
 | `/v1/messages` | POST | Anthropic 格式聊天补全 |
 | `/v1/models` | GET | 可用模型列表 |
+| `/v1/models/catalog` | GET | Dashboard 使用的完整模型目录 |
+| `/v1/models/:modelId/info` | GET | 单个模型的推理等级等详情 |
+| `/v1beta/models` | GET | Gemini 格式模型列表 |
+| `/v1beta/models/:modelAction` | POST | Gemini `generateContent` / `streamGenerateContent` |
 | `:11434/api/chat` | POST | Ollama 兼容聊天补全（需启用 Ollama Bridge） |
 
 **账号与认证**
@@ -602,13 +745,31 @@ Docker 部署时，如果希望宿主机访问 `11434`：
 | 端点 | 方法 | 说明 |
 |------|------|------|
 | `/auth/login` | GET | OAuth 登录入口 |
-| `/auth/accounts` | GET | 账号列表（`?quota=true` / `?quota=fresh`） |
+| `/auth/accounts` | GET | 账号列表（含缓存额度） |
 | `/auth/accounts` | POST | 添加单个账号（token 或 refreshToken） |
-| `/auth/accounts/import` | POST | 批量导入账号 |
-| `/auth/accounts/export` | GET | 导出账号（`?format=minimal` 精简格式） |
-| `/auth/accounts/relay` | POST | 添加 Relay 中转站账号 |
+| `/auth/accounts/import` | POST | 批量导入账号（JSON / `text/plain` token 行） |
+| `/auth/accounts/export` | GET | 导出账号（`?format=full|minimal|cockpit_tools|sub2api|cpa`） |
 | `/auth/accounts/batch-delete` | POST | 批量删除账号 |
 | `/auth/accounts/batch-status` | POST | 批量修改账号状态 |
+| `/auth/accounts/health-check` | POST | 批量检测账号可用性 |
+| `/auth/accounts/:id/refresh` | POST | 刷新并探测单个账号 |
+| `/auth/accounts/:id/quota` | GET | 主动查询单个账号额度 |
+| `/auth/accounts/:id/cookies` | GET/POST/DELETE | 管理账号 Cloudflare cookies |
+| `/auth/quota/warnings` | GET | 当前额度预警状态 |
+
+**第三方 API Keys**
+
+| 端点 | 方法 | 说明 |
+|------|------|------|
+| `/auth/api-keys/catalog` | GET | 内置 Provider 与推荐模型目录 |
+| `/auth/api-keys` | GET/POST | API Key 列表 / 添加 |
+| `/auth/api-keys/models` | POST | 从自定义 OpenAI-compatible Provider 拉取模型 |
+| `/auth/api-keys/export` | GET | 导出 API Key 配置 |
+| `/auth/api-keys/import` | POST | 导入 API Key 配置 |
+| `/auth/api-keys/batch-delete` | POST | 批量删除 API Key |
+| `/auth/api-keys/:id` | DELETE | 删除单个 API Key |
+| `/auth/api-keys/:id/label` | PATCH | 修改 API Key 标签 |
+| `/auth/api-keys/:id/status` | PATCH | 启用或停用 API Key |
 
 **账号导入导出示例**
 
@@ -620,6 +781,10 @@ curl -s http://localhost:8080/auth/accounts/export \
 # 导出精简格式（仅 refreshToken + label，适合分享）
 curl -s "http://localhost:8080/auth/accounts/export?format=minimal" \
   -H "Authorization: Bearer your-api-key" > backup-minimal.json
+
+# 导出第三方兼容格式
+curl -s "http://localhost:8080/auth/accounts/export?format=sub2api" \
+  -H "Authorization: Bearer your-api-key" > sub2api-accounts.json
 
 # 批量导入（支持 token、refreshToken，或两者同时传）
 curl -X POST http://localhost:8080/auth/accounts/import \
@@ -633,6 +798,12 @@ curl -X POST http://localhost:8080/auth/accounts/import \
     ]
   }'
 # 返回: { "added": 2, "updated": 1, "failed": 0, "errors": [] }
+
+# text/plain token 行导入（每行 access token 或 refresh token）
+curl -X POST http://localhost:8080/auth/accounts/import \
+  -H "Content-Type: text/plain" \
+  -H "Authorization: Bearer your-api-key" \
+  --data-binary $'eyJhbGciOi...\noaistb_rt_...\n'
 
 # 备份恢复一键操作（导出后直接导入到另一个实例）
 curl -X POST http://localhost:8080/auth/accounts/import \
@@ -652,6 +823,11 @@ curl -X POST http://localhost:8080/auth/accounts/import \
 | `/admin/refresh-models` | POST | 手动刷新模型列表 |
 | `/admin/usage-stats/summary` | GET | 用量统计汇总 |
 | `/admin/usage-stats/history` | GET | 用量时间序列 |
+| `/admin/logs` | GET | 请求日志列表 |
+| `/admin/logs/state` | GET/POST | 日志采集开关与配置 |
+| `/admin/update-status` | GET | 自更新状态 |
+| `/admin/check-update` | POST | 检查更新 |
+| `/admin/apply-update` | POST | 执行自更新 |
 | `/health` | GET | 健康检查 |
 
 **代理池**
@@ -663,6 +839,11 @@ curl -X POST http://localhost:8080/auth/accounts/import \
 | `/api/proxies/:id/check` | POST | 健康检查单个代理 |
 | `/api/proxies/check-all` | POST | 全部代理健康检查 |
 | `/api/proxies/assign` | POST | 为账号分配代理 |
+| `/api/proxies/assignments` | GET | 查看账号代理分配 |
+| `/api/proxies/assign-bulk` | POST | 批量分配代理 |
+| `/api/proxies/assign-rule` | POST | 按规则分配代理 |
+| `/api/proxies/export` | GET | 导出代理池 YAML |
+| `/api/proxies/import` | POST | 导入代理池 YAML |
 
 </details>
 
@@ -687,22 +868,25 @@ curl -X POST http://localhost:8080/auth/accounts/import \
 ### [Unreleased]
 
 **Added**
-- 发版流程引入 `dev` 分支 + beta channel：`bump-electron-beta.yml` 在 dev push 时打 `vX.Y.Z-beta.SHA` tag 出预发布包；`promote-dev-to-master.yml` 每天 14:00 UTC 检查 dev soak ≥24h + CI 绿后 fast-forward 到 master，再由现有 `bump-electron.yml` 出 stable tag (`.github/workflows/`)
-- `update.allow_prerelease` 配置项（默认 `false`）：开启后本地 Electron 通过 electron-updater 接收 beta channel 推送的预发布版本，便于自己的安装实测 dev 改动 (`src/config-schema.ts`、`packages/electron/electron/auto-updater.ts`、`config/default.yaml`)
-- `config/models.yaml`: `gpt-5.5` (Plus-only general-purpose chat) and `gpt-image-2` (Plus-only image-generation backend) entered the static catalog
-- `CodexModelInfo.outputModalities` optional field on the model catalog interface to flag image-gen models apart from chat models (`src/models/model-store.ts`, `BackendModelEntry.output_modalities` also added for backend passthrough). `/v1/models/catalog` defaults missing values to `["text"]` so API output matches the documented contract.
-- README 新增图像生成小节 + 模型表 Output 列；`API.md` / `API_CN.md` 补 `image_generation` 工具参数矩阵、事件流、编辑模式文档
+- 支持 Dashboard 配置模型映射与本地自定义模型目录：`data/local.yaml` 可把客户端模型名映射到 Codex 模型、带 provider 前缀的第三方模型或已有 `model_routing` 目标；Dashboard → Settings → 模型映射可直接增删 alias 并热加载后端；`model.custom_models` 可把自定义 Codex-compatible ID 加入 `/v1/models/catalog` 并支持 `-fast` / `-high` 等后缀。ModelStore 会用本地 alias 覆盖静态 `config/models.yaml` alias，UpstreamRouter 会在内置 Claude/Gemini 自动路由前解析 alias，并在直连 provider 请求中把 outgoing `model` 改写为映射目标。新增 schema / model-store / upstream-router / route direct guard / Dashboard 组件测试覆盖配置默认值、静态 alias 覆盖、custom catalog、provider target 路由、四类直连接口（Chat / Messages / Responses / Gemini）的目标模型透传和 UI 持久化（`src/config-schema.ts`、`src/models/model-store.ts`、`src/proxy/upstream-router.ts`、`src/routes/admin/settings.ts`、`src/routes/chat.ts`、`src/routes/messages.ts`、`src/routes/responses.ts`、`src/routes/gemini.ts`、`web/src/components/ModelAliasSettings.tsx`、`tests/unit/config-schema.test.ts`、`tests/unit/models/model-store.test.ts`、`tests/unit/proxy/upstream-router.test.ts`、`tests/unit/routes/general-settings.test.ts`、`tests/unit/routes/upstream-auth-bypass.test.ts`、`web/src/components/ModelAliasSettings.test.tsx`）
+- Stream-close 事件结构化落盘到 Errors tab + 审计 log：`premature stream close` / `stream-client-abort` / `stream-client-disconnect` / `stream-error` 此前只走 `console.warn` 进 `dev-YYYY-MM-DD.log`，需要 grep 才能定位，且生产模式没有 tee；新增 `src/logs/stream-close-event.ts` 把这些事件同时写到 `data/error-log.jsonl`（Errors tab 按签名分组 + 角标计数）和 `logStore`（`/admin/logs` 审计流）。覆盖 7 个调用点：`proxy-handler.ts` 两处 client abort + 一处 `UpstreamPrematureCloseError`（带 eventCount / hadReasoning / responseId / variantHash）、`response-processor.ts` 两处（`client-write-failed` 带 writtenChunks/Bytes/lastSentEvent；`upstream-error` 带 upstreamStatus）、`responses.ts` 两处 `streamPassthrough` 内部 EOF（rid / accountEntryId / variantHash 通过 `FormatAdapter.streamTranslator` 的 `streamContext` option 由 `response-processor` 透传，其它 adapter 兼容性接收并忽略）。顺手修 `error-log.ts:readAppVersion` 在 config 未加载时崩溃（unit-test 路径会撞到），改为 try/catch 兜底回退 "unknown"。新增 `tests/unit/logs/stream-close-event.test.ts` 6 个单测覆盖 4 种 kind + 缺失 rid 兜底 + numeric upstreamStatus → audit status 透传 + direct upstream provider/path；Errors tab 展开分组时会显示 sample context。下次复现 premature close 直接看 Errors tab 按 `StreamUpstreamPrematureClose` 分组拉 rid + account + closeCode，不用再 grep dev 日志（`src/logs/stream-close-event.ts`、`src/logs/error-log.ts`、`src/routes/shared/proxy-handler.ts`、`src/routes/shared/response-processor.ts`、`src/routes/responses.ts`、`tests/unit/logs/stream-close-event.test.ts`）
+- Opt-in 上游请求/响应 dumper：新增 `src/utils/debug-dump.ts`，环境变量 `CODEX_PROXY_DEBUG_DUMP=1` 启用时把每次上游请求 + 流式 chunk + 终止状态 + 错误写入 `/tmp/codex-proxy-dump-<startupMs>.jsonl`（一行一事件）；未启用时所有 hook 是 `if (debugDumpEnabled())` 守护下的纯 boolean check，零开销。在 `src/routes/shared/proxy-handler.ts` 加 1 个 hook（`request`，含 rid/tag/entryId/conv/implicitResumeActive/resumeReason/payload），在 `src/routes/shared/response-processor.ts` 加 3 个 hook（`upstream-chunk` 截断到 16KB、`stream-finish` 含 chunks/bytes/sawTerminal、`stream-error` 含 status/msg/body 截断到 4KB）。**privacy 警告**：dump 文件包含完整 request payload（含用户 prompt）和上游响应，路径在启动时打印一次提示 sensitive 性质。日常排查"账号轮换重试风暴" / "premature stream close" 等偶发错误时 opt-in 启用，问题复现后再 opt-out
+- Pre-publish artifact smoke 拦在 stable 之前（#479）：`release.yml` 把 4 个平台（mac arm64 / mac x64 / win / linux）的 Pack step 从 `--publish always` 改成 `--publish never`，新增跨平台 smoke step 用 `.github/scripts/electron-smoke.sh` 启动打包好的 binary、tail 日志拿 `Server started on port N`、curl `/health`、清进程；smoke 失败直接阻塞 `gh release upload`，artifact 不会进 GitHub Release（坏的就不发）。Linux 装 `libfuse2 + xvfb` 起虚拟显示，Windows 用 `win-unpacked/*.exe` 跳过 NSIS 安装；smoke 失败时通过 `actions/upload-artifact@v4` 把日志保留 7 天给排查。新增 `tests/unit/ci/electron-smoke-script.test.ts` 6 个单测，覆盖脚本的 fail-loud 路径（缺 RUNNER_OS / RELEASE_DIR / AppImage / 不支持的 OS），保证脚本本身坏掉时不会沉默通过。CI 时间增量约 +5 分钟（Linux 最快，Windows 需研究 GHA windows-latest 的 GUI 启动行为，首次 PR 可能要回炉）（`.github/scripts/electron-smoke.sh`、`.github/workflows/release.yml`、`tests/unit/ci/electron-smoke-script.test.ts`）
+- Dashboard Errors tab + Header 浮起 badge + 渲染进程错误捕获（observability，#480 PR-2）：新增 `Errors` tab（按 `name + first stack frame` 聚合，按 last_seen 降序，可展开看 sample stack；折叠后只显示一行）；Header 右侧多一个红色 pulsing badge 显示未读错误数（>99 显示 `99+`），点击跳 `#/errors`；渲染进程注册 `window.addEventListener('error')` + `unhandledrejection` 在 `main.tsx` `render()` 之前，每条事件 fetch POST `/admin/error-logs/report`（不走 IPC，复用同源 dashboardAuth）；`useErrorLogs` / `useErrorLogsCount` hook 30s 轮询；i18n 中英双语；`mark all read` 按钮调 `/admin/error-logs/seen` 推进 cursor；新增前端 web bundle +8KB gzipped（`web/src/error-capture.ts`、`web/src/pages/ErrorsPage.tsx`、`shared/hooks/use-error-logs.ts`、`web/src/App.tsx`、`web/src/components/Header.tsx`、`web/src/main.tsx`、`shared/i18n/translations.ts`、`tests/unit/web/error-capture.test.ts`、`shared/hooks/use-error-logs.test.ts`）
 - ...（[查看全部](./CHANGELOG.md)）
 **Changed**
-- Default model switched from `gpt-5.3-codex` → `gpt-5.4` (`config/default.yaml`, `config/models.yaml.isDefault`, Zod schema default in `src/config-schema.ts`). Removed the `codex` alias — clients must use full model IDs. Sonnet mapping in Anthropic preset/README 推荐表保持 `gpt-5.3-codex` 不变（编程场景更贴位）
-- Static `isDefault` and `outputModalities` on `config/models.yaml` entries now survive the backend dynamic fetch merge (previously the spread of normalized `undefined`/`false` silently clobbered YAML-declared values)
-- Dashboard session 默认 TTL 从 1 小时延长至 24 小时
+- `handleProxyRequest` / `handleDirectRequest` 改为 named options object 调用契约，顺带把 private `handleNonStreaming` 的 20 个位置参数收敛成内部 options object，避免后续新增可选上下文时错位；所有 route 调用与直接 handler 测试同步迁移，并补 direct upstream route guard 锁住 adapter/raw model/format tag 传递（`src/routes/shared/proxy-handler.ts`、`src/routes/chat.ts`、`src/routes/messages.ts`、`src/routes/gemini.ts`、`src/routes/responses.ts`、`tests/unit/routes/upstream-auth-bypass.test.ts`）
+- `FormatAdapter.streamTranslator` / `collectTranslator` 改为 single options object 契约，替换原先 9 个 / 6 个位置参数，避免 `tupleSchema` / `usageHint` / `onResponseMetadata` / `streamContext` 后续扩展时错位；Chat / Messages / Gemini / Responses adapter wrapper 保持下游 translator 行为不变，并补 streaming、Codex collect、direct collect 三条 guard 测试锁住 options object 传递（`src/routes/shared/proxy-handler.ts`、`src/routes/shared/response-processor.ts`、`src/routes/chat.ts`、`src/routes/messages.ts`、`src/routes/gemini.ts`、`src/routes/responses.ts`、`tests/unit/routes/shared/response-processor.test.ts`、`tests/integration/proxy-handler.test.ts`、`tests/unit/routes/shared/error-forwarding.test.ts`）
+- `streamResponse` 改为 named options object 调用契约，替换原先 11 个位置参数，避免 `tupleSchema` / `onResponseId` / `usageHint` / `onResponseMetadata` / `diagnostics` 后续继续错位；Codex streaming 与 direct streaming 两个 caller 同步迁移，并补 caller-level guard 锁住 `streamContext` 的 Codex vs direct provider/path 归因（`src/routes/shared/response-processor.ts`、`src/routes/shared/proxy-handler.ts`、`tests/unit/routes/shared/response-processor.test.ts`、`tests/integration/proxy-handler.test.ts`、`tests/unit/routes/shared/error-forwarding.test.ts`）
+- request diagnostics 输出从 `proxy-handler.ts` 收敛进 `proxy-request-diagnostics.ts`，主 handler 不再直接 `console.log` / `console.warn` summary 与 large-payload warning，只负责传入已解析的 session / resume / affinity 上下文；新增 logging wrapper 行为测试和边界测试锁住 warning 输出仍由 diagnostics 模块负责（`src/routes/shared/proxy-request-diagnostics.ts`、`src/routes/shared/proxy-handler.ts`、`tests/unit/routes/shared/proxy-request-diagnostics.test.ts`、`tests/unit/routes/shared/proxy-request-diagnostics-boundary.test.ts`）
+- 非流式 collect/retry 路径从 `proxy-handler.ts` 抽到独立 `non-streaming-handler.ts`，并把 `buildCodexApi`、image generation usage 标记、Codex error prefix 清理收敛到 `proxy-handler-utils.ts`，降低主 handler 对 empty-response retry / premature-close / affinity 逻辑的耦合；新增模块边界测试、collect 阶段 `previous_response_not_found` strip-retry guard、non-stream affinity metadata guard（`src/routes/shared/non-streaming-handler.ts`、`src/routes/shared/proxy-handler-utils.ts`、`src/routes/shared/proxy-handler.ts`、`tests/unit/routes/shared/non-streaming-handler-boundary.test.ts`、`tests/integration/proxy-handler.test.ts`）
+- ...（[查看全部](./CHANGELOG.md)）
 **Fixed**
-- WebSocket 路径首帧若为上游 `usage_limit_reached` / `rate_limit*` / `quota_exhausted` / 鉴权类终止错误，转换为 `CodexApiError` 抛出，复用 HTTP 路径已有的账号轮转逻辑；恢复 2.0.62 的"智能切换"行为（`src/proxy/ws-transport.ts`）。错误若发生在已有内容流出之后，仍按当前行为透传给客户端
-- 无可用账号时不再执行无意义的重试，直接返回描述性错误信息（含各状态账号计数：rate-limited / expired / banned / disabled）(#362)
-- API Key 路由（OpenAI/Anthropic/Gemini）上游返回错误时，透传原始 JSON 响应体，而非包装为代理自有格式；Codex 账号路由仍使用代理格式 (#367)
-- `least_used` 策略不再将 `window_reset_at = null` 的新账号（从未收到限速响应头）视为 Infinity 而永久排在已有窗口账号之后；现在两者都进入 `request_count` 比较，新账号（0 请求）可正确轮转到，`__cf_bm` cookie 也能正常写入 (#342)
-- 默认不再发送 `reasoning.effort`：移除 `modelInfo.defaultReasoningEffort` 自动兜底，`default_reasoning_effort` 默认改为 `null`，彻底消除简单对话触发 medium 推理导致的 token 暴涨；Dashboard 新增 "Disabled (no reasoning)" 选项，用户可按需开启
+- Release bump workflows now require runtime file changes in addition to meaningful commit subjects before tagging a beta or stable build. This prevents squash-promotion history divergence from re-counting old dev commits, and prevents workflow/docs/test-only fixes from producing empty Electron releases (`.github/workflows/bump-electron.yml`, `.github/workflows/bump-electron-beta.yml`, `tests/unit/ci/package-boundary.test.ts`).
+- Release bump workflows now skip the release-notes workflow hotfix subject itself, so promoting the stable-notes CI fix to `master` does not create an empty desktop release on the next scheduled bump (`.github/workflows/bump-electron.yml`, `.github/workflows/bump-electron-beta.yml`, `tests/unit/ci/package-boundary.test.ts`).
+- 修复 stable release notes 在手动 squash promotion 后只写 `fix: promote dev release fixes to master`、漏掉 dev 原始 PR 的问题：`release.yml` 改为调用 `.github/scripts/generate-release-notes.sh`，stable tag 若只有 promotion 内容且运行时代码树与 `origin/dev` 一致（忽略 README/package 版本文件），会回退使用 dev history 生成说明；新增单测覆盖正常 stable tag 与 squash promotion 两条路径（`.github/workflows/release.yml`、`.github/scripts/generate-release-notes.sh`、`tests/unit/ci/release-notes-script.test.ts`）。
+- Lockfile tarball sources now point to the official npm registry instead of `registry.npmmirror.com`, and the CI package boundary guard fails if any root/web/native lockfile resolves npm packages from a non-`registry.npmjs.org` host. Root production dependency audit is also clean after non-breaking lockfile updates for `hono`, `@hono/node-server`, `undici`, `minimatch`, and `brace-expansion`; the remaining full-audit finding is the existing Electron major-version upgrade requirement (`package-lock.json`, `web/package-lock.json`, `tests/unit/ci/package-boundary.test.ts`).
+- Update checker now keeps `config/default.yaml` in sync when it auto-applies a Codex Desktop appcast version, while still writing `data/version-state.json` for cold-start runtime overrides. When a matching `data/extracted-fingerprint.json` is present, the checker also carries `chromium_version` through to version state, YAML, and in-memory config so User-Agent and `sec-ch-ua` fingerprint fields do not drift. The checked-in default fingerprint is updated to Codex Desktop `26.506.31421` / build `2620` / Chromium `146` (`src/update-checker.ts`, `config/default.yaml`, `tests/unit/update-checker.test.ts`).
 - ...（[查看全部](./CHANGELOG.md)）
 
 ### [v0.8.0](https://github.com/icebear0828/codex-proxy/releases/tag/v0.8.0) - 2026-02-24
@@ -716,6 +900,14 @@ curl -X POST http://localhost:8080/auth/accounts/import \
 ## ☕ 赞赏 & 交流
 
 觉得有帮助？请作者喝杯咖啡，或加入微信交流群获取使用帮助。二维码见 [页面顶部](#)。
+
+## 🙏 贡献致谢
+
+Codex Proxy 主要由个人维护，但一路上收到了很多社区帮助。特别感谢这些通过代码、文档、修复或 PR 参与建设的贡献者：
+
+[@SsuJojo](https://github.com/SsuJojo) · [@TutuchanXD](https://github.com/TutuchanXD) · [@kanweiwei](https://github.com/kanweiwei) · [@et2010](https://github.com/et2010) · [@d-demand-priv](https://github.com/d-demand-priv) · [@hangox](https://github.com/hangox) · [@jarvisluk](https://github.com/jarvisluk) · [@jeasonstudio](https://github.com/jeasonstudio) · [@JPClaw12](https://github.com/JPClaw12) · [@lezi-fun](https://github.com/lezi-fun) · [@lookvincent](https://github.com/lookvincent) · [@pocper1](https://github.com/pocper1) · [@woai66](https://github.com/woai66) · [@xsShuang](https://github.com/xsShuang) · [@yuwei5380](https://github.com/yuwei5380)
+
+也感谢所有在 [Issues](https://github.com/icebear0828/codex-proxy/issues) 里提交 bug 复现、日志、兼容性反馈和功能建议的用户。这些反馈直接推动了账号轮换、代理兼容、Dashboard、Ollama Bridge、模型兼容和错误观测等能力的迭代。
 
 ## ⭐ Star History
 

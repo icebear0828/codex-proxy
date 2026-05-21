@@ -15,13 +15,18 @@ import { ProxySettings } from "./pages/ProxySettings";
 import { AccountManagement } from "./pages/AccountManagement";
 import { UsageStats } from "./pages/UsageStats";
 import { LogsPage } from "./pages/LogsPage";
+import { ErrorsPage } from "./pages/ErrorsPage";
 import { useAccounts } from "../../shared/hooks/use-accounts";
+import { useErrorLogsCount } from "../../shared/hooks/use-error-logs";
 import { useProxies } from "../../shared/hooks/use-proxies";
 import { useStatus } from "../../shared/hooks/use-status";
 import { useUpdateStatus } from "../../shared/hooks/use-update-status";
 import { useI18n, useT } from "../../shared/i18n/context";
 import { useDashboardAuth } from "../../shared/hooks/use-dashboard-auth";
 import type { TranslationKey } from "../../shared/i18n/translations";
+import { getShowUpdateDialogPreference, shouldAutoOpenUpdateModal } from "./update-modal-policy";
+
+export { shouldAutoOpenUpdateModal };
 
 const DashboardAuthCtx = createContext<{ onLogout?: () => void }>({});
 function useDashboardAuthCtx() { return useContext(DashboardAuthCtx); }
@@ -45,11 +50,12 @@ function useUpdateMessage() {
   } else if (!update.checking && update.error) { msg = update.error; color = "text-red-500"; }
 
   const hasUpdate = update.status?.proxy.update_available ?? false;
+  const showUpdateDialog = getShowUpdateDialogPreference(update.status);
   const proxyUpdateInfo = hasUpdate
     ? { mode: update.status!.proxy.mode, commits: update.status!.proxy.commits, changelog: update.status!.proxy.changelog ?? null, release: update.status!.proxy.release }
     : null;
 
-  return { ...update, msg, color, hasUpdate, proxyUpdateInfo };
+  return { ...update, msg, color, hasUpdate, showUpdateDialog, proxyUpdateInfo };
 }
 
 // ── Tab definitions ─────────────────────────────────────────────────
@@ -61,13 +67,14 @@ const TABS: Array<{ hash: string; label: TranslationKey }> = [
   { hash: "#/proxies", label: "proxySettings" },
   { hash: "#/usage-stats", label: "usageStats" },
   { hash: "#/logs", label: "logs" },
+  { hash: "#/errors", label: "errorsTab" },
   { hash: "#/settings", label: "settings" },
 ];
 
-function TabBar({ activeHash }: { activeHash: string }) {
+export function TabBar({ activeHash }: { activeHash: string }) {
   const t = useT();
   return (
-    <div class="flex items-center gap-1.5 mb-4">
+    <div class="flex flex-wrap items-center gap-1.5 mb-4 max-w-full">
       {TABS.map((tab) => {
         const isActive = activeHash === tab.hash;
         return (
@@ -76,7 +83,7 @@ function TabBar({ activeHash }: { activeHash: string }) {
             href={tab.hash || "#/"}
             class={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
               isActive
-                ? "bg-primary/10 text-primary dark:bg-primary/20"
+                ? "bg-primary-container text-primary"
                 : "text-slate-500 dark:text-text-dim hover:bg-slate-100 dark:hover:bg-border-dark"
             }`}
           >
@@ -99,13 +106,19 @@ function Dashboard() {
   const [showModal, setShowModal] = useState(false);
   const prevUpdateAvailable = useRef(false);
   const hash = useHash();
+  const errorCount = useErrorLogsCount();
 
   useEffect(() => {
-    if (update.hasUpdate && !prevUpdateAvailable.current && update.proxyUpdateInfo?.mode !== "electron") {
+    if (shouldAutoOpenUpdateModal({
+      hasUpdate: update.hasUpdate,
+      previousHasUpdate: prevUpdateAvailable.current,
+      mode: update.proxyUpdateInfo?.mode ?? null,
+      showUpdateDialog: update.showUpdateDialog,
+    })) {
       setShowModal(true);
     }
     prevUpdateAvailable.current = update.hasUpdate;
-  }, [update.hasUpdate, update.proxyUpdateInfo?.mode]);
+  }, [update.hasUpdate, update.proxyUpdateInfo?.mode, update.showUpdateDialog]);
 
   const handleProxyChange = async (accountId: string, proxyId: string) => {
     accounts.patchLocal(accountId, { proxyId });
@@ -131,6 +144,7 @@ function Dashboard() {
         commit={update.status?.proxy.commit ?? null}
         hasUpdate={update.hasUpdate}
         onLogout={onLogout}
+        unreadErrors={errorCount.unread}
       />
 
       <main class="flex-grow px-4 md:px-8 lg:px-40 py-8 flex justify-center">
@@ -161,7 +175,6 @@ function Dashboard() {
                 onImport={accounts.importAccounts}
                 onToggleStatus={accounts.toggleStatus}
                 onUpdateLabel={accounts.updateLabel}
-                onAddByRefreshToken={accounts.addByRefreshToken}
               />
               <ProxyPool proxies={proxies} />
             </div>
@@ -188,6 +201,10 @@ function Dashboard() {
 
           {activeTab === "#/logs" && (
             <LogsPage embedded />
+          )}
+
+          {activeTab === "#/errors" && (
+            <ErrorsPage />
           )}
 
           {activeTab === "#/settings" && (
@@ -258,7 +275,7 @@ function LoginGate({ children }: { children: ComponentChildren }) {
       <div class="min-h-screen flex items-center justify-center bg-slate-50 dark:bg-bg-dark px-4">
         <div class="w-full max-w-sm bg-white dark:bg-card-dark border border-gray-200 dark:border-border-dark rounded-2xl shadow-lg p-8">
           <div class="flex flex-col items-center gap-2 mb-6">
-            <div class="flex items-center justify-center size-12 rounded-full bg-primary/10 text-primary border border-primary/20">
+            <div class="flex items-center justify-center size-12 rounded-full bg-primary-container text-primary border border-primary/20">
               <svg class="size-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                 <path stroke-linecap="round" stroke-linejoin="round" d="M16.5 10.5V6.75a4.5 4.5 0 10-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 002.25-2.25v-6.75a2.25 2.25 0 00-2.25-2.25H6.75a2.25 2.25 0 00-2.25 2.25v6.75a2.25 2.25 0 002.25 2.25z" />
               </svg>
@@ -278,7 +295,7 @@ function LoginGate({ children }: { children: ComponentChildren }) {
                 {auth.error.includes("Too many") ? t("dashboardTooManyAttempts") : t("dashboardLoginError")}
               </p>
             )}
-            <button type="submit" class="w-full py-2.5 bg-primary hover:bg-primary-hover text-white text-sm font-semibold rounded-lg transition-colors shadow-sm active:scale-[0.98]">
+            <button type="submit" class="w-full py-2.5 bg-primary-action hover:bg-primary-action-hover text-white text-sm font-semibold rounded-lg transition-colors shadow-sm active:scale-[0.98]">
               {t("dashboardLoginBtn")}
             </button>
           </form>

@@ -1,6 +1,9 @@
 import { useState, useEffect, useCallback, useRef } from "preact/hooks";
 
 export interface UpdateStatus {
+  settings: {
+    show_update_dialog: boolean;
+  };
   proxy: {
     version: string;
     commit: string | null;

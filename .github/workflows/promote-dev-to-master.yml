@@ -106,7 +106,7 @@ jobs:
                | select(.name | test("(?i)promote|bump") | not)
               ] as $relevant
               | if ($relevant | length) == 0
-                then "no-checks"
+                then "missing-checks"
                 else
                   if all($relevant[]; .conclusion == "success" or .conclusion == "skipped")
                   then "green"
@@ -116,7 +116,7 @@ jobs:
             ')
 
           echo "status=$STATUS"
-          if [ "$STATUS" = "green" ] || [ "$STATUS" = "no-checks" ]; then
+          if [ "$STATUS" = "green" ]; then
             echo "ok=true" >> "$GITHUB_OUTPUT"
             echo "dev_sha=$DEV_SHA" >> "$GITHUB_OUTPUT"
           else

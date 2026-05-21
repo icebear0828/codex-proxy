@@ -18,7 +18,8 @@
     <a href="#-features">Features</a> &bull;
     <a href="#-available-models">Models</a> &bull;
     <a href="#-client-setup">Client Setup</a> &bull;
-    <a href="#-configuration">Configuration</a>
+    <a href="#-configuration">Configuration</a> &bull;
+    <a href="#-acknowledgements">Acknowledgements</a>
   </p>
 
   <p>
@@ -46,7 +47,7 @@
 
 **Codex Proxy** is a lightweight local gateway that translates the [Codex Desktop](https://openai.com/codex) Responses API into multiple standard protocol endpoints — OpenAI `/v1/chat/completions`, Anthropic `/v1/messages`, Gemini, Codex `/v1/responses` passthrough, and an optional Ollama-compatible `/api/chat` bridge. Use Codex coding models directly in Cursor, Claude Code, Continue, or any compatible client.
 
-Just a ChatGPT account (or a third-party API relay) and this proxy — your own personal AI coding assistant gateway, running locally.
+Just a ChatGPT account (or a third-party API key provider) and this proxy — your own personal AI coding assistant gateway, running locally.
 
 ## 🚀 Quick Start
 
@@ -116,16 +117,16 @@ If you see streaming AI text, the setup is working. If you get 401, double-check
 - Automatic bidirectional translation between all protocols and Codex Responses API
 - **Structured Outputs** — `response_format` (`json_object` / `json_schema`) and Gemini `responseMimeType`
 - **Function Calling** — native `function_call` / `tool_calls` across all protocols
-- If using custom API Keys, only the OpenAI (`/v1/chat/completions`) format is supported.
+- **Third-party API keys** — supports OpenAI / Anthropic / Gemini / OpenRouter / custom OpenAI-compatible providers, routed by model.
 
 ### 2. 🔐 Account Management & Smart Rotation
 - **OAuth PKCE login** — one-click browser auth
 - **Multi-account rotation** — `least_used`, `round_robin`, and `sticky` strategies
 - **Plan Routing** — accounts on different plans (free/plus/team/business) auto-route to their supported models
 - **Auto token refresh** — JWT renewed before expiry with exponential backoff
-- **Quota auto-refresh** — background polling every 5 min; configurable warning thresholds; exhausted accounts auto-skip
+- **Passive quota collection** — updates account quota from upstream response headers and WebSocket rate-limit events; `quota.refresh_interval_minutes` only controls local usage snapshots, and `0` disables that timer.
 - **Ban detection** — upstream 403 auto-marks banned; 401 token invalidation auto-expires and switches account
-- **Relay accounts** — connect third-party API relays (API Key + baseUrl) with auto format detection
+- **API key provider pool** — manage third-party API keys, model lists, import/export, and enable/disable state from the dashboard.
 - **Web dashboard** — account management, usage stats, batch operations; dashboard login gate for remote access
 
 ### 3. 🌐 Proxy Pool
@@ -166,8 +167,8 @@ If you see streaming AI text, the setup is working. If you get 401, double-check
 │                                                          │
 │  ┌──────────┐  ┌───────────────┐  ┌──────────────────┐  │
 │  │   Auth   │  │  Fingerprint  │  │   Model Store    │  │
-│  │ OAuth/JWT│  │ Rust (rustls) │  │ Static + Dynamic │  │
-│  │  Relay   │  │  Headers/UA   │  │  Plan Routing    │  │
+│  │OAuth/API │  │ Rust (rustls) │  │ Static + Dynamic │  │
+│  │ API Keys │  │  Headers/UA   │  │  Plan Routing    │  │
 │  └──────────┘  └───────────────┘  └──────────────────┘  │
 │                                                          │
 └──────────────────────────────────────────────────────────┘
@@ -178,30 +179,32 @@ If you see streaming AI text, the setup is working. If you get 401, double-check
                           │
                    ┌──────┴──────┐
                    ▼             ▼
-              chatgpt.com   Relay providers
+             chatgpt.com   3rd-party providers
          /backend-api/codex  (3rd-party API)
 ```
 
 ## 📦 Available Models
 
-| Model ID | Reasoning | Output | Description |
-|----------|-----------|--------|-------------|
-| `gpt-5.5` | low / medium / high / xhigh | text | General-purpose flagship (Plus+) |
-| `gpt-5.4` | low / medium / high / xhigh | text | Latest flagship (default) |
-| `gpt-5.4-mini` | low / medium / high / xhigh | text | 5.4 lightweight version |
-| `gpt-5.3-codex` | low / medium / high / xhigh | text | 5.3 coding-optimized model |
-| `gpt-5.2` | low / medium / high / xhigh | text | Professional work & long-running agents |
-| `gpt-5-codex` | low / medium / high | text | GPT-5 coding model |
-| `gpt-5-codex-mini` | medium / high | text | Lightweight coding model |
-| `gpt-oss-120b` | low / medium / high | text | Open-source 120B model |
-| `gpt-oss-20b` | low / medium / high | text | Open-source 20B model |
-| `gpt-image-2` | — | image | Image-generation backend (Plus+, invoked via the `image_generation` tool) |
+| Model ID | Reasoning | Current context | Max context | Max output | Output | Description |
+|----------|-----------|-----------------|-------------|------------|--------|-------------|
+| `gpt-5.5` | low / medium / high / xhigh | 272,000 | 272,000 | 128,000 | text | Frontier model for complex coding, research, and real-world work |
+| `gpt-5.4` | low / medium / high / xhigh | 272,000 | 1,000,000 | 128,000 | text | Strong model for everyday coding (default) |
+| `gpt-5.4-mini` | low / medium / high / xhigh | 400,000 | — | 128,000 | text | GPT-5.4 lightweight model |
+| `gpt-5.3-codex` | low / medium / high / xhigh | 400,000 | — | 128,000 | text | GPT-5.3 coding-optimized model |
+| `gpt-5.2` | low / medium / high / xhigh | 400,000 | — | 128,000 | text | Professional work & long-running agents |
+| `gpt-5-codex` | low / medium / high | 400,000 | — | 128,000 | text | GPT-5 coding-optimized model |
+| `gpt-5-codex-mini` | medium / high | — | — | — | text | Lightweight Codex / CLI coding model |
+| `gpt-oss-120b` | low / medium / high | 131,072 | — | — | text | Open-source 120B model |
+| `gpt-oss-20b` | low / medium / high | 131,072 | — | — | text | Open-source 20B model |
+| `gpt-image-2` | — | — | — | — | image | Image-generation tool backend, invoked via `image_generation` |
 
 > **Suffixes**: Append `-fast` to any chat model for Fast mode, `-high`/`-low` for reasoning effort. E.g. `gpt-5.4-fast`, `gpt-5.4-high-fast`. The image model (`gpt-image-2`) does not take suffixes.
 >
-> **Plan Routing**: Accounts on different plans auto-route to their supported models. Models are dynamically fetched and auto-synced.
+> **Plan Routing**: Accounts on different plans auto-route to the models returned for that account by the Codex backend. Do not treat old Plus-only notes as fixed model access rules. Models are dynamically fetched and auto-synced; if a model appears in the Dashboard or `/v1/models/catalog`, it can be used as the request `model`.
 >
 > **Dashboard model picker ≠ config file**: Changing the model in the Dashboard only affects the UI display and API examples — it does **not** modify `model.default` in `config/default.yaml` or `data/local.yaml`. The actual model used is determined by the `model` field in each client request (Cursor, Claude Code, etc.). The `model.default` config is only a fallback when the client omits the model field.
+>
+> **Max token note**: the table follows the current `config/models.yaml` and Codex runtime `/v1/models/catalog` metadata. `—` means the current catalog does not return that field, not that the model is unavailable. Runtime data fetched from the Codex backend overrides static values and preserves `contextWindow`, `maxContextWindow`, `maxOutputTokens`, and `truncationPolicyLimit`. Request fields such as `context_window`, `max_context_window`, `truncation_policy`, and `max_output_tokens` are not usable switches; forwarding them to the native Codex API returns `400 Unsupported parameter`.
 
 ### 🖼️ Image Generation
 
@@ -226,6 +229,8 @@ Tunable fields: `size` (1024×1024 / 1024×1536 / 1536×1024 / 2048×2048 / 2048
 In the stream, the `image_generation_call` item's `result` field is a base64-encoded image; `revised_prompt` contains the final prompt used by the model.
 
 **Edit mode** (with a reference image): include `{"type":"input_image","image_url":"data:image/png;base64,..."}` in the user message `content` array.
+
+> The `/v1/chat/completions` compatibility path accepts the `image_generation` tool so OpenAI clients do not fail schema validation, but image payloads are only exposed reliably through `/v1/responses` as `image_generation_call.result`. Use `/v1/responses` when you need the image bytes.
 
 ## 🔗 Client Setup
 
@@ -271,21 +276,38 @@ model_provider = "proxy_codex"
 3. **Fill in details**:
    - **Endpoint**: `http://127.0.0.1:8080`
    - **API Key**: your-api-key
-   - **Model**: `gpt-5.4` (or an Anthropic-formatted ID like `anthropic/claude-3-5-sonnet-20241022`)
+   - **Model**: `claude-opus-4-7` / `claude-sonnet-4-6` / `claude-haiku-4-5`
 
 > Alternatively, edit the config file (usually a JSON file in `%APPDATA%\Claude-3p\configLibrary\` on Windows, or `~/Library/Application Support/Claude-3p/configLibrary/` on Mac), adding the following fields:
 > ```json
 > {
+>   "disableDeploymentModeChooser": true,
 >   "inferenceProvider": "gateway",
 >   "inferenceGatewayBaseUrl": "http://127.0.0.1:8080",
 >   "inferenceGatewayApiKey": "your-api-key",
 >   "inferenceGatewayAuthScheme": "bearer",
 >   "inferenceModels": [
->     { "name": "gpt-5.4" }
+>     "claude-opus-4-7",
+>     "claude-sonnet-4-6",
+>     "claude-haiku-4-5"
 >   ]
 > }
 > ```
->
+
+Built-in Claude-shaped model names map to Codex models. Put custom mappings in `data/local.yaml`; do not edit `config/models.yaml`:
+
+```yaml
+model:
+  aliases:
+    claude-opus-4-7: gpt-5.5
+    claude-sonnet-4-6: gpt-5.4
+    claude-haiku-4-5: gpt-5.3-codex
+    my-openai: openai:gpt-4o
+    my-deepseek: deepseek-chat
+```
+
+The left side is the model name used by the client; the right side is the real upstream model. The target can be a Codex model ID, a provider-prefixed model such as `openai:gpt-4o` / `anthropic:claude-sonnet-4-5` / `gemini:gemini-2.5-pro`, or a model already bound to a custom provider via `model_routing` such as `deepseek-chat`. Aliases appear in `/v1/models`; direct provider requests rewrite the outgoing `model` to the mapped target.
+
 > 💡 **Troubleshooting (Windows)**: If Claude Desktop shows `ERR_CONNECTION_REFUSED` when using `127.0.0.1` (and `must use https` when using `localhost`), it means Node.js is only binding to IPv6 by default. Go to the Codex Proxy dashboard settings, change **Host** to `127.0.0.1`, or add `server: { host: "127.0.0.1" }` to `data/local.yaml` and restart the proxy.
 >
 > 💡 **LAN Usage Tip**: Claude Desktop strictly validates the endpoint and **only allows** `https://` or exactly `http://127.0.0.1`. If your proxy is on another machine in the LAN (e.g. `192.168.x.x`), you cannot use it directly via HTTP. Workarounds:
@@ -439,12 +461,62 @@ All configuration in `config/default.yaml`:
 | `server` | `host`, `port`, `proxy_api_key` | Listen address and API key |
 | `api` | `base_url`, `timeout_seconds` | Upstream API URL and timeout |
 | `client` | `app_version`, `build_number`, `chromium_version` | Codex Desktop version to impersonate |
-| `model` | `default`, `default_reasoning_effort`, `inject_desktop_context` | Default model and reasoning config |
+| `model` | `default`, `default_reasoning_effort`, `default_service_tier`, `aliases`, `custom_models`, `inject_desktop_context` | Default model, reasoning config, aliases, and custom catalog entries |
 | `auth` | `rotation_strategy`, `rate_limit_backoff_seconds` | Rotation strategy and rate limit backoff |
 | `tls` | `proxy_url`, `force_http11` | TLS proxy and HTTP version |
-| `quota` | `refresh_interval_minutes`, `warning_thresholds`, `skip_exhausted` | Quota refresh and warnings |
+| `quota` | `refresh_interval_minutes`, `warning_thresholds`, `skip_exhausted` | Usage snapshots, threshold config, exhausted-account skipping |
 | `session` | `ttl_minutes`, `cleanup_interval_minutes` | Dashboard session management |
 | `ollama` | `enabled`, `host`, `port`, `version`, `disable_vision` | Ollama-compatible bridge |
+
+### Model Aliases
+
+`model.aliases` maps client-facing model names to the real upstream model. This is useful when Claude Desktop / Cursor / Continue only lets you pick certain model IDs, or when you want shorter local names.
+
+You can also manage aliases in Dashboard → Settings → **Model Aliases**. Saving writes to `data/local.yaml` and hot-reloads the backend, so you do not need to edit `config/default.yaml`.
+
+```yaml
+model:
+  aliases:
+    claude-opus-4-7: gpt-5.5
+    sonnet-local: gpt-5.4
+    openai-fast: openai:gpt-4o
+    deepseek-local: deepseek-chat
+
+providers:
+  custom:
+    deepseek:
+      api_key: "sk-..."
+      base_url: "https://api.deepseek.com/v1"
+      models: ["deepseek-chat"]
+model_routing:
+  deepseek-chat: deepseek
+```
+
+Alias resolution runs before `model_routing` and built-in Claude/Gemini auto-routing. Aliases targeting Codex models still work with Codex suffixes such as `-fast` / `-high`; aliases targeting third-party providers rewrite the outgoing direct request `model` field to the mapped target.
+
+If you need to add fully custom Codex-compatible model IDs to the catalog, configure `model.custom_models` in `data/local.yaml`. A string entry uses default text/medium metadata; an object entry can define display name, reasoning efforts, context, and output limits:
+
+```yaml
+model:
+  custom_models:
+    - local-simple
+    - id: local-rich
+      display_name: Local Rich
+      description: Local rich model
+      supported_reasoning_efforts: [low, high]
+      default_reasoning_effort: high
+      input_modalities: [text, image]
+      output_modalities: [text]
+      context_window: 12345
+      max_context_window: 23456
+      max_output_tokens: 3456
+```
+
+### Quota Rotation
+
+When `quota.skip_exhausted: true`, the account pool skips accounts whose cached quota is already exhausted before session affinity / `preferredEntryId` is applied. A long conversation therefore cannot force routing back to a cached-exhausted account.
+
+The skip condition is currently `rate_limit.limit_reached === true`, `secondary_rate_limit.limit_reached === true`, or `code_review_rate_limit.limit_reached === true` in cached quota. If `used_percent` is merely near 100, for example 99%, but upstream has not set `limit_reached`, the proxy may still use that account. Once upstream returns 429, the account is marked `rate_limited`, enters backoff, and the request is retried with another available account. Secondary and code-review windows are removed from cache after their own `reset_at` passes, so an account is not skipped forever on stale quota data.
 
 ### Ollama Bridge Configuration
 
@@ -475,6 +547,27 @@ For Docker deployments that need host access to `11434`:
 
 Browser CORS access is limited to loopback origins such as `localhost`, `127.x.x.x`, and `::1`; non-local web origins are not allowed to read bridge responses. The bridge injects the configured Codex Proxy API key for `/v1/*` passthrough requests, so exposing it beyond localhost effectively grants unauthenticated access to the main proxy API.
 
+### Listen Address
+
+The source/Docker default config listens on `::` (IPv6 unspecified, usually still reachable from localhost). Electron passes `127.0.0.1` at startup unless `data/local.yaml` explicitly overrides `server.host`. To force localhost-only binding:
+
+```yaml
+server:
+  host: "127.0.0.1"
+```
+
+To allow LAN access, set `server.host: "0.0.0.0"` in `data/local.yaml` and use a strong proxy API key.
+
+### API Key
+
+```yaml
+server:
+  proxy_api_key: "pwd"    # clients use Authorization: Bearer pwd
+  # proxy_api_key: null   # no global key; logged-in accounts still have account-level codex-proxy-xxxx keys
+```
+
+On first startup, if `data/local.yaml` is missing, Codex Proxy creates it with `server.proxy_api_key: pwd`. The active key is shown in the dashboard API Configuration section.
+
 ### Environment Variable Overrides
 
 | Variable | Overrides |
@@ -492,7 +585,7 @@ Browser CORS access is limited to loopback origins such as `localhost`, `127.x.x
 ## 📡 API Endpoints
 
 <details>
-<summary>Click to expand full endpoint list</summary>
+<summary>Click to expand main endpoint list</summary>
 
 **Protocol Endpoints**
 
@@ -500,8 +593,13 @@ Browser CORS access is limited to loopback origins such as `localhost`, `127.x.x
 |----------|--------|-------------|
 | `/v1/chat/completions` | POST | OpenAI format chat completions |
 | `/v1/responses` | POST | Codex Responses API passthrough |
+| `/v1/responses/compact` | POST | Codex compact response proxy |
 | `/v1/messages` | POST | Anthropic format chat completions |
 | `/v1/models` | GET | List available models |
+| `/v1/models/catalog` | GET | Full model catalog for the dashboard |
+| `/v1/models/:modelId/info` | GET | Reasoning and metadata for one model |
+| `/v1beta/models` | GET | Gemini-format model list |
+| `/v1beta/models/:modelAction` | POST | Gemini `generateContent` / `streamGenerateContent` |
 | `:11434/api/chat` | POST | Ollama-compatible chat completions (requires Ollama Bridge) |
 
 **Auth & Accounts**
@@ -513,9 +611,27 @@ Browser CORS access is limited to loopback origins such as `localhost`, `127.x.x
 | `/auth/accounts` | POST | Add single account (token or refreshToken) |
 | `/auth/accounts/import` | POST | Bulk import accounts |
 | `/auth/accounts/export` | GET | Export accounts (`?format=minimal` for compact) |
-| `/auth/accounts/relay` | POST | Add relay account |
 | `/auth/accounts/batch-delete` | POST | Batch delete accounts |
 | `/auth/accounts/batch-status` | POST | Batch update account status |
+| `/auth/accounts/health-check` | POST | Batch account health check |
+| `/auth/accounts/:id/refresh` | POST | Refresh and probe one account |
+| `/auth/accounts/:id/quota` | GET | Actively query one account quota |
+| `/auth/accounts/:id/cookies` | GET/POST/DELETE | Manage account Cloudflare cookies |
+| `/auth/quota/warnings` | GET | Current quota warning state |
+
+**Third-Party API Keys**
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/auth/api-keys/catalog` | GET | Built-in providers and suggested model catalog |
+| `/auth/api-keys` | GET/POST | List / add API keys |
+| `/auth/api-keys/models` | POST | Fetch models from a custom OpenAI-compatible provider |
+| `/auth/api-keys/export` | GET | Export API key config |
+| `/auth/api-keys/import` | POST | Import API key config |
+| `/auth/api-keys/batch-delete` | POST | Batch delete API keys |
+| `/auth/api-keys/:id` | DELETE | Delete one API key |
+| `/auth/api-keys/:id/label` | PATCH | Update API key label |
+| `/auth/api-keys/:id/status` | PATCH | Enable or disable an API key |
 
 **Account Import/Export Examples**
 
@@ -559,6 +675,11 @@ curl -X POST http://localhost:8080/auth/accounts/import \
 | `/admin/refresh-models` | POST | Trigger manual model list refresh |
 | `/admin/usage-stats/summary` | GET | Usage stats summary |
 | `/admin/usage-stats/history` | GET | Usage time series |
+| `/admin/logs` | GET | Request log list |
+| `/admin/logs/state` | GET/POST | Log capture settings |
+| `/admin/update-status` | GET | Self-update status |
+| `/admin/check-update` | POST | Check for updates |
+| `/admin/apply-update` | POST | Apply self-update |
 | `/health` | GET | Health check |
 
 **Proxy Pool**
@@ -570,6 +691,11 @@ curl -X POST http://localhost:8080/auth/accounts/import \
 | `/api/proxies/:id/check` | POST | Health check single proxy |
 | `/api/proxies/check-all` | POST | Health check all proxies |
 | `/api/proxies/assign` | POST | Assign proxy to account |
+| `/api/proxies/assignments` | GET | View account proxy assignments |
+| `/api/proxies/assign-bulk` | POST | Bulk assign proxies |
+| `/api/proxies/assign-rule` | POST | Rule-based proxy assignment |
+| `/api/proxies/export` | GET | Export proxy pool YAML |
+| `/api/proxies/import` | POST | Import proxy pool YAML |
 
 </details>
 
@@ -606,6 +732,14 @@ curl -X POST http://localhost:8080/auth/accounts/import \
     </tr>
   </table>
 </div>
+
+## 🙏 Acknowledgements
+
+Codex Proxy is primarily maintained by one person, but it has been improved by a lot of community help. Special thanks to these contributors who submitted code, documentation, fixes, or PRs:
+
+[@SsuJojo](https://github.com/SsuJojo) · [@TutuchanXD](https://github.com/TutuchanXD) · [@kanweiwei](https://github.com/kanweiwei) · [@et2010](https://github.com/et2010) · [@d-demand-priv](https://github.com/d-demand-priv) · [@hangox](https://github.com/hangox) · [@jarvisluk](https://github.com/jarvisluk) · [@jeasonstudio](https://github.com/jeasonstudio) · [@JPClaw12](https://github.com/JPClaw12) · [@lezi-fun](https://github.com/lezi-fun) · [@lookvincent](https://github.com/lookvincent) · [@pocper1](https://github.com/pocper1) · [@woai66](https://github.com/woai66) · [@xsShuang](https://github.com/xsShuang) · [@yuwei5380](https://github.com/yuwei5380)
+
+Thanks as well to everyone who opened [Issues](https://github.com/icebear0828/codex-proxy/issues) with bug reproductions, logs, compatibility reports, and feature suggestions. Those reports directly shaped account rotation, proxy compatibility, the Dashboard, Ollama Bridge, model compatibility, and error observability.
 
 ## 📄 License
 

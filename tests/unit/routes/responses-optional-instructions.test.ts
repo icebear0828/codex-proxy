@@ -5,6 +5,7 @@
 
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { Hono } from "hono";
+import type { HandleProxyRequestOptions } from "@src/routes/shared/proxy-handler-types.js";
 
 // ── Mocks (before imports) ──────────────────────────────────────────
 
@@ -78,9 +79,9 @@ vi.mock("@src/utils/retry.js", () => ({
 let capturedCodexRequest: unknown = null;
 
 vi.mock("@src/routes/shared/proxy-handler.js", () => ({
-  handleProxyRequest: vi.fn(async (c, _pool, _jar, proxyReq) => {
-    capturedCodexRequest = proxyReq.codexRequest;
-    return c.json({ ok: true });
+  handleProxyRequest: vi.fn(async (options: HandleProxyRequestOptions) => {
+    capturedCodexRequest = options.req.codexRequest;
+    return options.c.json({ ok: true });
   }),
 }));
 
@@ -170,6 +171,101 @@ describe("/v1/responses — optional instructions", () => {
     expect(capturedCodexRequest).toBeDefined();
     const req = capturedCodexRequest as Record<string, unknown>;
     expect(req.instructions).toBe("You are a helpful assistant.");
+  });
+
+  it("marks review quota from x-openai-subagent header", async () => {
+    await app.request("/v1/responses", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-openai-subagent": "review",
+      },
+      body: JSON.stringify({
+        model: "codex",
+        input: [{ role: "user", content: "Review this diff" }],
+        stream: true,
+      }),
+    });
+
+    const req = capturedCodexRequest as Record<string, unknown>;
+    expect(req.client_metadata).toMatchObject({
+      "x-openai-subagent": "review",
+    });
+  });
+
+  it("marks review quota from client_metadata", async () => {
+    await app.request("/v1/responses", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        model: "codex",
+        input: [{ role: "user", content: "Review this diff" }],
+        client_metadata: {
+          "x-openai-subagent": "review",
+          "x-custom": "kept",
+          "x-number": 1,
+        },
+        stream: true,
+      }),
+    });
+
+    const req = capturedCodexRequest as Record<string, unknown>;
+    expect(req.client_metadata).toEqual({
+      "x-openai-subagent": "review",
+      "x-custom": "kept",
+    });
+  });
+
+  it("provides a dedicated /v1/responses/review endpoint", async () => {
+    await app.request("/v1/responses/review", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        model: "codex",
+        input: [{ role: "user", content: "Review this diff" }],
+        stream: true,
+      }),
+    });
+
+    const req = capturedCodexRequest as Record<string, unknown>;
+    expect(req.client_metadata).toMatchObject({
+      "x-openai-subagent": "review",
+    });
+  });
+
+  it("passes through Codex app request fields used by review subagents", async () => {
+    await app.request("/v1/responses", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-codex-turn-state": "turn-state-1",
+        "x-codex-turn-metadata": "{\"session_id\":\"thread-1\",\"thread_source\":\"subagent\"}",
+        "x-codex-beta-features": "feature-a",
+        "x-responsesapi-include-timing-metrics": "true",
+        "x-codex-window-id": "thread-1:0",
+        "x-codex-parent-thread-id": "parent-1",
+        "Version": "26.318.11754",
+      },
+      body: JSON.stringify({
+        model: "codex",
+        input: [{ role: "user", content: "Hello" }],
+        prompt_cache_key: "thread-1",
+        include: ["reasoning.encrypted_content"],
+        parallel_tool_calls: false,
+      }),
+    });
+
+    const req = capturedCodexRequest as Record<string, unknown>;
+    expect(req.prompt_cache_key).toBe("thread-1");
+    expect(req.include).toEqual(["reasoning.encrypted_content"]);
+    expect(req.parallel_tool_calls).toBe(false);
+    expect(req.turnState).toBe("turn-state-1");
+    expect(req.turnMetadata).toBe("{\"session_id\":\"thread-1\",\"thread_source\":\"subagent\"}");
+    expect(req.betaFeatures).toBe("feature-a");
+    expect(req.includeTimingMetrics).toBe("true");
+    expect(req.codexWindowId).toBe("thread-1:0");
+    expect(req.parentThreadId).toBe("parent-1");
+    expect(req.version).toBe("26.318.11754");
   });
 
   it("still rejects non-object body", async () => {

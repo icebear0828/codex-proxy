@@ -5,9 +5,9 @@
 
 import { useMemo } from "preact/hooks";
 import type { UsageDataPoint } from "../../../shared/hooks/use-usage-stats";
-import { formatHitRate, formatUsageNumber, sumWindow } from "../../../shared/utils/usage-stats";
+import { formatHitRate, formatUsageNumber, sumUsageWindow, sumWindow } from "../../../shared/utils/usage-stats";
 
-export { formatHitRate, sumWindow };
+export { formatHitRate, sumUsageWindow, sumWindow };
 export const formatNumber = formatUsageNumber;
 
 interface UsageChartProps {

@@ -3,9 +3,11 @@ import { CodexApiError } from "@src/proxy/codex-types.js";
 import {
   extractRetryAfterSec,
   isBanError,
+  isCfPathBlockError,
   isQuotaExhaustedError,
   isTokenInvalidError,
   isModelNotSupportedError,
+  isUnansweredFunctionCallError,
 } from "@src/proxy/error-classification.js";
 
 describe("extractRetryAfterSec", () => {
@@ -127,5 +129,57 @@ describe("isModelNotSupportedError", () => {
   it("returns false when message lacks 'model'", () => {
     const err = new CodexApiError(400, '{"detail": "Feature not supported"}');
     expect(isModelNotSupportedError(err)).toBe(false);
+  });
+});
+
+describe("isUnansweredFunctionCallError", () => {
+  it("detects 'No tool output found for function call'", () => {
+    const body = JSON.stringify({
+      error: {
+        message: "No tool output found for function call call_8vO7oqvintBWH5bAoAz3vPh5.",
+        type: "invalid_request_error",
+      },
+    });
+    expect(isUnansweredFunctionCallError(new CodexApiError(400, body))).toBe(true);
+  });
+
+  it("returns false for unrelated 400", () => {
+    const body = JSON.stringify({ error: { message: "Something else broke" } });
+    expect(isUnansweredFunctionCallError(new CodexApiError(400, body))).toBe(false);
+  });
+
+  it("returns false for non-400", () => {
+    const body = JSON.stringify({
+      error: { message: "No tool output found for function call call_x." },
+    });
+    expect(isUnansweredFunctionCallError(new CodexApiError(429, body))).toBe(false);
+  });
+
+  it("returns false for non-CodexApiError", () => {
+    expect(isUnansweredFunctionCallError(new Error("No tool output found"))).toBe(false);
+    expect(isUnansweredFunctionCallError(null)).toBe(false);
+  });
+});
+
+describe("isCfPathBlockError", () => {
+  it("matches empty-body 404 (Cloudflare stealth deny)", () => {
+    expect(isCfPathBlockError(new CodexApiError(404, ""))).toBe(true);
+    expect(isCfPathBlockError(new CodexApiError(404, "   "))).toBe(true);
+    expect(isCfPathBlockError(new CodexApiError(404, "\n"))).toBe(true);
+  });
+
+  it("does not match 404 with a real error body", () => {
+    const body = JSON.stringify({ error: { message: "Not found" } });
+    expect(isCfPathBlockError(new CodexApiError(404, body))).toBe(false);
+  });
+
+  it("does not match other empty-body statuses", () => {
+    expect(isCfPathBlockError(new CodexApiError(403, ""))).toBe(false);
+    expect(isCfPathBlockError(new CodexApiError(502, ""))).toBe(false);
+  });
+
+  it("returns false for non-CodexApiError", () => {
+    expect(isCfPathBlockError(new Error("404"))).toBe(false);
+    expect(isCfPathBlockError(null)).toBe(false);
   });
 });
