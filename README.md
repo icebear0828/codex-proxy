@@ -572,14 +572,16 @@ model:
 
 ### 局域网访问
 
-源码/容器默认配置监听 `::`（IPv6 unspecified，通常也覆盖本机访问）；Electron 启动时会传入 `127.0.0.1`，除非 `data/local.yaml` 显式覆盖。建议需要仅本机访问时写入：
+源码默认配置仅监听 `127.0.0.1`；Electron 也会传入 `127.0.0.1`，除非 `data/local.yaml` 显式覆盖。Docker 镜像会通过 `CODEX_PROXY_HOST=0.0.0.0` 在容器内监听所有接口，`docker-compose.yml` 默认仍只把宿主机端口绑定到 `127.0.0.1`。
+
+需要仅本机访问时写入：
 
 ```yaml
 server:
   host: "127.0.0.1"
 ```
 
-如需局域网内其他设备访问，在 `data/local.yaml` 中添加：
+如需局域网内其他设备访问，在 `data/local.yaml` 中添加，并把 `docker-compose.yml` 的端口映射从 `127.0.0.1:${PORT:-8080}:8080` 改成 `${PORT:-8080}:8080`：
 
 ```yaml
 server:
@@ -711,6 +713,7 @@ curl -N http://localhost:8080/official-agent/threads/{threadId}/turns \
 | 环境变量 | 覆盖配置 |
 |---------|---------|
 | `PORT` | `server.port` |
+| `CODEX_PROXY_HOST` | `server.host`（仅当 `data/local.yaml` 未显式设置 `server.host` 时生效） |
 | `CODEX_PLATFORM` | `client.platform` |
 | `CODEX_ARCH` | `client.arch` |
 | `HTTPS_PROXY` | `tls.proxy_url` |

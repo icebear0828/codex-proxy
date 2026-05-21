@@ -320,6 +320,7 @@ describe("applyEnvOverrides", () => {
     savedEnv.CODEX_JWT_TOKEN = process.env.CODEX_JWT_TOKEN;
     savedEnv.CODEX_PLATFORM = process.env.CODEX_PLATFORM;
     savedEnv.CODEX_ARCH = process.env.CODEX_ARCH;
+    savedEnv.CODEX_PROXY_HOST = process.env.CODEX_PROXY_HOST;
     savedEnv.PORT = process.env.PORT;
     savedEnv.HTTPS_PROXY = process.env.HTTPS_PROXY;
     savedEnv.https_proxy = process.env.https_proxy;
@@ -332,6 +333,7 @@ describe("applyEnvOverrides", () => {
     delete process.env.CODEX_JWT_TOKEN;
     delete process.env.CODEX_PLATFORM;
     delete process.env.CODEX_ARCH;
+    delete process.env.CODEX_PROXY_HOST;
     delete process.env.PORT;
     delete process.env.HTTPS_PROXY;
     delete process.env.https_proxy;
@@ -369,6 +371,20 @@ describe("applyEnvOverrides", () => {
     const raw = { server: { port: 8080 }, auth: {} } as Record<string, unknown>;
     applyEnvOverrides(raw, null);
     expect((raw.server as Record<string, unknown>).port).toBe(3000);
+  });
+
+  it("applies CODEX_PROXY_HOST when local.yaml has no server.host", () => {
+    process.env.CODEX_PROXY_HOST = "0.0.0.0";
+    const raw = { server: { host: "127.0.0.1" }, auth: {} } as Record<string, unknown>;
+    applyEnvOverrides(raw, null);
+    expect((raw.server as Record<string, unknown>).host).toBe("0.0.0.0");
+  });
+
+  it("does not override explicit local.yaml server.host with CODEX_PROXY_HOST", () => {
+    process.env.CODEX_PROXY_HOST = "0.0.0.0";
+    const raw = { server: { host: "127.0.0.1" }, auth: {} } as Record<string, unknown>;
+    applyEnvOverrides(raw, { server: { host: "127.0.0.1" } });
+    expect((raw.server as Record<string, unknown>).host).toBe("127.0.0.1");
   });
 
   it("ignores non-numeric PORT", () => {
