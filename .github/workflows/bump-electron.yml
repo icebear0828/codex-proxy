@@ -49,11 +49,25 @@ jobs:
             exit 0
           fi
 
-          # Count commits that affect runtime behavior (skip chore/docs/ci/test/refactor/style)
+          # Count commits that affect runtime behavior.
+          SKIP_RELEASE_PATTERN="^(chore|docs|ci|test|refactor|style)(\\(.*\\))?:|^fix: generate stable notes from dev promotion history"
           NEW_COMMITS=$(git log "${LAST_TAG}..HEAD" --no-merges \
-            --pretty=format:"%s" | grep -cvE "^(chore|docs|ci|test|refactor|style)" || true)
+            --pretty=format:"%s" | grep -cvE "$SKIP_RELEASE_PATTERN" || true)
           if [ "$NEW_COMMITS" -eq 0 ]; then
             echo "No meaningful commits since $LAST_TAG, skipping"
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          RUNTIME_CHANGED_FILES=$(git diff --name-only "${LAST_TAG}..HEAD" -- . \
+            ':(exclude).github/**' \
+            ':(exclude)tests/**' \
+            ':(exclude)README.md' \
+            ':(exclude)README_EN.md' \
+            ':(exclude)CHANGELOG.md' \
+            ':(exclude)DESIGN.md')
+          if [ -z "$RUNTIME_CHANGED_FILES" ]; then
+            echo "No runtime files changed since $LAST_TAG, skipping"
             echo "skip=true" >> "$GITHUB_OUTPUT"
             exit 0
           fi

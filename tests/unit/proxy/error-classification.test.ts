@@ -3,6 +3,7 @@ import { CodexApiError } from "@src/proxy/codex-types.js";
 import {
   extractRetryAfterSec,
   isBanError,
+  isCfPathBlockError,
   isQuotaExhaustedError,
   isTokenInvalidError,
   isModelNotSupportedError,
@@ -157,5 +158,28 @@ describe("isUnansweredFunctionCallError", () => {
   it("returns false for non-CodexApiError", () => {
     expect(isUnansweredFunctionCallError(new Error("No tool output found"))).toBe(false);
     expect(isUnansweredFunctionCallError(null)).toBe(false);
+  });
+});
+
+describe("isCfPathBlockError", () => {
+  it("matches empty-body 404 (Cloudflare stealth deny)", () => {
+    expect(isCfPathBlockError(new CodexApiError(404, ""))).toBe(true);
+    expect(isCfPathBlockError(new CodexApiError(404, "   "))).toBe(true);
+    expect(isCfPathBlockError(new CodexApiError(404, "\n"))).toBe(true);
+  });
+
+  it("does not match 404 with a real error body", () => {
+    const body = JSON.stringify({ error: { message: "Not found" } });
+    expect(isCfPathBlockError(new CodexApiError(404, body))).toBe(false);
+  });
+
+  it("does not match other empty-body statuses", () => {
+    expect(isCfPathBlockError(new CodexApiError(403, ""))).toBe(false);
+    expect(isCfPathBlockError(new CodexApiError(502, ""))).toBe(false);
+  });
+
+  it("returns false for non-CodexApiError", () => {
+    expect(isCfPathBlockError(new Error("404"))).toBe(false);
+    expect(isCfPathBlockError(null)).toBe(false);
   });
 });

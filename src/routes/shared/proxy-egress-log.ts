@@ -27,6 +27,12 @@ export function recordProxyEgressLog(options: RecordProxyEgressLogOptions): void
       model: options.request.codexRequest.model,
       stream: options.request.codexRequest.stream,
       useWebSocket: options.request.codexRequest.useWebSocket,
+      ...(options.request.codexRequest.reasoning
+        ? { reasoning: options.request.codexRequest.reasoning }
+        : {}),
+      ...(options.request.codexRequest.service_tier !== undefined && options.request.codexRequest.service_tier !== null
+        ? { service_tier: options.request.codexRequest.service_tier }
+        : {}),
     },
   });
 }

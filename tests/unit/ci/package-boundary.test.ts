@@ -136,6 +136,33 @@ describe("root package boundary", () => {
     expect(workflow).toContain("git add package.json packages/electron/package.json package-lock.json");
   });
 
+  it("keeps release-note workflow fixes from triggering app releases", () => {
+    const stableWorkflow = readFileSync(resolve(ROOT, ".github/workflows/bump-electron.yml"), "utf-8");
+    const betaWorkflow = readFileSync(resolve(ROOT, ".github/workflows/bump-electron-beta.yml"), "utf-8");
+
+    expect(stableWorkflow).toContain("SKIP_RELEASE_PATTERN=");
+    expect(stableWorkflow).toContain("fix: generate stable notes from dev promotion history");
+    expect(stableWorkflow).toContain("grep -cvE \"$SKIP_RELEASE_PATTERN\"");
+
+    expect(betaWorkflow).toContain("SKIP_RELEASE_PATTERN=");
+    expect(betaWorkflow).toContain("fix: generate stable notes from dev promotion history");
+    expect(betaWorkflow).toContain("grep -cvE \"$SKIP_RELEASE_PATTERN\"");
+  });
+
+  it("requires runtime file changes before bumping release channels", () => {
+    const stableWorkflow = readFileSync(resolve(ROOT, ".github/workflows/bump-electron.yml"), "utf-8");
+    const betaWorkflow = readFileSync(resolve(ROOT, ".github/workflows/bump-electron-beta.yml"), "utf-8");
+
+    for (const workflow of [stableWorkflow, betaWorkflow]) {
+      expect(workflow).toContain("RUNTIME_CHANGED_FILES=");
+      expect(workflow).toContain("git diff --name-only");
+      expect(workflow).toContain(":(exclude).github/**");
+      expect(workflow).toContain(":(exclude)tests/**");
+      expect(workflow).toContain(":(exclude)README.md");
+      expect(workflow).toContain("No runtime files changed");
+    }
+  });
+
   it("enforces package/update boundary guards in GitHub Actions", () => {
     const workflowPath = resolve(ROOT, ".github/workflows/ci-quality.yml");
     expect(existsSync(workflowPath)).toBe(true);

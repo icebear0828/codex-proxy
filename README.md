@@ -153,7 +153,7 @@ curl http://localhost:8080/v1/chat/completions \
 - **多账号轮换** — `least_used`（最少使用优先）、`round_robin`（轮询）、`sticky`（粘性）三种策略
 - **Plan Routing** — 不同 plan（free/plus/team/business）的账号自动路由到各自支持的模型
 - **Token 自动续期** — JWT 到期前自动刷新，指数退避重试
-- **配额被动采集** — 从上游响应头和 WebSocket rate limit 事件更新账号额度；`quota.refresh_interval_minutes` 仅控制用量快照记录，`0` 表示关闭快照定时器。
+- **配额采集** — 默认从上游响应头和 WebSocket rate limit 事件被动更新账号额度；用户手动查询单账号额度时会调用 `/backend-api/wham/usage`，并把 `remaining_percent = 100 - used_percent` 写入缓存。
 - **封禁检测** — 上游 403 自动标记 banned；401 token 吊销自动过期并切换账号
 - **API Key Provider 池** — 支持通过 Dashboard 管理第三方 API Key、模型列表、导入导出和启停状态。
 - **Web 控制面板** — 账号管理、用量统计、批量操作，中英双语；远程访问需 Dashboard 登录门
@@ -745,10 +745,10 @@ curl -N http://localhost:8080/official-agent/threads/{threadId}/turns \
 | 端点 | 方法 | 说明 |
 |------|------|------|
 | `/auth/login` | GET | OAuth 登录入口 |
-| `/auth/accounts` | GET | 账号列表（`?quota=true` / `?quota=fresh`） |
+| `/auth/accounts` | GET | 账号列表（含缓存额度） |
 | `/auth/accounts` | POST | 添加单个账号（token 或 refreshToken） |
-| `/auth/accounts/import` | POST | 批量导入账号 |
-| `/auth/accounts/export` | GET | 导出账号（`?format=minimal` 精简格式） |
+| `/auth/accounts/import` | POST | 批量导入账号（JSON / `text/plain` token 行） |
+| `/auth/accounts/export` | GET | 导出账号（`?format=full|minimal|cockpit_tools|sub2api|cpa`） |
 | `/auth/accounts/batch-delete` | POST | 批量删除账号 |
 | `/auth/accounts/batch-status` | POST | 批量修改账号状态 |
 | `/auth/accounts/health-check` | POST | 批量检测账号可用性 |
@@ -782,6 +782,10 @@ curl -s http://localhost:8080/auth/accounts/export \
 curl -s "http://localhost:8080/auth/accounts/export?format=minimal" \
   -H "Authorization: Bearer your-api-key" > backup-minimal.json
 
+# 导出第三方兼容格式
+curl -s "http://localhost:8080/auth/accounts/export?format=sub2api" \
+  -H "Authorization: Bearer your-api-key" > sub2api-accounts.json
+
 # 批量导入（支持 token、refreshToken，或两者同时传）
 curl -X POST http://localhost:8080/auth/accounts/import \
   -H "Content-Type: application/json" \
@@ -794,6 +798,12 @@ curl -X POST http://localhost:8080/auth/accounts/import \
     ]
   }'
 # 返回: { "added": 2, "updated": 1, "failed": 0, "errors": [] }
+
+# text/plain token 行导入（每行 access token 或 refresh token）
+curl -X POST http://localhost:8080/auth/accounts/import \
+  -H "Content-Type: text/plain" \
+  -H "Authorization: Bearer your-api-key" \
+  --data-binary $'eyJhbGciOi...\noaistb_rt_...\n'
 
 # 备份恢复一键操作（导出后直接导入到另一个实例）
 curl -X POST http://localhost:8080/auth/accounts/import \
@@ -858,11 +868,12 @@ curl -X POST http://localhost:8080/auth/accounts/import \
 ### [Unreleased]
 
 **Added**
+- 支持 Dashboard 配置模型映射与本地自定义模型目录：`data/local.yaml` 可把客户端模型名映射到 Codex 模型、带 provider 前缀的第三方模型或已有 `model_routing` 目标；Dashboard → Settings → 模型映射可直接增删 alias 并热加载后端；`model.custom_models` 可把自定义 Codex-compatible ID 加入 `/v1/models/catalog` 并支持 `-fast` / `-high` 等后缀。ModelStore 会用本地 alias 覆盖静态 `config/models.yaml` alias，UpstreamRouter 会在内置 Claude/Gemini 自动路由前解析 alias，并在直连 provider 请求中把 outgoing `model` 改写为映射目标。新增 schema / model-store / upstream-router / route direct guard / Dashboard 组件测试覆盖配置默认值、静态 alias 覆盖、custom catalog、provider target 路由、四类直连接口（Chat / Messages / Responses / Gemini）的目标模型透传和 UI 持久化（`src/config-schema.ts`、`src/models/model-store.ts`、`src/proxy/upstream-router.ts`、`src/routes/admin/settings.ts`、`src/routes/chat.ts`、`src/routes/messages.ts`、`src/routes/responses.ts`、`src/routes/gemini.ts`、`web/src/components/ModelAliasSettings.tsx`、`tests/unit/config-schema.test.ts`、`tests/unit/models/model-store.test.ts`、`tests/unit/proxy/upstream-router.test.ts`、`tests/unit/routes/general-settings.test.ts`、`tests/unit/routes/upstream-auth-bypass.test.ts`、`web/src/components/ModelAliasSettings.test.tsx`）
 - Stream-close 事件结构化落盘到 Errors tab + 审计 log：`premature stream close` / `stream-client-abort` / `stream-client-disconnect` / `stream-error` 此前只走 `console.warn` 进 `dev-YYYY-MM-DD.log`，需要 grep 才能定位，且生产模式没有 tee；新增 `src/logs/stream-close-event.ts` 把这些事件同时写到 `data/error-log.jsonl`（Errors tab 按签名分组 + 角标计数）和 `logStore`（`/admin/logs` 审计流）。覆盖 7 个调用点：`proxy-handler.ts` 两处 client abort + 一处 `UpstreamPrematureCloseError`（带 eventCount / hadReasoning / responseId / variantHash）、`response-processor.ts` 两处（`client-write-failed` 带 writtenChunks/Bytes/lastSentEvent；`upstream-error` 带 upstreamStatus）、`responses.ts` 两处 `streamPassthrough` 内部 EOF（rid / accountEntryId / variantHash 通过 `FormatAdapter.streamTranslator` 的 `streamContext` option 由 `response-processor` 透传，其它 adapter 兼容性接收并忽略）。顺手修 `error-log.ts:readAppVersion` 在 config 未加载时崩溃（unit-test 路径会撞到），改为 try/catch 兜底回退 "unknown"。新增 `tests/unit/logs/stream-close-event.test.ts` 6 个单测覆盖 4 种 kind + 缺失 rid 兜底 + numeric upstreamStatus → audit status 透传 + direct upstream provider/path；Errors tab 展开分组时会显示 sample context。下次复现 premature close 直接看 Errors tab 按 `StreamUpstreamPrematureClose` 分组拉 rid + account + closeCode，不用再 grep dev 日志（`src/logs/stream-close-event.ts`、`src/logs/error-log.ts`、`src/routes/shared/proxy-handler.ts`、`src/routes/shared/response-processor.ts`、`src/routes/responses.ts`、`tests/unit/logs/stream-close-event.test.ts`）
 - Opt-in 上游请求/响应 dumper：新增 `src/utils/debug-dump.ts`，环境变量 `CODEX_PROXY_DEBUG_DUMP=1` 启用时把每次上游请求 + 流式 chunk + 终止状态 + 错误写入 `/tmp/codex-proxy-dump-<startupMs>.jsonl`（一行一事件）；未启用时所有 hook 是 `if (debugDumpEnabled())` 守护下的纯 boolean check，零开销。在 `src/routes/shared/proxy-handler.ts` 加 1 个 hook（`request`，含 rid/tag/entryId/conv/implicitResumeActive/resumeReason/payload），在 `src/routes/shared/response-processor.ts` 加 3 个 hook（`upstream-chunk` 截断到 16KB、`stream-finish` 含 chunks/bytes/sawTerminal、`stream-error` 含 status/msg/body 截断到 4KB）。**privacy 警告**：dump 文件包含完整 request payload（含用户 prompt）和上游响应，路径在启动时打印一次提示 sensitive 性质。日常排查"账号轮换重试风暴" / "premature stream close" 等偶发错误时 opt-in 启用，问题复现后再 opt-out
 - Pre-publish artifact smoke 拦在 stable 之前（#479）：`release.yml` 把 4 个平台（mac arm64 / mac x64 / win / linux）的 Pack step 从 `--publish always` 改成 `--publish never`，新增跨平台 smoke step 用 `.github/scripts/electron-smoke.sh` 启动打包好的 binary、tail 日志拿 `Server started on port N`、curl `/health`、清进程；smoke 失败直接阻塞 `gh release upload`，artifact 不会进 GitHub Release（坏的就不发）。Linux 装 `libfuse2 + xvfb` 起虚拟显示，Windows 用 `win-unpacked/*.exe` 跳过 NSIS 安装；smoke 失败时通过 `actions/upload-artifact@v4` 把日志保留 7 天给排查。新增 `tests/unit/ci/electron-smoke-script.test.ts` 6 个单测，覆盖脚本的 fail-loud 路径（缺 RUNNER_OS / RELEASE_DIR / AppImage / 不支持的 OS），保证脚本本身坏掉时不会沉默通过。CI 时间增量约 +5 分钟（Linux 最快，Windows 需研究 GHA windows-latest 的 GUI 启动行为，首次 PR 可能要回炉）（`.github/scripts/electron-smoke.sh`、`.github/workflows/release.yml`、`tests/unit/ci/electron-smoke-script.test.ts`）
 - Dashboard Errors tab + Header 浮起 badge + 渲染进程错误捕获（observability，#480 PR-2）：新增 `Errors` tab（按 `name + first stack frame` 聚合，按 last_seen 降序，可展开看 sample stack；折叠后只显示一行）；Header 右侧多一个红色 pulsing badge 显示未读错误数（>99 显示 `99+`），点击跳 `#/errors`；渲染进程注册 `window.addEventListener('error')` + `unhandledrejection` 在 `main.tsx` `render()` 之前，每条事件 fetch POST `/admin/error-logs/report`（不走 IPC，复用同源 dashboardAuth）；`useErrorLogs` / `useErrorLogsCount` hook 30s 轮询；i18n 中英双语；`mark all read` 按钮调 `/admin/error-logs/seen` 推进 cursor；新增前端 web bundle +8KB gzipped（`web/src/error-capture.ts`、`web/src/pages/ErrorsPage.tsx`、`shared/hooks/use-error-logs.ts`、`web/src/App.tsx`、`web/src/components/Header.tsx`、`web/src/main.tsx`、`shared/i18n/translations.ts`、`tests/unit/web/error-capture.test.ts`、`shared/hooks/use-error-logs.test.ts`）
-- 本地 uncaught error log（observability foundation，#480 PR-1）：进程级 `uncaughtException` / `unhandledRejection` 自动落盘到 `data/error-log.jsonl`，单 backup 滚动（默认 10MB → `error-log.1.jsonl`），`context` 经 `redactJson` 脱敏 token / cookie / api_key / oauth；新增 4 个 admin 端点 `/admin/error-logs`（按 `name + first stack frame` 聚合）/ `/admin/error-logs/raw`（裸 JSONL tail）/ `/admin/error-logs/count`（含 unread）/ `/admin/error-logs/seen`（推进读游标）/ `/admin/error-logs/report`（renderer / 外部 POST 上报）；`uncaughtException` 走 `setImmediate(throw)` 保留 Node 默认崩溃语义，不会静默吞掉 fatal；新增 schema 节 `observability: { local_error_log: bool=true, max_log_bytes: int=10485760 }`；前端 Errors tab + 浮起 badge 由 PR-2 跟进（`src/logs/error-log.ts`、`src/routes/admin/error-logs.ts`、`src/config-schema.ts`、`src/index.ts`、`tests/unit/logs/error-log.test.ts`、`tests/unit/routes/admin/error-logs.test.ts`）
+- ...（[查看全部](./CHANGELOG.md)）
 **Changed**
 - `handleProxyRequest` / `handleDirectRequest` 改为 named options object 调用契约，顺带把 private `handleNonStreaming` 的 20 个位置参数收敛成内部 options object，避免后续新增可选上下文时错位；所有 route 调用与直接 handler 测试同步迁移，并补 direct upstream route guard 锁住 adapter/raw model/format tag 传递（`src/routes/shared/proxy-handler.ts`、`src/routes/chat.ts`、`src/routes/messages.ts`、`src/routes/gemini.ts`、`src/routes/responses.ts`、`tests/unit/routes/upstream-auth-bypass.test.ts`）
 - `FormatAdapter.streamTranslator` / `collectTranslator` 改为 single options object 契约，替换原先 9 个 / 6 个位置参数，避免 `tupleSchema` / `usageHint` / `onResponseMetadata` / `streamContext` 后续扩展时错位；Chat / Messages / Gemini / Responses adapter wrapper 保持下游 translator 行为不变，并补 streaming、Codex collect、direct collect 三条 guard 测试锁住 options object 传递（`src/routes/shared/proxy-handler.ts`、`src/routes/shared/response-processor.ts`、`src/routes/chat.ts`、`src/routes/messages.ts`、`src/routes/gemini.ts`、`src/routes/responses.ts`、`tests/unit/routes/shared/response-processor.test.ts`、`tests/integration/proxy-handler.test.ts`、`tests/unit/routes/shared/error-forwarding.test.ts`）
@@ -871,11 +882,11 @@ curl -X POST http://localhost:8080/auth/accounts/import \
 - 非流式 collect/retry 路径从 `proxy-handler.ts` 抽到独立 `non-streaming-handler.ts`，并把 `buildCodexApi`、image generation usage 标记、Codex error prefix 清理收敛到 `proxy-handler-utils.ts`，降低主 handler 对 empty-response retry / premature-close / affinity 逻辑的耦合；新增模块边界测试、collect 阶段 `previous_response_not_found` strip-retry guard、non-stream affinity metadata guard（`src/routes/shared/non-streaming-handler.ts`、`src/routes/shared/proxy-handler-utils.ts`、`src/routes/shared/proxy-handler.ts`、`tests/unit/routes/shared/non-streaming-handler-boundary.test.ts`、`tests/integration/proxy-handler.test.ts`）
 - ...（[查看全部](./CHANGELOG.md)）
 **Fixed**
+- Release bump workflows now require runtime file changes in addition to meaningful commit subjects before tagging a beta or stable build. This prevents squash-promotion history divergence from re-counting old dev commits, and prevents workflow/docs/test-only fixes from producing empty Electron releases (`.github/workflows/bump-electron.yml`, `.github/workflows/bump-electron-beta.yml`, `tests/unit/ci/package-boundary.test.ts`).
+- Release bump workflows now skip the release-notes workflow hotfix subject itself, so promoting the stable-notes CI fix to `master` does not create an empty desktop release on the next scheduled bump (`.github/workflows/bump-electron.yml`, `.github/workflows/bump-electron-beta.yml`, `tests/unit/ci/package-boundary.test.ts`).
+- 修复 stable release notes 在手动 squash promotion 后只写 `fix: promote dev release fixes to master`、漏掉 dev 原始 PR 的问题：`release.yml` 改为调用 `.github/scripts/generate-release-notes.sh`，stable tag 若只有 promotion 内容且运行时代码树与 `origin/dev` 一致（忽略 README/package 版本文件），会回退使用 dev history 生成说明；新增单测覆盖正常 stable tag 与 squash promotion 两条路径（`.github/workflows/release.yml`、`.github/scripts/generate-release-notes.sh`、`tests/unit/ci/release-notes-script.test.ts`）。
 - Lockfile tarball sources now point to the official npm registry instead of `registry.npmmirror.com`, and the CI package boundary guard fails if any root/web/native lockfile resolves npm packages from a non-`registry.npmjs.org` host. Root production dependency audit is also clean after non-breaking lockfile updates for `hono`, `@hono/node-server`, `undici`, `minimatch`, and `brace-expansion`; the remaining full-audit finding is the existing Electron major-version upgrade requirement (`package-lock.json`, `web/package-lock.json`, `tests/unit/ci/package-boundary.test.ts`).
 - Update checker now keeps `config/default.yaml` in sync when it auto-applies a Codex Desktop appcast version, while still writing `data/version-state.json` for cold-start runtime overrides. When a matching `data/extracted-fingerprint.json` is present, the checker also carries `chromium_version` through to version state, YAML, and in-memory config so User-Agent and `sec-ch-ua` fingerprint fields do not drift. The checked-in default fingerprint is updated to Codex Desktop `26.506.31421` / build `2620` / Chromium `146` (`src/update-checker.ts`, `config/default.yaml`, `tests/unit/update-checker.test.ts`).
-- Root package boundary now has a CI-enforced guard for proxy package metadata, root/workspace lockfile version sync, core npm entrypoints, local `tsx` script targets, and strict TypeScript coverage for public update scripts. This also restores the public update script entrypoints plus their extraction pattern config that `package.json` and `update-scripts-path.test.ts` already referenced, keeps them trackable by removing stale ignore rules, prevents `promote-dev-to-master` from treating missing checks as green, makes the runtime update checker fork `full-update` only when `CODEX_DESKTOP_PATH` / `CODEX_APP_PATH` points at a local Codex Desktop source, and broadens model extraction to current `gpt-*` IDs such as `gpt-5-codex` (`package-lock.json`, `.gitignore`, `.github/workflows/ci-quality.yml`, `.github/workflows/promote-dev-to-master.yml`, `.github/workflows/bump-electron.yml`, `tsconfig.scripts.json`, `config/extraction-patterns.yaml`, `src/update-checker.ts`, `scripts/build/check-update.ts`, `scripts/build/apply-update.ts`, `scripts/build/full-update.ts`, `scripts/build/types.ts`, `scripts/build/vendor-types.d.ts`, `tests/unit/ci/package-boundary.test.ts`, `tests/unit/update-checker.test.ts`, `tests/unit/update-scripts-path.test.ts`).
-- Codex Desktop 指纹冷启动不再漂移：`loadMergedConfig()` 会把 `data/version-state.json` 合并进 `client.app_version/build_number`，并在匹配同版本的 `data/extracted-fingerprint.json` 可用时同步 `chromium_version`；显式 `data/local.yaml` 版本覆盖优先。`extract-fingerprint.ts` 也会优先解析 `desktopOriginator` 绑定并跳过 bundled plugin 的 `.app` 名称，避免把 `Codex Computer Use.app` 误当成 API originator（`src/config-loader.ts`、`scripts/build/extract-fingerprint.ts`、`tests/unit/config-loader.test.ts`、`tests/unit/update-scripts-originator.test.ts`、`tests/unit/update-scripts-path.test.ts`）
-- 同账号 `previous_response_not_found` / `unanswered_function_call` 恢复逻辑从 `proxy-handler.ts` 拆到独立 `proxy-retry-recovery.ts`，集中处理错误分类、日志前缀、stale affinity 清理、implicit-resume restore、清 `previous_response_id` / `turnState`；主 handler 只保留 loop guard 与 continue 编排。新增 helper 行为测试和 AST/import 边界测试防止 recovery 细节回流到 orchestrator（`src/routes/shared/proxy-retry-recovery.ts`、`src/routes/shared/proxy-handler.ts`、`tests/unit/routes/shared/proxy-retry-recovery.test.ts`、`tests/unit/routes/shared/proxy-retry-recovery-boundary.test.ts`）
 - ...（[查看全部](./CHANGELOG.md)）
 
 ### [v0.8.0](https://github.com/icebear0828/codex-proxy/releases/tag/v0.8.0) - 2026-02-24

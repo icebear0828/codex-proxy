@@ -2,6 +2,7 @@ import { useState, useCallback, useEffect } from "preact/hooks";
 import { useI18n, useT } from "../../../shared/i18n/context";
 import { AccountCard } from "./AccountCard";
 import { AccountImportExport } from "./AccountImportExport";
+import type { AccountExportFormat } from "../../../shared/account-transfer-client";
 import type { Account, ProxyEntry, QuotaWarning } from "../../../shared/types";
 import { derivedStatus } from "../lib/accountStatus";
 
@@ -17,7 +18,7 @@ interface AccountListProps {
   lastUpdated: Date | null;
   proxies?: ProxyEntry[];
   onProxyChange?: (accountId: string, proxyId: string) => void;
-  onExport?: (selectedIds?: string[], format?: "full" | "minimal") => Promise<void>;
+  onExport?: (selectedIds?: string[], format?: AccountExportFormat) => Promise<void>;
   onImport?: (file: File) => Promise<{ success: boolean; added: number; updated: number; failed: number; errors: string[] }>;
   onToggleStatus?: (id: string, currentStatus: string) => Promise<string | null>;
   onUpdateLabel?: (id: string, label: string | null) => Promise<string | null>;
