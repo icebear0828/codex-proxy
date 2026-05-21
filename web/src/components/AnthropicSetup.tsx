@@ -9,9 +9,15 @@ interface AnthropicSetupProps {
   serviceTier: string | null;
 }
 
-const PRESETS: Array<{ label: string; value: string }> = [
-  { label: "gpt-5.4 (Opus)", value: "gpt-5.4" },
-  { label: "gpt-5.3-codex (Sonnet)", value: "gpt-5.3-codex" },
+export const DEFAULT_ANTHROPIC_MODELS = {
+  opus: "gpt-5.5",
+  sonnet: "gpt-5.4",
+  haiku: "gpt-5.4-mini",
+};
+
+export const ANTHROPIC_MODEL_PRESETS: Array<{ label: string; value: string }> = [
+  { label: "gpt-5.5 (Opus 4.7)", value: DEFAULT_ANTHROPIC_MODELS.opus },
+  { label: "gpt-5.4 (Sonnet 4.6)", value: DEFAULT_ANTHROPIC_MODELS.sonnet },
   { label: "gpt-5.4-mini (Haiku)", value: "gpt-5.4-mini" },
 ];
 
@@ -19,9 +25,9 @@ export function AnthropicSetup({ apiKey, selectedModel, reasoningEffort, service
   const t = useT();
   const origin = typeof window !== "undefined" ? window.location.origin : "http://localhost:8080";
 
-  const [opusModel, setOpusModel] = useState("gpt-5.4");
-  const [sonnetModel, setSonnetModel] = useState("gpt-5.3-codex");
-  const [haikuModel, setHaikuModel] = useState("gpt-5.4-mini");
+  const [opusModel, setOpusModel] = useState(DEFAULT_ANTHROPIC_MODELS.opus);
+  const [sonnetModel, setSonnetModel] = useState(DEFAULT_ANTHROPIC_MODELS.sonnet);
+  const [haikuModel, setHaikuModel] = useState(DEFAULT_ANTHROPIC_MODELS.haiku);
 
   // Custom model from ApiConfig
   const customModel = useMemo(() => {
@@ -40,7 +46,7 @@ export function AnthropicSetup({ apiKey, selectedModel, reasoningEffort, service
       .catch(() => {});
   }, []);
 
-  const presetValues = new Set(PRESETS.map((p) => p.value));
+  const presetValues = new Set(ANTHROPIC_MODEL_PRESETS.map((p) => p.value));
   const extraModels = allModels.filter((id) => !presetValues.has(id));
 
   const envText = useMemo(() => [
@@ -59,7 +65,7 @@ export function AnthropicSetup({ apiKey, selectedModel, reasoningEffort, service
 
   const modelDropdown = (value: string, onChange: (v: string) => void) => (
     <select class={selectCls} value={value} onChange={(e) => onChange((e.target as HTMLSelectElement).value)}>
-      {PRESETS.map((p) => <option key={p.value} value={p.value}>{p.label}</option>)}
+      {ANTHROPIC_MODEL_PRESETS.map((p) => <option key={p.value} value={p.value}>{p.label}</option>)}
       {extraModels.length > 0 && <option disabled>───</option>}
       {extraModels.map((id) => <option key={id} value={id}>{id}</option>)}
       {!presetValues.has(value) && !extraModels.includes(value) && <option value={value}>{value}</option>}

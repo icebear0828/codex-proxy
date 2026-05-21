@@ -27,6 +27,7 @@ import {
   readFileSync,
   renameSync,
   statSync,
+  unlinkSync,
   writeFileSync,
 } from "fs";
 import { resolve } from "path";
@@ -212,6 +213,18 @@ export function readErrorLog(limit?: number): ErrorLogEntry[] {
   combined.reverse();
   if (limit !== undefined) return combined.slice(0, limit);
   return combined;
+}
+
+/** Remove all persisted error log entries and the read cursor. */
+export function clearErrorLog(): void {
+  for (const file of [LOG_FILE, BACKUP_FILE, CURSOR_FILE]) {
+    try {
+      const path = resolve(getDataDir(), file);
+      if (existsSync(path)) unlinkSync(path);
+    } catch {
+      // Clearing is best-effort; a failed delete must not break the admin UI.
+    }
+  }
 }
 
 function firstStackFrame(stack: string | undefined): string {

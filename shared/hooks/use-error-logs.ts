@@ -30,6 +30,15 @@ export interface ErrorLogCount {
 
 const POLL_MS = 30_000;
 
+type ErrorLogsFetch = (input: string, init: RequestInit) => Promise<Pick<Response, "ok">>;
+
+export async function clearErrorLogsRequest(
+  fetchImpl: ErrorLogsFetch = (input, init) => fetch(input, init),
+): Promise<boolean> {
+  const res = await fetchImpl("/admin/error-logs", { method: "DELETE" });
+  return res.ok;
+}
+
 export function useErrorLogs() {
   const [groups, setGroups] = useState<ErrorGroup[]>([]);
   const [count, setCount] = useState<ErrorLogCount>({ total: 0, unread: 0 });
@@ -68,6 +77,19 @@ export function useErrorLogs() {
     }
   }, [load]);
 
+  const clearAll = useCallback(async () => {
+    try {
+      const ok = await clearErrorLogsRequest();
+      if (!ok) {
+        setError("Failed to clear error logs");
+        return;
+      }
+      await load();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to clear error logs");
+    }
+  }, [load]);
+
   useEffect(() => {
     void load();
     timerRef.current = setInterval(() => void load(), POLL_MS);
@@ -76,7 +98,7 @@ export function useErrorLogs() {
     };
   }, [load]);
 
-  return { groups, count, loading, error, refresh: load, markAllSeen };
+  return { groups, count, loading, error, refresh: load, markAllSeen, clearAll };
 }
 
 /**

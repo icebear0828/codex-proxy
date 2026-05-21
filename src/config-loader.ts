@@ -193,6 +193,13 @@ export function applyEnvOverrides(
       (raw.server as Record<string, unknown>).port = parsed;
     }
   }
+  const serverHostEnv = process.env.CODEX_PROXY_HOST?.trim();
+  const localServer = localOverrides?.server as Record<string, unknown> | undefined;
+  const localHasServerHost = localServer !== undefined && "host" in localServer;
+  if (serverHostEnv && !localHasServerHost) {
+    if (!raw.server) raw.server = {};
+    (raw.server as Record<string, unknown>).host = serverHostEnv;
+  }
   const ollamaEnabledEnv = process.env.OLLAMA_BRIDGE_ENABLED?.trim().toLowerCase();
   const ollamaHostEnv = process.env.OLLAMA_BRIDGE_HOST?.trim();
   const ollamaPortEnv = process.env.OLLAMA_BRIDGE_PORT?.trim();
