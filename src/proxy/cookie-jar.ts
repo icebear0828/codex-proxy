@@ -36,8 +36,26 @@ interface CookieFileV2 {
   accounts: Record<string, Record<string, { value: string; expires: number | null }>>;
 }
 
+/**
+ * Cookies allowed to be auto-captured from Set-Cookie response headers.
+ *
+ * Why a whitelist: `__cf_bm` is Cloudflare's Bot Management *session* cookie
+ * (not a challenge-pass token). When captured and replayed on later requests
+ * it acts as a "trust this is the same client" tag bound to (IP + UA + TLS
+ * fingerprint + timing) at issue time. If any of those drift (proxy pool
+ * rotates egress IP, ~30 min lifetime expires) CF returns 404 — empty-body
+ * "path not found" — on heavily-guarded paths like /codex/responses, while
+ * /codex/usage stays reachable. The cookie makes the account *worse off*
+ * than sending no cookie. Only `cf_clearance` (positive challenge-pass) is
+ * useful to replay.
+ *
+ * Manual set() via the admin API is NOT subject to this whitelist —
+ * operators can still inject arbitrary cookies for debugging.
+ */
+const CAPTURABLE_COOKIE_NAMES = new Set(["cf_clearance"]);
+
 /** Critical cookie names that trigger immediate persistence on change */
-const CRITICAL_COOKIES = new Set(["cf_clearance", "__cf_bm"]);
+const CRITICAL_COOKIES = new Set(["cf_clearance"]);
 
 export class CookieJar {
   private cookies: Map<string, Record<string, StoredCookie>> = new Map();
@@ -125,6 +143,7 @@ export class CookieJar {
       const name = pair.slice(0, eq).trim();
       const value = pair.slice(eq + 1).trim();
       if (!name) continue;
+      if (!CAPTURABLE_COOKIE_NAMES.has(name)) continue;
 
       // Parse expiry from attributes
       let expires: number | null = null;
