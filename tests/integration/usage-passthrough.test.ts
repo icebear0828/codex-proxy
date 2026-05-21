@@ -106,15 +106,18 @@ describe("usage passthrough", () => {
   });
 
   describe("Anthropic format", () => {
-    it("cache_read_input_tokens from cached_tokens", async () => {
+    it("maps cached_tokens without double-counting Anthropic input_tokens", async () => {
       mockEvents = createUsageEvents({ cached_tokens: 30 });
       const { response } = await collectCodexToAnthropicResponse(
         fakeCodexApi, fakeResponse, "gpt-5.3-codex",
       );
 
-      expect(response.usage.input_tokens).toBe(100);
+      // Codex reports input_tokens as total prompt tokens and cached_tokens as
+      // a subset. Anthropic reports uncached input_tokens plus cache_read.
+      expect(response.usage.input_tokens).toBe(70);
       expect(response.usage.output_tokens).toBe(50);
       expect(response.usage.cache_read_input_tokens).toBe(30);
+      expect(response.usage.input_tokens + response.usage.cache_read_input_tokens!).toBe(100);
     });
   });
 

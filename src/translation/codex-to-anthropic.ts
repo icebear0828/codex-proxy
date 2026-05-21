@@ -28,6 +28,31 @@ interface ResponseMetadata {
   functionCallIds?: string[];
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function sanitizeToolInput(toolName: string, input: Record<string, unknown>): Record<string, unknown> {
+  if (toolName !== "Read") return input;
+  if (typeof input.pages !== "string" || input.pages.trim() !== "") return input;
+
+  const sanitized: Record<string, unknown> = { ...input };
+  delete sanitized.pages;
+  return sanitized;
+}
+
+function sanitizeFunctionCallArguments(toolName: string, argumentsJson: string): string {
+  try {
+    const parsed: unknown = JSON.parse(argumentsJson);
+    if (!isRecord(parsed)) return argumentsJson;
+
+    const sanitized = sanitizeToolInput(toolName, parsed);
+    return sanitized === parsed ? argumentsJson : JSON.stringify(sanitized);
+  } catch {
+    return argumentsJson;
+  }
+}
+
 function resolveCacheUsage(
   inputTokens: number,
   cachedTokens: number | undefined,
@@ -79,7 +104,8 @@ export async function* streamCodexToAnthropic(
   let textBlockStarted = false;
   let thinkingBlockStarted = false;
   const functionCallIds = new Set<string>();
-  const callIdsWithDeltas = new Set<string>();
+  const callIdsWithForwardedDeltas = new Set<string>();
+  const functionCallNames = new Map<string, string>();
 
   const publishFunctionCallId = (callId: string): void => {
     if (functionCallIds.has(callId)) return;
@@ -172,6 +198,7 @@ export async function* streamCodexToAnthropic(
       hasToolCalls = true;
       hasContent = true;
       publishFunctionCallId(evt.functionCallStart.callId);
+      functionCallNames.set(evt.functionCallStart.callId, evt.functionCallStart.name);
 
       yield* closeThinkingIfOpen();
       yield* closeTextIfOpen();
@@ -191,7 +218,14 @@ export async function* streamCodexToAnthropic(
     }
 
     if (evt.functionCallDelta) {
-      callIdsWithDeltas.add(evt.functionCallDelta.callId);
+      // Drop Read deltas and buffer until functionCallDone, where the full
+      // arguments can be sanitized atomically (e.g. stripping empty `pages`).
+      // Partial JSON cannot be safely rewritten mid-stream.
+      if (functionCallNames.get(evt.functionCallDelta.callId) === "Read") {
+        continue;
+      }
+
+      callIdsWithForwardedDeltas.add(evt.functionCallDelta.callId);
       yield formatSSE("content_block_delta", {
         type: "content_block_delta",
         index: contentIndex,
@@ -203,11 +237,17 @@ export async function* streamCodexToAnthropic(
     if (evt.functionCallDone) {
       publishFunctionCallId(evt.functionCallDone.callId);
       // Emit full arguments if no deltas were streamed
-      if (!callIdsWithDeltas.has(evt.functionCallDone.callId)) {
+      if (!callIdsWithForwardedDeltas.has(evt.functionCallDone.callId)) {
         yield formatSSE("content_block_delta", {
           type: "content_block_delta",
           index: contentIndex,
-          delta: { type: "input_json_delta", partial_json: evt.functionCallDone.arguments },
+          delta: {
+            type: "input_json_delta",
+            partial_json: sanitizeFunctionCallArguments(
+              evt.functionCallDone.name,
+              evt.functionCallDone.arguments,
+            ),
+          },
         });
       }
       // Close this tool_use block
@@ -268,17 +308,16 @@ export async function* streamCodexToAnthropic(
   yield* closeThinkingIfOpen();
   yield* closeTextIfOpen();
 
-  // 4. message_delta with stop_reason and usage
-  // cache_creation_input_tokens: tokens not served from cache (will be cached for next turn)
-  // cache_read_input_tokens: tokens served from cache (Codex cached_tokens)
+  // Codex API: input_tokens = total (cached + uncached), cached_tokens = cached subset
+  // Anthropic API: input_tokens = uncached only, cache_read_input_tokens = cached
+  // cacheCreationTokens here = inputTokens - cacheReadTokens = uncached portion
   const { cacheReadTokens, cacheCreationTokens } = resolveCacheUsage(inputTokens, cachedTokens, usageHint);
   yield formatSSE("message_delta", {
     type: "message_delta",
     delta: { stop_reason: hasToolCalls ? "tool_use" : "end_turn" },
     usage: {
-      input_tokens: inputTokens,
+      input_tokens: cacheCreationTokens,
       output_tokens: outputTokens,
-      ...(cacheCreationTokens > 0 ? { cache_creation_input_tokens: cacheCreationTokens } : {}),
       ...(cacheReadTokens > 0 ? { cache_read_input_tokens: cacheReadTokens } : {}),
     },
   });
@@ -333,7 +372,8 @@ export async function collectCodexToAnthropicResponse(
       functionCallIds.add(evt.functionCallDone.callId);
       let parsedInput: Record<string, unknown> = {};
       try {
-        parsedInput = JSON.parse(evt.functionCallDone.arguments) as Record<string, unknown>;
+        const parsed: unknown = JSON.parse(evt.functionCallDone.arguments);
+        parsedInput = isRecord(parsed) ? sanitizeToolInput(evt.functionCallDone.name, parsed) : {};
       } catch { /* use empty object */ }
       toolUseBlocks.push({
         type: "tool_use",
@@ -370,9 +410,8 @@ export async function collectCodexToAnthropicResponse(
   const { cacheReadTokens: cacheRead, cacheCreationTokens: cacheCreation } =
     resolveCacheUsage(inputTokens, cachedTokens, usageHint);
   const usage: AnthropicUsage = {
-    input_tokens: inputTokens,
+    input_tokens: cacheCreation,
     output_tokens: outputTokens,
-    ...(cacheCreation > 0 ? { cache_creation_input_tokens: cacheCreation } : {}),
     ...(cacheRead > 0 ? { cache_read_input_tokens: cacheRead } : {}),
   };
 

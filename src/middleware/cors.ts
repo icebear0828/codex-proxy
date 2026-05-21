@@ -21,7 +21,7 @@ export const cors: MiddlewareHandler = async (c, next) => {
         "Access-Control-Allow-Methods": "GET,POST,PUT,PATCH,DELETE,OPTIONS",
         "Access-Control-Allow-Headers": "*",
         "Access-Control-Max-Age": "86400",
-        Vary: "Origin",
+        Vary: "Origin, Access-Control-Request-Method, Access-Control-Request-Headers",
       },
     });
   }

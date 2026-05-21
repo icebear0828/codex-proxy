@@ -163,7 +163,7 @@ export function createAccountRoutes(pool: AccountPool, scheduler: RefreshSchedul
     return c.json({ success: true });
   });
 
-  app.get("/auth/accounts", async (c) => {
+  app.get("/auth/accounts", (c) => {
     const accounts = querySvc.listFresh();
     return c.json({
       accounts,
