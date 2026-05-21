@@ -26,6 +26,23 @@ describe("api key routes", () => {
     app = createApiKeyRoutes(pool);
   });
 
+  it("returns current built-in Anthropic catalog defaults", async () => {
+    const res = await app.request("/auth/api-keys/catalog");
+    expect(res.status).toBe(200);
+
+    const body = await res.json() as {
+      catalog: {
+        anthropic: {
+          models: Array<{ id: string; displayName: string }>;
+        };
+      };
+    };
+    expect(body.catalog.anthropic.models.slice(0, 2)).toEqual([
+      { id: "claude-opus-4-7", displayName: "Claude Opus 4.7" },
+      { id: "claude-sonnet-4-6", displayName: "Claude Sonnet 4.6" },
+    ]);
+  });
+
   it("adds one stored entry per selected model and masks returned keys", async () => {
     const res = await app.request("/auth/api-keys", {
       method: "POST",

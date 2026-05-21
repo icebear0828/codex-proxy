@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { formatRelativeTime } from "./use-error-logs.js";
+import { clearErrorLogsRequest, formatRelativeTime } from "./use-error-logs.js";
 
 describe("formatRelativeTime", () => {
   const now = new Date("2026-05-10T12:00:00Z").getTime();
@@ -26,5 +26,20 @@ describe("formatRelativeTime", () => {
 
   it("returns the raw timestamp string when input is not a valid date", () => {
     expect(formatRelativeTime("not-a-date", now)).toBe("not-a-date");
+  });
+});
+
+describe("clearErrorLogsRequest", () => {
+  it("sends a collection DELETE to the error log endpoint", async () => {
+    const fetchImpl = async (
+      input: string,
+      init: RequestInit,
+    ): Promise<Pick<Response, "ok">> => {
+      expect(input).toBe("/admin/error-logs");
+      expect(init).toEqual({ method: "DELETE" });
+      return { ok: true };
+    };
+
+    await expect(clearErrorLogsRequest(fetchImpl)).resolves.toBe(true);
   });
 });
