@@ -94,11 +94,12 @@ export interface AccountInfo {
 /** A single rate limit window (primary or secondary). */
 export interface CodexQuotaWindow {
   used_percent: number | null;
+  remaining_percent?: number | null;
   reset_at: number | null;
   limit_window_seconds: number | null;
 }
 
-/** Official Codex quota from /backend-api/codex/usage */
+/** Official Codex quota from /backend-api/wham/usage or /backend-api/codex/usage. */
 export interface CodexQuota {
   plan_type: string;
   rate_limit: CodexQuotaWindow & {
@@ -113,6 +114,7 @@ export interface CodexQuota {
     allowed: boolean;
     limit_reached: boolean;
     used_percent: number | null;
+    remaining_percent?: number | null;
     reset_at: number | null;
     limit_window_seconds: number | null;
   } | null;
@@ -123,6 +125,7 @@ export interface CodexQuota {
     allowed: boolean;
     limit_reached: boolean;
     used_percent: number | null;
+    remaining_percent?: number | null;
     reset_at: number | null;
     limit_window_seconds: number | null;
     secondary_rate_limit?: CodexQuotaWindow & {

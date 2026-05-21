@@ -1,4 +1,5 @@
 import { Hono } from "hono";
+import type { Context } from "hono";
 import { ChatCompletionRequestSchema } from "../types/openai.js";
 import type { AccountPool } from "../auth/account-pool.js";
 import type { CookieJar } from "../proxy/cookie-jar.js";
@@ -70,6 +71,27 @@ function formatModelNotFound(model: string) {
       code: "model_not_found",
     },
   };
+}
+
+function checkProxyApiKey(c: Context, accountPool: AccountPool) {
+  const config = getConfig();
+  if (!config.server.proxy_api_key) return null;
+
+  const authHeader = c.req.header("Authorization");
+  const providedKey = authHeader?.replace("Bearer ", "");
+  if (!providedKey || !accountPool.validateProxyApiKey(providedKey)) {
+    c.status(401);
+    return c.json({
+      error: {
+        message: "Invalid proxy API key",
+        type: "invalid_request_error",
+        param: null,
+        code: "invalid_api_key",
+      },
+    });
+  }
+
+  return null;
 }
 
 export function createChatRoutes(
@@ -145,6 +167,9 @@ export function createChatRoutes(
     });
 
     if (routeMatch.kind === "api-key" || routeMatch.kind === "adapter") {
+      const authError = checkProxyApiKey(c, accountPool);
+      if (authError) return authError;
+
       const directModel = routeMatch.resolvedModel ?? req.model;
       const directReq = {
         ...proxyReq,
@@ -172,22 +197,8 @@ export function createChatRoutes(
       return handleProxyRequest({ c, accountPool, cookieJar, req: proxyReq, fmt, proxyPool });
     }
 
-    const config = getConfig();
-    if (config.server.proxy_api_key) {
-      const authHeader = c.req.header("Authorization");
-      const providedKey = authHeader?.replace("Bearer ", "");
-      if (!providedKey || !accountPool.validateProxyApiKey(providedKey)) {
-        c.status(401);
-        return c.json({
-          error: {
-            message: "Invalid proxy API key",
-            type: "invalid_request_error",
-            param: null,
-            code: "invalid_api_key",
-          },
-        });
-      }
-    }
+    const authError = checkProxyApiKey(c, accountPool);
+    if (authError) return authError;
 
     return handleProxyRequest({ c, accountPool, cookieJar, req: proxyReq, fmt, proxyPool });
   });

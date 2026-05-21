@@ -58,6 +58,29 @@ describe("recordProxyEgressLog", () => {
     });
   });
 
+  it("records reasoning and service tier in the upstream request summary", () => {
+    recordProxyEgressLog({
+      requestId: "rid-reasoning",
+      request: createRequest({
+        reasoning: { effort: "xhigh", summary: "auto" },
+        service_tier: "fast",
+      }),
+      status: 200,
+      startMs: 1_000,
+      nowMs: () => 1_515,
+    });
+
+    expect(enqueueLogEntryMock).toHaveBeenCalledWith(expect.objectContaining({
+      request: {
+        model: "codex-model",
+        stream: true,
+        useWebSocket: true,
+        reasoning: { effort: "xhigh", summary: "auto" },
+        service_tier: "fast",
+      },
+    }));
+  });
+
   it("preserves nullable status and undefined websocket metadata", () => {
     recordProxyEgressLog({
       requestId: "rid-456",
