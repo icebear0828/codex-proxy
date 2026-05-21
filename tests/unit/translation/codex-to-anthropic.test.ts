@@ -173,7 +173,10 @@ describe("streamCodexToAnthropic — usage details", () => {
     const events = parseSSEEvents(chunks);
     const msgDelta = events.find((e) => e.event === "message_delta");
     expect(msgDelta).toBeDefined();
-    expect((msgDelta!.data.usage as Record<string, unknown>)?.cache_read_input_tokens).toBe(30);
+    const usage = msgDelta!.data.usage as Record<string, unknown>;
+    expect(usage.input_tokens).toBe(20);
+    expect(usage.cache_read_input_tokens).toBe(30);
+    expect(usage).not.toHaveProperty("cache_creation_input_tokens");
   });
 
   it("omits cache_read_input_tokens when not present", async () => {
@@ -244,7 +247,9 @@ describe("collectCodexToAnthropicResponse — additional details", () => {
     const { response } = await collectCodexToAnthropicResponse(
       fakeCodexApi, fakeResponse, "gpt-5.4",
     );
+    expect(response.usage.input_tokens).toBe(20);
     expect(response.usage.cache_read_input_tokens).toBe(30);
+    expect(response.usage).not.toHaveProperty("cache_creation_input_tokens");
   });
 
   it("collects multiple tool_use blocks", async () => {
