@@ -5,6 +5,7 @@ import {
   buildVariantIdentity,
   getContinuationInputStartIndex,
   getFunctionCallOutputIds,
+  getInlineFunctionCallIds,
   IMPLICIT_RESUME_MAX_AGE_MS,
   normalizeInstructions,
   resolvePromptCacheIdentity,
@@ -74,6 +75,12 @@ export function buildProxySessionContext(
   const implicitStoredFunctionCallIds = implicitPrevRespId
     ? affinityMap.lookupFunctionCallIds(implicitPrevRespId)
     : [];
+  // Function_call entries inlined in the full request input — used by
+  // evaluateImplicitResume to detect self-contained replays where matching
+  // pairs already exist in the payload and resume is not applicable.
+  const inlineFunctionCallIds = implicitPrevRespId
+    ? getInlineFunctionCallIds(codexRequest.input)
+    : [];
   const preferredEntryId =
     explicitPrevRespId
       ? affinityMap.lookup(explicitPrevRespId)
@@ -108,6 +115,7 @@ export function buildProxySessionContext(
       storedInstructions: implicitStoredInstructions,
       requiredFunctionCallOutputIds,
       storedFunctionCallIds: implicitStoredFunctionCallIds,
+      inlineFunctionCallIds,
     },
   };
 }

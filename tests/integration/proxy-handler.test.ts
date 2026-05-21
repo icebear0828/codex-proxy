@@ -317,7 +317,7 @@ describe("proxy-handler integration", () => {
           { role: "user", content: "first" },
           { type: "function_call", call_id: "call_expected", name: "read_file", arguments: "{}" },
           { type: "function_call_output", call_id: "call_missing", output: "{}" },
-          ...Array.from({ length: 80 }, (_, index) => ({
+          ...Array.from({ length: 1010 }, (_, index) => ({
             role: "user" as const,
             content: `padding message ${index}`,
           })),

@@ -6,11 +6,13 @@
 import { Hono } from "hono";
 import type { Context } from "hono";
 import { z } from "zod";
+import { API_KEY_CAPABILITIES } from "../auth/api-key-pool.js";
 import type { ApiKeyEntry, ApiKeyPool } from "../auth/api-key-pool.js";
 import { PROVIDER_CATALOG } from "../auth/api-key-catalog.js";
 
 const VALID_PROVIDERS = ["anthropic", "openai", "gemini", "openrouter", "custom"] as const;
 const ModelsSchema = z.array(z.string().trim().min(1)).min(1).transform((models) => [...new Set(models)]);
+const CapabilitiesSchema = z.array(z.enum(API_KEY_CAPABILITIES)).min(1).transform((capabilities) => [...new Set(capabilities)]).optional();
 
 const ApiKeyBindingSchema = z.object({
   provider: z.enum(VALID_PROVIDERS),
@@ -18,6 +20,7 @@ const ApiKeyBindingSchema = z.object({
   apiKey: z.string().min(1),
   baseUrl: z.string().url().optional(),
   label: z.string().max(64).nullable().optional(),
+  capabilities: CapabilitiesSchema,
 }).refine(
   (d) => d.provider !== "custom" || Boolean(d.baseUrl),
   { message: "baseUrl is required for custom providers" },
@@ -78,6 +81,7 @@ function addEntries(pool: ApiKeyPool, items: ApiKeyBindingInput[]): {
           apiKey: item.apiKey,
           baseUrl: item.baseUrl,
           label: item.label,
+          capabilities: item.capabilities,
         }));
       } catch (err) {
         errors.push(err instanceof Error ? err.message : String(err));

@@ -118,8 +118,12 @@ export async function handleProxyRequest(options: HandleProxyRequestOptions): Pr
 
   // Guard: when implicit resume fails due to missing tool calls, block runaway
   // full-history replays that would burn massive token budgets silently.
-  const PAYLOAD_GUARD_BYTES = 250_000;
-  const PAYLOAD_GUARD_ITEMS = 80;
+  // Relaxed thresholds: legitimate client-driven full replays (e.g. after
+  // Codex CLI /compact) regularly hit 300-800KB / 100-800 items, and the
+  // previous 250KB / 80-item gate was 413'ing them. Real runaway loops
+  // typically blow past several MB before the issue becomes obvious.
+  const PAYLOAD_GUARD_BYTES = 2_000_000;
+  const PAYLOAD_GUARD_ITEMS = 1000;
   if (
     implicitResume.evaluation.reason === "missing_tool_calls" ||
     implicitResume.evaluation.reason === "unanswered_tool_calls"
@@ -252,7 +256,7 @@ export async function handleProxyRequest(options: HandleProxyRequestOptions): Pr
       }
 
       const decision = handleCodexApiError(
-        err, accountPool, entryId, req.codexRequest.model, fmt.tag, modelRetried,
+        err, accountPool, entryId, req.codexRequest.model, fmt.tag, modelRetried, cookieJar,
       );
 
       const errorRetryTransition = applyProxyErrorRetryTransition({

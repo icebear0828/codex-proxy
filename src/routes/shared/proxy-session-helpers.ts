@@ -78,6 +78,11 @@ export interface ImplicitResumeOpts {
   storedInstructions: string | null;
   requiredFunctionCallOutputIds?: string[];
   storedFunctionCallIds?: string[];
+  /** call_ids of `function_call` items inlined in the request input itself.
+   *  When a function_call_output references a call_id present here, the
+   *  client is doing a self-contained full-history replay and we should NOT
+   *  treat the absence of that id in session-affinity as "missing tool calls". */
+  inlineFunctionCallIds?: string[];
 }
 
 /** Reason why implicit resume was rejected, or null if it would activate.
@@ -102,7 +107,21 @@ export function evaluateImplicitResume(opts: ImplicitResumeOpts):
     return { active: false, reason: "instr_diff" };
   }
   const storedFunctionCallIds = new Set(opts.storedFunctionCallIds ?? []);
+  const inlineFunctionCallIds = new Set(opts.inlineFunctionCallIds ?? []);
   const requiredFunctionCallOutputIds = opts.requiredFunctionCallOutputIds ?? [];
+
+  // Self-contained replay: every function_call_output in the input is paired
+  // with a function_call also inlined in the input (typical of Codex CLI
+  // /compact or error-recovery fallback). Implicit resume is not applicable —
+  // upstream will satisfy the outputs from the inlined calls directly. Bail
+  // before the missing_tool_calls check so we don't 413 a legitimate replay.
+  if (
+    requiredFunctionCallOutputIds.length > 0 &&
+    requiredFunctionCallOutputIds.every((id) => inlineFunctionCallIds.has(id))
+  ) {
+    return { active: false, reason: "self_contained_replay" };
+  }
+
   const missingCallIds = requiredFunctionCallOutputIds.filter((id) => !storedFunctionCallIds.has(id));
   if (missingCallIds.length > 0) {
     return { active: false, reason: "missing_tool_calls", missingCallIds };
@@ -148,4 +167,28 @@ export function getFunctionCallOutputIds(input: CodexResponsesRequest["input"]):
     .filter((item): item is { type: "function_call_output"; call_id: string; output: string } =>
       !("role" in item) && item.type === "function_call_output")
     .map((item) => item.call_id);
+}
+
+/** Collect call_ids of `function_call` items inlined in the request input.
+ *  Codex CLI emits these when doing a client-side full-history replay (e.g.
+ *  after /compact or error recovery): the input carries the historical
+ *  function_call entries paired with their function_call_output entries, so
+ *  the proxy must not try to validate those outputs against session-affinity's
+ *  stored ids — they reference function_calls that live in the input itself,
+ *  not in any prior upstream response we tracked. */
+export function getInlineFunctionCallIds(input: CodexResponsesRequest["input"]): string[] {
+  return input
+    .filter((item): item is { type: "function_call"; call_id: string; name: string; arguments: string } =>
+      !("role" in item) && item.type === "function_call" && typeof item.call_id === "string")
+    .map((item) => item.call_id);
+}
+
+/** True when every function_call_output in the input is paired with a
+ *  function_call also inlined in the input (i.e. the client is sending a
+ *  self-contained full-history replay, not an incremental continuation). */
+export function isSelfContainedReplay(input: CodexResponsesRequest["input"]): boolean {
+  const outputs = getFunctionCallOutputIds(input);
+  if (outputs.length === 0) return false;
+  const inlineCalls = new Set(getInlineFunctionCallIds(input));
+  return outputs.every((id) => inlineCalls.has(id));
 }
