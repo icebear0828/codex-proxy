@@ -4,6 +4,7 @@
  */
 
 import type { AccountPool } from "../auth/account-pool.js";
+import { resetCfPathBlock } from "../auth/cf-path-block-tracker.js";
 
 export interface DeleteResult {
   deleted: number;
@@ -57,6 +58,9 @@ export class AccountMutationService {
       const entry = this.pool.getEntry(id);
       if (entry) {
         this.pool.markStatus(id, status);
+        // Re-enabling clears any in-memory CF block streak so the account
+        // gets a fresh allowance against the auto-disable threshold.
+        if (status === "active") resetCfPathBlock(id);
         updated++;
       } else {
         notFound.push(id);

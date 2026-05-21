@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { handleCodexApiError, type ErrorAction } from "@src/routes/shared/proxy-error-handler.js";
 import { CodexApiError } from "@src/proxy/codex-types.js";
+import { _resetAllCfPathBlocks } from "@src/auth/cf-path-block-tracker.js";
 
 /* ── Minimal mock matching AccountPool subset used by error handler ── */
 interface MockPool {
@@ -19,6 +20,14 @@ function createMockPool(): MockPool {
     getEntry: vi.fn().mockReturnValue({ email: "test@example.com" }),
     acquire: vi.fn(),
   };
+}
+
+interface MockJar {
+  clear: ReturnType<typeof vi.fn>;
+}
+
+function createMockJar(): MockJar {
+  return { clear: vi.fn() };
 }
 
 describe("handleCodexApiError", () => {
@@ -231,6 +240,44 @@ describe("handleCodexApiError", () => {
       // Includes fallback info for when no retry account is available
       expect(result.status).toBe(429);
       expect(result.useFormat429).toBe(true);
+    });
+
+    it("Cloudflare path-block (empty-body 404): clears cookies, retries, disables after threshold", () => {
+      _resetAllCfPathBlocks();
+      const jar = createMockJar();
+      const err = new CodexApiError(404, "");
+
+      // 1st & 2nd: clear cookies, retry on different account, no disable
+      let result = handleCodexApiError(err, pool as never, entryId, model, tag, false, jar as never);
+      expect(result.action).toBe("retry");
+      expect(result.releaseBeforeRetry).toBe(true);
+      expect(jar.clear).toHaveBeenCalledWith(entryId);
+      expect(pool.markStatus).not.toHaveBeenCalled();
+
+      result = handleCodexApiError(err, pool as never, entryId, model, tag, false, jar as never);
+      expect(result.action).toBe("retry");
+      expect(pool.markStatus).not.toHaveBeenCalled();
+
+      // 3rd: threshold reached — disable account
+      result = handleCodexApiError(err, pool as never, entryId, model, tag, false, jar as never);
+      expect(pool.markStatus).toHaveBeenCalledWith(entryId, "disabled");
+      // Still a retry so the request can fail over to another account on the
+      // same orchestration loop.
+      expect(result.action).toBe("retry");
+    });
+
+    it("Cloudflare path-block branch ignores non-empty 404 bodies", () => {
+      _resetAllCfPathBlocks();
+      const jar = createMockJar();
+      const err = new CodexApiError(404, JSON.stringify({ error: { message: "real not found" } }));
+
+      const result = handleCodexApiError(err, pool as never, entryId, model, tag, false, jar as never);
+
+      // Falls through to generic respond path; no cookie clear, no disable.
+      expect(result.action).toBe("respond");
+      expect(result.status).toBe(404);
+      expect(jar.clear).not.toHaveBeenCalled();
+      expect(pool.markStatus).not.toHaveBeenCalled();
     });
 
     it("retry actions do NOT include errorBody", () => {

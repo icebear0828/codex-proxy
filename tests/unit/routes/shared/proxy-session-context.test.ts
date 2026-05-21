@@ -161,6 +161,7 @@ describe("buildProxySessionContext", () => {
       storedInstructions: "system",
       requiredFunctionCallOutputIds: ["call_a"],
       storedFunctionCallIds: ["call_a"],
+      inlineFunctionCallIds: ["call_a"],
     });
   });
 });
