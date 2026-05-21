@@ -7,7 +7,7 @@
  */
 
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
-import { mkdtempSync, existsSync, rmSync, readFileSync } from "fs";
+import { mkdtempSync, existsSync, rmSync, readFileSync, writeFileSync } from "fs";
 import { tmpdir } from "os";
 import { resolve } from "path";
 import { Hono } from "hono";
@@ -180,6 +180,52 @@ describe("POST /admin/error-logs/seen", () => {
     const app = await buildApp();
     const res = await app.request("/admin/error-logs/seen", { method: "POST" });
     expect(res.status).toBe(200);
+  });
+});
+
+describe("DELETE /admin/error-logs", () => {
+  it("clears current, rotated backup, and cursor files so grouped logs and counts become empty", async () => {
+    await appendFew();
+    writeFileSync(
+      resolve(tmpDataDir, "error-log.1.jsonl"),
+      JSON.stringify({
+        ts: "2026-05-01T00:00:00.000Z",
+        version: "0.0.0-test",
+        platform: "darwin",
+        source: "server",
+        error: { name: "StreamUpstreamPrematureClose", message: "closed early" },
+      }) + "\n",
+      "utf-8",
+    );
+    const { setReadCursor } = await import("@src/logs/error-log.js");
+    setReadCursor("2025-01-01T00:00:00.000Z");
+    const app = await buildApp();
+
+    expect(existsSync(resolve(tmpDataDir, "error-log.jsonl"))).toBe(true);
+    expect(existsSync(resolve(tmpDataDir, "error-log.1.jsonl"))).toBe(true);
+    expect(existsSync(resolve(tmpDataDir, "error-log.cursor"))).toBe(true);
+
+    const before = await app.request("/admin/error-logs/count");
+    expect(((await before.json()) as { total: number; unread: number })).toEqual({
+      total: 4,
+      unread: 4,
+    });
+
+    const clearRes = await app.request("/admin/error-logs", { method: "DELETE" });
+    expect(clearRes.status).toBe(200);
+    expect(await clearRes.json()).toEqual({ ok: true });
+    expect(existsSync(resolve(tmpDataDir, "error-log.jsonl"))).toBe(false);
+    expect(existsSync(resolve(tmpDataDir, "error-log.1.jsonl"))).toBe(false);
+    expect(existsSync(resolve(tmpDataDir, "error-log.cursor"))).toBe(false);
+
+    const grouped = await app.request("/admin/error-logs");
+    expect((await grouped.json()) as { groups: unknown[] }).toEqual({ groups: [] });
+
+    const after = await app.request("/admin/error-logs/count");
+    expect(((await after.json()) as { total: number; unread: number })).toEqual({
+      total: 0,
+      unread: 0,
+    });
   });
 });
 

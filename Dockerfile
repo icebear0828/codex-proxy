@@ -24,6 +24,11 @@ RUN npm ci && npm run build
 # ── Stage 2: Application ────────────────────────────────────────────
 FROM node:20-slim
 
+# The checked-in default is loopback-only for local source installs. Containers
+# need to listen on all interfaces inside the network namespace so published
+# ports and Docker health checks can reach the service.
+ENV CODEX_PROXY_HOST=0.0.0.0
+
 # curl: needed by full-update.ts
 # unzip: needed by full-update.ts to extract Codex.app
 # gosu: needed by entrypoint to drop from root to node user

@@ -24,11 +24,10 @@ export function useAccounts() {
   const [persistenceHealth, setPersistenceHealth] = useState<PersistenceHealth>({ ok: true });
   const addCleanupRef = useRef<(() => void) | null>(null);
 
-  const loadAccounts = useCallback(async (fresh = false) => {
+  const loadAccounts = useCallback(async () => {
     setRefreshing(true);
     try {
-      const url = fresh ? "/auth/accounts?quota=fresh" : "/auth/accounts?quota=true";
-      const resp = await fetch(url);
+      const resp = await fetch("/auth/accounts?quota=true");
       const data = await resp.json();
       setList(data.accounts || []);
       if (data.persistence_health && typeof data.persistence_health === "object") {
@@ -318,7 +317,7 @@ export function useAccounts() {
     addInfo,
     addError,
     persistenceHealth,
-    refresh: useCallback(() => loadAccounts(true), [loadAccounts]),
+    refresh: loadAccounts,
     patchLocal,
     startAdd,
     cancelAdd,
