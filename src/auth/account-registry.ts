@@ -454,7 +454,7 @@ export class AccountRegistry {
     // The passive header-driven path (rateLimitToQuota in proxy-rate-limit.ts)
     // does not carry credit balance — only /codex/usage body (toQuota) does.
     // Without this merge, every /codex/responses call would wipe credits.
-    if (quota.credits === undefined && entry.cachedQuota?.credits != null) {
+    if (quota.credits == null && entry.cachedQuota?.credits != null) {
       entry.cachedQuota = { ...quota, credits: entry.cachedQuota.credits };
     } else {
       entry.cachedQuota = quota;

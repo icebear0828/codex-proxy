@@ -423,7 +423,7 @@ describe("upstream direct routing without Codex auth", () => {
     pool.destroy();
   });
 
-  it("bypasses proxy api key validation for configured direct upstream models", async () => {
+  it("requires proxy api key validation for chat direct upstream models", async () => {
     mockConfig.server.proxy_api_key = "proxy-secret";
     const pool = new AccountPool();
     const app = createChatRoutes(pool, undefined, undefined, {
@@ -444,8 +444,35 @@ describe("upstream direct routing without Codex auth", () => {
       }),
     });
 
+    expect(res.status).toBe(401);
+    expect(mockHandleDirectRequest).toHaveBeenCalledTimes(0);
+    pool.destroy();
+  });
+
+  it("allows chat direct upstream models when proxy api key is valid", async () => {
+    mockConfig.server.proxy_api_key = "proxy-secret";
+    const pool = new AccountPool();
+    const adapter = createSentinelAdapter("custom-upstream");
+    const app = createChatRoutes(pool, undefined, undefined, {
+      resolveMatch: vi.fn(() => ({ kind: "api-key", adapter, entry: { model: "deepseek-chat" } })),
+      hasApiKeyModel: vi.fn(() => true),
+      resolve: vi.fn(() => adapter),
+    } as never);
+
+    const res = await app.request("/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: "Bearer proxy-secret",
+      },
+      body: JSON.stringify({
+        model: "deepseek-chat",
+        messages: [{ role: "user", content: "hello" }],
+      }),
+    });
+
     expect(res.status).toBe(200);
-    expect(mockHandleDirectRequest).toHaveBeenCalledTimes(1);
+    expectDirectOptions({ adapter, model: "deepseek-chat", formatTag: "Chat" });
     pool.destroy();
   });
 

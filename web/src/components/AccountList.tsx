@@ -2,6 +2,7 @@ import { useState, useCallback, useEffect } from "preact/hooks";
 import { useI18n, useT } from "../../../shared/i18n/context";
 import { AccountCard } from "./AccountCard";
 import { AccountImportExport } from "./AccountImportExport";
+import type { AccountExportFormat } from "../../../shared/account-transfer-client";
 import type { Account, ProxyEntry, QuotaWarning } from "../../../shared/types";
 import { derivedStatus } from "../lib/accountStatus";
 
@@ -17,7 +18,7 @@ interface AccountListProps {
   lastUpdated: Date | null;
   proxies?: ProxyEntry[];
   onProxyChange?: (accountId: string, proxyId: string) => void;
-  onExport?: (selectedIds?: string[], format?: "full" | "minimal") => Promise<void>;
+  onExport?: (selectedIds?: string[], format?: AccountExportFormat) => Promise<void>;
   onImport?: (file: File) => Promise<{ success: boolean; added: number; updated: number; failed: number; errors: string[] }>;
   onToggleStatus?: (id: string, currentStatus: string) => Promise<string | null>;
   onUpdateLabel?: (id: string, label: string | null) => Promise<string | null>;
@@ -390,13 +391,11 @@ export function AccountList({ accounts, loading, onDelete, onRefresh, refreshing
         ) : (
           displayAccounts.slice(0, visibleCount).map((acct, i) => (
             <AccountCard key={acct.id} account={acct} index={i} onDelete={onDelete} proxies={proxies} onProxyChange={onProxyChange} selected={selectedIds.has(acct.id)} onToggleSelect={toggleSelect} onRefreshQuota={async (id) => {
-              // Two-step refresh: probe (token + status) then quota (cachedQuota write-back).
-              // The /quota endpoint is what surfaces upstream window resets and the
-              // credits block on Pro / PAYG accounts — without it, "Refresh" only
-              // re-validates the access token and the on-screen quota stays stale.
               const encoded = encodeURIComponent(id);
-              await fetch(`/auth/accounts/${encoded}/refresh`, { method: "POST" });
-              await fetch(`/auth/accounts/${encoded}/quota`).catch(() => undefined);
+              const resp = await fetch(`/auth/accounts/${encoded}/quota`);
+              if (!resp.ok) {
+                console.warn(`[AccountList] Failed to refresh quota for account ${id}: ${resp.status}`);
+              }
               onRefresh();
             }} onToggleStatus={onToggleStatus} onUpdateLabel={onUpdateLabel} />
           ))

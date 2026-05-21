@@ -22,6 +22,11 @@ function normalizeCredits(raw: CodexUsageCredits | null | undefined): CodexQuota
   };
 }
 
+function remainingPercent(used: number | null | undefined): number | null {
+  if (typeof used !== "number" || !Number.isFinite(used)) return null;
+  return Math.max(0, Math.min(100, Math.round(100 - Math.max(0, Math.min(100, used)))));
+}
+
 function isReviewLimitId(value: string | null | undefined): boolean {
   const normalized = (value ?? "").trim().toLowerCase().replace(/[-\s]+/g, "_");
   return normalized === "review" ||
@@ -34,10 +39,12 @@ function isReviewLimitId(value: string | null | undefined): boolean {
 
 function quotaFromRateLimit(rateLimit: CodexUsageRateLimit | null | undefined) {
   if (!rateLimit) return null;
+  const usedPercent = rateLimit.primary_window?.used_percent ?? null;
   return {
     allowed: rateLimit.allowed,
     limit_reached: rateLimit.limit_reached,
-    used_percent: rateLimit.primary_window?.used_percent ?? null,
+    used_percent: usedPercent,
+    remaining_percent: remainingPercent(usedPercent),
     reset_at: rateLimit.primary_window?.reset_at ?? null,
     limit_window_seconds: rateLimit.primary_window?.limit_window_seconds ?? null,
   };
@@ -46,9 +53,11 @@ function quotaFromRateLimit(rateLimit: CodexUsageRateLimit | null | undefined) {
 function secondaryQuotaFromRateLimit(rateLimit: CodexUsageRateLimit | null | undefined) {
   const secondary = rateLimit?.secondary_window;
   if (!secondary) return null;
+  const usedPercent = secondary.used_percent ?? null;
   return {
     limit_reached: secondary.used_percent != null ? secondary.used_percent >= 100 : Boolean(rateLimit?.limit_reached),
-    used_percent: secondary.used_percent ?? null,
+    used_percent: usedPercent,
+    remaining_percent: remainingPercent(usedPercent),
     reset_at: secondary.reset_at ?? null,
     limit_window_seconds: secondary.limit_window_seconds ?? null,
   };
@@ -56,6 +65,7 @@ function secondaryQuotaFromRateLimit(rateLimit: CodexUsageRateLimit | null | und
 
 export function toQuota(usage: CodexUsageResponse): CodexQuota {
   const sw = usage.rate_limit.secondary_window;
+  const primaryUsedPercent = usage.rate_limit.primary_window?.used_percent ?? null;
   const additional = usage.additional_rate_limits ?? [];
   const rateLimitsByLimitId: NonNullable<CodexQuota["rate_limits_by_limit_id"]> = {};
   for (const item of additional) {
@@ -82,18 +92,12 @@ export function toQuota(usage: CodexUsageResponse): CodexQuota {
     rate_limit: {
       allowed: usage.rate_limit.allowed,
       limit_reached: usage.rate_limit.limit_reached,
-      used_percent: usage.rate_limit.primary_window?.used_percent ?? null,
+      used_percent: primaryUsedPercent,
+      remaining_percent: remainingPercent(primaryUsedPercent),
       reset_at: usage.rate_limit.primary_window?.reset_at ?? null,
       limit_window_seconds: usage.rate_limit.primary_window?.limit_window_seconds ?? null,
     },
-    secondary_rate_limit: sw
-      ? {
-          limit_reached: sw.used_percent != null ? sw.used_percent >= 100 : usage.rate_limit.limit_reached,
-          used_percent: sw.used_percent ?? null,
-          reset_at: sw.reset_at ?? null,
-          limit_window_seconds: sw.limit_window_seconds ?? null,
-        }
-      : null,
+    secondary_rate_limit: secondaryQuotaFromRateLimit(usage.rate_limit),
     code_review_rate_limit: codeReviewRateLimit,
     rate_limits_by_limit_id: Object.keys(rateLimitsByLimitId).length > 0
       ? rateLimitsByLimitId

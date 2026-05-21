@@ -1,5 +1,6 @@
 export interface AccountQuotaWindow {
   used_percent?: number | null;
+  remaining_percent?: number | null;
   limit_reached?: boolean;
   reset_at?: number | null;
   limit_window_seconds?: number | null;
@@ -14,6 +15,7 @@ export interface AccountQuotaCredits {
 }
 
 export interface AccountQuota {
+  plan_type?: string;
   rate_limit?: AccountQuotaWindow;
   secondary_rate_limit?: AccountQuotaWindow | null;
   code_review_rate_limit?: (AccountQuotaWindow & { allowed?: boolean }) | null;

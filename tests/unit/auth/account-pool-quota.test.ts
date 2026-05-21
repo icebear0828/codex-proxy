@@ -85,6 +85,32 @@ describe("AccountPool quota methods", () => {
       expect(entry?.cachedQuota?.rate_limit.used_percent).toBe(60);
     });
 
+    it("preserves existing credits when new quota explicitly carries null credits", () => {
+      const id = pool.addAccount(createValidJwt({ accountId: "credits-null", planType: "pro" }));
+      pool.updateCachedQuota(id, makeQuota({
+        credits: { has_credits: true, unlimited: false, overage_limit_reached: false, balance: 99.5 },
+      }));
+      pool.updateCachedQuota(id, makeQuota({
+        credits: null,
+        rate_limit: {
+          allowed: true,
+          limit_reached: false,
+          used_percent: 70,
+          reset_at: Math.floor(Date.now() / 1000) + 1800,
+          limit_window_seconds: 3600,
+        },
+      }));
+
+      const entry = pool.getEntry(id);
+      expect(entry?.cachedQuota?.credits).toEqual({
+        has_credits: true,
+        unlimited: false,
+        overage_limit_reached: false,
+        balance: 99.5,
+      });
+      expect(entry?.cachedQuota?.rate_limit.used_percent).toBe(70);
+    });
+
     it("overwrites credits when new quota explicitly provides them", () => {
       const id = pool.addAccount(createValidJwt({ accountId: "credits-2", planType: "pro" }));
       pool.updateCachedQuota(id, makeQuota({
