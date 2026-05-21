@@ -1,5 +1,9 @@
 import { vi } from "vitest";
-import type { FormatAdapter } from "@src/routes/shared/proxy-handler.js";
+import type {
+  FormatAdapter,
+  FormatCollectTranslatorOptions,
+  FormatStreamTranslatorOptions,
+} from "@src/routes/shared/proxy-handler-types.js";
 
 export function createMockFormatAdapter(overrides?: Partial<FormatAdapter>): FormatAdapter {
   return {
@@ -8,17 +12,13 @@ export function createMockFormatAdapter(overrides?: Partial<FormatAdapter>): For
     formatNoAccount: vi.fn(() => ({ error: "no_account" })),
     format429: vi.fn((msg: string) => ({ error: "rate_limited", message: msg })),
     formatError: vi.fn((status: number, msg: string) => ({ error: "api_error", status, message: msg })),
-    streamTranslator: vi.fn(async function* (
-      _api: unknown,
-      _resp: unknown,
-      _model: string,
-      onUsage: (u: { input_tokens: number; output_tokens: number }) => void,
-    ) {
-      onUsage({ input_tokens: 10, output_tokens: 20 });
+    formatStreamError: vi.fn((_status: number, msg: string) => `event: response.failed\ndata: ${JSON.stringify({ error: { message: msg } })}\n\n`),
+    streamTranslator: vi.fn(async function* (options: FormatStreamTranslatorOptions) {
+      options.onUsage({ input_tokens: 10, output_tokens: 20 });
       yield "data: {}\n\n";
       yield "data: [DONE]\n\n";
     }),
-    collectTranslator: vi.fn(async () => ({
+    collectTranslator: vi.fn(async (_options: FormatCollectTranslatorOptions) => ({
       response: { id: "resp_1", choices: [] },
       usage: { input_tokens: 10, output_tokens: 20 },
       responseId: "resp_1",

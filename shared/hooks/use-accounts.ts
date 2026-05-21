@@ -1,5 +1,17 @@
 import { useState, useEffect, useCallback, useRef } from "preact/hooks";
 import type { Account } from "../types";
+import {
+  accountExportDownloadName,
+  buildAccountExportUrl,
+  prepareAccountImportRequest,
+  type AccountExportFormat,
+} from "../account-transfer-client";
+
+export interface PersistenceHealth {
+  ok: boolean;
+  reason?: string;
+  message?: string;
+}
 
 export function useAccounts() {
   const [list, setList] = useState<Account[]>([]);
@@ -9,15 +21,18 @@ export function useAccounts() {
   const [addVisible, setAddVisible] = useState(false);
   const [addInfo, setAddInfo] = useState("");
   const [addError, setAddError] = useState("");
+  const [persistenceHealth, setPersistenceHealth] = useState<PersistenceHealth>({ ok: true });
   const addCleanupRef = useRef<(() => void) | null>(null);
 
-  const loadAccounts = useCallback(async (fresh = false) => {
+  const loadAccounts = useCallback(async () => {
     setRefreshing(true);
     try {
-      const url = fresh ? "/auth/accounts?quota=fresh" : "/auth/accounts?quota=true";
-      const resp = await fetch(url);
+      const resp = await fetch("/auth/accounts?quota=true");
       const data = await resp.json();
       setList(data.accounts || []);
+      if (data.persistence_health && typeof data.persistence_health === "object") {
+        setPersistenceHealth(data.persistence_health as PersistenceHealth);
+      }
       setLastUpdated(new Date());
     } catch {
       setList([]);
@@ -197,20 +212,14 @@ export function useAccounts() {
     setList((prev) => prev.map((a) => a.id === accountId ? { ...a, ...patch } : a));
   }, []);
 
-  const exportAccounts = useCallback(async (selectedIds?: string[], format?: "full" | "minimal") => {
-    const params = new URLSearchParams();
-    if (selectedIds && selectedIds.length > 0) params.set("ids", selectedIds.join(","));
-    if (format === "minimal") params.set("format", "minimal");
-    const qs = params.toString() ? `?${params.toString()}` : "";
-    const resp = await fetch(`/auth/accounts/export${qs}`);
-    const data = await resp.json() as { accounts: Array<{ id: string }> };
+  const exportAccounts = useCallback(async (selectedIds?: string[], format: AccountExportFormat = "full") => {
+    const resp = await fetch(buildAccountExportUrl(selectedIds, format));
+    const data = await resp.json() as unknown;
     const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    const date = new Date().toISOString().slice(0, 10);
-    const suffix = format === "minimal" ? "-minimal" : "";
-    a.download = `accounts-export${suffix}-${date}.json`;
+    a.download = accountExportDownloadName(format);
     a.style.display = "none";
     document.body.appendChild(a);
     a.click();
@@ -225,27 +234,13 @@ export function useAccounts() {
     failed: number;
     errors: string[];
   }> => {
-    const text = await file.text();
-    let parsed: unknown;
-    try {
-      parsed = JSON.parse(text);
-    } catch {
-      return { success: false, added: 0, updated: 0, failed: 0, errors: ["Invalid JSON file"] };
-    }
-    // Support both { accounts: [...] } (export format) and raw array
-    const accounts = Array.isArray(parsed)
-      ? parsed
-      : Array.isArray(parsed.accounts)
-        ? parsed.accounts
-        : null;
-    if (!accounts) {
-      return { success: false, added: 0, updated: 0, failed: 0, errors: ["Invalid format: expected { accounts: [...] }"] };
-    }
+    const prepared = await prepareAccountImportRequest(file);
+    if (!prepared.ok) return { success: false, added: 0, updated: 0, failed: 0, errors: [prepared.error] };
 
     const resp = await fetch("/auth/accounts/import", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ accounts }),
+      headers: { "Content-Type": prepared.contentType },
+      body: prepared.body,
     });
     const result = await resp.json();
     if (resp.ok) {
@@ -321,7 +316,8 @@ export function useAccounts() {
     addVisible,
     addInfo,
     addError,
-    refresh: useCallback(() => loadAccounts(true), [loadAccounts]),
+    persistenceHealth,
+    refresh: loadAccounts,
     patchLocal,
     startAdd,
     cancelAdd,

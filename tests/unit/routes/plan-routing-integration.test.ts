@@ -101,11 +101,8 @@ import {
 import { extractUserProfile } from "@src/auth/jwt-utils.js";
 import { ApiKeyPool } from "@src/auth/api-key-pool.js";
 import type { ApiKeyPersistence, ApiKeyEntry } from "@src/auth/api-key-pool.js";
-import {
-  handleProxyRequest,
-  type FormatAdapter,
-  type ProxyRequest,
-} from "@src/routes/shared/proxy-handler.js";
+import { handleProxyRequest } from "@src/routes/shared/proxy-handler.js";
+import type { FormatAdapter, ProxyRequest } from "@src/routes/shared/proxy-handler-types.js";
 import type { StatusCode } from "hono/utils/http-status";
 import { createModelRoutes } from "@src/routes/models.js";
 import { triggerImmediateRefresh } from "@src/models/model-fetcher.js";
@@ -200,13 +197,12 @@ describe("plan routing through proxy handler", () => {
 
     const app = new Hono();
     app.post("/test", (c) =>
-      handleProxyRequest(
+      handleProxyRequest({
         c,
-        pool,
-        undefined,
-        makeProxyRequest("gpt-5.4"),
-        createTestFormat(),
-      ),
+        accountPool: pool,
+        req: makeProxyRequest("gpt-5.4"),
+        fmt: createTestFormat(),
+      }),
     );
 
     const res = await app.request("/test", { method: "POST" });
@@ -228,13 +224,12 @@ describe("plan routing through proxy handler", () => {
 
     const app = new Hono();
     app.post("/test", (c) =>
-      handleProxyRequest(
+      handleProxyRequest({
         c,
-        pool,
-        undefined,
-        makeProxyRequest("gpt-5.4"),
-        createTestFormat(),
-      ),
+        accountPool: pool,
+        req: makeProxyRequest("gpt-5.4"),
+        fmt: createTestFormat(),
+      }),
     );
 
     const res = await app.request("/test", { method: "POST" });
@@ -248,13 +243,12 @@ describe("plan routing through proxy handler", () => {
 
     const app = new Hono();
     app.post("/test", (c) =>
-      handleProxyRequest(
+      handleProxyRequest({
         c,
-        pool,
-        undefined,
-        makeProxyRequest("gpt-5.4"),
-        createTestFormat(),
-      ),
+        accountPool: pool,
+        req: makeProxyRequest("gpt-5.4"),
+        fmt: createTestFormat(),
+      }),
     );
 
     // Blocked — free can't use team-only model
@@ -282,13 +276,12 @@ describe("plan routing through proxy handler", () => {
 
     const app = new Hono();
     app.post("/test", (c) =>
-      handleProxyRequest(
+      handleProxyRequest({
         c,
-        pool,
-        undefined,
-        makeProxyRequest("gpt-5.4"),
-        createTestFormat(),
-      ),
+        accountPool: pool,
+        req: makeProxyRequest("gpt-5.4"),
+        fmt: createTestFormat(),
+      }),
     );
 
     const res = await app.request("/test", { method: "POST" });
@@ -306,13 +299,12 @@ describe("plan routing through proxy handler", () => {
 
     const app = new Hono();
     app.post("/test", (c) =>
-      handleProxyRequest(
+      handleProxyRequest({
         c,
-        pool,
-        undefined,
-        makeProxyRequest("gpt-5.4"),
-        createTestFormat(),
-      ),
+        accountPool: pool,
+        req: makeProxyRequest("gpt-5.4"),
+        fmt: createTestFormat(),
+      }),
     );
 
     const res = await app.request("/test", { method: "POST" });

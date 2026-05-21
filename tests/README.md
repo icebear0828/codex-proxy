@@ -25,7 +25,7 @@ tests/
 │   ├── format-adapter.ts         # createMockFormatAdapter()
 │   ├── jwt.ts                    # createJwt(), createValidJwt(), createExpiredJwt()
 │   └── sse.ts                    # SSE stream builders (8 functions)
-├── unit/               # Unit tests — pure functions, single modules (106 files)
+├── unit/               # Unit tests — pure functions, single modules (124 files)
 │   ├── auth/           # AccountPool, rotation, quota, refresh, session affinity
 │   ├── middleware/      # Dashboard auth, error handler, request-id
 │   ├── models/         # Model store, cache, plan routing, fetcher retry
@@ -38,10 +38,10 @@ tests/
 │   ├── types/          # Zod schema validation
 │   ├── utils/          # Jitter, retry, logger, yaml-mutate
 │   └── web/            # Theme, cache headers, add-account
-├── integration/        # Multi-module workflows (5 files)
-├── e2e/                # Full API contract tests (10 files)
+├── integration/        # Multi-module workflows (6 files)
+├── e2e/                # Full API contract tests (9 files)
 ├── stress/             # Concurrency & rotation fairness (3 files, separate config)
-├── real/               # Real upstream tests (17 files, separate config)
+├── real/               # Real upstream tests (15 files, separate config)
 ├── bench/              # Benchmark scripts (manual, not vitest)
 │   ├── concurrency-bench.ts
 │   ├── model-bench.ts

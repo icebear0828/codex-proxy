@@ -4,20 +4,23 @@
  */
 
 import { Hono } from "hono";
+import type { Context } from "hono";
 import { z } from "zod";
-import type { ApiKeyPool } from "../auth/api-key-pool.js";
+import { API_KEY_CAPABILITIES } from "../auth/api-key-pool.js";
+import type { ApiKeyEntry, ApiKeyPool } from "../auth/api-key-pool.js";
 import { PROVIDER_CATALOG } from "../auth/api-key-catalog.js";
-import type { ApiKeyProvider } from "../auth/api-key-catalog.js";
 
 const VALID_PROVIDERS = ["anthropic", "openai", "gemini", "openrouter", "custom"] as const;
 const ModelsSchema = z.array(z.string().trim().min(1)).min(1).transform((models) => [...new Set(models)]);
+const CapabilitiesSchema = z.array(z.enum(API_KEY_CAPABILITIES)).min(1).transform((capabilities) => [...new Set(capabilities)]).optional();
 
-const AddKeySchema = z.object({
+const ApiKeyBindingSchema = z.object({
   provider: z.enum(VALID_PROVIDERS),
   models: ModelsSchema,
   apiKey: z.string().min(1),
   baseUrl: z.string().url().optional(),
   label: z.string().max(64).nullable().optional(),
+  capabilities: CapabilitiesSchema,
 }).refine(
   (d) => d.provider !== "custom" || Boolean(d.baseUrl),
   { message: "baseUrl is required for custom providers" },
@@ -29,36 +32,11 @@ const FetchCustomModelsSchema = z.object({
   baseUrl: z.string().trim().url(),
 });
 
-const BulkImportEntrySchema = z.object({
-  provider: z.enum(VALID_PROVIDERS),
-  models: ModelsSchema,
-  apiKey: z.string().min(1),
-  baseUrl: z.string().url().optional(),
-  label: z.string().max(64).nullable().optional(),
-}).refine(
-  (d) => d.provider !== "custom" || Boolean(d.baseUrl),
-  { message: "baseUrl is required for custom providers" },
-);
+const BulkImportSchema = z.object({
+  keys: z.array(ApiKeyBindingSchema).min(1),
+});
 
-
-function addEntries(pool: ApiKeyPool, input: z.infer<typeof AddKeySchema>) {
-  const keys = [];
-  const errors: string[] = [];
-  for (const model of input.models) {
-    try {
-      keys.push(pool.add({
-        provider: input.provider,
-        model,
-        apiKey: input.apiKey,
-        baseUrl: input.baseUrl,
-        label: input.label,
-      }));
-    } catch (err) {
-      errors.push(err instanceof Error ? err.message : String(err));
-    }
-  }
-  return { added: keys.length, failed: errors.length, errors, keys };
-}
+type ApiKeyBindingInput = z.infer<typeof ApiKeyBindingSchema>;
 
 function normalizeBaseUrl(baseUrl: string): string {
   return baseUrl.replace(/\/+$/, "");
@@ -85,51 +63,64 @@ function normalizeFetchedModels(payload: unknown): Array<{ id: string; displayNa
   return [...deduped.values()];
 }
 
-function importEntries(pool: ApiKeyPool, items: z.infer<typeof BulkImportSchema>["keys"]) {
-  let added = 0;
+function addEntries(pool: ApiKeyPool, items: ApiKeyBindingInput[]): {
+  added: number;
+  failed: number;
+  errors: string[];
+  keys: ApiKeyEntry[];
+} {
+  const keys: ApiKeyEntry[] = [];
   const errors: string[] = [];
 
   for (const item of items) {
     for (const model of item.models) {
       try {
-        pool.add({
+        keys.push(pool.add({
           provider: item.provider,
           model,
           apiKey: item.apiKey,
           baseUrl: item.baseUrl,
           label: item.label,
-        });
-        added++;
+          capabilities: item.capabilities,
+        }));
       } catch (err) {
         errors.push(err instanceof Error ? err.message : String(err));
       }
     }
   }
 
-  return { added, failed: errors.length, errors };
+  return { added: keys.length, failed: errors.length, errors, keys };
 }
 
-function maskExportModels<T extends { model?: string }>(items: T[]): Array<Omit<T, "model"> & { models: string[] }> {
+function toImportableEntries<T extends { model?: string }>(items: T[]): Array<Omit<T, "model"> & { models: string[] }> {
   return items.map(({ model, ...rest }) => ({
     ...rest,
     models: model ? [model] : [],
   }));
 }
 
-const BulkImportSchema = z.object({
-  keys: z.array(BulkImportEntrySchema).min(1),
-});
-
 const LabelSchema = z.object({ label: z.string().max(64).nullable() });
 const StatusSchema = z.object({ status: z.enum(["active", "disabled"]) });
 const BatchDeleteSchema = z.object({ ids: z.array(z.string()).min(1) });
 
-function parseBody<T>(schema: z.ZodSchema<T>) {
-  return async (body: unknown): Promise<{ ok: true; data: T } | { ok: false; error: z.ZodError }> => {
-    const result = schema.safeParse(body);
-    if (!result.success) return { ok: false, error: result.error };
-    return { ok: true, data: result.data };
-  };
+async function parseJsonRequest<T>(c: Context, schema: z.ZodSchema<T>): Promise<
+  { ok: true; data: T } | { ok: false; response: Response }
+> {
+  let body: unknown;
+  try {
+    body = await c.req.json();
+  } catch {
+    c.status(400);
+    return { ok: false, response: c.json({ error: "Malformed JSON request body" }) };
+  }
+
+  const result = schema.safeParse(body);
+  if (!result.success) {
+    c.status(400);
+    return { ok: false, response: c.json({ error: "Invalid request", details: result.error.issues }) };
+  }
+
+  return { ok: true, data: result.data };
 }
 
 export function createApiKeyRoutes(pool: ApiKeyPool): Hono {
@@ -150,10 +141,8 @@ export function createApiKeyRoutes(pool: ApiKeyPool): Hono {
   // ── Fetch custom provider models ───────────────────────────────
 
   app.post("/auth/api-keys/models", async (c) => {
-    let body: unknown;
-    try { body = await c.req.json(); } catch { c.status(400); return c.json({ error: "Malformed JSON request body" }); }
-    const parsed = await parseBody(FetchCustomModelsSchema)(body);
-    if (!parsed.ok) { c.status(400); return c.json({ error: "Invalid request", details: parsed.error.issues }); }
+    const parsed = await parseJsonRequest(c, FetchCustomModelsSchema);
+    if (!parsed.ok) return parsed.response;
 
     const baseUrl = normalizeBaseUrl(parsed.data.baseUrl);
 
@@ -190,31 +179,25 @@ export function createApiKeyRoutes(pool: ApiKeyPool): Hono {
 
   // ── Export (full keys for re-import) ──────────────────────────
 
-  // ── Export (full keys for re-import) ──────────────────────────
-
   app.get("/auth/api-keys/export", (c) => {
-    return c.json({ keys: maskExportModels(pool.exportForReimport()) });
+    return c.json({ keys: toImportableEntries(pool.exportForReimport()) });
   });
 
   // ── Import (bulk) ─────────────────────────────────────────────
 
   app.post("/auth/api-keys/import", async (c) => {
-    let body: unknown;
-    try { body = await c.req.json(); } catch { c.status(400); return c.json({ error: "Malformed JSON request body" }); }
-    const parsed = await parseBody(BulkImportSchema)(body);
-    if (!parsed.ok) { c.status(400); return c.json({ error: "Invalid request", details: parsed.error.issues }); }
-    const result = importEntries(pool, parsed.data.keys);
-    return c.json({ success: true, ...result });
+    const parsed = await parseJsonRequest(c, BulkImportSchema);
+    if (!parsed.ok) return parsed.response;
+    const result = addEntries(pool, parsed.data.keys);
+    return c.json({ success: true, added: result.added, failed: result.failed, errors: result.errors });
   });
 
   // ── Add single ────────────────────────────────────────────────
 
   app.post("/auth/api-keys", async (c) => {
-    let body: unknown;
-    try { body = await c.req.json(); } catch { c.status(400); return c.json({ error: "Malformed JSON request body" }); }
-    const parsed = await parseBody(AddKeySchema)(body);
-    if (!parsed.ok) { c.status(400); return c.json({ error: "Invalid request", details: parsed.error.issues }); }
-    const result = addEntries(pool, parsed.data);
+    const parsed = await parseJsonRequest(c, ApiKeyBindingSchema);
+    if (!parsed.ok) return parsed.response;
+    const result = addEntries(pool, [parsed.data]);
     return c.json({
       success: true,
       added: result.added,
@@ -226,10 +209,8 @@ export function createApiKeyRoutes(pool: ApiKeyPool): Hono {
   // ── Batch delete ──────────────────────────────────────────────
 
   app.post("/auth/api-keys/batch-delete", async (c) => {
-    let body: unknown;
-    try { body = await c.req.json(); } catch { c.status(400); return c.json({ error: "Malformed JSON request body" }); }
-    const parsed = await parseBody(BatchDeleteSchema)(body);
-    if (!parsed.ok) { c.status(400); return c.json({ error: "Invalid request", details: parsed.error.issues }); }
+    const parsed = await parseJsonRequest(c, BatchDeleteSchema);
+    if (!parsed.ok) return parsed.response;
     let deleted = 0;
     for (const id of parsed.data.ids) {
       if (pool.remove(id)) deleted++;
@@ -245,19 +226,15 @@ export function createApiKeyRoutes(pool: ApiKeyPool): Hono {
   });
 
   app.patch("/auth/api-keys/:id/label", async (c) => {
-    let body: unknown;
-    try { body = await c.req.json(); } catch { c.status(400); return c.json({ error: "Malformed JSON request body" }); }
-    const parsed = await parseBody(LabelSchema)(body);
-    if (!parsed.ok) { c.status(400); return c.json({ error: "Invalid request", details: parsed.error.issues }); }
+    const parsed = await parseJsonRequest(c, LabelSchema);
+    if (!parsed.ok) return parsed.response;
     if (!pool.setLabel(c.req.param("id"), parsed.data.label)) { c.status(404); return c.json({ error: "API key not found" }); }
     return c.json({ success: true });
   });
 
   app.patch("/auth/api-keys/:id/status", async (c) => {
-    let body: unknown;
-    try { body = await c.req.json(); } catch { c.status(400); return c.json({ error: "Malformed JSON request body" }); }
-    const parsed = await parseBody(StatusSchema)(body);
-    if (!parsed.ok) { c.status(400); return c.json({ error: "Invalid request", details: parsed.error.issues }); }
+    const parsed = await parseJsonRequest(c, StatusSchema);
+    if (!parsed.ok) return parsed.response;
     if (!pool.setStatus(c.req.param("id"), parsed.data.status)) { c.status(404); return c.json({ error: "API key not found" }); }
     return c.json({ success: true });
   });

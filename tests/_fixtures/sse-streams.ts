@@ -70,6 +70,20 @@ export function emptyStream(): ExtractedEvent[] {
   ];
 }
 
+/** Upstream cut the SSE stream after producing reasoning summary but before
+ *  any output_text or response.completed terminal event. Observed when
+ *  gpt-5.5 with effort=xhigh thinks past the upstream's 120 s response cap. */
+export function prematureCloseAfterReasoningStream(): ExtractedEvent[] {
+  return [
+    createCreated("resp_pc"),
+    createInProgress("resp_pc"),
+    createReasoningDelta("Let me think about this carefully"),
+    createReasoningDelta("..."),
+    createReasoningDelta(" still thinking"),
+    // No response.completed, no response.failed, no error — stream just ends.
+  ];
+}
+
 /** Stream with multiple tool calls. */
 export function multiToolCallStream(): ExtractedEvent[] {
   return [

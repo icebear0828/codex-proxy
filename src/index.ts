@@ -1,3 +1,5 @@
+import "./utils/install-dev-logger.js";
+
 import { Hono } from "hono";
 import { serve } from "@hono/node-server";
 import { loadConfig, loadFingerprint, getConfig, hasLocalOverride } from "./config.js";
@@ -10,6 +12,7 @@ import { logger } from "./middleware/logger.js";
 import { errorHandler } from "./middleware/error-handler.js";
 import { dashboardAuth } from "./middleware/dashboard-auth.js";
 import { logCapture } from "./middleware/log-capture.js";
+import { cors } from "./middleware/cors.js";
 
 import type { UpstreamAdapter } from "./proxy/upstream-adapter.js";
 import { createAuthRoutes } from "./routes/auth.js";
@@ -35,14 +38,17 @@ import { startQuotaRefresh, stopQuotaRefresh } from "./auth/usage-refresher.js";
 import { UsageStatsStore } from "./auth/usage-stats.js";
 import { startSessionCleanup, stopSessionCleanup } from "./auth/dashboard-session.js";
 import { createDashboardAuthRoutes } from "./routes/dashboard-login.js";
-import { UpstreamRouter } from "./proxy/upstream-router.js";
 import { OpenAIUpstream } from "./proxy/openai-upstream.js";
 import { AnthropicUpstream } from "./proxy/anthropic-upstream.js";
 import { GeminiUpstream } from "./proxy/gemini-upstream.js";
 import { ApiKeyPool } from "./auth/api-key-pool.js";
 import { createApiKeyRoutes } from "./routes/api-keys.js";
-import { createAdapterForEntry } from "./proxy/adapter-factory.js";
+import { createEmbeddingsRoutes } from "./routes/embeddings.js";
+import { createRuntimeUpstreamRouter } from "./proxy/upstream-router-bootstrap.js";
 import { startOllamaBridge, stopOllamaBridge } from "./ollama/server.js";
+import { createOfficialAgentRoutes } from "./routes/official-agent.js";
+import { installUncaughtErrorHandlers } from "./logs/error-log.js";
+import { awaitServerListening } from "./utils/await-listening.js";
 
 export interface ServerHandle {
   close: () => Promise<void>;
@@ -65,6 +71,11 @@ function urlHostForLocalRequest(host: string): string {
  * Throws on config errors instead of calling process.exit().
  */
 export async function startServer(options?: StartOptions): Promise<ServerHandle> {
+  // Funnel uncaught errors / unhandled rejections into the local
+  // error log before anything else can throw. Idempotent — Electron
+  // main may have already called this earlier.
+  installUncaughtErrorHandlers("server");
+
   // Load configuration
   console.log("[Init] Loading configuration...");
   const config = loadConfig();
@@ -103,6 +114,7 @@ export async function startServer(options?: StartOptions): Promise<ServerHandle>
   const app = new Hono();
 
   // Global middleware
+  app.use("*", cors);
   app.use("*", requestId);
   app.use("*", logger);
   app.use("*", errorHandler);
@@ -148,16 +160,8 @@ export async function startServer(options?: StartOptions): Promise<ServerHandle>
   // Initialize API key pool for runtime-managed third-party keys
   const apiKeyPool = new ApiKeyPool();
   const hasApiKeys = apiKeyPool.getAll().length > 0;
-
-  const upstreamRouter = (adapters.size > 0 || hasApiKeys)
-    ? new UpstreamRouter(adapters, cfg.model_routing, "codex")
-    : undefined;
-
-  // Attach API key pool to router for dynamic model resolution
-  if (upstreamRouter) {
-    upstreamRouter.setApiKeyPool(apiKeyPool, createAdapterForEntry);
-    if (hasApiKeys) console.log(`[Init] API key pool: ${apiKeyPool.getAll().length} key(s) loaded`);
-  }
+  const upstreamRouter = createRuntimeUpstreamRouter(adapters, cfg.model_routing, apiKeyPool);
+  if (hasApiKeys) console.log(`[Init] API key pool: ${apiKeyPool.getAll().length} key(s) loaded`);
 
   // Mount routes
   const authRoutes = createAuthRoutes(accountPool, refreshScheduler);
@@ -167,6 +171,7 @@ export async function startServer(options?: StartOptions): Promise<ServerHandle>
   const geminiRoutes = createGeminiRoutes(accountPool, cookieJar, proxyPool, upstreamRouter);
   const responsesRoutes = createResponsesRoutes(accountPool, cookieJar, proxyPool, upstreamRouter);
   const apiKeyRoutes = createApiKeyRoutes(apiKeyPool);
+  const embeddingsRoutes = createEmbeddingsRoutes(accountPool, apiKeyPool);
   const proxyRoutes = createProxyRoutes(proxyPool, accountPool);
   const usageStats = new UsageStatsStore();
   usageStats.recoverBaseline(accountPool);
@@ -176,10 +181,12 @@ export async function startServer(options?: StartOptions): Promise<ServerHandle>
   app.route("/", authRoutes);
   app.route("/", accountRoutes);
   app.route("/", apiKeyRoutes);
+  app.route("/", embeddingsRoutes);
   app.route("/", chatRoutes);
   app.route("/", messagesRoutes);
   app.route("/", geminiRoutes);
   app.route("/", responsesRoutes);
+  app.route("/", createOfficialAgentRoutes());
   app.route("/", proxyRoutes);
   app.route("/", createModelRoutes(apiKeyPool));
   app.route("/", webRoutes);
@@ -239,6 +246,13 @@ export async function startServer(options?: StartOptions): Promise<ServerHandle>
     hostname: host,
     port,
   });
+
+  // `serve()` returns synchronously before `listen()` actually binds.
+  // Wait for the listening event (or surface bind errors as a real
+  // rejection of startServer) so callers' try/catch can react —
+  // notably main.ts's port-fallback path, which was getting bypassed
+  // because EADDRINUSE fired after `await startServer(...)` resolved.
+  await awaitServerListening(server);
 
   // Resolve actual port (may differ from requested when port=0)
   const addr = server.address();

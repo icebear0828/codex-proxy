@@ -27,6 +27,9 @@ vi.mock("@src/config.js", () => ({
       rotation_strategy: "least_used",
       rate_limit_backoff_seconds: 60,
     },
+    quota: {
+      skip_exhausted: true,
+    },
   })),
 }));
 
@@ -69,6 +72,7 @@ describe("AccountPool", () => {
         rate_limit_backoff_seconds: 60,
         max_concurrent_per_account: 1,
       },
+      quota: { skip_exhausted: true },
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     } as ReturnType<typeof getConfig>);
     vi.mocked(getModelPlanTypes).mockReturnValue([]);
@@ -269,32 +273,32 @@ describe("AccountPool", () => {
   // ── Rate limiting ─────────────────────────────────────────────────
 
   describe("rate limiting", () => {
-    it("marks account as rate_limited", () => {
+    it("marks account as cachedQuota-exhausted (primary bucket)", () => {
       pool.addAccount("token-aaa");
 
       const acquired = pool.acquire()!;
-      pool.markRateLimited(acquired.entryId, { retryAfterSeconds: 120 });
+      pool.applyRateLimit429(acquired.entryId, { retryAfterSec: 120 });
 
-      const accounts = pool.getAccounts();
-      expect(accounts[0].status).toBe("rate_limited");
+      const entry = pool.getEntry(acquired.entryId);
+      expect(entry?.cachedQuota?.rate_limit.limit_reached).toBe(true);
       expect(pool.acquire()).toBeNull();
     });
 
-    it("uses configured backoff when retryAfterSeconds not provided", () => {
+    it("uses configured backoff when retry-after not provided", () => {
       pool.addAccount("token-aaa");
 
       const acquired = pool.acquire()!;
-      pool.markRateLimited(acquired.entryId);
+      pool.applyRateLimit429(acquired.entryId);
 
-      const accounts = pool.getAccounts();
-      expect(accounts[0].status).toBe("rate_limited");
+      const entry = pool.getEntry(acquired.entryId);
+      expect(entry?.cachedQuota?.rate_limit.limit_reached).toBe(true);
     });
 
     it("does not count rate limit release as a request", () => {
       pool.addAccount("token-aaa");
 
       const acquired = pool.acquire()!;
-      pool.markRateLimited(acquired.entryId); // no options
+      pool.applyRateLimit429(acquired.entryId);
 
       const accounts = pool.getAccounts();
       expect(accounts[0].usage.request_count).toBe(0);
@@ -397,7 +401,7 @@ describe("AccountPool", () => {
 
         // Rate limit the team account
         const team = pool.acquire({ model: "gpt-5.4" })!;
-        pool.markRateLimited(team.entryId, { retryAfterSeconds: 3600 });
+        pool.applyRateLimit429(team.entryId, { retryAfterSec: 3600 });
 
         // No team accounts available, should return null
         const acquired = pool.acquire({ model: "gpt-5.4" });

@@ -75,13 +75,9 @@ async function detectLocalProxy(): Promise<string | null> {
  */
 export async function initProxy(): Promise<void> {
   const config = getConfig();
-  if (config.tls.proxy_url !== null && config.tls.proxy_url !== undefined) {
-    _proxyUrl = config.tls.proxy_url || null;
-    if (_proxyUrl) {
-      console.log(`[Proxy] Using configured proxy: ${_proxyUrl}`);
-    } else {
-      console.log("[Proxy] Proxy disabled by config (empty proxy_url)");
-    }
+  if (config.tls.proxy_url) {
+    _proxyUrl = config.tls.proxy_url;
+    console.log(`[Proxy] Using configured proxy: ${_proxyUrl}`);
     return;
   }
   _proxyUrl = await detectLocalProxy();

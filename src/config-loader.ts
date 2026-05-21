@@ -3,6 +3,24 @@ import { resolve } from "path";
 import yaml from "js-yaml";
 import { getConfigDir, getDataDir } from "./paths.js";
 
+const CLIENT_VERSION_KEYS = ["app_version", "build_number", "chromium_version"] as const;
+type ClientVersionKey = typeof CLIENT_VERSION_KEYS[number];
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+
+function asNonEmptyString(value: unknown): string | null {
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    return trimmed ? trimmed : null;
+  }
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return String(value);
+  }
+  return null;
+}
+
 export function loadYaml(filePath: string): unknown {
   const content = readFileSync(filePath, "utf-8");
   return yaml.load(content);
@@ -29,6 +47,91 @@ export function deepMerge(
     }
   }
   return target;
+}
+
+function readJsonRecord(filePath: string): Record<string, unknown> | null {
+  if (!existsSync(filePath)) return null;
+  try {
+    const parsed = JSON.parse(readFileSync(filePath, "utf-8")) as unknown;
+    return isRecord(parsed) ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+function hasLocalClientOverride(
+  local: Record<string, unknown> | null,
+  key: ClientVersionKey,
+): boolean {
+  const client = local?.client;
+  return isRecord(client) && client[key] !== undefined;
+}
+
+function readLocalClientOverride(
+  local: Record<string, unknown> | null,
+  key: ClientVersionKey,
+): string | null {
+  const client = local?.client;
+  if (!isRecord(client) || client[key] === undefined) return null;
+  return asNonEmptyString(client[key]);
+}
+
+function applyClientValue(
+  client: Record<string, unknown>,
+  local: Record<string, unknown> | null,
+  key: ClientVersionKey,
+  value: string | null,
+): void {
+  if (!value || hasLocalClientOverride(local, key)) return;
+  client[key] = value;
+}
+
+function readExtractedChromiumVersion(
+  dataDir: string,
+  appVersion: string,
+  buildNumber: string,
+): string | null {
+  const extracted = readJsonRecord(resolve(dataDir, "extracted-fingerprint.json"));
+  if (!extracted) return null;
+  if (asNonEmptyString(extracted.app_version) !== appVersion) return null;
+  if (asNonEmptyString(extracted.build_number) !== buildNumber) return null;
+  return asNonEmptyString(extracted.chromium_version);
+}
+
+function applyPersistedClientVersionState(
+  raw: Record<string, unknown>,
+  local: Record<string, unknown> | null,
+  dataDir: string,
+): void {
+  const state = readJsonRecord(resolve(dataDir, "version-state.json"));
+  if (!state) return;
+
+  const persistedAppVersion = asNonEmptyString(state.app_version);
+  const persistedBuildNumber = asNonEmptyString(state.build_number);
+  if (!persistedAppVersion || !persistedBuildNumber) return;
+
+  const client: Record<string, unknown> = isRecord(raw.client) ? raw.client : {};
+  raw.client = client;
+
+  const effectiveAppVersion = hasLocalClientOverride(local, "app_version")
+    ? readLocalClientOverride(local, "app_version")
+    : persistedAppVersion;
+  const effectiveBuildNumber = hasLocalClientOverride(local, "build_number")
+    ? readLocalClientOverride(local, "build_number")
+    : persistedBuildNumber;
+
+  const stateMatchesEffectiveVersion =
+    effectiveAppVersion === persistedAppVersion &&
+    effectiveBuildNumber === persistedBuildNumber;
+  const chromiumVersion = effectiveAppVersion && effectiveBuildNumber
+    ? (
+      stateMatchesEffectiveVersion ? asNonEmptyString(state.chromium_version) : null
+    ) ?? readExtractedChromiumVersion(dataDir, effectiveAppVersion, effectiveBuildNumber)
+    : null;
+
+  applyClientValue(client, local, "app_version", persistedAppVersion);
+  applyClientValue(client, local, "build_number", persistedBuildNumber);
+  applyClientValue(client, local, "chromium_version", chromiumVersion);
 }
 
 /** Load default.yaml and merge data/local.yaml overlay (if exists). */
@@ -64,6 +167,7 @@ export function loadMergedConfig(configDir?: string): {
       console.warn(`[Config] Failed to load data/local.yaml: ${err instanceof Error ? err.message : err}`);
     }
   }
+  applyPersistedClientVersionState(raw, local, dataDir);
   return { raw, local };
 }
 

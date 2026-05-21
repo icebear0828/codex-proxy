@@ -14,6 +14,12 @@ interface AffinityEntry {
   instructions?: string;
   inputTokens?: number;
   functionCallIds?: string[];
+  /** Identifies the (instructions + tools) "shape" of the request that
+   *  produced this response. Used by routes that need to keep concurrent
+   *  variants of the same conversation (sub-agents, parallel tool calls)
+   *  on independent prev_response_id chains. Optional for back-compat with
+   *  routes that don't compute it (e.g. [Responses] / [Chat] / [Gemini]). */
+  variantHash?: string;
   createdAt: number;
 }
 
@@ -39,6 +45,7 @@ export class SessionAffinityMap {
     instructions?: string,
     inputTokens?: number,
     functionCallIds?: string[],
+    variantHash?: string,
   ): void {
     this.map.set(responseId, {
       entryId,
@@ -47,6 +54,7 @@ export class SessionAffinityMap {
       instructions,
       inputTokens,
       functionCallIds: functionCallIds ? [...functionCallIds] : undefined,
+      variantHash,
       createdAt: Date.now(),
     });
   }
@@ -63,14 +71,26 @@ export class SessionAffinityMap {
     return entry?.conversationId ?? null;
   }
 
-  /** Look up the latest response ID recorded for a conversation. */
-  lookupLatestResponseIdByConversationId(conversationId: string): string | null {
+  /** Look up the latest response ID recorded for a conversation.
+   *  When `maxAgeMs` is provided, entries older than that are skipped — used
+   *  by implicit-resume to avoid handing the upstream a `previous_response_id`
+   *  whose prompt cache has likely already been evicted.
+   *  When `variantHash` is provided, only entries recorded with that exact
+   *  variantHash match — keeps sub-agents and main-thread chains independent. */
+  lookupLatestResponseIdByConversationId(
+    conversationId: string,
+    maxAgeMs?: number,
+    variantHash?: string,
+  ): string | null {
+    const now = Date.now();
     let latestResponseId: string | null = null;
     let latestCreatedAt = -1;
     for (const [responseId, entry] of this.map) {
       if (entry.conversationId !== conversationId) continue;
+      if (variantHash !== undefined && entry.variantHash !== variantHash) continue;
       const liveEntry = this.getEntry(responseId);
       if (!liveEntry) continue;
+      if (maxAgeMs !== undefined && now - liveEntry.createdAt > maxAgeMs) continue;
       if (liveEntry.createdAt >= latestCreatedAt) {
         latestCreatedAt = liveEntry.createdAt;
         latestResponseId = responseId;

@@ -3,12 +3,12 @@
  *
  * Tests:
  * - GET /auth/accounts returns cached quota from background refresh
- * - GET /auth/accounts?quota=fresh forces live upstream fetch
+ * - GET /auth/accounts?quota=fresh returns cached quota without live upstream fetch
  * - GET /auth/quota/warnings returns active warnings
  * - Accounts with exhausted quota are skipped by acquire()
  */
 
-import { describe, it, expect, beforeAll, afterAll } from "vitest";
+import { describe, it, expect, beforeAll, afterAll, vi } from "vitest";
 import "@helpers/e2e-setup.js";
 import { createValidJwt } from "@helpers/jwt.js";
 
@@ -20,6 +20,7 @@ import { AccountPool } from "@src/auth/account-pool.js";
 import { RefreshScheduler } from "@src/auth/refresh-scheduler.js";
 import type { CodexQuota } from "@src/auth/types.js";
 import { updateWarnings, clearWarnings, getActiveWarnings } from "@src/auth/quota-warnings.js";
+import { CodexApi } from "@src/proxy/codex-api.js";
 
 let app: Hono;
 let pool: AccountPool;
@@ -103,6 +104,29 @@ describe("E2E: quota auto-refresh", () => {
     pool.removeAccount(id);
   });
 
+  it("GET /auth/accounts?quota=fresh returns cached quota without upstream call", async () => {
+    const id = pool.addAccount(createValidJwt({
+      accountId: "acct-quota-fresh",
+      email: "quotafresh@test.com",
+      planType: "plus",
+    }));
+    pool.updateCachedQuota(id, makeQuota(77));
+    const getUsageSpy = vi.spyOn(CodexApi.prototype, "getUsage").mockRejectedValue(new Error("unexpected usage call"));
+
+    try {
+      const res = await app.request("/auth/accounts?quota=fresh");
+      expect(res.status).toBe(200);
+
+      const body = await res.json() as { accounts: Array<{ id: string; quota?: CodexQuota }> };
+      const acct = body.accounts.find((a) => a.id === id);
+      expect(acct?.quota?.rate_limit.used_percent).toBe(77);
+      expect(getUsageSpy).not.toHaveBeenCalled();
+    } finally {
+      getUsageSpy.mockRestore();
+      pool.removeAccount(id);
+    }
+  });
+
   it("GET /auth/quota/warnings returns empty when no warnings", async () => {
     const res = await app.request("/auth/quota/warnings");
     expect(res.status).toBe(200);
@@ -135,7 +159,7 @@ describe("E2E: quota auto-refresh", () => {
     clearWarnings("test-acct-1");
   });
 
-  it("markQuotaExhausted causes acquire to skip that account", async () => {
+  it("applyRateLimit429 causes acquire to skip that account", async () => {
     const id1 = pool.addAccount(createValidJwt({
       accountId: "acct-exhaust-1",
       email: "exhaust1@test.com",
@@ -147,8 +171,8 @@ describe("E2E: quota auto-refresh", () => {
       planType: "plus",
     }));
 
-    // Exhaust first account
-    pool.markQuotaExhausted(id1, Math.floor(Date.now() / 1000) + 7200);
+    // Exhaust first account via cachedQuota path
+    pool.applyRateLimit429(id1, { resetsAtSec: Math.floor(Date.now() / 1000) + 7200 });
 
     const acquired = pool.acquire();
     expect(acquired).not.toBeNull();

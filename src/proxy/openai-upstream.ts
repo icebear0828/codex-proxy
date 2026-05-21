@@ -13,6 +13,7 @@ import type { CodexResponsesRequest, CodexSSEEvent } from "./codex-types.js";
 import { CodexApiError } from "./codex-types.js";
 import { parseSSEStream } from "./codex-sse.js";
 import { translateCodexToOpenAIRequest } from "../translation/codex-request-to-openai.js";
+import { withFetchDispatcher } from "./fetch-dispatcher.js";
 
 function isRecord(v: unknown): v is Record<string, unknown> {
   return typeof v === "object" && v !== null && !Array.isArray(v);
@@ -41,7 +42,7 @@ export class OpenAIUpstream implements UpstreamAdapter {
     const modelId = extractModelId(req.model);
     const body = translateCodexToOpenAIRequest(req, modelId, req.stream);
 
-    const response = await fetch(`${this.baseUrl}/chat/completions`, {
+    const response = await fetch(`${this.baseUrl}/chat/completions`, withFetchDispatcher({
       method: "POST",
       headers: {
         "Authorization": `Bearer ${this.apiKey}`,
@@ -50,7 +51,7 @@ export class OpenAIUpstream implements UpstreamAdapter {
       },
       body: JSON.stringify(body),
       signal,
-    });
+    }));
 
     if (!response.ok) {
       const errorText = await response.text().catch(() => `HTTP ${response.status}`);

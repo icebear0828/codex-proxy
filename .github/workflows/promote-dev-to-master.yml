@@ -16,7 +16,10 @@ concurrency:
 
 permissions:
   contents: write
-  actions: read
+  # `actions: write` is required by the final step's `gh workflow run docker-publish.yml`
+  # dispatch; the earlier CI status read needs only `actions: read`, but the
+  # broader scope subsumes it.
+  actions: write
   checks: read
 
 jobs:
@@ -103,7 +106,7 @@ jobs:
                | select(.name | test("(?i)promote|bump") | not)
               ] as $relevant
               | if ($relevant | length) == 0
-                then "no-checks"
+                then "missing-checks"
                 else
                   if all($relevant[]; .conclusion == "success" or .conclusion == "skipped")
                   then "green"
@@ -113,7 +116,7 @@ jobs:
             ')
 
           echo "status=$STATUS"
-          if [ "$STATUS" = "green" ] || [ "$STATUS" = "no-checks" ]; then
+          if [ "$STATUS" = "green" ]; then
             echo "ok=true" >> "$GITHUB_OUTPUT"
             echo "dev_sha=$DEV_SHA" >> "$GITHUB_OUTPUT"
           else
@@ -130,3 +133,13 @@ jobs:
           echo "Promoting $DEV_SHA to master"
           git push origin "${DEV_SHA}:refs/heads/master"
           echo "::notice::Promoted dev ($DEV_SHA) to master. bump-electron.yml will pick it up on the next 16:00 UTC tick."
+
+      - name: Trigger docker publish
+        # GITHUB_TOKEN-driven pushes do not fire downstream workflows (anti-recursion
+        # guard), so docker-publish.yml's `on: push: branches: [master]` would
+        # otherwise stay silent after every promotion. workflow_dispatch is one of
+        # the few events GITHUB_TOKEN is allowed to trigger.
+        if: steps.ci.outputs.ok == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh workflow run docker-publish.yml --ref master

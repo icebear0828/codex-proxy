@@ -74,7 +74,7 @@ export function ProxyGroupList({ accounts, proxies, selectedGroup, onSelectGroup
             onClick={() => onSelectGroup(g.id === "__all__" ? null : g.id)}
             class={`flex items-center justify-between px-3 py-2 rounded-lg text-sm transition-colors text-left ${
               isActive
-                ? "bg-primary/10 text-primary font-medium border border-primary/20"
+                ? "bg-primary-container text-primary font-medium border border-primary/20"
                 : "hover:bg-slate-50 dark:hover:bg-border-dark text-slate-700 dark:text-text-main"
             }`}
           >
@@ -82,7 +82,7 @@ export function ProxyGroupList({ accounts, proxies, selectedGroup, onSelectGroup
             <span
               class={`ml-2 px-2 py-0.5 rounded-full text-xs font-medium shrink-0 ${
                 isActive
-                  ? "bg-primary/20 text-primary"
+                  ? "bg-primary-container text-primary"
                   : "bg-slate-100 dark:bg-border-dark text-slate-500 dark:text-text-dim"
               }`}
             >

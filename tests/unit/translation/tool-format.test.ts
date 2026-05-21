@@ -33,6 +33,7 @@ describe("openAIToolsToCodex", () => {
       {
         type: "function",
         name: "get_weather",
+        strict: false,
         description: "Get the weather",
         parameters: {
           type: "object",
@@ -48,6 +49,7 @@ describe("openAIToolsToCodex", () => {
     ]);
     expect(result[0]).not.toHaveProperty("description");
     expect(result[0].name).toBe("noop");
+    expect(result[0].strict).toBe(false);
   });
 
   it("omits parameters when not provided", () => {
@@ -55,6 +57,18 @@ describe("openAIToolsToCodex", () => {
       { type: "function", function: { name: "ping", description: "Ping" } },
     ]);
     expect(result[0]).not.toHaveProperty("parameters");
+    expect(result[0].strict).toBe(false);
+  });
+
+  it("preserves explicit strict mode on function tools", () => {
+    const result = openAIToolsToCodex([
+      { type: "function", function: { name: "strict_tool", strict: true } },
+    ]);
+    expect(result[0]).toMatchObject({
+      type: "function",
+      name: "strict_tool",
+      strict: true,
+    });
   });
 
   it("normalizes object schema without properties", () => {
@@ -93,6 +107,15 @@ describe("openAIToolsToCodex", () => {
     expect(result[0].name).toBe("a");
     expect(result[1].name).toBe("b");
     expect(result[1].description).toBe("B tool");
+  });
+
+  it("preserves image_generation tools for native Codex image generation", () => {
+    const result = openAIToolsToCodex([
+      { type: "image_generation", size: "1024x1024", quality: "high" },
+    ]);
+    expect(result).toEqual([
+      { type: "image_generation", size: "1024x1024", quality: "high" },
+    ]);
   });
 });
 
@@ -136,6 +159,7 @@ describe("openAIFunctionsToCodex", () => {
       {
         type: "function",
         name: "search",
+        strict: false,
         description: "Search the web",
         parameters: {
           type: "object",
@@ -147,9 +171,14 @@ describe("openAIFunctionsToCodex", () => {
 
   it("omits description and parameters when absent", () => {
     const result = openAIFunctionsToCodex([{ name: "bare" }]);
-    expect(result[0]).toEqual({ type: "function", name: "bare" });
+    expect(result[0]).toEqual({ type: "function", name: "bare", strict: false });
     expect(result[0]).not.toHaveProperty("description");
     expect(result[0]).not.toHaveProperty("parameters");
+  });
+
+  it("preserves explicit strict mode on legacy functions", () => {
+    const result = openAIFunctionsToCodex([{ name: "legacy_strict", strict: true }]);
+    expect(result[0]).toEqual({ type: "function", name: "legacy_strict", strict: true });
   });
 
   it("normalizes object schema without properties", () => {
@@ -587,6 +616,7 @@ describe("hosted web_search tool conversion", () => {
       {
         type: "function",
         name: "lookup",
+        strict: false,
         parameters: { type: "object", properties: {} },
       },
     ]);

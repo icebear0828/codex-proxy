@@ -7,10 +7,12 @@ import { AccountImportExport } from "../components/AccountImportExport";
 import type { AssignmentAccount } from "../../../shared/hooks/use-proxy-assignments";
 import type { TranslationKey } from "../../../shared/i18n/translations";
 
+// `rate_limited` is no longer a backend status enum value — it lives in
+// cachedQuota now. The proxy-assignment table only has the backend status
+// string (no quota), so this filter ladder reflects the new enum.
 const statusOrder: Array<{ key: string; label: TranslationKey }> = [
   { key: "active", label: "active" },
   { key: "expired", label: "expired" },
-  { key: "rate_limited", label: "rateLimited" },
   { key: "refreshing", label: "refreshing" },
   { key: "disabled", label: "disabled" },
   { key: "banned", label: "banned" },
@@ -18,7 +20,7 @@ const statusOrder: Array<{ key: string; label: TranslationKey }> = [
 
 export function AccountManagement({ embedded }: { embedded?: boolean } = {}) {
   const t = useT();
-  const { list, loading: listLoading, batchDelete, batchSetStatus, toggleStatus, exportAccounts, importAccounts } = useAccounts();
+  const { list, loading: listLoading, batchDelete, batchSetStatus, toggleStatus, exportAccounts, importAccounts, persistenceHealth } = useAccounts();
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [statusFilter, setStatusFilter] = useState("all");
   const [message, setMessage] = useState<{ text: string; error?: boolean } | null>(null);
@@ -100,6 +102,25 @@ export function AccountManagement({ embedded }: { embedded?: boolean } = {}) {
 
   const content = (
     <>
+      {/* Persist-disabled banner — surfaced when accounts.json failed to load
+          at startup and the registry is in quarantine mode. Drives the user
+          to inspect data/accounts.json.corrupt-*.bak rather than silently
+          watching mutations vanish on the next restart. */}
+      {!persistenceHealth.ok && (
+        <div
+          role="alert"
+          data-testid="persistence-banner"
+          class="mb-4 px-4 py-3 rounded-lg border border-amber-300 bg-amber-50 dark:bg-amber-900/20 dark:border-amber-700"
+        >
+          <div class="text-sm font-semibold text-amber-800 dark:text-amber-200">
+            {t("persistDisabledTitle")}
+          </div>
+          <div class="text-xs mt-1 text-amber-700 dark:text-amber-300">
+            {persistenceHealth.message || t("persistDisabledBody")}
+          </div>
+        </div>
+      )}
+
       {/* Import/Export toolbar (always shown) */}
       <div class="flex items-center justify-end mb-3">
         <AccountImportExport
@@ -120,7 +141,7 @@ export function AccountManagement({ embedded }: { embedded?: boolean } = {}) {
                 onClick={() => handleStatusChipClick(key)}
                 class={`px-3 py-1 text-xs font-medium rounded-full border transition-colors ${
                   isActive
-                    ? "bg-primary text-white border-primary"
+                    ? "bg-primary-action text-white border-primary-action"
                     : "bg-white dark:bg-card-dark border-gray-200 dark:border-border-dark text-slate-600 dark:text-text-dim hover:border-primary/50"
                 }`}
               >
@@ -138,7 +159,7 @@ export function AccountManagement({ embedded }: { embedded?: boolean } = {}) {
           <div class={`mb-4 px-4 py-2 rounded-lg text-sm font-medium ${
             message.error
               ? "bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400"
-              : "bg-primary/10 text-primary"
+              : "bg-primary-container text-primary"
           }`}>
             {message.text}
           </div>

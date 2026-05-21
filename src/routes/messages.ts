@@ -22,11 +22,9 @@ import { getRealClientIp } from "../utils/get-real-client-ip.js";
 import { randomUUID } from "crypto";
 import {
   handleProxyRequest,
-  handleDirectRequest,
-  type FormatAdapter,
-  type ResponseMetadata,
-  type UsageHint,
 } from "./shared/proxy-handler.js";
+import { handleDirectRequest } from "./shared/direct-request-handler.js";
+import type { FormatAdapter } from "./shared/proxy-handler-types.js";
 import { extractAnthropicClientConversationId } from "./shared/anthropic-session-id.js";
 import type { UpstreamRouter } from "../proxy/upstream-router.js";
 import { summarizeRequestForLog } from "../logs/request-summary.js";
@@ -49,25 +47,24 @@ function makeAnthropicFormat(wantThinking: boolean): FormatAdapter {
       ),
     format429: (msg) => makeError("rate_limit_error", msg),
     formatError: (_status, msg) => makeError("api_error", msg),
-    streamTranslator: (
+    streamTranslator: ({
       api,
       response,
       model,
       onUsage,
       onResponseId,
-      _tupleSchema,
-      usageHint?: UsageHint,
-      onResponseMetadata?: (metadata: ResponseMetadata) => void,
-    ) =>
-      streamCodexToAnthropic(api, response, model, onUsage, onResponseId, wantThinking, usageHint, onResponseMetadata),
-    collectTranslator: (
+      onResponseCompleted,
+      usageHint,
+      onResponseMetadata,
+    }) =>
+      streamCodexToAnthropic(api, response, model, onUsage, onResponseId, wantThinking, usageHint, onResponseMetadata, onResponseCompleted),
+    collectTranslator: ({
       api,
       response,
       model,
-      _tupleSchema,
-      usageHint?: UsageHint,
-      onResponseMetadata?: (metadata: ResponseMetadata) => void,
-    ) =>
+      usageHint,
+      onResponseMetadata,
+    }) =>
       collectCodexToAnthropicResponse(api, response, model, wantThinking, usageHint, onResponseMetadata),
   };
 }
@@ -134,7 +131,7 @@ export function createMessagesRoutes(
       injectHostedWebSearch: !allowUnauthenticated,
       mapClaudeCodeWebSearch: !allowUnauthenticated && clientConversationId !== null,
     });
-    if (!allowUnauthenticated && !config.tls.disable_websocket) {
+    if (!allowUnauthenticated) {
       codexRequest.useWebSocket = true;
     }
     const wantThinking = req.thinking?.type === "enabled" || req.thinking?.type === "adaptive";
@@ -161,15 +158,16 @@ export function createMessagesRoutes(
     });
 
     if (routeMatch?.kind === "api-key" || routeMatch?.kind === "adapter") {
+      const directModel = routeMatch.resolvedModel ?? req.model;
       const directReq = {
         ...proxyReq,
-        model: req.model,
-        codexRequest: { ...codexRequest, model: req.model },
+        model: directModel,
+        codexRequest: { ...codexRequest, model: directModel },
       };
-      return handleDirectRequest(c, routeMatch.adapter, directReq, fmt);
+      return handleDirectRequest({ c, upstream: routeMatch.adapter, req: directReq, fmt });
     }
 
-    return handleProxyRequest(c, accountPool, cookieJar, proxyReq, fmt, proxyPool);
+    return handleProxyRequest({ c, accountPool, cookieJar, req: proxyReq, fmt, proxyPool });
   });
 
   return app;

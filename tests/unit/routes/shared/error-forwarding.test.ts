@@ -4,11 +4,12 @@
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { Hono } from "hono";
-import type { ProxyRequest } from "@src/routes/shared/proxy-handler.js";
+import type { FormatStreamTranslatorOptions, ProxyRequest } from "@src/routes/shared/proxy-handler-types.js";
 import { createMockFormatAdapter } from "@helpers/format-adapter.js";
 
 // ── Mocks ────────────────────────────────────────────────────────────
 
+const recordedStreamCloseEvents = vi.hoisted((): Array<Record<string, unknown>> => []);
 let mockUpstreamCreate: (() => Promise<Response>) | null = null;
 let mockCodexCreate: (() => Promise<Response>) | null = null;
 
@@ -52,6 +53,12 @@ vi.mock("@src/utils/retry.js", () => ({
   withRetry: vi.fn(async (fn: () => Promise<unknown>) => fn()),
 }));
 
+vi.mock("@src/logs/stream-close-event.js", () => ({
+  recordStreamCloseEvent: vi.fn((evt: Record<string, unknown>) => {
+    recordedStreamCloseEvents.push(evt);
+  }),
+}));
+
 vi.mock("@src/translation/codex-event-extractor.js", () => {
   class EmptyResponseError extends Error {
     usage: { input_tokens: number; output_tokens: number } | undefined;
@@ -69,7 +76,8 @@ vi.mock("@src/translation/codex-event-extractor.js", () => {
   return { EmptyResponseError };
 });
 
-import { handleDirectRequest, handleProxyRequest } from "@src/routes/shared/proxy-handler.js";
+import { handleDirectRequest } from "@src/routes/shared/direct-request-handler.js";
+import { handleProxyRequest } from "@src/routes/shared/proxy-handler.js";
 // Both imported — handleDirectRequest for passthrough tests, handleProxyRequest for non-passthrough verification
 import { CodexApiError } from "@src/proxy/codex-api.js";
 
@@ -121,6 +129,7 @@ function createMockAccountPool(overrides: Record<string, unknown> = {}) {
 describe("handleDirectRequest error forwarding", () => {
   beforeEach(() => {
     mockUpstreamCreate = null;
+    recordedStreamCloseEvents.length = 0;
     vi.clearAllMocks();
   });
 
@@ -141,7 +150,7 @@ describe("handleDirectRequest error forwarding", () => {
     const req = createDefaultRequest();
     const fmt = createMockFormatAdapter();
 
-    app.post("/test", (c) => handleDirectRequest(c, upstream as never, req, fmt));
+    app.post("/test", (c) => handleDirectRequest({ c, upstream: upstream as never, req, fmt }));
 
     const res = await app.request("/test", { method: "POST" });
     expect(res.status).toBe(404);
@@ -164,7 +173,7 @@ describe("handleDirectRequest error forwarding", () => {
     const req = createDefaultRequest();
     const fmt = createMockFormatAdapter();
 
-    app.post("/test", (c) => handleDirectRequest(c, upstream as never, req, fmt));
+    app.post("/test", (c) => handleDirectRequest({ c, upstream: upstream as never, req, fmt }));
 
     const res = await app.request("/test", { method: "POST" });
     expect(res.status).toBe(502);
@@ -190,7 +199,7 @@ describe("handleDirectRequest error forwarding", () => {
     const req = createDefaultRequest();
     const fmt = createMockFormatAdapter();
 
-    app.post("/test", (c) => handleDirectRequest(c, upstream as never, req, fmt));
+    app.post("/test", (c) => handleDirectRequest({ c, upstream: upstream as never, req, fmt }));
 
     const res = await app.request("/test", { method: "POST" });
     expect(res.status).toBe(429);
@@ -209,7 +218,7 @@ describe("handleDirectRequest error forwarding", () => {
     const req = createDefaultRequest();
     const fmt = createMockFormatAdapter();
 
-    app.post("/test", (c) => handleDirectRequest(c, upstream as never, req, fmt));
+    app.post("/test", (c) => handleDirectRequest({ c, upstream: upstream as never, req, fmt }));
 
     const res = await app.request("/test", { method: "POST" });
     expect(res.status).toBe(429);
@@ -231,7 +240,7 @@ describe("handleDirectRequest error forwarding", () => {
     const req = createDefaultRequest();
     const fmt = createMockFormatAdapter();
 
-    app.post("/test", (c) => handleDirectRequest(c, upstream as never, req, fmt));
+    app.post("/test", (c) => handleDirectRequest({ c, upstream: upstream as never, req, fmt }));
 
     const res = await app.request("/test", { method: "POST" });
     expect(res.status).toBe(400);
@@ -250,7 +259,7 @@ describe("handleDirectRequest error forwarding", () => {
     const req = createDefaultRequest();
     const fmt = createMockFormatAdapter();
 
-    app.post("/test", (c) => handleDirectRequest(c, upstream as never, req, fmt));
+    app.post("/test", (c) => handleDirectRequest({ c, upstream: upstream as never, req, fmt }));
 
     const res = await app.request("/test", { method: "POST" });
     expect(res.status).toBe(502);
@@ -258,6 +267,78 @@ describe("handleDirectRequest error forwarding", () => {
     const body = await res.json();
     expect(body.error).toBe("api_error");
     expect(fmt.formatError).toHaveBeenCalled();
+  });
+
+  it("passes direct collect dependencies as one options object", async () => {
+    const upstreamResponse = new Response("data: {}\n\n");
+    mockUpstreamCreate = () => Promise.resolve(upstreamResponse);
+
+    const app = new Hono();
+    const upstream = createMockUpstream();
+    const tupleSchema = { type: "array", prefixItems: [] } satisfies Record<string, unknown>;
+    const req = { ...createDefaultRequest(), tupleSchema };
+    const fmt = createMockFormatAdapter();
+
+    app.post("/test", (c) => handleDirectRequest({ c, upstream: upstream as never, req, fmt }));
+
+    const res = await app.request("/test", { method: "POST" });
+    expect(res.status).toBe(200);
+
+    const call = fmt.collectTranslator.mock.calls[0] ?? [];
+    expect(call).toHaveLength(1);
+    const options = call[0] as Record<string, unknown>;
+    expect(options.api).toBe(upstream);
+    expect(options.response).toBe(upstreamResponse);
+    expect(options.model).toBe("gpt-4o");
+    expect(options.tupleSchema).toBe(tupleSchema);
+    expect(options.usageHint).toBeUndefined();
+    expect(options.onResponseMetadata).toBeUndefined();
+  });
+
+  it("records direct streaming failures with the direct provider and public API path", async () => {
+    const upstreamResponse = new Response("data: {}\n\n");
+    mockUpstreamCreate = () => Promise.resolve(upstreamResponse);
+
+    const app = new Hono();
+    const upstream = createMockUpstream({ tag: "openai" });
+    const tupleSchema = { type: "array", prefixItems: [] } satisfies Record<string, unknown>;
+    const req = { ...createDefaultRequest(), isStreaming: true, tupleSchema };
+    const fmt = createMockFormatAdapter({
+      streamTranslator: vi.fn(async function* (_options: FormatStreamTranslatorOptions) {
+        throw new Error("direct stream died");
+      }),
+    });
+
+    app.post("/test", (c) => handleDirectRequest({ c, upstream: upstream as never, req, fmt }));
+
+    const res = await app.request("/test", { method: "POST" });
+    await res.text();
+
+    const call = fmt.streamTranslator.mock.calls[0] ?? [];
+    expect(call).toHaveLength(1);
+    const options = call[0] as Record<string, unknown>;
+    expect(options.api).toBe(upstream);
+    expect(options.response).toBe(upstreamResponse);
+    expect(options.model).toBe("gpt-4o");
+    expect(typeof options.onUsage).toBe("function");
+    expect(typeof options.onResponseId).toBe("function");
+    expect(options.tupleSchema).toBe(tupleSchema);
+    expect(options.usageHint).toBeUndefined();
+    expect(options.onResponseMetadata).toBeUndefined();
+    expect(options.streamContext).toMatchObject({
+      tag: "Test",
+      provider: "openai",
+      path: "/v1/responses",
+      model: "gpt-4o",
+    });
+    expect(recordedStreamCloseEvents).toHaveLength(1);
+    expect(recordedStreamCloseEvents[0]).toMatchObject({
+      kind: "upstream-error",
+      provider: "openai",
+      path: "/v1/responses",
+      model: "gpt-4o",
+      detail: "direct stream died",
+    });
   });
 });
 
@@ -280,7 +361,7 @@ describe("handleProxyRequest uses proxy error format (no passthrough)", () => {
 
     const app = new Hono();
     app.post("/test", (c) =>
-      handleProxyRequest(c, accountPool as never, undefined, req, fmt),
+      handleProxyRequest({ c, accountPool: accountPool as never, req, fmt }),
     );
 
     const res = await app.request("/test", { method: "POST" });

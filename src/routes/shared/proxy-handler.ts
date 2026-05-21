@@ -4,391 +4,147 @@
  *
  * Delegates to:
  *   - account-acquisition.ts  — acquire / release with idempotent guard
+ *   - proxy-egress-log.ts     — upstream request audit log entries
  *   - proxy-error-handler.ts  — CodexApiError classification + pool state mutations
- *   - response-processor.ts   — streaming (SSE) response path
+ *   - proxy-error-retry-transition.ts — CodexApiError retry/release/fallback transition
+ *   - proxy-fallback-account-retry.ts — fallback account acquire / API rebuild
+ *   - proxy-implicit-resume-lifecycle.ts — implicit-resume state machine / rollback
+ *   - proxy-implicit-resume-request.ts — implicit-resume request apply/restore state
+ *   - proxy-request-preparation.ts — request input/default forwarding fields
+ *   - proxy-session-context.ts — prompt cache / affinity / implicit-resume derived state
+ *   - proxy-retry-recovery.ts — same-account retry recovery decision/application
+ *   - proxy-upstream-attempt.ts — one upstream request attempt + egress/rate-limit capture
+ *   - proxy-debug-dump.ts     — opt-in request payload diagnostics
+ *   - proxy-request-diagnostics.ts — request summary / large payload logs
+ *   - proxy-stagger.ts        — request interval staggering
+ *   - proxy-ws-context.ts     — WebSocket pool context construction
+ *   - streaming-handler.ts    — streaming (SSE) response lifecycle
+ *   - non-streaming-handler.ts — collect / retry response lifecycle
  */
 
-import crypto from "crypto";
-import type { Context } from "hono";
-import type { StatusCode } from "hono/utils/http-status";
-import { stream } from "hono/streaming";
-import {
-  CodexApi,
-  CodexApiError,
-  PreviousResponseWebSocketError,
-} from "../../proxy/codex-api.js";
-import type { CodexResponsesRequest } from "../../proxy/codex-api.js";
-import type { UpstreamAdapter } from "../../proxy/upstream-adapter.js";
-import { EmptyResponseError } from "../../translation/codex-event-extractor.js";
-import type { AccountPool } from "../../auth/account-pool.js";
-import type { CookieJar } from "../../proxy/cookie-jar.js";
-import type { ProxyPool } from "../../proxy/proxy-pool.js";
-import { withRetry } from "../../utils/retry.js";
+import { CodexApiError } from "../../proxy/codex-api.js";
 import { acquireAccount, releaseAccount } from "./account-acquisition.js";
-import { handleCodexApiError, toErrorStatus } from "./proxy-error-handler.js";
-import { isPreviousResponseNotFoundError } from "../../proxy/error-classification.js";
-import { streamResponse } from "./response-processor.js";
-import type { UsageInfo } from "../../translation/codex-event-extractor.js";
-import { parseRateLimitHeaders, rateLimitToQuota, type ParsedRateLimit } from "../../proxy/rate-limit-headers.js";
-import { getConfig } from "../../config.js";
-import { jitterInt } from "../../utils/jitter.js";
-import { getSessionAffinityMap, type SessionAffinityMap } from "../../auth/session-affinity.js";
-import { enqueueLogEntry } from "../../logs/entry.js";
+import { handleCodexApiError } from "./proxy-error-handler.js";
+import { handleStreaming } from "./streaming-handler.js";
+import { handleNonStreaming } from "./non-streaming-handler.js";
+import { annotateImageGenOutcome, buildCodexApi } from "./proxy-handler-utils.js";
+import type {
+  FormatAdapter,
+  HandleProxyRequestOptions,
+  ProxyRequest,
+} from "./proxy-handler-types.js";
+import { getSessionAffinityMap } from "../../auth/session-affinity.js";
 import { randomUUID } from "crypto";
-import { deriveStableConversationKey } from "./stable-conversation-key.js";
-import { getWsPool } from "../../proxy/ws-pool.js";
-import type { WsPoolContext } from "../../proxy/codex-api.js";
+import {
+  respondWithNoAccount,
+  respondWithProxyError,
+} from "./proxy-error-response.js";
+import { applyProxyErrorRetryTransition } from "./proxy-error-retry-transition.js";
+import { createImplicitResumeLifecycle } from "./proxy-implicit-resume-lifecycle.js";
+import { captureImplicitResumeRequestState } from "./proxy-implicit-resume-request.js";
+import {
+  applyProxyRequestForwardingDefaults,
+  ensureProxyRequestInputArray,
+} from "./proxy-request-preparation.js";
+import { logRequestDiagnostics } from "./proxy-request-diagnostics.js";
+import {
+  applyProxyRetryRecoveryDecision,
+  buildProxyRetryRecoveryDecision,
+} from "./proxy-retry-recovery.js";
+import { buildProxySessionContext } from "./proxy-session-context.js";
+import { staggerIfNeeded } from "./proxy-stagger.js";
+import { sendProxyUpstreamAttempt } from "./proxy-upstream-attempt.js";
+import { buildWsPoolContext } from "./proxy-ws-context.js";
 
-/** Data prepared by each route after parsing and translating the request. */
-export interface ProxyRequest {
-  codexRequest: CodexResponsesRequest;
-  model: string;
-  isStreaming: boolean;
-  /** Stable client-side conversation/session identifier when the upstream client provides one. */
-  clientConversationId?: string;
-  /** Original schema before tuple→object conversion (for response reconversion). */
-  tupleSchema?: Record<string, unknown> | null;
-  /** Whether this is a new conversation (no previous_response_id) — used for cache reporting. */
-  isNewConversation?: boolean;
-  /** True iff the request declared `tools: [{type: "image_generation"}]`.
-   *  Used to attribute success/failure to the image_generation request counters
-   *  even when the upstream call fails before any SSE arrives. */
-  expectsImageGen?: boolean;
-}
-
-export interface UsageHint {
-  reusedInputTokensUpperBound?: number;
-}
-
-export interface ResponseMetadata {
-  functionCallIds?: string[];
-}
-
-/** Format-specific adapter provided by each route. */
-export interface FormatAdapter {
-  tag: string;
-  noAccountStatus: StatusCode;
-  formatNoAccount: () => unknown;
-  format429: (message: string) => unknown;
-  formatError: (status: number, message: string) => unknown;
-  streamTranslator: (
-    api: UpstreamAdapter,
-    response: Response,
-    model: string,
-    onUsage: (u: { input_tokens: number; output_tokens: number; cached_tokens?: number; reasoning_tokens?: number; image_input_tokens?: number; image_output_tokens?: number }) => void,
-    onResponseId: (id: string) => void,
-    tupleSchema?: Record<string, unknown> | null,
-    usageHint?: UsageHint,
-    onResponseMetadata?: (metadata: ResponseMetadata) => void,
-  ) => AsyncGenerator<string>;
-  collectTranslator: (
-    api: UpstreamAdapter,
-    response: Response,
-    model: string,
-    tupleSchema?: Record<string, unknown> | null,
-    usageHint?: UsageHint,
-    onResponseMetadata?: (metadata: ResponseMetadata) => void,
-  ) => Promise<{
-    response: unknown;
-    usage: { input_tokens: number; output_tokens: number; cached_tokens?: number; reasoning_tokens?: number; image_input_tokens?: number; image_output_tokens?: number };
-    responseId: string | null;
-  }>;
-}
-
-const MAX_EMPTY_RETRIES = 2;
-
-function normalizeInstructions(instructions: string | null | undefined): string {
-  return instructions ?? "";
-}
-
-/** Annotate a usage payload with image_generation attempt outcome before
- *  releasing the account, so `recordUsage` can split it into success vs failed
- *  counters. Synthesizes a usage object when the failure path has none. */
-function annotateImageGenOutcome(
-  usage: UsageInfo | undefined,
-  expectsImageGen: boolean | undefined,
-): UsageInfo | undefined {
-  if (!expectsImageGen) return usage;
-  const succeeded = (usage?.image_output_tokens ?? 0) > 0;
-  if (usage) {
-    return { ...usage, image_request_attempted: true, image_request_succeeded: succeeded };
-  }
-  return {
-    input_tokens: 0,
-    output_tokens: 0,
-    image_request_attempted: true,
-    image_request_succeeded: false,
-  };
-}
-
-export interface ImplicitResumeOpts {
-  implicitPrevRespId: string | null;
-  continuationInputStart: number;
-  inputLength: number;
-  preferredEntryId: string | null;
-  acquiredEntryId: string;
-  currentInstructions: string | null | undefined;
-  storedInstructions: string | null;
-  requiredFunctionCallOutputIds?: string[];
-  storedFunctionCallIds?: string[];
-}
-
-/** Reason why implicit resume was rejected, or null if it would activate.
- *  Returns "no_implicit_prev" when there's no candidate at all (caller can
- *  treat this as "not applicable"). */
-export function evaluateImplicitResume(opts: ImplicitResumeOpts):
-  | { active: true; reason: null }
-  | { active: false; reason: string } {
-  if (!opts.implicitPrevRespId) return { active: false, reason: "no_implicit_prev" };
-  if (opts.continuationInputStart >= opts.inputLength) {
-    return { active: false, reason: "cont_start_eq_len" };
-  }
-  if (!opts.preferredEntryId) return { active: false, reason: "no_pref_entry" };
-  if (opts.acquiredEntryId !== opts.preferredEntryId) {
-    return { active: false, reason: "acct_mismatch" };
-  }
-  if (normalizeInstructions(opts.currentInstructions) !== normalizeInstructions(opts.storedInstructions)) {
-    return { active: false, reason: "instr_diff" };
-  }
-  const storedFunctionCallIds = new Set(opts.storedFunctionCallIds ?? []);
-  const requiredFunctionCallOutputIds = opts.requiredFunctionCallOutputIds ?? [];
-  if (!requiredFunctionCallOutputIds.every((callId) => storedFunctionCallIds.has(callId))) {
-    return { active: false, reason: "missing_tool_calls" };
-  }
-  return { active: true, reason: null };
-}
-
-export function shouldActivateImplicitResume(opts: ImplicitResumeOpts): boolean {
-  return evaluateImplicitResume(opts).active;
-}
-
-export function shouldReplayFullInputAfterImplicitResumeError(
-  err: unknown,
-  implicitResumeActive: boolean,
-): err is PreviousResponseWebSocketError {
-  return implicitResumeActive && err instanceof PreviousResponseWebSocketError;
-}
-
-function getContinuationInputStartIndex(input: CodexResponsesRequest["input"]): number {
-  let lastModelOutputIndex = -1;
-  for (let i = 0; i < input.length; i++) {
-    const item = input[i];
-    if ("role" in item) {
-      if (item.role === "assistant") lastModelOutputIndex = i;
-      continue;
-    }
-    if (item.type === "function_call") {
-      lastModelOutputIndex = i;
-    }
-  }
-  return lastModelOutputIndex >= 0 ? lastModelOutputIndex + 1 : 0;
-}
-
-function getFunctionCallOutputIds(input: CodexResponsesRequest["input"]): string[] {
-  return input
-    .filter((item): item is { type: "function_call_output"; call_id: string; output: string } =>
-      !("role" in item) && item.type === "function_call_output")
-    .map((item) => item.call_id);
-}
-
-/** Sleep if this account had a recent request, to stagger upstream traffic. */
-export async function staggerIfNeeded(prevSlotMs: number | null): Promise<void> {
-  const intervalMs = getConfig().auth.request_interval_ms;
-  if (!intervalMs || prevSlotMs == null) return;
-  const elapsed = Date.now() - prevSlotMs;
-  const target = jitterInt(intervalMs, 0.3);
-  const wait = target - elapsed;
-  if (wait > 0) await new Promise((r) => setTimeout(r, wait));
-}
-
-function buildCodexApi(
-  token: string,
-  accountId: string | null,
-  cookieJar: CookieJar | undefined,
-  entryId: string,
-  proxyPool?: ProxyPool,
-): CodexApi {
-  const proxyUrl = proxyPool?.resolveProxyUrl(entryId);
-  return new CodexApi(token, accountId, cookieJar, entryId, proxyUrl);
-}
-
-export async function handleProxyRequest(
-  c: Context,
-  accountPool: AccountPool,
-  cookieJar: CookieJar | undefined,
-  req: ProxyRequest,
-  fmt: FormatAdapter,
-  proxyPool?: ProxyPool,
-): Promise<Response> {
+export async function handleProxyRequest(options: HandleProxyRequestOptions): Promise<Response> {
+  const { c, accountPool, cookieJar, req, fmt, proxyPool } = options;
   c.set("logForwarded", true);
 
   const affinityMap = getSessionAffinityMap();
   const requestId = c.get("requestId") ?? randomUUID().slice(0, 8);
-  if (!Array.isArray(req.codexRequest.input)) {
-    req.codexRequest.input = [];
-  }
-  const originalInput = req.codexRequest.input;
-  const originalPreviousResponseId = req.codexRequest.previous_response_id;
-  const originalTurnState = req.codexRequest.turnState;
-  const originalUseWebSocket = req.codexRequest.useWebSocket;
-  const currentInstructions = req.codexRequest.instructions;
-  const explicitPrevRespId = req.codexRequest.previous_response_id;
-  const derivedConversationId = deriveStableConversationKey(req.codexRequest);
-  const promptCacheKey = derivedConversationId ?? req.clientConversationId ?? crypto.randomUUID();
-  const continuationInputStart = explicitPrevRespId ? 0 : getContinuationInputStartIndex(req.codexRequest.input);
-  const explicitConversationId = explicitPrevRespId ? affinityMap.lookupConversationId(explicitPrevRespId) : null;
-  // effectiveConversationId: client explicit ID > content hash derived ID > promptCacheKey
-  const effectiveConversationId = req.clientConversationId || derivedConversationId || promptCacheKey;
-  const chainConversationId = explicitConversationId ?? effectiveConversationId;
-  const implicitPrevRespId =
-    !explicitPrevRespId &&
-    continuationInputStart > 0 &&
-    effectiveConversationId
-      ? affinityMap.lookupLatestResponseIdByConversationId(effectiveConversationId)
-      : null;
-  const prevRespId = explicitPrevRespId ?? implicitPrevRespId;
-  const implicitStoredInstructions = implicitPrevRespId
-    ? affinityMap.lookupInstructions(implicitPrevRespId)
-    : null;
-  const implicitContinuationInput = req.codexRequest.input.slice(continuationInputStart);
-  const requiredFunctionCallOutputIds = implicitPrevRespId
-    ? getFunctionCallOutputIds(implicitContinuationInput)
-    : [];
-  const implicitStoredFunctionCallIds = implicitPrevRespId
-    ? affinityMap.lookupFunctionCallIds(implicitPrevRespId)
-    : [];
-  const missingFunctionCallOutputIds = requiredFunctionCallOutputIds.filter(
-    (callId) => !implicitStoredFunctionCallIds.includes(callId),
-  );
-
-  // Session affinity: prefer the account that created the previous response
-  const preferredEntryId =
-    explicitPrevRespId
-      ? affinityMap.lookup(explicitPrevRespId)
-      : implicitPrevRespId && normalizeInstructions(currentInstructions) === normalizeInstructions(implicitStoredInstructions)
-        ? affinityMap.lookup(implicitPrevRespId)
-        : null;
-
-  // Conversation ID: inherit from previous response chain, or derive from
-  // content hash (enables cache hits across turns even without previous_response_id),
-  // or fall back to a random UUID.
-  req.codexRequest.prompt_cache_key = promptCacheKey;
+  ensureProxyRequestInputArray(req);
+  const originalRequestState = captureImplicitResumeRequestState(req);
+  const sessionContext = buildProxySessionContext({ request: req, affinityMap });
 
   // Turn state: sticky routing token from upstream, echoed back on subsequent requests
-  const explicitTurnState = explicitPrevRespId ? affinityMap.lookupTurnState(explicitPrevRespId) : null;
-  if (explicitTurnState) req.codexRequest.turnState = explicitTurnState;
-
-  // Set include for reasoning-enabled requests (matches Codex CLI behavior)
-  if (req.codexRequest.reasoning && !req.codexRequest.include?.length) {
-    req.codexRequest.include = ["reasoning.encrypted_content"];
-  }
+  applyProxyRequestForwardingDefaults({
+    request: req,
+    promptCacheKey: sessionContext.promptCacheKey,
+    explicitTurnState: sessionContext.explicitTurnState,
+  });
 
   // Single acquire call — preferredEntryId is a hint, not a hard requirement
-  const acquired = acquireAccount(accountPool, req.codexRequest.model, undefined, fmt.tag, preferredEntryId ?? undefined);
+  const acquired = acquireAccount(accountPool, req.codexRequest.model, undefined, fmt.tag, sessionContext.preferredEntryId ?? undefined);
   if (!acquired) {
-    c.status(fmt.noAccountStatus);
-    return c.json(fmt.formatNoAccount());
+    return respondWithNoAccount({ c, req, fmt });
   }
 
   let { entryId } = acquired;
   let codexApi = buildCodexApi(acquired.token, acquired.accountId, cookieJar, entryId, proxyPool);
   const triedEntryIds: string[] = [entryId];
   let modelRetried = false;
-  let prevRespNotFoundRetried = false;
-  let usageInfo: UsageInfo | undefined;
-  let capturedResponseId: string | null = null;
-  const responseFunctionCallIds = new Set<string>();
-  let activeUsageHint: UsageHint | undefined;
-  let implicitResumeActive = false;
+  let stripAndRetryDone = false;
   // Idempotent-release guard: prevents double-release across retry branches
   const released = new Set<string>();
 
-  if (implicitPrevRespId && missingFunctionCallOutputIds.length > 0) {
-    console.warn(
-      `[${fmt.tag}] 隐式续链跳过：上一轮 response 未记录 tool_result 对应的 call_id=` +
-      missingFunctionCallOutputIds.slice(0, 3).join(","),
-    );
-  }
-
-  const resumeEval = evaluateImplicitResume({
-    implicitPrevRespId,
-    continuationInputStart,
-    inputLength: req.codexRequest.input.length,
-    preferredEntryId,
+  const implicitResume = createImplicitResumeLifecycle({
+    request: req,
+    snapshot: originalRequestState,
+    affinityMap,
+    tag: fmt.tag,
+    implicitPrevRespId: sessionContext.implicitPrevRespId,
+    continuationInputStart: sessionContext.continuationInputStart,
+    resumeEvaluationInput: sessionContext.resumeEvaluationInput,
     acquiredEntryId: entryId,
-    currentInstructions,
-    storedInstructions: implicitStoredInstructions,
-    requiredFunctionCallOutputIds,
-    storedFunctionCallIds: implicitStoredFunctionCallIds,
   });
-  if (resumeEval.active) {
-    req.codexRequest.previous_response_id = implicitPrevRespId!;
-    if (!getConfig().tls.disable_websocket) {
-      req.codexRequest.useWebSocket = true;
-    }
-    req.codexRequest.input = req.codexRequest.input.slice(continuationInputStart);
-    const implicitTurnState = affinityMap.lookupTurnState(implicitPrevRespId!);
-    if (implicitTurnState) req.codexRequest.turnState = implicitTurnState;
-    activeUsageHint = {
-      reusedInputTokensUpperBound: affinityMap.lookupInputTokens(implicitPrevRespId!) ?? undefined,
-    };
-    implicitResumeActive = true;
-  }
+  implicitResume.logSkippedWarnings();
+  implicitResume.activate();
 
-  const restoreImplicitResumeRequest = (): void => {
-    if (!implicitResumeActive) return;
-    req.codexRequest.previous_response_id = originalPreviousResponseId;
-    req.codexRequest.turnState = originalTurnState;
-    req.codexRequest.useWebSocket = originalUseWebSocket;
-    req.codexRequest.input = originalInput;
-    req.codexRequest.instructions = currentInstructions;
-    activeUsageHint = undefined;
-    implicitResumeActive = false;
-  };
+  const diagnostics = logRequestDiagnostics({
+    tag: fmt.tag,
+    entryId,
+    requestId,
+    request: req,
+    chainConversationId: sessionContext.chainConversationId,
+    promptCacheKey: sessionContext.promptCacheKey,
+    variantHash: sessionContext.variantHash,
+    explicitPrevRespId: sessionContext.explicitPrevRespId,
+    implicitPrevRespId: sessionContext.implicitPrevRespId,
+    prevRespId: sessionContext.prevRespId,
+    resumeActive: implicitResume.evaluation.active,
+    resumeReason: implicitResume.evaluation.reason,
+    preferredEntryId: sessionContext.preferredEntryId,
+  });
 
-  {
-    const reqJson = JSON.stringify(req.codexRequest);
-    const inputItems = req.codexRequest.input?.length ?? 0;
-    const instrLen = req.codexRequest.instructions?.length ?? 0;
-    const toolsCount = req.codexRequest.tools?.length ?? 0;
-    const affinityHit = preferredEntryId && entryId === preferredEntryId;
-    const reasoningField = req.codexRequest.reasoning
-      ? `effort=${req.codexRequest.reasoning.effort ?? "none"} summary=${req.codexRequest.reasoning.summary ?? "none"}`
-      : "off";
-    const prevSrc = explicitPrevRespId
-      ? "explicit"
-      : implicitPrevRespId
-        ? "implicit"
-        : null;
-    const prevField = prevSrc && prevRespId
-      ? `${prevSrc}:${prevRespId.slice(-8)}`
-      : "none";
-    const convField = chainConversationId ? chainConversationId.slice(0, 8) : "none";
-    const keyField = promptCacheKey.slice(0, 8);
-    // explicit prev is always honoured; implicit prev's activation is gated by evaluateImplicitResume.
-    const resumeField = explicitPrevRespId
-      ? "explicit"
-      : implicitPrevRespId
-        ? (resumeEval.active ? "on" : `off:${resumeEval.reason}`)
-        : null;
-    console.log(
-      `[${fmt.tag}] Account ${entryId} | model=${req.model} | rid=${requestId.slice(0, 8)} conv=${convField} key=${keyField} prev=${prevField}` +
-      (resumeField ? ` resume=${resumeField}` : "") +
-      ` | input_items=${inputItems} tools=${toolsCount} instr=${instrLen}B payload=${reqJson.length}B reasoning=[${reasoningField}]` +
-      (prevRespId ? ` | affinity=${affinityHit ? "hit" : "miss"}` : ""),
-    );
-    if (reqJson.length > 50_000) {
-      // Log per-item size breakdown to diagnose large payload origin
-      const itemSizes = (req.codexRequest.input ?? []).map((item, i) => {
-        const sz = JSON.stringify(item).length;
-        const role = typeof item === "object" && item !== null && "role" in item ? (item as Record<string, unknown>).role : (item as Record<string, unknown>).type;
-        return `  [${i}] ${role} ${sz}B`;
-      });
+  // Guard: when implicit resume fails due to missing tool calls, block runaway
+  // full-history replays that would burn massive token budgets silently.
+  // Relaxed thresholds: legitimate client-driven full replays (e.g. after
+  // Codex CLI /compact) regularly hit 300-800KB / 100-800 items, and the
+  // previous 250KB / 80-item gate was 413'ing them. Real runaway loops
+  // typically blow past several MB before the issue becomes obvious.
+  const PAYLOAD_GUARD_BYTES = 2_000_000;
+  const PAYLOAD_GUARD_ITEMS = 1000;
+  if (
+    implicitResume.evaluation.reason === "missing_tool_calls" ||
+    implicitResume.evaluation.reason === "unanswered_tool_calls"
+  ) {
+    const inputItemCount = req.codexRequest.input?.length ?? 0;
+    if (diagnostics.payloadBytes > PAYLOAD_GUARD_BYTES || inputItemCount > PAYLOAD_GUARD_ITEMS) {
       console.warn(
-        `[${fmt.tag}] ⚠ Large payload (${(reqJson.length / 1024).toFixed(1)}KB) — input_items=${inputItems} instr=${instrLen}B\n` +
-        `  instructions: ${instrLen}B\n` +
-        itemSizes.join("\n"),
+        `[${fmt.tag}] ⛔ Payload guard: blocking ${(diagnostics.payloadBytes / 1024).toFixed(0)}KB / ${inputItemCount} items ` +
+        `full-history replay (resume=${implicitResume.evaluation.reason}). ` +
+        `Client should compact the conversation.`,
       );
+      releaseAccount(accountPool, entryId, undefined, released);
+      return respondWithProxyError({
+        c, req, fmt,
+        status: 413,
+        message:
+          `Context too large for full-history replay ` +
+          `(${(diagnostics.payloadBytes / 1024).toFixed(0)}KB, ${inputItemCount} items). ` +
+          `Implicit resume failed: ${implicitResume.evaluation.reason}. ` +
+          `Please compact or restart the conversation.`,
+      });
     }
   }
 
@@ -397,517 +153,143 @@ export async function handleProxyRequest(
 
   await staggerIfNeeded(acquired.prevSlotMs);
 
-  /** Build a per-request WS pool context. Only attached when the request is
-   *  going to take the WS path AND we have a stable conversation id — empty
-   *  conversationId would degenerate the pool key and break affinity. */
-  const buildPoolCtx = (forEntryId: string = entryId): WsPoolContext | undefined => {
-    if (!req.codexRequest.useWebSocket) return undefined;
-    if (!chainConversationId) return undefined;
-    return {
-      pool: getWsPool(),
-      poolKey: `${forEntryId}:${chainConversationId}`,
+  const buildPoolCtx = (forEntryId: string = entryId) =>
+    buildWsPoolContext({
+      useWebSocket: req.codexRequest.useWebSocket,
+      conversationId: sessionContext.chainConversationId,
       entryId: forEntryId,
-      onDecision: (decision) => {
-        const ridShort = requestId.slice(0, 8);
-        const tag = decision.kind === "bypass"
-          ? `bypass(${decision.reason})`
-          : decision.kind === "retry-after-stale-reuse"
-            ? `retry-after-stale-reuse:${decision.wsId}`
-            : `${decision.kind}:${decision.wsId}`;
-        console.log(`[${fmt.tag}] Account ${forEntryId} | rid=${ridShort} | ws=${tag}`);
-      },
-    };
-  };
+      variantHash: sessionContext.variantHash,
+      requestId,
+      tag: fmt.tag,
+    });
 
   for (;;) {
     try {
-      // Apply parsed rate-limit data to the account pool (shared by header + WS event paths)
-      const applyRateLimits = (rl: ParsedRateLimit): void => {
-        const entry = accountPool.getEntry(entryId);
-        const quota = rateLimitToQuota(rl, entry?.planType ?? null);
-        accountPool.updateCachedQuota(entryId, quota);
-        if (rl.primary?.reset_at != null) {
-          const windowSec = rl.primary.window_minutes != null ? rl.primary.window_minutes * 60 : null;
-          accountPool.syncRateLimitWindow(entryId, rl.primary.reset_at, windowSec);
-        }
-        // Proactively mark exhausted accounts so they don't get re-selected
-        if (quota.rate_limit.limit_reached && rl.primary?.reset_at != null) {
-          const backoffSec = rl.primary.reset_at - Math.floor(Date.now() / 1000);
-          if (backoffSec > 0) {
-            accountPool.markRateLimited(entryId, { retryAfterSec: backoffSec });
-          }
-        }
-      };
-
-      const startMs = Date.now();
-      const rawResponse = await withRetry(
-        () => codexApi.createResponse(req.codexRequest, abortController.signal, applyRateLimits, buildPoolCtx()),
-        { tag: fmt.tag },
-      );
-      const status: number | null = rawResponse.status;
-      enqueueLogEntry({
+      const { rawResponse, upstreamTurnState } = await sendProxyUpstreamAttempt({
+        accountPool,
+        api: codexApi,
+        request: req,
+        entryId,
+        abortSignal: abortController.signal,
+        buildPoolCtx,
         requestId,
-        direction: "egress",
-        method: "POST",
-        path: "/codex/responses",
-        model: req.model,
-        provider: "codex",
-        status,
-        latencyMs: Date.now() - startMs,
-        stream: req.isStreaming,
-        request: {
-          model: req.codexRequest.model,
-          stream: req.codexRequest.stream,
-          useWebSocket: req.codexRequest.useWebSocket,
-        },
+        tag: fmt.tag,
+        conversationId: sessionContext.chainConversationId,
+        implicitResumeActive: implicitResume.isActive(),
+        resumeReason: implicitResume.resumeReasonForAttempt(),
       });
-
-      // Capture upstream turn-state for sticky routing
-      const upstreamTurnState = rawResponse.headers.get("x-codex-turn-state") ?? undefined;
-
-      // Extract rate-limit quota from upstream response headers (passive collection — HTTP path)
-      const rl = parseRateLimitHeaders(rawResponse.headers);
-      if (rl) applyRateLimits(rl);
 
       // ── Streaming path ──
       if (req.isStreaming) {
-        c.header("Content-Type", "text/event-stream");
-        c.header("Cache-Control", "no-cache");
-        c.header("Connection", "keep-alive");
-
-        const capturedEntryId = entryId;
-        const capturedApi = codexApi;
-
-        return stream(c, async (s) => {
-          s.onAbort(() => abortController.abort());
-          const recordStreamAffinity = (): void => {
-            if (!capturedResponseId) return;
-            affinityMap.record(
-              capturedResponseId,
-              capturedEntryId,
-              chainConversationId,
-              upstreamTurnState,
-              req.codexRequest.instructions ?? undefined,
-              usageInfo?.input_tokens,
-              Array.from(responseFunctionCallIds),
-            );
-          };
-          try {
-            await streamResponse(
-              s, capturedApi, rawResponse, req.model, fmt,
-              (u) => {
-                usageInfo = u;
-                recordStreamAffinity();
-              },
-              req.tupleSchema,
-              (id) => {
-                capturedResponseId = id;
-                recordStreamAffinity();
-              },
-              activeUsageHint,
-              (metadata) => {
-                for (const callId of metadata.functionCallIds ?? []) {
-                  responseFunctionCallIds.add(callId);
-                }
-                recordStreamAffinity();
-              },
-            );
-          } finally {
-            abortController.abort();
-            recordStreamAffinity();
-            if (usageInfo) {
-              const uncached = usageInfo.cached_tokens
-                ? usageInfo.input_tokens - usageInfo.cached_tokens
-                : usageInfo.input_tokens;
-              const imgIn = usageInfo.image_input_tokens ?? 0;
-              const imgOut = usageInfo.image_output_tokens ?? 0;
-              const hitPct = usageInfo.input_tokens > 0
-                ? `${((usageInfo.cached_tokens ?? 0) / usageInfo.input_tokens * 100).toFixed(1)}%`
-                : "n/a";
-              console.log(
-                `[${fmt.tag}] Account ${capturedEntryId} | rid=${requestId.slice(0, 8)} | Usage: in=${usageInfo.input_tokens}` +
-                (usageInfo.cached_tokens ? ` (cached=${usageInfo.cached_tokens} uncached=${uncached})` : "") +
-                ` out=${usageInfo.output_tokens}` +
-                (usageInfo.reasoning_tokens ? ` reasoning=${usageInfo.reasoning_tokens}` : "") +
-                (imgIn || imgOut ? ` image=${imgIn}/${imgOut}` : "") +
-                ` | hit=${hitPct}`,
-              );
-              if (usageInfo.input_tokens > 10_000) {
-                console.warn(
-                  `[${fmt.tag}] ⚠ High input token count: ${usageInfo.input_tokens} tokens` +
-                  (usageInfo.reasoning_tokens ? ` (reasoning=${usageInfo.reasoning_tokens})` : ""),
-                );
-              }
-            }
-            releaseAccount(accountPool, capturedEntryId, annotateImageGenOutcome(usageInfo, req.expectsImageGen), released);
-          }
+        return handleStreaming({
+          c,
+          accountPool,
+          req,
+          fmt,
+          api: codexApi,
+          response: rawResponse,
+          entryId,
+          abortController,
+          released,
+          requestId,
+          affinityMap,
+          conversationId: sessionContext.chainConversationId,
+          turnState: upstreamTurnState,
+          usageHint: implicitResume.getUsageHint(),
+          variantHash: sessionContext.variantHash,
         });
       }
 
       // ── Non-streaming path (with empty-response retry) ──
-      return await handleNonStreaming(
+      return await handleNonStreaming({
         c,
         accountPool,
         cookieJar,
         req,
         fmt,
         proxyPool,
-        codexApi,
-        rawResponse,
-        entryId,
+        initialApi: codexApi,
+        initialResponse: rawResponse,
+        initialEntryId: entryId,
         abortController,
         released,
         requestId,
         affinityMap,
-        chainConversationId,
-        upstreamTurnState,
-        () => activeUsageHint,
-        restoreImplicitResumeRequest,
+        conversationId: sessionContext.chainConversationId,
+        turnState: upstreamTurnState,
+        getUsageHint: () => implicitResume.getUsageHint(),
+        restoreImplicitResumeRequest: implicitResume.restore,
         buildPoolCtx,
-      );
+        setActiveAccount: (nextEntryId, nextApi) => {
+          entryId = nextEntryId;
+          codexApi = nextApi;
+          if (!triedEntryIds.includes(nextEntryId)) triedEntryIds.push(nextEntryId);
+        },
+        variantHash: sessionContext.variantHash,
+      });
     } catch (err) {
       if (!(err instanceof CodexApiError)) {
         releaseAccount(accountPool, entryId, annotateImageGenOutcome(undefined, req.expectsImageGen), released);
         throw err;
       }
 
-      if (shouldReplayFullInputAfterImplicitResumeError(err, implicitResumeActive)) {
-        console.warn(
-          `[${fmt.tag}] 隐式续链 WebSocket 失败，回退为完整历史重放：${err.causeMessage}`,
-        );
-        restoreImplicitResumeRequest();
+      if (implicitResume.replayFullInputAfterError(err)) {
         continue;
       }
 
-      // previous_response_id stale (account doesn't recognise it / map lost on
-      // restart / cross-account routing): drop the ID and retry once on the
-      // same account. For implicit-resume requests this also restores the
-      // full input history; for explicit ones the client's own input is sent
-      // verbatim (server-side history is lost but the request still completes).
-      if (!prevRespNotFoundRetried && isPreviousResponseNotFoundError(err)) {
-        prevRespNotFoundRetried = true;
-        const staleId = req.codexRequest.previous_response_id;
-        console.warn(
-          `[${fmt.tag}] Account ${entryId} | previous_response_not_found (id=${staleId ?? "?"}), stripping and retrying same account`,
-        );
-        if (staleId) affinityMap.forget(staleId);
-        restoreImplicitResumeRequest();
-        req.codexRequest.previous_response_id = undefined;
-        req.codexRequest.turnState = undefined;
+      const retryRecovery = buildProxyRetryRecoveryDecision({
+        err,
+        tag: fmt.tag,
+        entryId,
+        stripAndRetryDone,
+        previousResponseId: req.codexRequest.previous_response_id,
+      });
+      if (retryRecovery.action === "retry") {
+        stripAndRetryDone = true;
+        applyProxyRetryRecoveryDecision({
+          decision: retryRecovery,
+          request: req,
+          affinityMap,
+          restoreImplicitResumeRequest: implicitResume.restore,
+        });
         continue;
       }
 
       const decision = handleCodexApiError(
-        err, accountPool, entryId, req.codexRequest.model, fmt.tag, modelRetried,
+        err, accountPool, entryId, req.codexRequest.model, fmt.tag, modelRetried, cookieJar,
       );
 
-      if (decision.action === "respond") {
-        releaseAccount(accountPool, entryId, annotateImageGenOutcome(undefined, req.expectsImageGen), released);
-        c.status(decision.status as StatusCode);
-        return c.json(fmt.formatError(decision.status, decision.message));
+      const errorRetryTransition = applyProxyErrorRetryTransition({
+        accountPool,
+        entryId,
+        model: req.codexRequest.model,
+        triedEntryIds,
+        tag: fmt.tag,
+        decision,
+        released,
+        restoreImplicitResumeRequest: implicitResume.restore,
+        modelRetried,
+        expectsImageGen: req.expectsImageGen,
+        cookieJar,
+        proxyPool,
+      });
+      if (errorRetryTransition.action === "respond") {
+        return respondWithProxyError({
+          c,
+          req,
+          fmt,
+          status: errorRetryTransition.status,
+          message: errorRetryTransition.message,
+          ...(errorRetryTransition.useFormat429 ? { useFormat429: true } : {}),
+        });
       }
 
-      if (decision.releaseBeforeRetry) {
-        releaseAccount(accountPool, entryId, annotateImageGenOutcome(undefined, req.expectsImageGen), released);
-      }
-      restoreImplicitResumeRequest();
-      if (decision.markModelRetried) {
-        modelRetried = true;
-      }
-
-      // Early exit: skip acquire overhead when no active accounts remain.
-      // Lock already cleared by handleCodexApiError (markRateLimited/markStatus
-      // → clearLock), so no releaseAccount call needed — matches existing !retry path.
-      if (!accountPool.hasAvailableAccounts(triedEntryIds)) {
-        const summary = accountPool.getPoolSummary();
-        const parts: string[] = [];
-        if (summary.rate_limited) parts.push(`${summary.rate_limited} rate-limited`);
-        if (summary.expired) parts.push(`${summary.expired} expired`);
-        if (summary.banned) parts.push(`${summary.banned} banned`);
-        if (summary.disabled) parts.push(`${summary.disabled} disabled`);
-        if (summary.quota_exhausted) parts.push(`${summary.quota_exhausted} quota-exhausted`);
-        if (summary.refreshing) parts.push(`${summary.refreshing} refreshing`);
-        const detail = parts.length
-          ? `All accounts exhausted (${parts.join(", ")}). ${decision.message}`
-          : `No accounts available. ${decision.message}`;
-        const status = decision.status as StatusCode;
-        c.status(status);
-        if (decision.useFormat429) {
-          return c.json(fmt.format429(detail));
-        }
-        return c.json(fmt.formatError(status, detail));
-      }
-
-      const retry = acquireAccount(accountPool, req.codexRequest.model, triedEntryIds, fmt.tag);
-      if (!retry) {
-        const status = decision.status as StatusCode;
-        c.status(status);
-        if (decision.useFormat429) {
-          return c.json(fmt.format429(decision.message));
-        }
-        return c.json(fmt.formatError(status, decision.message));
-      }
-
-      entryId = retry.entryId;
-      triedEntryIds.push(retry.entryId);
-      codexApi = buildCodexApi(retry.token, retry.accountId, cookieJar, retry.entryId, proxyPool);
-      console.log(`[${fmt.tag}] Fallback → account ${retry.entryId}`);
-      await staggerIfNeeded(retry.prevSlotMs);
+      modelRetried = errorRetryTransition.modelRetried;
+      entryId = errorRetryTransition.entryId;
+      triedEntryIds.push(errorRetryTransition.entryId);
+      codexApi = errorRetryTransition.api;
+      await staggerIfNeeded(errorRetryTransition.prevSlotMs);
       continue;
     }
-  }
-}
-
-async function handleNonStreaming(
-  c: Context,
-  accountPool: AccountPool,
-  cookieJar: CookieJar | undefined,
-  req: ProxyRequest,
-  fmt: FormatAdapter,
-  proxyPool: ProxyPool | undefined,
-  initialApi: CodexApi,
-  initialResponse: Response,
-  initialEntryId: string,
-  abortController: AbortController,
-  released: Set<string>,
-  requestId: string,
-  affinityMap?: SessionAffinityMap,
-  conversationId?: string,
-  turnState?: string,
-  getUsageHint?: () => UsageHint | undefined,
-  restoreImplicitResumeRequest?: () => void,
-  buildPoolCtx?: (forEntryId: string) => WsPoolContext | undefined,
-): Promise<Response> {
-  let currentEntryId = initialEntryId;
-  let currentApi = initialApi;
-  let currentRawResponse = initialResponse;
-
-  for (let attempt = 1; ; attempt++) {
-    try {
-      const responseFunctionCallIds = new Set<string>();
-      const result = await fmt.collectTranslator(
-        currentApi,
-        currentRawResponse,
-        req.model,
-        req.tupleSchema,
-        getUsageHint?.(),
-        (metadata) => {
-          for (const callId of metadata.functionCallIds ?? []) {
-            responseFunctionCallIds.add(callId);
-          }
-        },
-      );
-      if (result.responseId && affinityMap && conversationId) {
-        affinityMap.record(
-          result.responseId,
-          currentEntryId,
-          conversationId,
-          turnState,
-          req.codexRequest.instructions ?? undefined,
-          result.usage.input_tokens,
-          Array.from(responseFunctionCallIds),
-        );
-      }
-      if (result.usage) {
-        const u = result.usage;
-        const uncached = u.cached_tokens ? u.input_tokens - u.cached_tokens : u.input_tokens;
-        const hitPct = u.input_tokens > 0
-          ? `${((u.cached_tokens ?? 0) / u.input_tokens * 100).toFixed(1)}%`
-          : "n/a";
-        console.log(
-          `[${fmt.tag}] Account ${currentEntryId} | rid=${requestId.slice(0, 8)} | Usage: in=${u.input_tokens}` +
-          (u.cached_tokens ? ` (cached=${u.cached_tokens} uncached=${uncached})` : "") +
-          ` out=${u.output_tokens}` +
-          (u.reasoning_tokens ? ` reasoning=${u.reasoning_tokens}` : "") +
-          ` | hit=${hitPct}`,
-        );
-        if (u.input_tokens > 10_000) {
-          console.warn(`[${fmt.tag}] ⚠ High input token count: ${u.input_tokens} tokens`);
-        }
-      }
-      releaseAccount(accountPool, currentEntryId, annotateImageGenOutcome(result.usage, req.expectsImageGen), released);
-      return c.json(result.response);
-    } catch (collectErr) {
-      if (collectErr instanceof EmptyResponseError && attempt <= MAX_EMPTY_RETRIES) {
-        const email = accountPool.getEntry(currentEntryId)?.email ?? "?";
-        console.warn(
-          `[${fmt.tag}] Account ${currentEntryId} (${email}) | Empty response (attempt ${attempt}/${MAX_EMPTY_RETRIES + 1}), switching account...`,
-        );
-        accountPool.recordEmptyResponse(currentEntryId);
-        releaseAccount(accountPool, currentEntryId, annotateImageGenOutcome(collectErr.usage, req.expectsImageGen), released);
-        restoreImplicitResumeRequest?.();
-
-        const newAcquired = acquireAccount(accountPool, req.codexRequest.model, undefined, fmt.tag);
-        if (!newAcquired) {
-          c.status(502);
-          return c.json(fmt.formatError(502, "Codex returned an empty response and no other accounts are available for retry"));
-        }
-
-        currentEntryId = newAcquired.entryId;
-        currentApi = buildCodexApi(newAcquired.token, newAcquired.accountId, cookieJar, newAcquired.entryId, proxyPool);
-        const retryStartMs = Date.now();
-        try {
-          currentRawResponse = await withRetry(
-            () => currentApi.createResponse(req.codexRequest, abortController.signal, undefined, buildPoolCtx?.(currentEntryId)),
-            { tag: fmt.tag },
-          );
-          enqueueLogEntry({
-            requestId,
-            direction: "egress",
-            method: "POST",
-            path: "/codex/responses",
-            model: req.model,
-            provider: "codex",
-            status: currentRawResponse.status,
-            latencyMs: Date.now() - retryStartMs,
-            stream: req.isStreaming,
-            request: {
-              model: req.codexRequest.model,
-              stream: req.codexRequest.stream,
-              useWebSocket: req.codexRequest.useWebSocket,
-            },
-          });
-        } catch (retryErr) {
-          releaseAccount(accountPool, currentEntryId, annotateImageGenOutcome(undefined, req.expectsImageGen), released);
-          const msg = retryErr instanceof Error ? retryErr.message : "Upstream request failed";
-          enqueueLogEntry({
-            requestId,
-            direction: "egress",
-            method: "POST",
-            path: "/codex/responses",
-            model: req.model,
-            provider: "codex",
-            status: retryErr instanceof CodexApiError ? retryErr.status : null,
-            latencyMs: Date.now() - retryStartMs,
-            stream: req.isStreaming,
-            error: msg,
-            request: {
-              model: req.codexRequest.model,
-              stream: req.codexRequest.stream,
-              useWebSocket: req.codexRequest.useWebSocket,
-            },
-          });
-          if (retryErr instanceof CodexApiError) {
-            const code = toErrorStatus(retryErr.status);
-            c.status(code);
-            return c.json(fmt.formatError(code, retryErr.message));
-          }
-          throw retryErr;
-        }
-        continue;
-      }
-
-      releaseAccount(accountPool, currentEntryId, annotateImageGenOutcome(undefined, req.expectsImageGen), released);
-      if (collectErr instanceof EmptyResponseError) {
-        const email = accountPool.getEntry(currentEntryId)?.email ?? "?";
-        console.warn(
-          `[${fmt.tag}] Account ${currentEntryId} (${email}) | Empty response (attempt ${attempt}/${MAX_EMPTY_RETRIES + 1}), all retries exhausted`,
-        );
-        accountPool.recordEmptyResponse(currentEntryId);
-        c.status(502);
-        return c.json(fmt.formatError(502, "Codex returned empty responses across all available accounts"));
-      }
-      const msg = collectErr instanceof Error ? collectErr.message : "Unknown error";
-      const statusMatch = msg.match(/HTTP\/[\d.]+ (\d{3})/);
-      const upstreamStatus = statusMatch ? parseInt(statusMatch[1], 10) : 0;
-      const code = toErrorStatus(upstreamStatus);
-      c.status(code);
-      return c.json(fmt.formatError(code, msg));
-    }
-  }
-}
-
-/**
- * Lightweight handler for API-key-based upstreams (OpenAI, Anthropic, Gemini, custom).
- * No account pool management, no session affinity, no retry logic — just proxy + translate.
- */
-export async function handleDirectRequest(
-  c: Context,
-  upstream: UpstreamAdapter,
-  req: ProxyRequest,
-  fmt: FormatAdapter,
-): Promise<Response> {
-  const abortController = new AbortController();
-  c.req.raw.signal.addEventListener("abort", () => abortController.abort(), { once: true });
-
-  const requestId = c.get("requestId") ?? randomUUID().slice(0, 8);
-  const startMs = Date.now();
-  let rawResponse: Response;
-  try {
-    rawResponse = await upstream.createResponse(req.codexRequest, abortController.signal);
-    enqueueLogEntry({
-      requestId,
-      direction: "egress",
-      method: "POST",
-      path: "/v1/responses",
-      model: req.model,
-      provider: upstream.tag,
-      status: rawResponse.status,
-      latencyMs: Date.now() - startMs,
-      stream: req.isStreaming,
-      request: {
-        model: req.codexRequest.model,
-        stream: req.codexRequest.stream,
-      },
-    });
-  } catch (err) {
-    const msg = err instanceof Error ? err.message : "Upstream request failed";
-    const status = err instanceof CodexApiError ? err.status : 502;
-    enqueueLogEntry({
-      requestId,
-      direction: "egress",
-      method: "POST",
-      path: "/v1/responses",
-      model: req.model,
-      provider: upstream.tag,
-      status,
-      latencyMs: Date.now() - startMs,
-      stream: req.isStreaming,
-      error: msg,
-      request: {
-        model: req.codexRequest.model,
-        stream: req.codexRequest.stream,
-      },
-    });
-    if (err instanceof CodexApiError) {
-      const code = toErrorStatus(err.status) as StatusCode;
-      c.status(code);
-      // For API-key upstreams, forward the raw upstream error body transparently
-      try {
-        const parsed: unknown = JSON.parse(err.body);
-        if (parsed && typeof parsed === "object") {
-          return c.json(parsed);
-        }
-      } catch { /* non-JSON body — fall through */ }
-      if (code === 429) {
-        return c.json(fmt.format429(err.message));
-      }
-      return c.json(fmt.formatError(code, err.message));
-    }
-    c.status(502);
-    return c.json(fmt.formatError(502, msg));
-  }
-
-  if (req.isStreaming) {
-    c.header("Content-Type", "text/event-stream");
-    c.header("Cache-Control", "no-cache");
-    c.header("Connection", "keep-alive");
-
-    return stream(c, async (s) => {
-      s.onAbort(() => abortController.abort());
-      await streamResponse(s, upstream, rawResponse, req.model, fmt, () => {}, req.tupleSchema, () => {});
-    });
-  }
-
-  // Non-streaming
-  try {
-    const result = await fmt.collectTranslator(upstream, rawResponse, req.model, req.tupleSchema);
-    return c.json(result.response);
-  } catch (err) {
-    abortController.abort();
-    const msg = err instanceof Error ? err.message : "Failed to collect upstream response";
-    const code = toErrorStatus(0) as StatusCode;
-    c.status(code);
-    return c.json(fmt.formatError(code, msg));
   }
 }

@@ -10,6 +10,7 @@ const mockConfig = {
   model: {
     default: "gpt-5.4",
     default_reasoning_effort: null as string | null,
+    aliases: {} as Record<string, string>,
     inject_desktop_context: false,
     suppress_desktop_directives: true,
   },
@@ -26,8 +27,9 @@ const mockConfig = {
     max_concurrent_per_account: 3 as number | null,
     request_interval_ms: 50 as number | null,
   },
-  update: { auto_update: true, auto_download: false },
+  update: { auto_update: true, auto_download: false, show_update_dialog: false },
   logs: { enabled: false, capacity: 2000, capture_body: false, llm_only: true },
+  usage_stats: { history_retention_days: null as number | null },
 };
 
 vi.mock("@src/config.js", () => ({
@@ -123,13 +125,16 @@ describe("GET /admin/general-settings", () => {
       proxy_url: null,
       force_http11: false,
       default_model: "gpt-5.4",
+      model_aliases: {},
       refresh_enabled: true,
       auto_update: true,
       auto_download: false,
+      show_update_dialog: false,
       logs_enabled: false,
       logs_capacity: 2000,
       logs_capture_body: false,
       logs_llm_only: true,
+      usage_history_retention_days: null,
     });
   });
 });
@@ -154,6 +159,125 @@ describe("POST /admin/general-settings", () => {
     expect(data.restart_required).toBe(false);
     expect(mutateYaml).toHaveBeenCalledOnce();
     expect(reloadAllConfigs).toHaveBeenCalledOnce();
+  });
+
+  it("persists show_update_dialog without requiring restart", async () => {
+    const app = makeApp();
+    const res = await app.request("/admin/general-settings", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ show_update_dialog: true }),
+    });
+
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(data.success).toBe(true);
+    expect(data.restart_required).toBe(false);
+    expect(mutateYaml).toHaveBeenCalledOnce();
+    expect(reloadAllConfigs).toHaveBeenCalledOnce();
+    const mutate = vi.mocked(mutateYaml).mock.calls[0]?.[1];
+    const localConfig: Record<string, unknown> = {};
+    mutate?.(localConfig);
+    expect(localConfig).toEqual({
+      update: { show_update_dialog: true },
+    });
+  });
+
+  it("persists custom model aliases into local model aliases", async () => {
+    const app = makeApp();
+    const res = await app.request("/admin/general-settings", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        model_aliases: {
+          "sonnet-local": "gpt-5.4",
+          "openai-fast": "openai:gpt-4o",
+        },
+      }),
+    });
+
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(data.success).toBe(true);
+    expect(data.restart_required).toBe(false);
+    expect(mutateYaml).toHaveBeenCalledOnce();
+    expect(reloadAllConfigs).toHaveBeenCalledOnce();
+    const mutate = vi.mocked(mutateYaml).mock.calls[0]?.[1];
+    const localConfig: Record<string, unknown> = {};
+    mutate?.(localConfig);
+    expect(localConfig).toEqual({
+      model: {
+        aliases: {
+          "sonnet-local": "gpt-5.4",
+          "openai-fast": "openai:gpt-4o",
+        },
+      },
+    });
+  });
+
+  it("rejects empty custom model alias names", async () => {
+    const app = makeApp();
+    const res = await app.request("/admin/general-settings", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ model_aliases: { "  ": "gpt-5.4" } }),
+    });
+
+    expect(res.status).toBe(400);
+    const data = await res.json();
+    expect(data.error).toContain("model_aliases");
+  });
+
+  it("persists finite usage history retention without requiring restart", async () => {
+    const app = makeApp();
+    const res = await app.request("/admin/general-settings", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ usage_history_retention_days: 30 }),
+    });
+
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(data.success).toBe(true);
+    expect(data.restart_required).toBe(false);
+    expect(mutateYaml).toHaveBeenCalledOnce();
+    const mutate = vi.mocked(mutateYaml).mock.calls[0]?.[1];
+    const localConfig: Record<string, unknown> = {};
+    mutate?.(localConfig);
+    expect(localConfig).toEqual({
+      usage_stats: { history_retention_days: 30 },
+    });
+  });
+
+  it("persists unlimited usage history retention as null", async () => {
+    const app = makeApp();
+    const res = await app.request("/admin/general-settings", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ usage_history_retention_days: null }),
+    });
+
+    expect(res.status).toBe(200);
+    expect(mutateYaml).toHaveBeenCalledOnce();
+    const mutate = vi.mocked(mutateYaml).mock.calls[0]?.[1];
+    const localConfig: Record<string, unknown> = {};
+    mutate?.(localConfig);
+    expect(localConfig).toEqual({
+      usage_stats: { history_retention_days: null },
+    });
+  });
+
+  it("rejects invalid usage history retention", async () => {
+    const app = makeApp();
+    const res = await app.request("/admin/general-settings", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ usage_history_retention_days: 0 }),
+    });
+
+    expect(res.status).toBe(400);
+    const data = await res.json();
+    expect(data.error).toContain("usage_history_retention_days");
   });
 
   it("syncs log store when logs_enabled changes", async () => {

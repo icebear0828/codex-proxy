@@ -37,7 +37,12 @@ export interface CodexHostedWebSearchTool {
   user_location?: Record<string, unknown>;
 }
 
-export type CodexTool = CodexToolDefinition | CodexHostedWebSearchTool;
+export interface CodexImageGenerationTool {
+  type: "image_generation";
+  [key: string]: unknown;
+}
+
+export type CodexTool = CodexToolDefinition | CodexHostedWebSearchTool | CodexImageGenerationTool;
 
 export interface AnthropicToolConversionOptions {
   mapClaudeCodeWebSearch?: boolean;
@@ -127,10 +132,16 @@ export function openAIToolsToCodex(
       continue;
     }
 
+    if (t.type === "image_generation") {
+      defs.push(t);
+      continue;
+    }
+
     if (t.type !== "function") continue;
     const def: CodexToolDefinition = {
       type: "function",
       name: t.function.name,
+      strict: t.function.strict ?? false,
     };
     if (t.function.description) def.description = t.function.description;
     if (t.function.parameters) def.parameters = normalizeSchema(t.function.parameters);
@@ -166,6 +177,7 @@ export function openAIFunctionsToCodex(
     const def: CodexToolDefinition = {
       type: "function",
       name: f.name,
+      strict: f.strict ?? false,
     };
     if (f.description) def.description = f.description;
     if (f.parameters) def.parameters = normalizeSchema(f.parameters);

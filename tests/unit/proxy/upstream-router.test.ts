@@ -1,7 +1,39 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import { UpstreamRouter } from "@src/proxy/upstream-router.js";
 import type { UpstreamAdapter } from "@src/proxy/upstream-adapter.js";
 import type { CodexResponsesRequest, CodexSSEEvent } from "@src/proxy/codex-types.js";
+
+vi.mock("@src/models/model-store.js", () => ({
+  getModelAliases: vi.fn(() => ({
+    "claude-opus-4-7": "gpt-5.5",
+    "claude-sonnet-4-6": "gpt-5.4",
+    "claude-haiku-4-5": "gpt-5.3-codex",
+    "my-openai": "openai:gpt-4o",
+    "my-deepseek": "deepseek-chat",
+  })),
+  getModelInfo: vi.fn((model: string) => {
+    if (["gpt-5.5", "gpt-5.4", "gpt-5.3-codex", "local-simple"].includes(model)) {
+      return { id: model };
+    }
+    return undefined;
+  }),
+  stripKnownModelSuffixes: vi.fn((input: string) => {
+    let modelName = input;
+    for (const suffix of ["fast", "flex"]) {
+      if (modelName.endsWith(`-${suffix}`)) {
+        modelName = modelName.slice(0, -(suffix.length + 1));
+        break;
+      }
+    }
+    for (const suffix of ["xhigh", "minimal", "medium", "high", "low", "none"]) {
+      if (modelName.endsWith(`-${suffix}`)) {
+        modelName = modelName.slice(0, -(suffix.length + 1));
+        break;
+      }
+    }
+    return { modelName, serviceTier: null, reasoningEffort: null };
+  }),
+}));
 
 function makeAdapter(tag: string): UpstreamAdapter {
   return {
@@ -56,6 +88,33 @@ describe("UpstreamRouter", () => {
     expect(router.resolve("claude-3-haiku-20240307").tag).toBe("anthropic");
   });
 
+  it("routes configured Claude Desktop shell aliases to codex before claude auto-routing", () => {
+    expect(router.resolveMatch("claude-opus-4-7").kind).toBe("codex");
+    expect(router.resolveMatch("claude-sonnet-4-6").kind).toBe("codex");
+    expect(router.resolveMatch("claude-haiku-4-5").kind).toBe("codex");
+  });
+
+  it("routes configured Codex aliases with Codex suffixes before claude auto-routing", () => {
+    expect(router.resolveMatch("claude-opus-4-7-high").kind).toBe("codex");
+    expect(router.resolveMatch("claude-sonnet-4-6-fast").kind).toBe("codex");
+  });
+
+  it("routes model aliases through their mapped provider target", () => {
+    const openaiMatch = router.resolveMatch("my-openai");
+    expect(openaiMatch.kind).toBe("adapter");
+    if (openaiMatch.kind === "adapter") {
+      expect(openaiMatch.adapter.tag).toBe("openai");
+      expect(openaiMatch.resolvedModel).toBe("openai:gpt-4o");
+    }
+
+    const deepseekMatch = router.resolveMatch("my-deepseek");
+    expect(deepseekMatch.kind).toBe("adapter");
+    if (deepseekMatch.kind === "adapter") {
+      expect(deepseekMatch.adapter.tag).toBe("deepseek");
+      expect(deepseekMatch.resolvedModel).toBe("deepseek-chat");
+    }
+  });
+
   it("auto-routes gemini-* to gemini", () => {
     expect(router.resolve("gemini-2.0-flash").tag).toBe("gemini");
     expect(router.resolve("gemini-1.5-pro").tag).toBe("gemini");
@@ -64,6 +123,11 @@ describe("UpstreamRouter", () => {
   it("routes known codex models to codex", () => {
     expect(router.resolveMatch("gpt-5.3-codex").kind).toBe("codex");
     expect(router.resolveMatch("o3").kind).toBe("codex");
+  });
+
+  it("routes custom catalog models to codex even when they do not look like gpt IDs", () => {
+    expect(router.resolveMatch("local-simple").kind).toBe("codex");
+    expect(router.resolveMatch("local-simple-high").kind).toBe("codex");
   });
 
   it("returns not-found for unknown models", () => {

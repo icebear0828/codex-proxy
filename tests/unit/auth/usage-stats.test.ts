@@ -9,6 +9,16 @@ vi.mock("@src/paths.js", () => ({
   getDataDir: vi.fn(() => "/tmp/test-data"),
 }));
 
+const mockConfig = vi.hoisted(() => ({
+  usage_stats: {
+    history_retention_days: null as number | null,
+  },
+}));
+
+vi.mock("@src/config.js", () => ({
+  getConfig: vi.fn(() => mockConfig),
+}));
+
 import { UsageStatsStore, type UsageStatsPersistence, type UsageSnapshot, type UsageBaseline } from "@src/auth/usage-stats.js";
 import type { AccountPool } from "@src/auth/account-pool.js";
 
@@ -63,6 +73,7 @@ describe("UsageStatsStore", () => {
   let store: UsageStatsStore;
 
   beforeEach(() => {
+    mockConfig.usage_stats.history_retention_days = null;
     persistence = createMockPersistence();
     store = new UsageStatsStore(persistence);
   });
@@ -472,14 +483,65 @@ describe("UsageStatsStore", () => {
       expect(raw).toHaveLength(1);
       expect(raw[0].input_tokens).toBe(500);
     });
+
+    it("returns all retained history when hours is all", () => {
+      const now = Date.now();
+      const snapshots: UsageSnapshot[] = [
+        {
+          timestamp: new Date(now - 48 * 3600_000).toISOString(),
+          totals: { input_tokens: 100, output_tokens: 10, request_count: 1, active_accounts: 1 },
+        },
+        {
+          timestamp: new Date(now - 12 * 3600_000).toISOString(),
+          totals: { input_tokens: 500, output_tokens: 50, request_count: 5, active_accounts: 1 },
+        },
+        {
+          timestamp: new Date(now).toISOString(),
+          totals: { input_tokens: 1000, output_tokens: 100, request_count: 10, active_accounts: 1 },
+        },
+      ];
+
+      persistence = createMockPersistence(snapshots);
+      store = new UsageStatsStore(persistence);
+
+      const raw = store.getHistory("all", "raw");
+      expect(raw).toHaveLength(2);
+      expect(raw[0].input_tokens).toBe(400);
+      expect(raw[1].input_tokens).toBe(500);
+    });
   });
 
   describe("retention", () => {
-    it("prunes snapshots older than 7 days on record", () => {
+    it("keeps old snapshots by default", () => {
       const now = Date.now();
       const old: UsageSnapshot[] = [
         {
-          timestamp: new Date(now - 8 * 24 * 3600_000).toISOString(),
+          timestamp: new Date(now - 30 * 24 * 3600_000).toISOString(),
+          totals: { input_tokens: 100, output_tokens: 10, request_count: 1, active_accounts: 1 },
+        },
+        {
+          timestamp: new Date(now - 1 * 3600_000).toISOString(),
+          totals: { input_tokens: 500, output_tokens: 50, request_count: 5, active_accounts: 1 },
+        },
+      ];
+
+      persistence = createMockPersistence(old);
+      store = new UsageStatsStore(persistence);
+
+      const pool = createMockPool([
+        { status: "active", input_tokens: 1000, output_tokens: 100, request_count: 10 },
+      ]);
+      store.recordSnapshot(pool);
+
+      expect(store.snapshotCount).toBe(3);
+    });
+
+    it("prunes snapshots older than configured retention days", () => {
+      mockConfig.usage_stats.history_retention_days = 14;
+      const now = Date.now();
+      const old: UsageSnapshot[] = [
+        {
+          timestamp: new Date(now - 30 * 24 * 3600_000).toISOString(),
           totals: { input_tokens: 100, output_tokens: 10, request_count: 1, active_accounts: 1 },
         },
         {

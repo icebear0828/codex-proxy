@@ -17,8 +17,15 @@ import { isBanError, isTokenInvalidError } from "../proxy/error-classification.j
 import { clearWarnings, getActiveWarnings, getWarningsLastUpdated } from "../auth/quota-warnings.js";
 import { probeAccount, batchHealthCheck } from "../auth/health-check.js";
 import { AccountImportService } from "../services/account-import.js";
+import type { ImportEntry } from "../services/account-import.js";
 import { AccountQueryService } from "../services/account-query.js";
 import { AccountMutationService } from "../services/account-mutation.js";
+import {
+  buildAccountExportPayload,
+  parseAccountExportFormat,
+  parseAccountImportPayload,
+  parseAccountImportText,
+} from "../services/account-transfer-formats.js";
 
 const BatchIdsSchema = z.object({ ids: z.array(z.string()).min(1) });
 const HealthCheckSchema = z.object({
@@ -28,17 +35,6 @@ const HealthCheckSchema = z.object({
 }).optional();
 const BatchStatusSchema = z.object({ ids: z.array(z.string()).min(1), status: z.enum(["active", "disabled"]) });
 const LabelSchema = z.object({ label: z.string().max(64).nullable() });
-const emptyStringToUndefined = (v: unknown) =>
-  typeof v === "string" && v.trim() === "" ? undefined : v;
-const emptyStringToNull = (v: unknown) =>
-  typeof v === "string" && v.trim() === "" ? null : v;
-const BulkImportEntrySchema = z.object({
-  token: z.preprocess(emptyStringToUndefined, z.string().min(1).optional()),
-  refreshToken: z.preprocess(emptyStringToNull, z.string().min(1).nullable().optional()),
-  label: z.string().max(64).nullable().optional(),
-}).refine((d) => Boolean(d.token) || Boolean(d.refreshToken), { message: "Either token or refreshToken is required" });
-const BulkImportSchema = z.object({ accounts: z.array(BulkImportEntrySchema).min(1) });
-
 export function createAccountRoutes(pool: AccountPool, scheduler: RefreshScheduler, cookieJar?: CookieJar, proxyPool?: ProxyPool): Hono {
   const app = new Hono();
   const importSvc = new AccountImportService(pool, scheduler, {
@@ -83,16 +79,29 @@ export function createAccountRoutes(pool: AccountPool, scheduler: RefreshSchedul
 
   app.get("/auth/accounts/export", (c) => {
     const ids = c.req.query("ids")?.split(",").filter(Boolean);
-    if (c.req.query("format") === "minimal") return c.json({ accounts: querySvc.exportMinimal(ids) });
-    return c.json({ accounts: querySvc.exportFull(ids) });
+    const format = parseAccountExportFormat(c.req.query("format"));
+    if (!format) {
+      c.status(400);
+      return c.json({ error: "Unsupported export format" });
+    }
+    return c.json(buildAccountExportPayload(querySvc.exportFull(ids), format));
   });
 
   app.post("/auth/accounts/import", async (c) => {
-    let body: unknown;
-    try { body = await c.req.json(); } catch { c.status(400); return c.json({ error: "Malformed JSON request body" }); }
-    const parsed = BulkImportSchema.safeParse(body);
-    if (!parsed.success) { c.status(400); return c.json({ error: "Invalid request", details: parsed.error.issues }); }
-    return c.json({ success: true, ...(await importSvc.importMany(parsed.data.accounts)) });
+    const contentType = c.req.header("content-type") ?? "";
+    let entries: ImportEntry[];
+    if (contentType.includes("text/plain")) {
+      entries = parseAccountImportText(await c.req.text());
+    } else {
+      let body: unknown;
+      try { body = await c.req.json(); } catch { c.status(400); return c.json({ error: "Malformed JSON request body" }); }
+      entries = parseAccountImportPayload(body);
+    }
+    if (entries.length === 0) {
+      c.status(400);
+      return c.json({ error: "Invalid request", details: [{ message: "No importable accounts found" }] });
+    }
+    return c.json({ success: true, ...(await importSvc.importMany(entries)) });
   });
 
   app.post("/auth/accounts/batch-delete", async (c) => {
@@ -142,31 +151,7 @@ export function createAccountRoutes(pool: AccountPool, scheduler: RefreshSchedul
       c.status(404);
       return c.json({ error: "Account not found" });
     }
-
-    // If token refresh succeeded, also fetch quota from upstream
-    let quota = null;
-    if (result.result === "alive") {
-      const entry = pool.getEntry(id);
-      if (entry?.token) {
-        try {
-          const usage = await new CodexApi(
-            entry.token,
-            entry.accountId,
-            cookieJar,
-            id,
-            proxyPool?.resolveProxyUrl(id),
-          ).getUsage();
-          quota = toQuota(usage);
-          // Cache the quota data in the pool
-          pool.updateCachedQuota(id, quota);
-        } catch (err) {
-          // Quota fetch failure shouldn't block the refresh response
-          console.warn(`[AccountRefresh] Failed to fetch quota for ${id}:`, err instanceof Error ? err.message : err);
-        }
-      }
-    }
-
-    return c.json({ ...result, quota });
+    return c.json(result);
   });
 
   app.patch("/auth/accounts/:id/label", async (c) => {
@@ -178,33 +163,12 @@ export function createAccountRoutes(pool: AccountPool, scheduler: RefreshSchedul
     return c.json({ success: true });
   });
 
-  app.get("/auth/accounts", async (c) => {
-    const quotaParam = c.req.query("quota");
-
-    // If quota=fresh, actively fetch quota from upstream for all active accounts
-    if (quotaParam === "fresh") {
-      const entries = pool.getAllEntries().filter((e) => e.status === "active" && e.token);
-      await Promise.allSettled(
-        entries.map(async (entry) => {
-          try {
-            const usage = await new CodexApi(
-              entry.token,
-              entry.accountId,
-              cookieJar,
-              entry.id,
-              proxyPool?.resolveProxyUrl(entry.id),
-            ).getUsage();
-            pool.updateCachedQuota(entry.id, toQuota(usage));
-          } catch (err) {
-            // Silently ignore per-account failures
-            console.warn(`[AccountList] Failed to refresh quota for ${entry.id}:`, err instanceof Error ? err.message : err);
-          }
-        }),
-      );
-    }
-
+  app.get("/auth/accounts", (c) => {
     const accounts = querySvc.listFresh();
-    return c.json({ accounts });
+    return c.json({
+      accounts,
+      persistence_health: pool.getPersistenceHealth(),
+    });
   });
 
   app.post("/auth/accounts", async (c) => {
@@ -232,7 +196,9 @@ export function createAccountRoutes(pool: AccountPool, scheduler: RefreshSchedul
     if (entry.status !== "active") { c.status(409); return c.json({ error: `Account is ${entry.status}, cannot query quota` }); }
     try {
       const usage = await new CodexApi(entry.token, entry.accountId, cookieJar, id, proxyPool?.resolveProxyUrl(id)).getUsage();
-      return c.json({ quota: toQuota(usage), raw: usage });
+      const quota = toQuota(usage);
+      pool.updateCachedQuota(id, quota);
+      return c.json({ quota, raw: usage });
     } catch (err) {
       // Auto-mark invalidated/banned accounts
       if (isTokenInvalidError(err)) {

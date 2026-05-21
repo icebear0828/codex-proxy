@@ -23,10 +23,9 @@ import { getConfig } from "../config.js";
 import { getModelCatalog } from "../models/model-store.js";
 import {
   handleProxyRequest,
-  handleDirectRequest,
-  type FormatAdapter,
-  type ProxyRequest,
 } from "./shared/proxy-handler.js";
+import { handleDirectRequest } from "./shared/direct-request-handler.js";
+import type { FormatAdapter, ProxyRequest } from "./shared/proxy-handler-types.js";
 import type { UpstreamRouter } from "../proxy/upstream-router.js";
 
 function makeError(
@@ -70,9 +69,9 @@ const GEMINI_FORMAT: FormatAdapter = {
     ),
   format429: (msg) => makeError(429, msg, "RESOURCE_EXHAUSTED"),
   formatError: (status, msg) => makeError(status, msg),
-  streamTranslator: (api, response, model, onUsage, onResponseId, tupleSchema) =>
-    streamCodexToGemini(api, response, model, onUsage, onResponseId, tupleSchema),
-  collectTranslator: (api, response, model, tupleSchema) =>
+  streamTranslator: ({ api, response, model, onUsage, onResponseId, onResponseCompleted, tupleSchema }) =>
+    streamCodexToGemini(api, response, model, onUsage, onResponseId, tupleSchema, onResponseCompleted),
+  collectTranslator: ({ api, response, model, tupleSchema }) =>
     collectCodexToGeminiResponse(api, response, model, tupleSchema),
 };
 
@@ -169,11 +168,16 @@ export function createGeminiRoutes(
     };
 
     if (routeMatch?.kind === "api-key" || routeMatch?.kind === "adapter") {
-      const directReq = { ...proxyReq, codexRequest: { ...codexRequest, model: geminiModel } };
-      return handleDirectRequest(c, routeMatch.adapter, directReq, GEMINI_FORMAT);
+      const directModel = routeMatch.resolvedModel ?? geminiModel;
+      const directReq = {
+        ...proxyReq,
+        model: directModel,
+        codexRequest: { ...codexRequest, model: directModel },
+      };
+      return handleDirectRequest({ c, upstream: routeMatch.adapter, req: directReq, fmt: GEMINI_FORMAT });
     }
 
-    return handleProxyRequest(c, accountPool, cookieJar, proxyReq, GEMINI_FORMAT, proxyPool);
+    return handleProxyRequest({ c, accountPool, cookieJar, req: proxyReq, fmt: GEMINI_FORMAT, proxyPool });
   });
 
   // List available models (Gemini format)

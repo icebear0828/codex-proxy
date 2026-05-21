@@ -1,5 +1,7 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
-import { Hono } from "hono";
+import { Hono, type Context } from "hono";
+import type { UpstreamAdapter } from "@src/proxy/upstream-adapter.js";
+import type { HandleDirectRequestOptions } from "@src/routes/shared/proxy-handler-types.js";
 
 const mockConfig = {
   server: { proxy_api_key: null as string | null },
@@ -66,10 +68,13 @@ vi.mock("@src/utils/retry.js", () => ({
   withRetry: vi.fn(async (fn: () => Promise<unknown>) => fn()),
 }));
 
-const mockHandleDirectRequest = vi.fn(async (c) => c.json({ ok: true }));
+const mockHandleDirectRequest = vi.fn(async (options: HandleDirectRequestOptions) => options.c.json({ ok: true }));
+const mockHandleProxyRequest = vi.fn(async (options: { c: Context }) => options.c.json({ proxied: true }));
 vi.mock("@src/routes/shared/proxy-handler.js", () => ({
-  handleProxyRequest: vi.fn(async (c) => c.json({ proxied: true })),
-  handleDirectRequest: (...args: unknown[]) => mockHandleDirectRequest(...args),
+  handleProxyRequest: (options: { c: Context }) => mockHandleProxyRequest(options),
+}));
+vi.mock("@src/routes/shared/direct-request-handler.js", () => ({
+  handleDirectRequest: (options: HandleDirectRequestOptions) => mockHandleDirectRequest(options),
 }));
 
 import { AccountPool } from "@src/auth/account-pool.js";
@@ -79,19 +84,42 @@ import { createMessagesRoutes } from "@src/routes/messages.js";
 import { createGeminiRoutes } from "@src/routes/gemini.js";
 import { createResponsesRoutes } from "@src/routes/responses.js";
 
+function createSentinelAdapter(tag: string): UpstreamAdapter {
+  return {
+    tag,
+    createResponse: vi.fn(async () => new Response()),
+    parseStream: vi.fn(async function* () {}),
+  };
+}
+
+function expectDirectOptions(expected: {
+  adapter: UpstreamAdapter;
+  model: string;
+  formatTag: string;
+}): void {
+  expect(mockHandleDirectRequest).toHaveBeenCalledTimes(1);
+  const [options] = mockHandleDirectRequest.mock.calls[0] as [HandleDirectRequestOptions];
+  expect(options.upstream).toBe(expected.adapter);
+  expect(options.req.model).toBe(expected.model);
+  expect(options.req.codexRequest.model).toBe(expected.model);
+  expect(options.fmt.tag).toBe(expected.formatTag);
+  expect(mockHandleProxyRequest).not.toHaveBeenCalled();
+}
+
 describe("upstream direct routing without Codex auth", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockConfig.server.proxy_api_key = null;
-    mockHandleDirectRequest.mockImplementation(async (c) => c.json({ ok: true }));
+    mockHandleDirectRequest.mockImplementation(async (options: HandleDirectRequestOptions) => options.c.json({ ok: true }));
     loadStaticModels();
   });
 
   it("allows OpenAI chat direct upstream routing without local accounts", async () => {
     const pool = new AccountPool();
+    const adapter = createSentinelAdapter("custom-upstream");
     const app = createChatRoutes(pool, undefined, undefined, {
-      resolveMatch: vi.fn(() => ({ kind: "adapter" })),
-      resolve: vi.fn(() => ({ tag: "custom-upstream" })),
+      resolveMatch: vi.fn(() => ({ kind: "adapter", adapter })),
+      resolve: vi.fn(() => adapter),
     } as never);
 
     const res = await app.request("/v1/chat/completions", {
@@ -104,14 +132,176 @@ describe("upstream direct routing without Codex auth", () => {
     });
 
     expect(res.status).toBe(200);
-    expect(mockHandleDirectRequest).toHaveBeenCalledTimes(1);
-    const [, , directReq] = mockHandleDirectRequest.mock.calls[0] as [
-      unknown,
-      unknown,
-      { codexRequest: { tools?: unknown[] } },
-      unknown,
-    ];
-    expect(directReq.codexRequest.tools).toEqual([]);
+    expectDirectOptions({ adapter, model: "my-custom-model", formatTag: "Chat" });
+    expect(mockHandleDirectRequest.mock.calls[0][0].req.codexRequest.tools).toEqual([]);
+    pool.destroy();
+  });
+
+  it.each([
+    {
+      name: "chat",
+      formatTag: "Chat",
+      model: "my-custom-model",
+      makeApp: (pool: AccountPool, adapter: UpstreamAdapter) =>
+        createChatRoutes(pool, undefined, undefined, {
+          resolveMatch: vi.fn(() => ({ kind: "adapter", adapter })),
+          resolve: vi.fn(() => adapter),
+        } as never),
+      path: "/v1/chat/completions",
+      headers: { "Content-Type": "application/json" },
+      body: {
+        model: "my-custom-model",
+        messages: [{ role: "user", content: "hello" }],
+      },
+    },
+    {
+      name: "messages",
+      formatTag: "Messages",
+      model: "claude-opus-4-6",
+      makeApp: (pool: AccountPool, adapter: UpstreamAdapter) =>
+        createMessagesRoutes(pool, undefined, undefined, {
+          resolveMatch: vi.fn(() => ({ kind: "adapter", adapter })),
+        } as never),
+      path: "/v1/messages",
+      headers: { "Content-Type": "application/json", "anthropic-version": "2023-06-01" },
+      body: {
+        model: "claude-opus-4-6",
+        max_tokens: 16,
+        messages: [{ role: "user", content: "hello" }],
+      },
+    },
+    {
+      name: "responses",
+      formatTag: "Responses",
+      model: "my-custom-model",
+      makeApp: (pool: AccountPool, adapter: UpstreamAdapter) =>
+        createResponsesRoutes(pool, undefined, undefined, {
+          resolveMatch: vi.fn(() => ({ kind: "adapter", adapter })),
+        } as never),
+      path: "/v1/responses",
+      headers: { "Content-Type": "application/json" },
+      body: {
+        model: "my-custom-model",
+        input: [{ role: "user", content: "hello" }],
+      },
+    },
+    {
+      name: "gemini",
+      formatTag: "Gemini",
+      model: "gemini-2.5-pro",
+      makeApp: (pool: AccountPool, adapter: UpstreamAdapter) =>
+        createGeminiRoutes(pool, undefined, undefined, {
+          resolveMatch: vi.fn(() => ({ kind: "adapter", adapter })),
+        } as never),
+      path: "/v1beta/models/gemini-2.5-pro:generateContent",
+      headers: { "Content-Type": "application/json" },
+      body: {
+        contents: [{ role: "user", parts: [{ text: "hello" }] }],
+      },
+    },
+  ])("passes $name direct routes to handleDirectRequest with named options", async (testCase) => {
+    const pool = new AccountPool();
+    const adapter = createSentinelAdapter(`sentinel-${testCase.name}`);
+    const app = testCase.makeApp(pool, adapter);
+
+    const res = await app.request(testCase.path, {
+      method: "POST",
+      headers: testCase.headers,
+      body: JSON.stringify(testCase.body),
+    });
+
+    expect(res.status).toBe(200);
+    expectDirectOptions({
+      adapter,
+      model: testCase.model,
+      formatTag: testCase.formatTag,
+    });
+    pool.destroy();
+  });
+
+  it.each([
+    {
+      name: "chat",
+      formatTag: "Chat",
+      requestedModel: "my-openai",
+      resolvedModel: "openai:gpt-4o",
+      makeApp: (pool: AccountPool, adapter: UpstreamAdapter, resolvedModel: string) =>
+        createChatRoutes(pool, undefined, undefined, {
+          resolveMatch: vi.fn(() => ({ kind: "adapter", adapter, resolvedModel })),
+          resolve: vi.fn(() => adapter),
+        } as never),
+      path: "/v1/chat/completions",
+      headers: { "Content-Type": "application/json" },
+      body: {
+        model: "my-openai",
+        messages: [{ role: "user", content: "hello" }],
+      },
+    },
+    {
+      name: "messages",
+      formatTag: "Messages",
+      requestedModel: "claude-sonnet-local",
+      resolvedModel: "anthropic:claude-sonnet-4-5",
+      makeApp: (pool: AccountPool, adapter: UpstreamAdapter, resolvedModel: string) =>
+        createMessagesRoutes(pool, undefined, undefined, {
+          resolveMatch: vi.fn(() => ({ kind: "adapter", adapter, resolvedModel })),
+        } as never),
+      path: "/v1/messages",
+      headers: { "Content-Type": "application/json", "anthropic-version": "2023-06-01" },
+      body: {
+        model: "claude-sonnet-local",
+        max_tokens: 16,
+        messages: [{ role: "user", content: "hello" }],
+      },
+    },
+    {
+      name: "responses",
+      formatTag: "Responses",
+      requestedModel: "my-deepseek",
+      resolvedModel: "deepseek-chat",
+      makeApp: (pool: AccountPool, adapter: UpstreamAdapter, resolvedModel: string) =>
+        createResponsesRoutes(pool, undefined, undefined, {
+          resolveMatch: vi.fn(() => ({ kind: "adapter", adapter, resolvedModel })),
+        } as never),
+      path: "/v1/responses",
+      headers: { "Content-Type": "application/json" },
+      body: {
+        model: "my-deepseek",
+        input: [{ role: "user", content: "hello" }],
+      },
+    },
+    {
+      name: "gemini",
+      formatTag: "Gemini",
+      requestedModel: "gemini-local",
+      resolvedModel: "gemini:gemini-2.5-pro",
+      makeApp: (pool: AccountPool, adapter: UpstreamAdapter, resolvedModel: string) =>
+        createGeminiRoutes(pool, undefined, undefined, {
+          resolveMatch: vi.fn(() => ({ kind: "adapter", adapter, resolvedModel })),
+        } as never),
+      path: "/v1beta/models/gemini-local:generateContent",
+      headers: { "Content-Type": "application/json" },
+      body: {
+        contents: [{ role: "user", parts: [{ text: "hello" }] }],
+      },
+    },
+  ])("passes resolved alias target to $name direct upstream requests", async (testCase) => {
+    const pool = new AccountPool();
+    const adapter = createSentinelAdapter(`mapped-${testCase.name}`);
+    const app = testCase.makeApp(pool, adapter, testCase.resolvedModel);
+
+    const res = await app.request(testCase.path, {
+      method: "POST",
+      headers: testCase.headers,
+      body: JSON.stringify(testCase.body),
+    });
+
+    expect(res.status).toBe(200);
+    expectDirectOptions({
+      adapter,
+      model: testCase.resolvedModel,
+      formatTag: testCase.formatTag,
+    });
     pool.destroy();
   });
 
@@ -171,18 +361,13 @@ describe("upstream direct routing without Codex auth", () => {
 
     expect(res.status).toBe(200);
     expect(mockHandleDirectRequest).toHaveBeenCalledTimes(1);
-    const [, , directReq] = mockHandleDirectRequest.mock.calls[0] as [
-      unknown,
-      unknown,
-      {
-        codexRequest: {
-          useWebSocket?: boolean;
-          tools?: unknown[];
-          tool_choice?: unknown;
-        };
-      },
-      unknown,
-    ];
+    const directReq = mockHandleDirectRequest.mock.calls[0][0].req as {
+      codexRequest: {
+        useWebSocket?: boolean;
+        tools?: unknown[];
+        tool_choice?: unknown;
+      };
+    };
     expect(directReq.codexRequest.useWebSocket).toBeUndefined();
     expect(directReq.codexRequest.tools).toEqual([
       {
@@ -238,7 +423,7 @@ describe("upstream direct routing without Codex auth", () => {
     pool.destroy();
   });
 
-  it("bypasses proxy api key validation for configured direct upstream models", async () => {
+  it("requires proxy api key validation for chat direct upstream models", async () => {
     mockConfig.server.proxy_api_key = "proxy-secret";
     const pool = new AccountPool();
     const app = createChatRoutes(pool, undefined, undefined, {
@@ -259,8 +444,35 @@ describe("upstream direct routing without Codex auth", () => {
       }),
     });
 
+    expect(res.status).toBe(401);
+    expect(mockHandleDirectRequest).toHaveBeenCalledTimes(0);
+    pool.destroy();
+  });
+
+  it("allows chat direct upstream models when proxy api key is valid", async () => {
+    mockConfig.server.proxy_api_key = "proxy-secret";
+    const pool = new AccountPool();
+    const adapter = createSentinelAdapter("custom-upstream");
+    const app = createChatRoutes(pool, undefined, undefined, {
+      resolveMatch: vi.fn(() => ({ kind: "api-key", adapter, entry: { model: "deepseek-chat" } })),
+      hasApiKeyModel: vi.fn(() => true),
+      resolve: vi.fn(() => adapter),
+    } as never);
+
+    const res = await app.request("/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: "Bearer proxy-secret",
+      },
+      body: JSON.stringify({
+        model: "deepseek-chat",
+        messages: [{ role: "user", content: "hello" }],
+      }),
+    });
+
     expect(res.status).toBe(200);
-    expect(mockHandleDirectRequest).toHaveBeenCalledTimes(1);
+    expectDirectOptions({ adapter, model: "deepseek-chat", formatTag: "Chat" });
     pool.destroy();
   });
 

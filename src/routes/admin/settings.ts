@@ -5,6 +5,42 @@ import { logStore } from "../../logs/store.js";
 import { mutateYaml } from "../../utils/yaml-mutate.js";
 import { isLocalhostRequest } from "../../utils/is-localhost.js";
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function normalizeModelAliases(input: unknown): {
+  aliases: Record<string, string>;
+  error: string | null;
+} {
+  if (!isRecord(input)) {
+    return { aliases: {}, error: "model_aliases must be an object of alias -> target strings" };
+  }
+
+  const aliases: Record<string, string> = {};
+  for (const [rawAlias, rawTarget] of Object.entries(input)) {
+    if (typeof rawTarget !== "string") {
+      return { aliases: {}, error: "model_aliases values must be strings" };
+    }
+
+    const alias = rawAlias.trim();
+    const target = rawTarget.trim();
+    if (!alias || !target) {
+      return { aliases: {}, error: "model_aliases entries require non-empty alias and target" };
+    }
+    if (alias === target) {
+      return { aliases: {}, error: "model_aliases entries cannot map a model to itself" };
+    }
+    if (aliases[alias] !== undefined) {
+      return { aliases: {}, error: `model_aliases contains duplicate alias after trimming: ${alias}` };
+    }
+
+    aliases[alias] = target;
+  }
+
+  return { aliases, error: null };
+}
+
 export function createSettingsRoutes(): Hono {
   const app = new Hono();
 
@@ -103,6 +139,7 @@ export function createSettingsRoutes(): Hono {
       suppress_desktop_directives: config.model.suppress_desktop_directives,
       default_model: config.model.default,
       default_reasoning_effort: config.model.default_reasoning_effort,
+      model_aliases: config.model.aliases,
       refresh_enabled: config.auth.refresh_enabled,
       refresh_margin_seconds: config.auth.refresh_margin_seconds,
       refresh_concurrency: config.auth.refresh_concurrency,
@@ -110,10 +147,12 @@ export function createSettingsRoutes(): Hono {
       request_interval_ms: config.auth.request_interval_ms,
       auto_update: config.update.auto_update,
       auto_download: config.update.auto_download,
+      show_update_dialog: config.update.show_update_dialog,
       logs_enabled: config.logs.enabled,
       logs_capacity: config.logs.capacity,
       logs_capture_body: config.logs.capture_body,
       logs_llm_only: config.logs.llm_only,
+      usage_history_retention_days: config.usage_stats.history_retention_days,
     });
   });
 
@@ -138,6 +177,7 @@ export function createSettingsRoutes(): Hono {
       suppress_desktop_directives?: boolean;
       default_model?: string;
       default_reasoning_effort?: string | null;
+      model_aliases?: unknown;
       refresh_enabled?: boolean;
       refresh_margin_seconds?: number;
       refresh_concurrency?: number;
@@ -145,10 +185,12 @@ export function createSettingsRoutes(): Hono {
       request_interval_ms?: number | null;
       auto_update?: boolean;
       auto_download?: boolean;
+      show_update_dialog?: boolean;
       logs_enabled?: boolean;
       logs_capacity?: number;
       logs_capture_body?: boolean;
       logs_llm_only?: boolean;
+      usage_history_retention_days?: number | null;
     };
 
     // --- validation ---
@@ -177,6 +219,16 @@ export function createSettingsRoutes(): Hono {
         c.status(400);
         return c.json({ error: `default_reasoning_effort must be one of: ${validEfforts.join(", ")} or null` });
       }
+    }
+
+    let normalizedModelAliases: Record<string, string> | null = null;
+    if (body.model_aliases !== undefined) {
+      const result = normalizeModelAliases(body.model_aliases);
+      if (result.error) {
+        c.status(400);
+        return c.json({ error: result.error });
+      }
+      normalizedModelAliases = result.aliases;
     }
 
     if (body.refresh_margin_seconds !== undefined) {
@@ -214,6 +266,13 @@ export function createSettingsRoutes(): Hono {
       }
     }
 
+    if (body.usage_history_retention_days !== undefined && body.usage_history_retention_days !== null) {
+      if (!Number.isInteger(body.usage_history_retention_days) || body.usage_history_retention_days < 1) {
+        c.status(400);
+        return c.json({ error: "usage_history_retention_days must be an integer >= 1 or null" });
+      }
+    }
+
     const oldPort = config.server.port;
     const oldDefaultModel = config.model.default;
 
@@ -246,6 +305,10 @@ export function createSettingsRoutes(): Hono {
         if (!data.model) data.model = {};
         (data.model as Record<string, unknown>).default_reasoning_effort = body.default_reasoning_effort;
       }
+      if (normalizedModelAliases !== null) {
+        if (!data.model) data.model = {};
+        (data.model as Record<string, unknown>).aliases = normalizedModelAliases;
+      }
       if (body.refresh_enabled !== undefined) {
         if (!data.auth) data.auth = {};
         (data.auth as Record<string, unknown>).refresh_enabled = body.refresh_enabled;
@@ -274,6 +337,10 @@ export function createSettingsRoutes(): Hono {
         if (!data.update) data.update = {};
         (data.update as Record<string, unknown>).auto_download = body.auto_download;
       }
+      if (body.show_update_dialog !== undefined) {
+        if (!data.update) data.update = {};
+        (data.update as Record<string, unknown>).show_update_dialog = body.show_update_dialog;
+      }
       if (body.logs_enabled !== undefined) {
         if (!data.logs) data.logs = {};
         (data.logs as Record<string, unknown>).enabled = body.logs_enabled;
@@ -289,6 +356,10 @@ export function createSettingsRoutes(): Hono {
       if (body.logs_llm_only !== undefined) {
         if (!data.logs) data.logs = {};
         (data.logs as Record<string, unknown>).llm_only = body.logs_llm_only;
+      }
+      if (body.usage_history_retention_days !== undefined) {
+        if (!data.usage_stats) data.usage_stats = {};
+        (data.usage_stats as Record<string, unknown>).history_retention_days = body.usage_history_retention_days;
       }
     });
     reloadAllConfigs();
@@ -313,6 +384,7 @@ export function createSettingsRoutes(): Hono {
       suppress_desktop_directives: updated.model.suppress_desktop_directives,
       default_model: updated.model.default,
       default_reasoning_effort: updated.model.default_reasoning_effort,
+      model_aliases: updated.model.aliases,
       refresh_enabled: updated.auth.refresh_enabled,
       refresh_margin_seconds: updated.auth.refresh_margin_seconds,
       refresh_concurrency: updated.auth.refresh_concurrency,
@@ -320,10 +392,12 @@ export function createSettingsRoutes(): Hono {
       request_interval_ms: updated.auth.request_interval_ms,
       auto_update: updated.update.auto_update,
       auto_download: updated.update.auto_download,
+      show_update_dialog: updated.update.show_update_dialog,
       logs_enabled: updated.logs?.enabled ?? false,
       logs_capacity: updated.logs?.capacity ?? 2000,
       logs_capture_body: updated.logs?.capture_body ?? false,
       logs_llm_only: updated.logs?.llm_only ?? true,
+      usage_history_retention_days: updated.usage_stats.history_retention_days,
       restart_required: restartRequired,
     });
   });

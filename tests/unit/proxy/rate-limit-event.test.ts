@@ -22,6 +22,7 @@ describe("parseRateLimitsEvent", () => {
     expect(result).toEqual({
       primary: { used_percent: 42.0, window_minutes: 300, reset_at: 1700000000 },
       secondary: { used_percent: 18.0, window_minutes: 10080, reset_at: 1700500000 },
+      code_review: null,
     });
   });
 
@@ -36,6 +37,7 @@ describe("parseRateLimitsEvent", () => {
     expect(result).toEqual({
       primary: { used_percent: 80.5, window_minutes: 300, reset_at: 1700000000 },
       secondary: null,
+      code_review: null,
     });
   });
 
@@ -50,6 +52,7 @@ describe("parseRateLimitsEvent", () => {
     expect(result).toEqual({
       primary: null,
       secondary: { used_percent: 50.0, window_minutes: 10080, reset_at: 1700500000 },
+      code_review: null,
     });
   });
 
@@ -75,6 +78,7 @@ describe("parseRateLimitsEvent", () => {
     expect(result).toEqual({
       primary: { used_percent: 10, window_minutes: null, reset_at: null },
       secondary: null,
+      code_review: null,
     });
   });
 
@@ -85,6 +89,52 @@ describe("parseRateLimitsEvent", () => {
       },
     };
     expect(parseRateLimitsEvent(data)).toBeNull();
+  });
+
+  it("parses code review rate limits from websocket event payload", () => {
+    const data = {
+      type: "codex.rate_limits",
+      plan_type: "plus",
+      rate_limits: {
+        primary: { used_percent: 12, window_minutes: 300, reset_at: 1700000000 },
+      },
+      code_review_rate_limits: {
+        allowed: true,
+        limit_reached: false,
+        primary: { used_percent: 7, window_minutes: 60, reset_at: 1700000300 },
+        secondary: null,
+      },
+    };
+
+    expect(parseRateLimitsEvent(data)).toEqual({
+      primary: { used_percent: 12, window_minutes: 300, reset_at: 1700000000 },
+      secondary: null,
+      code_review: {
+        allowed: true,
+        limit_reached: false,
+        primary: { used_percent: 7, window_minutes: 60, reset_at: 1700000300 },
+        secondary: null,
+      },
+    });
+  });
+
+  it("maps metered review limit events into code_review", () => {
+    const data = {
+      type: "codex.rate_limits",
+      metered_limit_name: "codex_code_review",
+      rate_limits: {
+        primary: { used_percent: 33, window_minutes: 60, reset_at: 1700000300 },
+      },
+    };
+
+    expect(parseRateLimitsEvent(data)).toEqual({
+      primary: null,
+      secondary: null,
+      code_review: {
+        primary: { used_percent: 33, window_minutes: 60, reset_at: 1700000300 },
+        secondary: null,
+      },
+    });
   });
 });
 
