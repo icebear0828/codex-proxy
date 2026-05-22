@@ -79,6 +79,18 @@ describe("computePoolStats", () => {
     expect(stats.totalUsd).toBeCloseTo(13.9);
   });
 
+  it("uses the configured credits-per-USD conversion rate", () => {
+    const stats = computePoolStats([pro(120)], 40);
+    expect(stats.totalUsd).toBeCloseTo(3);
+  });
+
+  it("suppresses USD totals when the configured conversion rate is 0", () => {
+    const stats = computePoolStats([pro(120)], 0);
+    expect(stats.hasAnyCredits).toBe(true);
+    expect(stats.totalCredits).toBe(120);
+    expect(stats.totalUsd).toBeNull();
+  });
+
   it("treats unlimited accounts as 'has credits' but excludes their balance from the sum", () => {
     const stats = computePoolStats([
       pro(50, { id: "p1" }),

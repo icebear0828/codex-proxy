@@ -86,6 +86,7 @@ jobs:
 
       - name: Clean stale release assets
         continue-on-error: true
+        shell: bash
         run: |
           TAG="${{ inputs.tag || github.ref_name }}"
           ASSETS=$(gh release view "$TAG" --json assets -q '.assets[].name' 2>/dev/null || echo "")
@@ -134,7 +135,16 @@ jobs:
           # Electron renderer can spawn a window in a headless runner.
           sudo apt-get install -y libfuse2 xvfb
 
+      - name: Smoke test packaged binary (win)
+        if: matrix.platform == 'win'
+        shell: pwsh
+        env:
+          RELEASE_DIR: packages/electron/release
+          SMOKE_LOG: ${{ runner.temp }}/electron-smoke.log
+        run: ./.github/scripts/electron-smoke.ps1
+
       - name: Smoke test packaged binary (${{ matrix.platform }}${{ matrix.arch && format('-{0}', matrix.arch) || '' }})
+        if: matrix.platform != 'win'
         shell: bash
         env:
           RELEASE_DIR: packages/electron/release

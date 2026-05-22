@@ -9,6 +9,7 @@ const DEFAULT_CREDITS_PER_USD = 25;
 
 interface PoolOverviewProps {
   accounts: Account[];
+  creditsPerUsd?: number;
 }
 
 export interface PoolStats {
@@ -20,7 +21,7 @@ export interface PoolStats {
   topUsage: { account: Account; pct: number; resetAt: number | null } | null;
 }
 
-export function computePoolStats(accounts: Account[]): PoolStats {
+export function computePoolStats(accounts: Account[], creditsPerUsd = DEFAULT_CREDITS_PER_USD): PoolStats {
   let active = 0;
   let exhausted = 0;
   let totalCredits = 0;
@@ -51,14 +52,14 @@ export function computePoolStats(accounts: Account[]): PoolStats {
     }
   }
 
-  const totalUsd = hasAnyCredits ? creditsToUsd(totalCredits, DEFAULT_CREDITS_PER_USD) : null;
+  const totalUsd = hasAnyCredits ? creditsToUsd(totalCredits, creditsPerUsd) : null;
   return { active, exhausted, totalCredits, totalUsd, hasAnyCredits, topUsage };
 }
 
-export function PoolOverview({ accounts }: PoolOverviewProps) {
+export function PoolOverview({ accounts, creditsPerUsd = DEFAULT_CREDITS_PER_USD }: PoolOverviewProps) {
   const t = useT();
   const { lang } = useI18n();
-  const stats = useMemo(() => computePoolStats(accounts), [accounts]);
+  const stats = useMemo(() => computePoolStats(accounts, creditsPerUsd), [accounts, creditsPerUsd]);
 
   if (accounts.length === 0) return null;
 

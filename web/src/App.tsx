@@ -24,6 +24,7 @@ import { useStatus } from "../../shared/hooks/use-status";
 import { useUpdateStatus } from "../../shared/hooks/use-update-status";
 import { useI18n, useT } from "../../shared/i18n/context";
 import { useDashboardAuth } from "../../shared/hooks/use-dashboard-auth";
+import { useGeneralSettings } from "../../shared/hooks/use-general-settings";
 import type { TranslationKey } from "../../shared/i18n/translations";
 import { getShowUpdateDialogPreference, shouldAutoOpenUpdateModal } from "./update-modal-policy";
 
@@ -102,6 +103,7 @@ function Dashboard() {
   const accounts = useAccounts();
   const proxies = useProxies();
   const status = useStatus(accounts.list.length);
+  const generalSettings = useGeneralSettings(null);
   const update = useUpdateMessage();
   const { onLogout } = useDashboardAuthCtx();
   const [showModal, setShowModal] = useState(false);
@@ -163,7 +165,10 @@ function Dashboard() {
 
           {activeTab === "" && (
             <div class="flex flex-col gap-6">
-              <PoolOverview accounts={accounts.list} />
+              <PoolOverview
+                accounts={accounts.list}
+                creditsPerUsd={generalSettings.data?.credits_per_usd}
+              />
               <AccountList
                 accounts={accounts.list}
                 loading={accounts.loading}
