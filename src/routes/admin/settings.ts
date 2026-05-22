@@ -153,6 +153,7 @@ export function createSettingsRoutes(): Hono {
       logs_capture_body: config.logs.capture_body,
       logs_llm_only: config.logs.llm_only,
       usage_history_retention_days: config.usage_stats.history_retention_days,
+      credits_per_usd: config.usage_stats.credits_per_usd,
     });
   });
 
@@ -191,6 +192,7 @@ export function createSettingsRoutes(): Hono {
       logs_capture_body?: boolean;
       logs_llm_only?: boolean;
       usage_history_retention_days?: number | null;
+      credits_per_usd?: number;
     };
 
     // --- validation ---
@@ -270,6 +272,13 @@ export function createSettingsRoutes(): Hono {
       if (!Number.isInteger(body.usage_history_retention_days) || body.usage_history_retention_days < 1) {
         c.status(400);
         return c.json({ error: "usage_history_retention_days must be an integer >= 1 or null" });
+      }
+    }
+
+    if (body.credits_per_usd !== undefined) {
+      if (!Number.isFinite(body.credits_per_usd) || body.credits_per_usd < 0) {
+        c.status(400);
+        return c.json({ error: "credits_per_usd must be a number >= 0" });
       }
     }
 
@@ -361,6 +370,10 @@ export function createSettingsRoutes(): Hono {
         if (!data.usage_stats) data.usage_stats = {};
         (data.usage_stats as Record<string, unknown>).history_retention_days = body.usage_history_retention_days;
       }
+      if (body.credits_per_usd !== undefined) {
+        if (!data.usage_stats) data.usage_stats = {};
+        (data.usage_stats as Record<string, unknown>).credits_per_usd = body.credits_per_usd;
+      }
     });
     reloadAllConfigs();
 
@@ -398,6 +411,7 @@ export function createSettingsRoutes(): Hono {
       logs_capture_body: updated.logs?.capture_body ?? false,
       logs_llm_only: updated.logs?.llm_only ?? true,
       usage_history_retention_days: updated.usage_stats.history_retention_days,
+      credits_per_usd: updated.usage_stats.credits_per_usd,
       restart_required: restartRequired,
     });
   });

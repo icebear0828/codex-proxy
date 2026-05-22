@@ -15,7 +15,11 @@ import { execFileSync } from "child_process";
 import { existsSync, readFileSync, statSync } from "fs";
 import { resolve } from "path";
 
-const SCRIPT = resolve(__dirname, "..", "..", "..", ".github", "scripts", "electron-smoke.sh");
+const ROOT = resolve(__dirname, "..", "..", "..");
+const SCRIPT = resolve(ROOT, ".github", "scripts", "electron-smoke.sh");
+const WINDOWS_SCRIPT = resolve(ROOT, ".github", "scripts", "electron-smoke.ps1");
+const RELEASE_WORKFLOW = resolve(ROOT, ".github", "workflows", "release.yml");
+const PROMOTE_WORKFLOW = resolve(ROOT, ".github", "workflows", "promote-dev-to-master.yml");
 
 interface RunResult {
   status: number;
@@ -96,10 +100,9 @@ describe("electron-smoke.sh script", () => {
 
   it("fails loudly when no AppImage is present in RELEASE_DIR", () => {
     // Use the repo root as a "release dir" — no AppImage inside it.
-    const root = resolve(__dirname, "..", "..", "..");
     const result = run({
       RUNNER_OS: "Linux",
-      RELEASE_DIR: root,
+      RELEASE_DIR: ROOT,
     });
     expect(result.status).not.toBe(0);
     expect(result.stderr + result.stdout).toContain("AppImage not found");
@@ -114,16 +117,66 @@ describe("electron-smoke.sh script", () => {
     expect(result.stderr + result.stdout).toContain("Unsupported RUNNER_OS");
   });
 
+  it("has a dedicated Windows PowerShell smoke script", () => {
+    expect(existsSync(WINDOWS_SCRIPT), `script missing: ${WINDOWS_SCRIPT}`).toBe(true);
+    const source = readFileSync(WINDOWS_SCRIPT, "utf-8");
+    expect(source).toContain("Start-Process");
+    expect(source).toContain("Invoke-WebRequest");
+    expect(source).toContain("Stop-Process");
+  });
+});
+
+function stepBlock(source: string, name: string): string {
+  const lines = source.split("\n");
+  const start = lines.findIndex((line) => line.includes(`- name: ${name}`));
+  if (start < 0) return "";
+  const currentIndent = lines[start].match(/^\s*/)?.[0] ?? "";
+  const next = lines.findIndex((line, index) =>
+    index > start &&
+    line.startsWith(`${currentIndent}- name:`)
+  );
+  return lines.slice(start, next < 0 ? lines.length : next).join("\n");
+}
+
+describe("release workflow smoke wiring", () => {
+  it("runs stale release asset cleanup through bash on Windows-compatible matrix jobs", () => {
+    const workflow = readFileSync(RELEASE_WORKFLOW, "utf-8");
+    const block = stepBlock(workflow, "Clean stale release assets");
+
+    expect(block).toContain("shell: bash");
+    expect(block).toContain("[ -z \"$ASSETS\" ] && exit 0");
+  });
+
+  it("uses PowerShell smoke on Windows and bash smoke on non-Windows platforms", () => {
+    const workflow = readFileSync(RELEASE_WORKFLOW, "utf-8");
+    const windowsBlock = stepBlock(workflow, "Smoke test packaged binary (win)");
+    const unixBlock = stepBlock(workflow, "Smoke test packaged binary (${{ matrix.platform }}${{ matrix.arch && format('-{0}', matrix.arch) || '' }})");
+
+    expect(windowsBlock).toContain("if: matrix.platform == 'win'");
+    expect(windowsBlock).toContain("shell: pwsh");
+    expect(windowsBlock).toContain("run: ./.github/scripts/electron-smoke.ps1");
+    expect(unixBlock).toContain("if: matrix.platform != 'win'");
+    expect(unixBlock).toContain("shell: bash");
+    expect(unixBlock).toContain("run: bash .github/scripts/electron-smoke.sh");
+  });
+
   it("gives mac x64 packaged smoke extra startup time", () => {
-    const workflow = readFileSync(
-      resolve(__dirname, "..", "..", "..", ".github", "workflows", "release.yml"),
-      "utf-8",
-    );
+    const workflow = readFileSync(RELEASE_WORKFLOW, "utf-8");
     const block = workflow.match(
       /- name: Smoke test packaged binary \(mac-x64\)[\s\S]*?run: bash \.github\/scripts\/electron-smoke\.sh/,
     )?.[0] ?? "";
 
     expect(block).toContain("MAC_ARCH: x64");
     expect(block).toContain("SMOKE_TIMEOUT: 180");
+  });
+});
+
+describe("promote workflow fast-forward gate", () => {
+  it("fails the run instead of reporting success when master cannot fast-forward to dev", () => {
+    const workflow = readFileSync(PROMOTE_WORKFLOW, "utf-8");
+    const block = stepBlock(workflow, "Check fast-forward possible");
+
+    expect(block).toContain("master has commits not in dev");
+    expect(block).toContain("exit 1");
   });
 });
