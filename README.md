@@ -153,7 +153,7 @@ curl http://localhost:8080/v1/chat/completions \
 - **多账号轮换** — `least_used`（最少使用优先）、`round_robin`（轮询）、`sticky`（粘性）三种策略
 - **Plan Routing** — 不同 plan（free/plus/team/business）的账号自动路由到各自支持的模型
 - **Token 自动续期** — JWT 到期前自动刷新，指数退避重试
-- **配额被动采集** — 从上游响应头和 WebSocket rate limit 事件更新账号额度；`quota.refresh_interval_minutes` 仅控制用量快照记录，`0` 表示关闭快照定时器。
+- **配额采集** — 默认从上游响应头和 WebSocket rate limit 事件被动更新账号额度；用户手动查询单账号额度时会调用 `/backend-api/wham/usage`，并把 `remaining_percent = 100 - used_percent` 写入缓存。
 - **封禁检测** — 上游 403 自动标记 banned；401 token 吊销自动过期并切换账号
 - **API Key Provider 池** — 支持通过 Dashboard 管理第三方 API Key、模型列表、导入导出和启停状态。
 - **Web 控制面板** — 账号管理、用量统计、批量操作，中英双语；远程访问需 Dashboard 登录门
@@ -572,14 +572,16 @@ model:
 
 ### 局域网访问
 
-源码/容器默认配置监听 `::`（IPv6 unspecified，通常也覆盖本机访问）；Electron 启动时会传入 `127.0.0.1`，除非 `data/local.yaml` 显式覆盖。建议需要仅本机访问时写入：
+源码默认配置仅监听 `127.0.0.1`；Electron 也会传入 `127.0.0.1`，除非 `data/local.yaml` 显式覆盖。Docker 镜像会通过 `CODEX_PROXY_HOST=0.0.0.0` 在容器内监听所有接口，`docker-compose.yml` 默认仍只把宿主机端口绑定到 `127.0.0.1`。
+
+需要仅本机访问时写入：
 
 ```yaml
 server:
   host: "127.0.0.1"
 ```
 
-如需局域网内其他设备访问，在 `data/local.yaml` 中添加：
+如需局域网内其他设备访问，在 `data/local.yaml` 中添加，并把 `docker-compose.yml` 的端口映射从 `127.0.0.1:${PORT:-8080}:8080` 改成 `${PORT:-8080}:8080`：
 
 ```yaml
 server:
@@ -711,6 +713,7 @@ curl -N http://localhost:8080/official-agent/threads/{threadId}/turns \
 | 环境变量 | 覆盖配置 |
 |---------|---------|
 | `PORT` | `server.port` |
+| `CODEX_PROXY_HOST` | `server.host`（仅当 `data/local.yaml` 未显式设置 `server.host` 时生效） |
 | `CODEX_PLATFORM` | `client.platform` |
 | `CODEX_ARCH` | `client.arch` |
 | `HTTPS_PROXY` | `tls.proxy_url` |
@@ -745,10 +748,10 @@ curl -N http://localhost:8080/official-agent/threads/{threadId}/turns \
 | 端点 | 方法 | 说明 |
 |------|------|------|
 | `/auth/login` | GET | OAuth 登录入口 |
-| `/auth/accounts` | GET | 账号列表（`?quota=true` / `?quota=fresh`） |
+| `/auth/accounts` | GET | 账号列表（含缓存额度） |
 | `/auth/accounts` | POST | 添加单个账号（token 或 refreshToken） |
-| `/auth/accounts/import` | POST | 批量导入账号 |
-| `/auth/accounts/export` | GET | 导出账号（`?format=minimal` 精简格式） |
+| `/auth/accounts/import` | POST | 批量导入账号（JSON / `text/plain` token 行） |
+| `/auth/accounts/export` | GET | 导出账号（`?format=full|minimal|cockpit_tools|sub2api|cpa`） |
 | `/auth/accounts/batch-delete` | POST | 批量删除账号 |
 | `/auth/accounts/batch-status` | POST | 批量修改账号状态 |
 | `/auth/accounts/health-check` | POST | 批量检测账号可用性 |
@@ -782,6 +785,10 @@ curl -s http://localhost:8080/auth/accounts/export \
 curl -s "http://localhost:8080/auth/accounts/export?format=minimal" \
   -H "Authorization: Bearer your-api-key" > backup-minimal.json
 
+# 导出第三方兼容格式
+curl -s "http://localhost:8080/auth/accounts/export?format=sub2api" \
+  -H "Authorization: Bearer your-api-key" > sub2api-accounts.json
+
 # 批量导入（支持 token、refreshToken，或两者同时传）
 curl -X POST http://localhost:8080/auth/accounts/import \
   -H "Content-Type: application/json" \
@@ -794,6 +801,12 @@ curl -X POST http://localhost:8080/auth/accounts/import \
     ]
   }'
 # 返回: { "added": 2, "updated": 1, "failed": 0, "errors": [] }
+
+# text/plain token 行导入（每行 access token 或 refresh token）
+curl -X POST http://localhost:8080/auth/accounts/import \
+  -H "Content-Type: text/plain" \
+  -H "Authorization: Bearer your-api-key" \
+  --data-binary $'eyJhbGciOi...\noaistb_rt_...\n'
 
 # 备份恢复一键操作（导出后直接导入到另一个实例）
 curl -X POST http://localhost:8080/auth/accounts/import \

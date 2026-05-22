@@ -29,7 +29,10 @@ const mockConfig = {
   },
   update: { auto_update: true, auto_download: false, show_update_dialog: false },
   logs: { enabled: false, capacity: 2000, capture_body: false, llm_only: true },
-  usage_stats: { history_retention_days: null as number | null },
+  usage_stats: {
+    history_retention_days: null as number | null,
+    credits_per_usd: 25,
+  },
 };
 
 vi.mock("@src/config.js", () => ({
@@ -113,9 +116,12 @@ describe("GET /admin/general-settings", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockConfig.logs.llm_only = true;
+    mockConfig.usage_stats.history_retention_days = null;
+    mockConfig.usage_stats.credits_per_usd = 25;
   });
 
-  it("returns current values including logs_llm_only", async () => {
+  it("returns current values including logs_llm_only and credits_per_usd", async () => {
+    mockConfig.usage_stats.credits_per_usd = 40;
     const app = makeApp();
     const res = await app.request("/admin/general-settings");
     expect(res.status).toBe(200);
@@ -135,6 +141,7 @@ describe("GET /admin/general-settings", () => {
       logs_capture_body: false,
       logs_llm_only: true,
       usage_history_retention_days: null,
+      credits_per_usd: 40,
     });
   });
 });
@@ -143,6 +150,8 @@ describe("POST /admin/general-settings", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockConfig.logs.llm_only = true;
+    mockConfig.usage_stats.history_retention_days = null;
+    mockConfig.usage_stats.credits_per_usd = 25;
   });
 
   it("persists logs_llm_only without requiring restart", async () => {
@@ -265,6 +274,40 @@ describe("POST /admin/general-settings", () => {
     expect(localConfig).toEqual({
       usage_stats: { history_retention_days: null },
     });
+  });
+
+  it("persists dashboard credit USD conversion rate without requiring restart", async () => {
+    const app = makeApp();
+    const res = await app.request("/admin/general-settings", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ credits_per_usd: 40 }),
+    });
+
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(data.success).toBe(true);
+    expect(data.restart_required).toBe(false);
+    expect(mutateYaml).toHaveBeenCalledOnce();
+    const mutate = vi.mocked(mutateYaml).mock.calls[0]?.[1];
+    const localConfig: Record<string, unknown> = {};
+    mutate?.(localConfig);
+    expect(localConfig).toEqual({
+      usage_stats: { credits_per_usd: 40 },
+    });
+  });
+
+  it("rejects invalid dashboard credit USD conversion rate", async () => {
+    const app = makeApp();
+    const res = await app.request("/admin/general-settings", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ credits_per_usd: -1 }),
+    });
+
+    expect(res.status).toBe(400);
+    const data = await res.json();
+    expect(data.error).toContain("credits_per_usd");
   });
 
   it("rejects invalid usage history retention", async () => {

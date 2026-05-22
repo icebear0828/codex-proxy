@@ -1,11 +1,21 @@
 export interface AccountQuotaWindow {
   used_percent?: number | null;
+  remaining_percent?: number | null;
   limit_reached?: boolean;
   reset_at?: number | null;
   limit_window_seconds?: number | null;
 }
 
+export interface AccountQuotaCredits {
+  has_credits: boolean;
+  unlimited: boolean;
+  overage_limit_reached: boolean;
+  /** Numeric balance parsed from upstream's decimal-string field. */
+  balance: number;
+}
+
 export interface AccountQuota {
+  plan_type?: string;
   rate_limit?: AccountQuotaWindow;
   secondary_rate_limit?: AccountQuotaWindow | null;
   code_review_rate_limit?: (AccountQuotaWindow & { allowed?: boolean }) | null;
@@ -15,6 +25,8 @@ export interface AccountQuota {
     allowed?: boolean;
     secondary_rate_limit?: AccountQuotaWindow | null;
   }> | null;
+  /** Credit accounting from /codex/usage. Null for Plus, present for Pro / PAYG. */
+  credits?: AccountQuotaCredits | null;
 }
 
 export interface QuotaWarning {

@@ -203,6 +203,7 @@ export async function* streamPassthrough(
   tupleSchema?: Record<string, unknown> | null,
   streamContext?: StreamTranslatorContext,
   onResponseCompleted?: (id?: string) => void,
+  onResponseMetadata?: (metadata: { functionCallIds?: string[] }) => void,
 ): AsyncGenerator<string> {
   // When tupleSchema is present, buffer text deltas and reconvert on completion.
   // This means the client receives zero incremental text — all text arrives at once
@@ -210,6 +211,7 @@ export async function* streamPassthrough(
   let tupleTextBuffer = tupleSchema ? "" : null;
   let sawTerminal = false;
   let responseId: string | null = null;
+  const streamFunctionCallIds = new Set<string>();
 
   const stream = api.parseStream(response);
   let upstreamDone = false;
@@ -300,6 +302,15 @@ export async function* streamPassthrough(
       // Re-emit raw SSE event
       yield `event: ${raw.event}\ndata: ${JSON.stringify(raw.data)}\n\n`;
 
+      // Collect function_call IDs so session affinity can validate tool-output continuations
+      if (raw.event === "response.output_item.done") {
+        const data = raw.data;
+        if (isRecord(data) && isRecord(data.item) && data.item.type === "function_call") {
+          const callId = data.item.call_id;
+          if (typeof callId === "string" && callId) streamFunctionCallIds.add(callId);
+        }
+      }
+
       // Extract usage and responseId for account pool bookkeeping
       if (
         raw.event === "response.created" ||
@@ -316,6 +327,9 @@ export async function* streamPassthrough(
           }
           if (raw.event === "response.completed") {
             onResponseCompleted?.(typeof resp.id === "string" ? resp.id : undefined);
+            if (streamFunctionCallIds.size > 0) {
+              onResponseMetadata?.({ functionCallIds: [...streamFunctionCallIds] });
+            }
           }
         }
       }
@@ -353,6 +367,7 @@ export async function collectPassthrough(
   response: Response,
   _model: string,
   tupleSchema?: Record<string, unknown> | null,
+  onResponseMetadata?: (metadata: { functionCallIds?: string[] }) => void,
 ): Promise<{
   response: unknown;
   usage: { input_tokens: number; output_tokens: number; cached_tokens?: number; image_input_tokens?: number; image_output_tokens?: number };
@@ -362,6 +377,7 @@ export async function collectPassthrough(
   let usage: { input_tokens: number; output_tokens: number; cached_tokens?: number; image_input_tokens?: number; image_output_tokens?: number } = { input_tokens: 0, output_tokens: 0 };
   let responseId: string | null = null;
   const outputItems: unknown[] = [];
+  const collectFunctionCallIds = new Set<string>();
   let textDeltas = "";
 
   try {
@@ -380,9 +396,15 @@ export async function collectPassthrough(
 
       if (raw.event === "response.output_item.done" && isRecord(data.item)) {
         outputItems.push(data.item);
+        if (data.item.type === "function_call" && typeof data.item.call_id === "string" && data.item.call_id) {
+          collectFunctionCallIds.add(data.item.call_id as string);
+        }
       }
 
       if (raw.event === "response.completed" && resp) {
+        if (collectFunctionCallIds.size > 0) {
+          onResponseMetadata?.({ functionCallIds: [...collectFunctionCallIds] });
+        }
         // Codex hosted search 经常完整流出 output_item.done/text delta，
         // 但 completed.response.output 为空。这里用流式事件回填最终 JSON。
         if (Array.isArray(resp.output) && resp.output.length === 0) {
@@ -485,10 +507,10 @@ const PASSTHROUGH_FORMAT: FormatAdapter = {
     },
   }),
   formatStreamError: (status, msg) => buildResponsesStreamError(status, msg),
-  streamTranslator: ({ api, response, model, onUsage, onResponseId, onResponseCompleted, tupleSchema, streamContext }) =>
-    streamPassthrough(api, response, model, onUsage, onResponseId, tupleSchema, streamContext, onResponseCompleted),
-  collectTranslator: ({ api, response, model, tupleSchema }) =>
-    collectPassthrough(api, response, model, tupleSchema),
+  streamTranslator: ({ api, response, model, onUsage, onResponseId, onResponseCompleted, tupleSchema, streamContext, onResponseMetadata }) =>
+    streamPassthrough(api, response, model, onUsage, onResponseId, tupleSchema, streamContext, onResponseCompleted, onResponseMetadata),
+  collectTranslator: ({ api, response, model, tupleSchema, onResponseMetadata }) =>
+    collectPassthrough(api, response, model, tupleSchema, onResponseMetadata),
 };
 
 // ── Shared auth check ─────────────────────────────────────────────

@@ -30,6 +30,7 @@ describe("toQuota", () => {
     expect(quota.rate_limit.used_percent).toBe(42);
     expect(quota.rate_limit.reset_at).toBe(1700000000);
     expect(quota.rate_limit.limit_window_seconds).toBe(3600);
+    expect(quota.rate_limit.remaining_percent).toBe(58);
     expect(quota.rate_limit.limit_reached).toBe(false);
     expect(quota.rate_limit.allowed).toBe(true);
     expect(quota.secondary_rate_limit).toBeNull();
@@ -58,6 +59,7 @@ describe("toQuota", () => {
 
     expect(quota.secondary_rate_limit).not.toBeNull();
     expect(quota.secondary_rate_limit!.used_percent).toBe(75);
+    expect(quota.secondary_rate_limit!.remaining_percent).toBe(25);
     expect(quota.secondary_rate_limit!.reset_at).toBe(1700500000);
     expect(quota.secondary_rate_limit!.limit_window_seconds).toBe(604800);
   });
@@ -81,6 +83,7 @@ describe("toQuota", () => {
     expect(quota.code_review_rate_limit!.allowed).toBe(true);
     expect(quota.code_review_rate_limit!.limit_reached).toBe(true);
     expect(quota.code_review_rate_limit!.used_percent).toBe(100);
+    expect(quota.code_review_rate_limit!.remaining_percent).toBe(0);
     expect(quota.code_review_rate_limit!.limit_window_seconds).toBe(3600);
   });
 
@@ -129,9 +132,11 @@ describe("toQuota", () => {
       limit_id: "codex_other",
       limit_name: "Codex Other",
       used_percent: 12,
+      remaining_percent: 88,
       limit_window_seconds: 1800,
       secondary_rate_limit: {
         used_percent: 34,
+        remaining_percent: 66,
         reset_at: 1700100000,
         limit_window_seconds: 604800,
       },
@@ -140,6 +145,7 @@ describe("toQuota", () => {
       allowed: true,
       limit_reached: false,
       used_percent: 7,
+      remaining_percent: 93,
       reset_at: 1700003000,
       limit_window_seconds: 1800,
     });
@@ -225,7 +231,66 @@ describe("toQuota", () => {
     }));
 
     expect(quota.rate_limit.used_percent).toBeNull();
+    expect(quota.rate_limit.remaining_percent).toBeNull();
     expect(quota.rate_limit.reset_at).toBeNull();
     expect(quota.rate_limit.limit_window_seconds).toBeNull();
+  });
+
+  describe("credits", () => {
+    it("carries credits block through when present (Plus shape: has_credits=false, balance=0)", () => {
+      const quota = toQuota(makeUsageResponse({
+        credits: {
+          has_credits: false,
+          unlimited: false,
+          overage_limit_reached: false,
+          balance: "0",
+        },
+      }));
+      expect(quota.credits).toEqual({
+        has_credits: false,
+        unlimited: false,
+        overage_limit_reached: false,
+        balance: 0,
+      });
+    });
+
+    it("parses decimal-string balance into number for Pro / PAYG accounts", () => {
+      const quota = toQuota(makeUsageResponse({
+        credits: {
+          has_credits: true,
+          unlimited: false,
+          overage_limit_reached: false,
+          balance: "247.50",
+        },
+      }));
+      expect(quota.credits?.has_credits).toBe(true);
+      expect(quota.credits?.balance).toBe(247.5);
+    });
+
+    it("emits null credits when upstream omits the block", () => {
+      const quota = toQuota(makeUsageResponse({ credits: null }));
+      expect(quota.credits).toBeNull();
+    });
+
+    it("emits null credits when upstream sends a malformed block (defensive)", () => {
+      const quota = toQuota(makeUsageResponse({
+        // Simulate a future upstream schema where balance is missing entirely
+        credits: { has_credits: true } as unknown as NonNullable<CodexUsageResponse["credits"]>,
+      }));
+      expect(quota.credits).toBeNull();
+    });
+
+    it("passes unlimited and overage_limit_reached flags through", () => {
+      const quota = toQuota(makeUsageResponse({
+        credits: {
+          has_credits: true,
+          unlimited: true,
+          overage_limit_reached: true,
+          balance: "0",
+        },
+      }));
+      expect(quota.credits?.unlimited).toBe(true);
+      expect(quota.credits?.overage_limit_reached).toBe(true);
+    });
   });
 });

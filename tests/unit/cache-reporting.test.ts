@@ -1,6 +1,6 @@
 /**
- * 验证缓存字段修复：cache_creation_input_tokens 和 cache_read_input_tokens
- * 正确从 Codex cached_tokens 映射到 Anthropic usage 格式。
+ * 验证缓存字段映射：Codex input_tokens 是总输入，cached_tokens 是其中缓存命中部分；
+ * Anthropic input_tokens 只报告未缓存输入，cache_read_input_tokens 报告缓存命中。
  *
  * 不需要启动服务器，不需要真实账号，直接测翻译层。
  */
@@ -142,19 +142,19 @@ function makeCodexApiMock(): CodexApi {
 // ── 非流式路径测试 ────────────────────────────────────────────────
 
 describe("非流式响应 collectCodexToAnthropicResponse", () => {
-  it("无缓存时：cache_creation = input_tokens，cache_read 不出现", async () => {
+  it("无缓存时：input_tokens = Codex total，cache_read 不出现", async () => {
     const api = makeCodexApiMock();
     const res = makeCodexResponse({ inputTokens: 10000, outputTokens: 500 });
 
     const { response } = await collectCodexToAnthropicResponse(api, res, "gpt-5.4");
 
-    expect(response.usage.cache_creation_input_tokens).toBe(10000);
+    expect(response.usage).not.toHaveProperty("cache_creation_input_tokens");
     expect(response.usage.cache_read_input_tokens).toBeUndefined();
     expect(response.usage.input_tokens).toBe(10000);
     expect(response.usage.output_tokens).toBe(500);
   });
 
-  it("缓存全部命中时：cache_read = cached_tokens，cache_creation = input - cached", async () => {
+  it("缓存命中时：cache_read = cached_tokens，input_tokens = total - cached", async () => {
     const api = makeCodexApiMock();
     const res = makeCodexResponse({
       inputTokens: 10000,
@@ -165,8 +165,8 @@ describe("非流式响应 collectCodexToAnthropicResponse", () => {
     const { response } = await collectCodexToAnthropicResponse(api, res, "gpt-5.4");
 
     expect(response.usage.cache_read_input_tokens).toBe(7000);
-    expect(response.usage.cache_creation_input_tokens).toBe(3000); // 10000 - 7000
-    expect(response.usage.input_tokens).toBe(10000);
+    expect(response.usage).not.toHaveProperty("cache_creation_input_tokens");
+    expect(response.usage.input_tokens).toBe(3000); // 10000 - 7000
   });
 
   it("cachedTokens = 0 时：与无缓存情况一致，cache_read 不出现", async () => {
@@ -179,7 +179,8 @@ describe("非流式响应 collectCodexToAnthropicResponse", () => {
 
     const { response } = await collectCodexToAnthropicResponse(api, res, "gpt-5.4");
 
-    expect(response.usage.cache_creation_input_tokens).toBe(5000);
+    expect(response.usage).not.toHaveProperty("cache_creation_input_tokens");
+    expect(response.usage.input_tokens).toBe(5000);
     expect(response.usage.cache_read_input_tokens).toBeUndefined();
   });
 
@@ -194,7 +195,8 @@ describe("非流式响应 collectCodexToAnthropicResponse", () => {
     const { response } = await collectCodexToAnthropicResponse(api, res, "gpt-5.4");
 
     expect(response.usage.cache_read_input_tokens).toBe(1_183_600);
-    expect(response.usage.cache_creation_input_tokens).toBe(70_000_000 - 1_183_600);
+    expect(response.usage).not.toHaveProperty("cache_creation_input_tokens");
+    expect(response.usage.input_tokens).toBe(70_000_000 - 1_183_600);
     // cache_read / input 命中率
     const hitRate = 1_183_600 / 70_000_000;
     expect(hitRate).toBeCloseTo(0.017, 2); // 约 1.7%，对应实际数据
@@ -217,7 +219,8 @@ describe("非流式响应 collectCodexToAnthropicResponse", () => {
     );
 
     expect(response.usage.cache_read_input_tokens).toBe(15_240);
-    expect(response.usage.cache_creation_input_tokens).toBe(3);
+    expect(response.usage).not.toHaveProperty("cache_creation_input_tokens");
+    expect(response.usage.input_tokens).toBe(3);
   });
 
   it("工具调用响应会回传 call_id 元数据，供隐式续链接力校验", async () => {
@@ -257,20 +260,35 @@ describe("流式响应 streamCodexToAnthropic", () => {
     return null;
   }
 
-  it("无缓存时：message_delta.usage 包含 cache_creation，无 cache_read", async () => {
+  interface MessageDeltaUsage {
+    input_tokens: number;
+    output_tokens?: number;
+    cache_read_input_tokens?: number;
+    cache_creation_input_tokens?: number;
+  }
+
+  function getMessageDeltaUsage(sseText: string): MessageDeltaUsage {
+    const delta = parseMessageDelta(sseText);
+    expect(delta).not.toBeNull();
+    const usage = delta?.usage;
+    expect(typeof usage).toBe("object");
+    expect(usage).not.toBeNull();
+    return usage as MessageDeltaUsage;
+  }
+
+  it("无缓存时：message_delta.usage input_tokens = Codex total，无 cache_read", async () => {
     const api = makeCodexApiMock();
     const res = makeCodexResponse({ inputTokens: 8000, outputTokens: 400 });
 
     const sseText = await collectSSE(streamCodexToAnthropic(api, res, "gpt-5.4"));
-    const delta = parseMessageDelta(sseText);
+    const usage = getMessageDeltaUsage(sseText);
 
-    expect(delta).not.toBeNull();
-    const usage = (delta as any).usage;
-    expect(usage.cache_creation_input_tokens).toBe(8000);
+    expect(usage).not.toHaveProperty("cache_creation_input_tokens");
+    expect(usage.input_tokens).toBe(8000);
     expect(usage.cache_read_input_tokens).toBeUndefined();
   });
 
-  it("缓存命中时：message_delta.usage 同时包含 cache_creation 和 cache_read", async () => {
+  it("缓存命中时：message_delta.usage 包含 cache_read，input_tokens = total - cached", async () => {
     const api = makeCodexApiMock();
     const res = makeCodexResponse({
       inputTokens: 8000,
@@ -279,11 +297,11 @@ describe("流式响应 streamCodexToAnthropic", () => {
     });
 
     const sseText = await collectSSE(streamCodexToAnthropic(api, res, "gpt-5.4"));
-    const delta = parseMessageDelta(sseText);
+    const usage = getMessageDeltaUsage(sseText);
 
-    const usage = (delta as any).usage;
     expect(usage.cache_read_input_tokens).toBe(6000);
-    expect(usage.cache_creation_input_tokens).toBe(2000); // 8000 - 6000
+    expect(usage).not.toHaveProperty("cache_creation_input_tokens");
+    expect(usage.input_tokens).toBe(2000); // 8000 - 6000
   });
 
   it("多轮对话场景：第二轮缓存命中率应显著高于第一轮", async () => {
@@ -292,9 +310,10 @@ describe("流式响应 streamCodexToAnthropic", () => {
     // 第一轮：全新对话，无缓存
     const res1 = makeCodexResponse({ inputTokens: 5000, outputTokens: 300 });
     const sse1 = await collectSSE(streamCodexToAnthropic(api, res1, "gpt-5.4"));
-    const delta1 = parseMessageDelta(sse1) as any;
-    expect(delta1.usage.cache_creation_input_tokens).toBe(5000);
-    expect(delta1.usage.cache_read_input_tokens).toBeUndefined();
+    const usage1 = getMessageDeltaUsage(sse1);
+    expect(usage1).not.toHaveProperty("cache_creation_input_tokens");
+    expect(usage1.input_tokens).toBe(5000);
+    expect(usage1.cache_read_input_tokens).toBeUndefined();
 
     // 第二轮：同一对话，大量缓存命中
     const res2 = makeCodexResponse({
@@ -303,12 +322,13 @@ describe("流式响应 streamCodexToAnthropic", () => {
       cachedTokens: 4800, // 前 4800 命中缓存
     });
     const sse2 = await collectSSE(streamCodexToAnthropic(api, res2, "gpt-5.4"));
-    const delta2 = parseMessageDelta(sse2) as any;
-    expect(delta2.usage.cache_read_input_tokens).toBe(4800);
-    expect(delta2.usage.cache_creation_input_tokens).toBe(700); // 5500 - 4800
+    const usage2 = getMessageDeltaUsage(sse2);
+    expect(usage2.cache_read_input_tokens).toBe(4800);
+    expect(usage2).not.toHaveProperty("cache_creation_input_tokens");
+    expect(usage2.input_tokens).toBe(700); // 5500 - 4800
 
     // 第二轮缓存命中率 >> 0
-    const hitRate2 = delta2.usage.cache_read_input_tokens / 5500;
+    const hitRate2 = usage2.cache_read_input_tokens / 5500;
     expect(hitRate2).toBeGreaterThan(0.8); // 87% 命中率
   });
 
@@ -325,10 +345,11 @@ describe("流式响应 streamCodexToAnthropic", () => {
         reusedInputTokensUpperBound: 15_240,
       }),
     );
-    const delta = parseMessageDelta(sseText) as any;
+    const usage = getMessageDeltaUsage(sseText);
 
-    expect(delta.usage.cache_read_input_tokens).toBe(15_240);
-    expect(delta.usage.cache_creation_input_tokens).toBe(3);
+    expect(usage.cache_read_input_tokens).toBe(15_240);
+    expect(usage).not.toHaveProperty("cache_creation_input_tokens");
+    expect(usage.input_tokens).toBe(3);
   });
 
   it("流式工具调用响应会回传 call_id 元数据", async () => {

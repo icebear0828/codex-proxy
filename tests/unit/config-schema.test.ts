@@ -30,7 +30,7 @@ describe("ConfigSchema", () => {
     expect(result.api.base_url).toBe("https://chatgpt.com/backend-api");
     expect(result.api.timeout_seconds).toBe(60);
     expect(result.server.port).toBe(8080);
-    expect(result.server.host).toBe("0.0.0.0");
+    expect(result.server.host).toBe("127.0.0.1");
     expect(result.server.proxy_api_key).toBeNull();
     expect(result.auth.rotation_strategy).toBe("least_used");
     expect(result.auth.refresh_concurrency).toBe(2);
@@ -43,6 +43,7 @@ describe("ConfigSchema", () => {
     expect(result.tls.force_http11).toBe(false);
     expect(result.usage_stats.snapshot_interval_minutes).toBe(5);
     expect(result.usage_stats.history_retention_days).toBeNull();
+    expect(result.usage_stats.credits_per_usd).toBe(25);
     expect(result.quota.refresh_interval_minutes).toBe(5);
     expect(result.quota.warning_thresholds.primary).toEqual([80, 90]);
     expect(result.quota.skip_exhausted).toBe(true);

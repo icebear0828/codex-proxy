@@ -78,11 +78,16 @@ export function rateLimitToQuota(
 ): CodexQuota {
   const primary = rl.primary;
   const secondary = rl.secondary;
+  const remainingPercent = (used: number | null | undefined): number | null =>
+    typeof used === "number" && Number.isFinite(used)
+      ? Math.max(0, Math.min(100, Math.round(100 - Math.max(0, Math.min(100, used)))))
+      : null;
 
   return {
     plan_type: planType ?? "unknown",
     rate_limit: {
       used_percent: primary?.used_percent ?? null,
+      remaining_percent: remainingPercent(primary?.used_percent),
       reset_at: primary?.reset_at ?? null,
       limit_window_seconds: primary?.window_minutes != null ? primary.window_minutes * 60 : null,
       allowed: true,
@@ -91,6 +96,7 @@ export function rateLimitToQuota(
     secondary_rate_limit: secondary
       ? {
           used_percent: secondary.used_percent,
+          remaining_percent: remainingPercent(secondary.used_percent),
           reset_at: secondary.reset_at,
           limit_window_seconds: secondary.window_minutes != null ? secondary.window_minutes * 60 : null,
           limit_reached: secondary.used_percent >= 100,
@@ -103,6 +109,7 @@ export function rateLimitToQuota(
             rl.code_review.limit_reached ??
             (rl.code_review.primary?.used_percent ?? 0) >= 100,
           used_percent: rl.code_review.primary?.used_percent ?? null,
+          remaining_percent: remainingPercent(rl.code_review.primary?.used_percent),
           reset_at: rl.code_review.primary?.reset_at ?? null,
           limit_window_seconds:
             rl.code_review.primary?.window_minutes != null

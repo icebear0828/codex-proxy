@@ -49,6 +49,9 @@ export type {
   CodexUsageRateWindow,
   CodexUsageRateLimit,
   CodexUsageResponse,
+  CodexUsageCredits,
+  CodexUsageSpendControl,
+  CodexUsageRateLimitReachedType,
 } from "./codex-types.js";
 
 // Re-export SSE utilities for consumers that used them via CodexApi

@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import { PreviousResponseWebSocketError } from "@src/proxy/codex-api.js";
 import type { CodexResponsesRequest } from "@src/proxy/codex-api.js";
 import {
+  evaluateImplicitResume,
   resolvePromptCacheIdentity,
   shouldActivateImplicitResume,
   shouldReplayFullInputAfterImplicitResumeError,
@@ -149,5 +150,97 @@ describe("shouldActivateImplicitResume", () => {
     const err = new PreviousResponseWebSocketError("ws down");
     expect(shouldReplayFullInputAfterImplicitResumeError(err, true)).toBe(true);
     expect(shouldReplayFullInputAfterImplicitResumeError(err, false)).toBe(false);
+  });
+
+  it("client 主动发自包含 full replay（function_call 与 function_call_output 都在 input 内）时返回 self_contained_replay，不报 missing_tool_calls", () => {
+    const result = evaluateImplicitResume({
+      implicitPrevRespId: "resp_prev_stale",
+      continuationInputStart: 2,
+      inputLength: 100,
+      preferredEntryId: "entry_1",
+      acquiredEntryId: "entry_1",
+      currentInstructions: "system-a",
+      storedInstructions: "system-a",
+      // tool_outputs in input reference call_ids that don't exist in storage
+      // (proxy was restarted / session-affinity lost them), but they ARE
+      // present inline in the same input → self-contained replay.
+      requiredFunctionCallOutputIds: ["call_inlined_a", "call_inlined_b"],
+      storedFunctionCallIds: [],
+      inlineFunctionCallIds: ["call_inlined_a", "call_inlined_b"],
+    });
+    expect(result.active).toBe(false);
+    expect(result.reason).toBe("self_contained_replay");
+  });
+
+  it("混合场景：部分 call_id 在 input 内 inline、部分既不在 input 也不在 storage → 仍判 missing_tool_calls", () => {
+    const result = evaluateImplicitResume({
+      implicitPrevRespId: "resp_prev",
+      continuationInputStart: 2,
+      inputLength: 50,
+      preferredEntryId: "entry_1",
+      acquiredEntryId: "entry_1",
+      currentInstructions: "system-a",
+      storedInstructions: "system-a",
+      requiredFunctionCallOutputIds: ["call_inlined", "call_truly_missing"],
+      storedFunctionCallIds: [],
+      inlineFunctionCallIds: ["call_inlined"],
+    });
+    expect(result.active).toBe(false);
+    expect(result.reason).toBe("missing_tool_calls");
+  });
+
+  it("self_contained_replay 优先于 missing_tool_calls：所有 tool_output 都能在 input 找到对应 function_call 时不应误报 missing", () => {
+    const result = evaluateImplicitResume({
+      implicitPrevRespId: "resp_prev",
+      continuationInputStart: 50,
+      inputLength: 102,
+      preferredEntryId: "entry_1",
+      acquiredEntryId: "entry_1",
+      currentInstructions: "system-a",
+      storedInstructions: "system-a",
+      requiredFunctionCallOutputIds: ["call_x"],
+      storedFunctionCallIds: ["call_unrelated_stored"],
+      inlineFunctionCallIds: ["call_x", "call_y"],
+    });
+    expect(result.reason).toBe("self_contained_replay");
+  });
+});
+
+describe("getInlineFunctionCallIds / isSelfContainedReplay", () => {
+  it("getInlineFunctionCallIds 只挑 function_call 项的 call_id，跳过 user/assistant/function_call_output", async () => {
+    const { getInlineFunctionCallIds } = await import("@src/routes/shared/proxy-session-helpers.js");
+    const ids = getInlineFunctionCallIds([
+      { role: "user", content: "hi" },
+      { type: "function_call", call_id: "call_a", name: "read", arguments: "{}" },
+      { type: "function_call_output", call_id: "call_a", output: "{}" },
+      { role: "assistant", content: "ok" },
+      { type: "function_call", call_id: "call_b", name: "write", arguments: "{}" },
+    ]);
+    expect(ids).toEqual(["call_a", "call_b"]);
+  });
+
+  it("isSelfContainedReplay 在所有 function_call_output 都能在 input 找到 function_call 配对时返回 true", async () => {
+    const { isSelfContainedReplay } = await import("@src/routes/shared/proxy-session-helpers.js");
+    expect(isSelfContainedReplay([
+      { type: "function_call", call_id: "c1", name: "x", arguments: "{}" },
+      { type: "function_call_output", call_id: "c1", output: "{}" },
+      { type: "function_call", call_id: "c2", name: "y", arguments: "{}" },
+      { type: "function_call_output", call_id: "c2", output: "{}" },
+    ])).toBe(true);
+  });
+
+  it("isSelfContainedReplay 在 function_call_output 找不到 inline function_call 时返回 false", async () => {
+    const { isSelfContainedReplay } = await import("@src/routes/shared/proxy-session-helpers.js");
+    expect(isSelfContainedReplay([
+      { type: "function_call_output", call_id: "c_orphan", output: "{}" },
+    ])).toBe(false);
+  });
+
+  it("isSelfContainedReplay 在没有 function_call_output 时返回 false（incremental turn 不是 replay）", async () => {
+    const { isSelfContainedReplay } = await import("@src/routes/shared/proxy-session-helpers.js");
+    expect(isSelfContainedReplay([
+      { role: "user", content: "hi" },
+      { type: "function_call", call_id: "c1", name: "x", arguments: "{}" },
+    ])).toBe(false);
   });
 });

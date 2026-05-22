@@ -67,6 +67,7 @@ jobs:
           else
             echo "ok=false" >> "$GITHUB_OUTPUT"
             echo "::warning::master has commits not in dev — manual rebase needed (likely a hotfix landed directly on master)"
+            exit 1
           fi
 
       - name: Check soak (>= 24h since latest dev commit)

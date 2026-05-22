@@ -23,6 +23,7 @@ export interface GeneralSettingsData {
   logs_capture_body: boolean;
   logs_llm_only: boolean;
   usage_history_retention_days: number | null;
+  credits_per_usd: number;
 }
 
 interface GeneralSettingsSaveResponse extends GeneralSettingsData {
@@ -90,6 +91,7 @@ export function useGeneralSettings(apiKey: string | null) {
         logs_capture_body: result.logs_capture_body,
         logs_llm_only: result.logs_llm_only,
         usage_history_retention_days: result.usage_history_retention_days,
+        credits_per_usd: result.credits_per_usd,
       });
       setRestartRequired(result.restart_required);
       setSaved(true);
