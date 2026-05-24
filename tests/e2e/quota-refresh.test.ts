@@ -4,6 +4,7 @@
  * Tests:
  * - GET /auth/accounts returns cached quota from background refresh
  * - GET /auth/accounts?quota=fresh returns cached quota without live upstream fetch
+ * - GET /auth/accounts/:id/quota persists live quota into account cache
  * - GET /auth/quota/warnings returns active warnings
  * - Accounts with exhausted quota are skipped by acquire()
  */
@@ -20,7 +21,7 @@ import { AccountPool } from "@src/auth/account-pool.js";
 import { RefreshScheduler } from "@src/auth/refresh-scheduler.js";
 import type { CodexQuota } from "@src/auth/types.js";
 import { updateWarnings, clearWarnings, getActiveWarnings } from "@src/auth/quota-warnings.js";
-import { CodexApi } from "@src/proxy/codex-api.js";
+import { CodexApi, type CodexUsageResponse } from "@src/proxy/codex-api.js";
 
 let app: Hono;
 let pool: AccountPool;
@@ -38,6 +39,25 @@ function makeQuota(usedPercent: number, limitReached = false): CodexQuota {
     },
     secondary_rate_limit: null,
     code_review_rate_limit: null,
+  };
+}
+
+function makeUsageResponse(usedPercent: number, limitReached = false): CodexUsageResponse {
+  return {
+    plan_type: "plus",
+    rate_limit: {
+      allowed: !limitReached,
+      limit_reached: limitReached,
+      primary_window: {
+        used_percent: usedPercent,
+        reset_at: Math.floor(Date.now() / 1000) + 3600,
+        limit_window_seconds: 3600,
+        reset_after_seconds: 1800,
+      },
+      secondary_window: null,
+    },
+    code_review_rate_limit: null,
+    credits: null,
   };
 }
 
@@ -121,6 +141,36 @@ describe("E2E: quota auto-refresh", () => {
       const acct = body.accounts.find((a) => a.id === id);
       expect(acct?.quota?.rate_limit.used_percent).toBe(77);
       expect(getUsageSpy).not.toHaveBeenCalled();
+    } finally {
+      getUsageSpy.mockRestore();
+      pool.removeAccount(id);
+    }
+  });
+
+  it("GET /auth/accounts/:id/quota updates cached quota used by account list", async () => {
+    const id = pool.addAccount(createValidJwt({
+      accountId: "acct-quota-live",
+      email: "quota-live@test.com",
+      planType: "plus",
+    }));
+    const getUsageSpy = vi.spyOn(CodexApi.prototype, "getUsage")
+      .mockResolvedValue(makeUsageResponse(88));
+
+    try {
+      const quotaRes = await app.request(`/auth/accounts/${encodeURIComponent(id)}/quota`);
+      expect(quotaRes.status).toBe(200);
+      const quotaBody = await quotaRes.json() as { quota: CodexQuota };
+      expect(quotaBody.quota.rate_limit.used_percent).toBe(88);
+
+      const accountsRes = await app.request("/auth/accounts");
+      expect(accountsRes.status).toBe(200);
+      const accountsBody = await accountsRes.json() as {
+        accounts: Array<{ id: string; quota?: CodexQuota; quotaFetchedAt?: string | null }>;
+      };
+      const acct = accountsBody.accounts.find((a) => a.id === id);
+      expect(acct?.quota?.rate_limit.used_percent).toBe(88);
+      expect(acct?.quotaFetchedAt).toBeTruthy();
+      expect(getUsageSpy).toHaveBeenCalledOnce();
     } finally {
       getUsageSpy.mockRestore();
       pool.removeAccount(id);
