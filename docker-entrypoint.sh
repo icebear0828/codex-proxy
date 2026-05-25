@@ -4,7 +4,7 @@ set -e
 # Architecture: x64 or arm64
 # Only set CODEX_ARCH if it's not already set or is empty
 if [ -z "${CODEX_ARCH}" ]; then
-  UNAME_ARCH=$(uname -p)
+  UNAME_ARCH=$(uname -m)
   if [ "$UNAME_ARCH" = "aarch64" ]; then
     CODEX_ARCH="arm64"
   elif [ "$UNAME_ARCH" = "x86_64" ]; then
