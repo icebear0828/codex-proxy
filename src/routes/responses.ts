@@ -535,7 +535,7 @@ function checkAuth(
   const config = getConfig();
   if (config.server.proxy_api_key) {
     const authHeader = c.req.header("Authorization");
-    const providedKey = authHeader?.replace("Bearer ", "");
+    const providedKey = authHeader?.replace(/^bearer\s+/i, "");
     if (!providedKey || !accountPool.validateProxyApiKey(providedKey)) {
       c.status(401);
       return c.json({
@@ -689,7 +689,8 @@ async function handleCompact(
 
   await staggerIfNeeded(acquired.prevSlotMs);
 
-  for (;;) {
+  const MAX_COMPACT_RETRIES = 8;
+  for (let attempt = 0; attempt < MAX_COMPACT_RETRIES; attempt++) {
     try {
       const result = await withRetry(
         () => codexApi.createCompactResponse(compactRequest, c.req.raw.signal),
@@ -743,6 +744,10 @@ async function handleCompact(
       continue;
     }
   }
+
+  releaseAccount(accountPool, entryId, compactImageFailedUsage, released);
+  c.status(502);
+  return c.json(formatResponsesError(502, "Compact failed after maximum retry attempts"));
 }
 
 // ── Route ──────────────────────────────────────────────────────────

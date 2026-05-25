@@ -78,7 +78,7 @@ function checkProxyApiKey(c: Context, accountPool: AccountPool) {
   if (!config.server.proxy_api_key) return null;
 
   const authHeader = c.req.header("Authorization");
-  const providedKey = authHeader?.replace("Bearer ", "");
+  const providedKey = authHeader?.replace(/^bearer\s+/i, "");
   if (!providedKey || !accountPool.validateProxyApiKey(providedKey)) {
     c.status(401);
     return c.json({
@@ -192,13 +192,13 @@ export function createChatRoutes(
       });
     }
 
+    const authError = checkProxyApiKey(c, accountPool);
+    if (authError) return authError;
+
     const summary = accountPool.getPoolSummary();
     if (summary.active === 0) {
       return handleProxyRequest({ c, accountPool, cookieJar, req: proxyReq, fmt, proxyPool });
     }
-
-    const authError = checkProxyApiKey(c, accountPool);
-    if (authError) return authError;
 
     return handleProxyRequest({ c, accountPool, cookieJar, req: proxyReq, fmt, proxyPool });
   });

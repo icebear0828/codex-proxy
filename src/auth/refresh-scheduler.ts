@@ -38,6 +38,8 @@ export class RefreshScheduler {
   private _queue: Array<() => void> = [];
   /** Accounts currently being refreshed (prevents concurrent refresh of same account). */
   private _inFlight: Set<string> = new Set();
+  /** Set after destroy() to prevent queued waiters from proceeding. */
+  private _destroyed = false;
 
   /** Check if an account is currently being refreshed. Used by health-check to avoid racing. */
   isRefreshing(entryId: string): boolean {
@@ -150,12 +152,13 @@ export class RefreshScheduler {
 
   /** Cancel all timers and drain the semaphore queue. */
   destroy(): void {
+    this._destroyed = true;
     for (const timer of this.timers.values()) {
       clearTimeout(timer);
     }
     this.timers.clear();
-    // Unblock any waiters so their promises resolve (doRefresh will
-    // bail out via getEntry returning null or scheduler being dead).
+    // Unblock any waiters so their promises resolve — acquireSlot
+    // checks _destroyed after wakeup and bails.
     for (const resolve of this._queue) resolve();
     this._queue.length = 0;
     this._running = 0;
@@ -164,14 +167,16 @@ export class RefreshScheduler {
 
   // ── Internal ────────────────────────────────────────────────────
 
-  /** Acquire a semaphore slot, waiting if at capacity. */
+  /** Acquire a semaphore slot, waiting if at capacity. Throws if destroyed while waiting. */
   private async acquireSlot(): Promise<void> {
+    if (this._destroyed) throw new Error("scheduler destroyed");
     const limit = getConfig().auth.refresh_concurrency;
     if (this._running < limit) {
       this._running++;
       return;
     }
     await new Promise<void>((resolve) => this._queue.push(resolve));
+    if (this._destroyed) throw new Error("scheduler destroyed");
     this._running++;
   }
 

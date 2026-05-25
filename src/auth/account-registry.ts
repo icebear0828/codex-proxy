@@ -5,7 +5,7 @@
  * Does NOT own acquire locks (that's AccountLifecycle's concern).
  */
 
-import { randomBytes } from "crypto";
+import { randomBytes, timingSafeEqual } from "crypto";
 import { readFileSync } from "fs";
 import { resolve } from "path";
 import { getConfig } from "../config.js";
@@ -24,6 +24,13 @@ import type {
   CodexQuota,
 } from "./types.js";
 import { hasReachedCachedQuota } from "./quota-skip.js";
+
+function safeEqual(a: string, b: string): boolean {
+  const bufA = Buffer.from(a);
+  const bufB = Buffer.from(b);
+  if (bufA.length !== bufB.length) return false;
+  return timingSafeEqual(bufA, bufB);
+}
 
 type ResettableQuotaWindow = {
   used_percent: number | null;
@@ -349,9 +356,9 @@ export class AccountRegistry {
 
   validateProxyApiKey(key: string): boolean {
     const configKey = getConfig().server.proxy_api_key;
-    if (configKey && key === configKey) return true;
+    if (configKey && safeEqual(key, configKey)) return true;
     for (const entry of this.accounts.values()) {
-      if (entry.proxyApiKey === key) return true;
+      if (entry.proxyApiKey && safeEqual(key, entry.proxyApiKey)) return true;
     }
     return false;
   }
