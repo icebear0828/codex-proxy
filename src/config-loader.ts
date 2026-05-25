@@ -193,6 +193,14 @@ export function applyEnvOverrides(
       (raw.server as Record<string, unknown>).port = parsed;
     }
   }
+  const corsAllowedHosts = process.env.CORS_ALLOWED_HOSTS?.trim();
+  if (corsAllowedHosts) {
+    if (!raw.server) raw.server = {};
+    (raw.server as Record<string, unknown>).cors = corsAllowedHosts
+      .split(",")
+      .map((h: string) => h.trim())
+      .filter((h: string) => h.length > 0);
+  }
   const serverHostEnv = process.env.CODEX_PROXY_HOST?.trim();
   const localServer = localOverrides?.server as Record<string, unknown> | undefined;
   const localHasServerHost = localServer !== undefined && "host" in localServer;

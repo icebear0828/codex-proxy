@@ -1,11 +1,12 @@
 import type { MiddlewareHandler } from "hono";
-import { isLoopbackHostname } from "../utils/host.js";
+import { getConfig } from "../config.js";
+import { isLoopbackHostname, normalizeHostname } from "../utils/host.js";
 
 /**
- * CORS middleware — allows requests from loopback origins only.
+ * CORS middleware — allows requests from loopback origins and configured hosts.
  * Handles OPTIONS preflight and sets response headers for API routes only.
  */
-export const cors: MiddlewareHandler = async (c, next) => {
+export const cors: MiddlewareHandler = async (c: any, next: any) => {
   const origin = c.req.header("Origin");
   const corsEnabled = isCorsEnabledPath(c.req.path);
   const allowedOrigin = corsEnabled ? getAllowedOrigin(origin) : null;
@@ -47,7 +48,21 @@ function getAllowedOrigin(origin: string | undefined): string | null {
   try {
     const url = new URL(origin);
     if (url.protocol !== "http:" && url.protocol !== "https:") return null;
-    return isLoopbackHostname(url.hostname) ? url.origin : null;
+
+    if (isLoopbackHostname(url.hostname)) {
+      return url.origin;
+    }
+
+    const config = getConfig();
+    const allowedHosts = config.server.cors;
+    if (allowedHosts.length > 0) {
+      const normalizedHost = normalizeHostname(url.hostname);
+      if (allowedHosts.some((h: string) => normalizeHostname(h) === normalizedHost)) {
+        return url.origin;
+      }
+    }
+
+    return null;
   } catch {
     return null;
   }

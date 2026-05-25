@@ -456,6 +456,23 @@ for await (const chunk of stream) {
 
 All configuration in `config/default.yaml`:
 
+### CORS Allowed Hosts
+
+Configure allowed CORS origins via the `CORS_ALLOWED_HOSTS` environment variable, which maps to the `server.cors` field in the config file. Separate multiple hosts with commas:
+
+```bash
+export CORS_ALLOWED_HOSTS="https://example.com,https://another-domain.com"
+```
+
+Or in `data/local.yaml`:
+
+```yaml
+server:
+  cors:
+    - "https://example.com"
+    - "https://another-domain.com"
+```
+
 | Section | Key Settings | Description |
 |---------|-------------|-------------|
 | `server` | `host`, `port`, `proxy_api_key` | Listen address and API key |

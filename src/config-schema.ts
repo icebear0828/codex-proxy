@@ -108,6 +108,7 @@ export const ConfigSchema = z.object({
     port: z.number().min(1).max(65535).default(8080),
     proxy_api_key: z.string().nullable().default(null),
     trust_proxy: z.boolean().default(false),
+    cors: z.array(z.string()).default([]),
   }),
   logs: z.object({
     enabled: z.boolean().default(false),
