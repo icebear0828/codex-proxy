@@ -461,7 +461,7 @@ All configuration in `config/default.yaml`:
 Configure allowed CORS origins via the `CORS_ALLOWED_HOSTS` environment variable, which maps to the `server.cors` field in the config file. Separate multiple hosts with commas:
 
 ```bash
-export CORS_ALLOWED_HOSTS="https://example.com,https://another-domain.com"
+export CORS_ALLOWED_HOSTS="example.com,another-domain.com"
 ```
 
 Or in `data/local.yaml`:

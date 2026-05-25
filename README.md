@@ -510,7 +510,7 @@ for await (const chunk of stream) {
 通过环境变量 `CORS_ALLOWED_HOSTS` 可以配置允许跨域访问的主机列表，对应配置文件中的 `server.cors` 字段。多个主机名用逗号分隔：
 
 ```bash
-export CORS_ALLOWED_HOSTS="https://example.com,https://another-domain.com"
+export CORS_ALLOWED_HOSTS="example.com,another-domain.com"
 ```
 
 或在 `data/local.yaml` 中配置：
