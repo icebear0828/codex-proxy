@@ -505,6 +505,23 @@ for await (const chunk of stream) {
 
 > **重要**：不要直接修改 `config/default.yaml`，该文件会在版本更新时被覆盖。自定义配置请通过 Dashboard 设置面板修改（自动保存到 `data/local.yaml`），或手动创建 `data/local.yaml` 写入需要覆盖的字段。`data/` 目录不受更新影响。
 
+### CORS 允许主机
+
+通过环境变量 `CORS_ALLOWED_HOSTS` 可以配置允许跨域访问的主机列表，对应配置文件中的 `server.cors` 字段。多个主机名用逗号分隔：
+
+```bash
+export CORS_ALLOWED_HOSTS="example.com,another-domain.com"
+```
+
+或在 `data/local.yaml` 中配置：
+
+```yaml
+server:
+  cors:
+    - "https://example.com"
+    - "https://another-domain.com"
+```
+
 默认配置位于 `config/default.yaml`：
 
 | 分类 | 关键配置 | 说明 |

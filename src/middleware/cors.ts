@@ -1,11 +1,12 @@
 import type { MiddlewareHandler } from "hono";
-import { isLoopbackHostname } from "../utils/host.js";
+import { getConfig } from "../config.js";
+import { isLoopbackHostname, normalizeHostname } from "../utils/host.js";
 
 /**
- * CORS middleware — allows requests from loopback origins only.
+ * CORS middleware — allows requests from loopback origins and configured hosts.
  * Handles OPTIONS preflight and sets response headers for API routes only.
  */
-export const cors: MiddlewareHandler = async (c, next) => {
+export const cors: MiddlewareHandler = async (c: any, next: any) => {
   const origin = c.req.header("Origin");
   const corsEnabled = isCorsEnabledPath(c.req.path);
   const allowedOrigin = corsEnabled ? getAllowedOrigin(origin) : null;
@@ -42,12 +43,30 @@ function isCorsEnabledPath(path: string): boolean {
     path.startsWith("/official-agent/");
 }
 
-function getAllowedOrigin(origin: string | undefined): string | null {
+export function getAllowedOrigin(origin: string | undefined): string | null {
   if (!origin) return null;
   try {
     const url = new URL(origin);
     if (url.protocol !== "http:" && url.protocol !== "https:") return null;
-    return isLoopbackHostname(url.hostname) ? url.origin : null;
+
+    if (isLoopbackHostname(url.hostname)) {
+      return url.origin;
+    }
+
+    const config = getConfig();
+    const allowedHosts = config.server.cors;
+    if (allowedHosts.length > 0) {
+      const normalizedHost = normalizeHostname(url.hostname);
+      if (allowedHosts.some((h: string) => {
+        // Strip scheme from config entry before normalizing
+        const configHost = h.replace(/^https?:\/\//, '');
+        return normalizeHostname(configHost) === normalizedHost;
+      })) {
+        return url.origin;
+      }
+    }
+
+    return null;
   } catch {
     return null;
   }

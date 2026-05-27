@@ -108,6 +108,17 @@ export const ConfigSchema = z.object({
     port: z.number().min(1).max(65535).default(8080),
     proxy_api_key: z.string().nullable().default(null),
     trust_proxy: z.boolean().default(false),
+    cors: z.array(z.string().trim().min(1).refine((val) => {
+      // Strip scheme if present and validate it's a valid hostname
+      const hostname = val.replace(/^https?:\/\//, '').trim();
+      if (!hostname) return false;
+      // Basic hostname validation - allow hostnames, IP addresses, and localhost
+      return /^([a-zA-Z0-9-]+\.)*[a-zA-Z0-9-]+$/.test(hostname) ||
+             /^(\d{1,3}\.){3}\d{1,3}$/.test(hostname) ||
+             hostname === "localhost";
+    }, {
+      message: "Invalid hostname format. Use bare hostnames like 'example.com' or '192.168.1.1'",
+    })).default([]),
   }),
   logs: z.object({
     enabled: z.boolean().default(false),
