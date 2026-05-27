@@ -144,12 +144,14 @@ describe("SessionAffinityMap", () => {
     expect(map.lookupLatestResponseIdByConversationId("conv_same", undefined, "vh_main")).toBe("resp_old_main");
   });
 
-  it("looks up the latest instructions by conversation ID", () => {
+  it("looks up the latest instructions hash by conversation ID", () => {
     map = new SessionAffinityMap();
     map.record("resp_1", "entry_1", "conv_same", undefined, "old instructions");
     map.record("resp_2", "entry_1", "conv_same", undefined, "sticky instructions");
-    expect(map.lookupLatestInstructionsByConversationId("conv_same")).toBe("sticky instructions");
-    expect(map.lookupLatestInstructionsByConversationId("conv_missing")).toBeNull();
+    const hash = map.lookupLatestInstructionsHashByConversationId("conv_same");
+    expect(hash).toHaveLength(64); // SHA-256 hex
+    expect(hash).not.toBeNull();
+    expect(map.lookupLatestInstructionsHashByConversationId("conv_missing")).toBeNull();
   });
 
   it("looks up stored input tokens for a response", () => {
@@ -169,11 +171,13 @@ describe("SessionAffinityMap", () => {
     expect(map.lookupFunctionCallIds("resp_missing")).toEqual([]);
   });
 
-  it("looks up stored instructions for a response", () => {
+  it("looks up stored instructions hash for a response", () => {
     map = new SessionAffinityMap();
     map.record("resp_1", "entry_1", "conv_same", undefined, "system prompt");
-    expect(map.lookupInstructions("resp_1")).toBe("system prompt");
-    expect(map.lookupInstructions("resp_missing")).toBeNull();
+    const hash = map.lookupInstructionsHash("resp_1");
+    expect(hash).toHaveLength(64); // SHA-256 hex
+    expect(hash).not.toBeNull();
+    expect(map.lookupInstructionsHash("resp_missing")).toBeNull();
   });
 
   it("conversation ID is inherited across response chain", () => {

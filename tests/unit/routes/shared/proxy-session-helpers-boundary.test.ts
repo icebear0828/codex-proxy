@@ -16,6 +16,7 @@ const SESSION_HELPER_EXPORTS = [
   "PromptCacheIdentity",
   "ImplicitResumeOpts",
   "normalizeInstructions",
+  "hashInstructions",
   "resolvePromptCacheIdentity",
   "buildVariantIdentity",
   "evaluateImplicitResume",
@@ -28,6 +29,7 @@ const SESSION_HELPER_EXPORTS = [
 const RUNTIME_SESSION_HELPER_EXPORTS = [
   "IMPLICIT_RESUME_MAX_AGE_MS",
   "normalizeInstructions",
+  "hashInstructions",
   "resolvePromptCacheIdentity",
   "buildVariantIdentity",
   "evaluateImplicitResume",

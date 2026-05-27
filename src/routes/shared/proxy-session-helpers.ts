@@ -1,4 +1,4 @@
-import { randomUUID } from "crypto";
+import { createHash, randomUUID } from "crypto";
 import {
   PreviousResponseWebSocketError,
   type CodexResponsesRequest,
@@ -17,6 +17,10 @@ export const IMPLICIT_RESUME_MAX_AGE_MS = 55 * 60 * 1000;
 
 export function normalizeInstructions(instructions: string | null | undefined): string {
   return instructions ?? "";
+}
+
+export function hashInstructions(instructions: string | null | undefined): string {
+  return createHash("sha256").update(instructions ?? "").digest("hex");
 }
 
 function nonEmptyString(value: string | null | undefined): string | null {
@@ -75,7 +79,7 @@ export interface ImplicitResumeOpts {
   preferredEntryId: string | null;
   acquiredEntryId: string;
   currentInstructions: string | null | undefined;
-  storedInstructions: string | null;
+  storedInstructionsHash: string | null;
   requiredFunctionCallOutputIds?: string[];
   storedFunctionCallIds?: string[];
   /** call_ids of `function_call` items inlined in the request input itself.
@@ -103,7 +107,7 @@ export function evaluateImplicitResume(opts: ImplicitResumeOpts):
   if (opts.acquiredEntryId !== opts.preferredEntryId) {
     return { active: false, reason: "acct_mismatch" };
   }
-  if (normalizeInstructions(opts.currentInstructions) !== normalizeInstructions(opts.storedInstructions)) {
+  if (hashInstructions(opts.currentInstructions) !== opts.storedInstructionsHash) {
     return { active: false, reason: "instr_diff" };
   }
   const storedFunctionCallIds = new Set(opts.storedFunctionCallIds ?? []);

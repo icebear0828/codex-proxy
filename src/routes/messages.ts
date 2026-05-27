@@ -134,7 +134,8 @@ export function createMessagesRoutes(
     if (!allowUnauthenticated) {
       codexRequest.useWebSocket = true;
     }
-    const wantThinking = req.thinking?.type === "enabled" || req.thinking?.type === "adaptive";
+    // Check after translation so suffix-parsed and config-default effort are included.
+    const wantThinking = !!codexRequest.reasoning?.effort;
     const proxyReq = {
       codexRequest,
       model: buildDisplayModelName(parseModelName(req.model)),

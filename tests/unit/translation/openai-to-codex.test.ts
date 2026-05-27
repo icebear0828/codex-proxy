@@ -50,6 +50,7 @@ vi.mock("@src/models/model-store.js", () => ({
 
 import { translateToCodexRequest as _translateToCodexRequest } from "@src/translation/openai-to-codex.js";
 import type { ChatCompletionRequest } from "@src/types/openai.js";
+import { getConfig } from "@src/config.js";
 
 /** Unwrap the new TranslationResult — existing tests only check codexRequest fields. */
 const translateToCodexRequest = (req: ChatCompletionRequest) => _translateToCodexRequest(req).codexRequest;
@@ -166,6 +167,20 @@ describe("translateToCodexRequest", () => {
   it("sets reasoning with summary: auto when effort is present", () => {
     const result = translateToCodexRequest(makeRequest({ reasoning_effort: "medium" }));
     expect(result.reasoning).toEqual({ effort: "medium", summary: "auto" });
+  });
+
+  it("applies config default_reasoning_effort when no explicit effort or suffix", () => {
+    vi.mocked(getConfig).mockReturnValueOnce({
+      model: {
+        default: "gpt-5.3-codex",
+        default_reasoning_effort: "low",
+        default_service_tier: null,
+        inject_desktop_context: false,
+        suppress_desktop_directives: false,
+      },
+    } as ReturnType<typeof getConfig>);
+    const result = translateToCodexRequest(makeRequest());
+    expect(result.reasoning).toEqual({ effort: "low", summary: "auto" });
   });
 
   it("ensures at least one input item", () => {

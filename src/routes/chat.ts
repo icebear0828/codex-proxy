@@ -140,9 +140,10 @@ export function createChatRoutes(
       return c.json(formatModelNotFound(req.model));
     }
 
-    const wantReasoning = !!req.reasoning_effort;
-    const fmt = makeOpenAIFormat(wantReasoning);
     const { codexRequest, tupleSchema } = translateToCodexRequest(req);
+    // Check after translation so suffix-parsed and config-default effort are included.
+    const wantReasoning = !!codexRequest.reasoning?.effort;
+    const fmt = makeOpenAIFormat(wantReasoning);
     const displayModel = buildDisplayModelName(parseModelName(req.model));
     const proxyReq: ProxyRequest = {
       codexRequest,

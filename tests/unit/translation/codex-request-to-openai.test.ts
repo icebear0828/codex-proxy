@@ -108,6 +108,14 @@ describe("translateCodexToOpenAIRequest", () => {
     expect(result.tool_choice).toBe("auto");
   });
 
+  it("translates developer role to system to support providers that reject developer role", () => {
+    const req = makeBaseRequest({
+      input: [{ role: "developer" as const, content: "You are an AI." }],
+    });
+    const result = translateCodexToOpenAIRequest(req, "deepseek-v4-flash", false);
+    expect(result.messages[0]).toEqual({ role: "system", content: "You are an AI." });
+  });
+
   it("maps text.format to response_format", () => {
     const req = makeBaseRequest({
       input: [{ role: "user", content: "json" }],

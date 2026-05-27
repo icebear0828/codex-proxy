@@ -76,7 +76,7 @@ describe("shouldActivateImplicitResume", () => {
       preferredEntryId: "entry_1",
       acquiredEntryId: "entry_1",
       currentInstructions: "system-a",
-      storedInstructions: "system-a",
+      storedInstructionsHash: "c38ad4c6a125984c19638a6db37117192367b6cec1e73825a9f1c09d60a59a92",
     })).toBe(true);
   });
 
@@ -88,7 +88,7 @@ describe("shouldActivateImplicitResume", () => {
       preferredEntryId: "entry_1",
       acquiredEntryId: "entry_1",
       currentInstructions: "system-b",
-      storedInstructions: "system-a",
+      storedInstructionsHash: "c38ad4c6a125984c19638a6db37117192367b6cec1e73825a9f1c09d60a59a92",
     })).toBe(false);
   });
 
@@ -100,7 +100,7 @@ describe("shouldActivateImplicitResume", () => {
       preferredEntryId: "entry_1",
       acquiredEntryId: "entry_2",
       currentInstructions: "system-a",
-      storedInstructions: "system-a",
+      storedInstructionsHash: "c38ad4c6a125984c19638a6db37117192367b6cec1e73825a9f1c09d60a59a92",
     })).toBe(false);
   });
 
@@ -112,7 +112,7 @@ describe("shouldActivateImplicitResume", () => {
       preferredEntryId: "entry_1",
       acquiredEntryId: "entry_1",
       currentInstructions: "system-a",
-      storedInstructions: "system-a",
+      storedInstructionsHash: "c38ad4c6a125984c19638a6db37117192367b6cec1e73825a9f1c09d60a59a92",
       requiredFunctionCallOutputIds: ["call_a", "call_b"],
       storedFunctionCallIds: ["call_a", "call_b"],
     })).toBe(true);
@@ -126,7 +126,7 @@ describe("shouldActivateImplicitResume", () => {
       preferredEntryId: "entry_1",
       acquiredEntryId: "entry_1",
       currentInstructions: "system-a",
-      storedInstructions: "system-a",
+      storedInstructionsHash: "c38ad4c6a125984c19638a6db37117192367b6cec1e73825a9f1c09d60a59a92",
       requiredFunctionCallOutputIds: ["call_missing"],
       storedFunctionCallIds: ["call_ok"],
     })).toBe(false);
@@ -140,7 +140,7 @@ describe("shouldActivateImplicitResume", () => {
       preferredEntryId: "entry_1",
       acquiredEntryId: "entry_1",
       currentInstructions: "system-a",
-      storedInstructions: "system-a",
+      storedInstructionsHash: "c38ad4c6a125984c19638a6db37117192367b6cec1e73825a9f1c09d60a59a92",
       requiredFunctionCallOutputIds: ["call_a"],
       storedFunctionCallIds: ["call_a", "call_b_unanswered"],
     })).toBe(false);
@@ -160,7 +160,7 @@ describe("shouldActivateImplicitResume", () => {
       preferredEntryId: "entry_1",
       acquiredEntryId: "entry_1",
       currentInstructions: "system-a",
-      storedInstructions: "system-a",
+      storedInstructionsHash: "c38ad4c6a125984c19638a6db37117192367b6cec1e73825a9f1c09d60a59a92",
       // tool_outputs in input reference call_ids that don't exist in storage
       // (proxy was restarted / session-affinity lost them), but they ARE
       // present inline in the same input → self-contained replay.
@@ -180,7 +180,7 @@ describe("shouldActivateImplicitResume", () => {
       preferredEntryId: "entry_1",
       acquiredEntryId: "entry_1",
       currentInstructions: "system-a",
-      storedInstructions: "system-a",
+      storedInstructionsHash: "c38ad4c6a125984c19638a6db37117192367b6cec1e73825a9f1c09d60a59a92",
       requiredFunctionCallOutputIds: ["call_inlined", "call_truly_missing"],
       storedFunctionCallIds: [],
       inlineFunctionCallIds: ["call_inlined"],
@@ -197,7 +197,7 @@ describe("shouldActivateImplicitResume", () => {
       preferredEntryId: "entry_1",
       acquiredEntryId: "entry_1",
       currentInstructions: "system-a",
-      storedInstructions: "system-a",
+      storedInstructionsHash: "c38ad4c6a125984c19638a6db37117192367b6cec1e73825a9f1c09d60a59a92",
       requiredFunctionCallOutputIds: ["call_x"],
       storedFunctionCallIds: ["call_unrelated_stored"],
       inlineFunctionCallIds: ["call_x", "call_y"],

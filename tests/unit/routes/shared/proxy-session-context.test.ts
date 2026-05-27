@@ -1,7 +1,12 @@
+import { createHash } from "crypto";
 import { SessionAffinityMap } from "@src/auth/session-affinity.js";
 import type { CodexResponsesRequest } from "@src/proxy/codex-types.js";
 import { buildProxySessionContext } from "@src/routes/shared/proxy-session-context.js";
 import { buildVariantIdentity, resolvePromptCacheIdentity } from "@src/routes/shared/proxy-session-helpers.js";
+
+function sha256(s: string): string {
+  return createHash("sha256").update(s).digest("hex");
+}
 import type { ProxyRequest } from "@src/routes/shared/proxy-handler-types.js";
 import { computeVariantHash } from "@src/routes/shared/variant-hash.js";
 import { afterEach, describe, expect, it } from "vitest";
@@ -146,7 +151,7 @@ describe("buildProxySessionContext", () => {
     expect(context.prevRespId).toBe("resp_implicit");
     expect(context.preferredEntryId).toBe("entry-implicit");
     expect(context.explicitTurnState).toBeNull();
-    expect(context.implicitStoredInstructions).toBe("system");
+    expect(context.implicitStoredInstructionsHash).toBe(sha256("system"));
     expect(context.implicitStoredFunctionCallIds).toEqual(["call_a"]);
     expect(context.requiredFunctionCallOutputIds).toEqual(["call_a"]);
     expect(context.implicitContinuationInput).toEqual([
@@ -158,7 +163,7 @@ describe("buildProxySessionContext", () => {
       inputLength: 3,
       preferredEntryId: "entry-implicit",
       currentInstructions: "system",
-      storedInstructions: "system",
+      storedInstructionsHash: sha256("system"),
       requiredFunctionCallOutputIds: ["call_a"],
       storedFunctionCallIds: ["call_a"],
       inlineFunctionCallIds: ["call_a"],

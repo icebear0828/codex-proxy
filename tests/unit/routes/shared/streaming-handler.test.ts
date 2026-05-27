@@ -104,7 +104,7 @@ describe("handleStreaming", () => {
     expect(affinityMap.lookup("resp_stream")).toBe("entry-stream");
     expect(affinityMap.lookupConversationId("resp_stream")).toBe("conversation-stream");
     expect(affinityMap.lookupTurnState("resp_stream")).toBe("turn-stream");
-    expect(affinityMap.lookupInstructions("resp_stream")).toBe("You are helpful");
+    expect(affinityMap.lookupInstructionsHash("resp_stream")).toBe("58d0189aa8572b25a2e4ba09928df2c3d924d07f53de9aeb94ffe7f6f2a1de2b");
     expect(affinityMap.lookupInputTokens("resp_stream")).toBe(10_001);
     expect(affinityMap.lookupFunctionCallIds("resp_stream")).toEqual(["call_stream"]);
     expect(affinityMap.lookupLatestResponseIdByConversationId(

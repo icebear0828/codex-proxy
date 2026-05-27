@@ -57,8 +57,8 @@ function inputItemsToMessages(input: CodexInputItem[]): OpenAIMessage[] {
 
   for (const item of input) {
     if ("role" in item) {
-      const role = item.role as "user" | "assistant" | "system";
-      const oaiRole = role === "system" ? "system" as const : role;
+      const role = item.role;
+      const oaiRole = (role === "system" || role === "developer") ? "system" as const : role as "user" | "assistant";
       if (typeof item.content === "string") {
         messages.push({ role: oaiRole, content: item.content });
       } else {

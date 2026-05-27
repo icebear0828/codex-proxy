@@ -7,11 +7,14 @@
  *   - Prompt cache hits (cache is per-account on the backend)
  */
 
+import { createHash } from "crypto";
+
 interface AffinityEntry {
   entryId: string;
   conversationId: string;
   turnState?: string;
-  instructions?: string;
+  /** SHA-256 hex of the instructions string. Stored as hash to bound memory usage. */
+  instructionsHash?: string;
   inputTokens?: number;
   functionCallIds?: string[];
   /** Identifies the (instructions + tools) "shape" of the request that
@@ -51,7 +54,9 @@ export class SessionAffinityMap {
       entryId,
       conversationId,
       turnState,
-      instructions,
+      instructionsHash: instructions !== undefined
+        ? createHash("sha256").update(instructions).digest("hex")
+        : undefined,
       inputTokens,
       functionCallIds: functionCallIds ? [...functionCallIds] : undefined,
       variantHash,
@@ -105,15 +110,15 @@ export class SessionAffinityMap {
     return entry?.turnState ?? null;
   }
 
-  lookupInstructions(responseId: string): string | null {
+  lookupInstructionsHash(responseId: string): string | null {
     const entry = this.getEntry(responseId);
-    return entry?.instructions ?? null;
+    return entry?.instructionsHash ?? null;
   }
 
-  lookupLatestInstructionsByConversationId(conversationId: string): string | null {
+  lookupLatestInstructionsHashByConversationId(conversationId: string): string | null {
     const responseId = this.lookupLatestResponseIdByConversationId(conversationId);
     if (!responseId) return null;
-    return this.lookupInstructions(responseId);
+    return this.lookupInstructionsHash(responseId);
   }
 
   lookupInputTokens(responseId: string): number | null {

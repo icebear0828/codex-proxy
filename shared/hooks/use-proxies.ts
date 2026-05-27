@@ -3,6 +3,8 @@ import type { ProxyEntry, ProxyAssignment } from "../types";
 
 export interface AddProxyFields {
   name: string;
+  /** Raw URL — when provided, skips field composition */
+  url?: string;
   protocol: string;
   host: string;
   port: string;
@@ -57,14 +59,18 @@ export function useProxies(): ProxiesState {
         const resp = await fetch("/api/proxies", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            name: fields.name,
-            protocol: fields.protocol,
-            host: fields.host,
-            port: fields.port,
-            username: fields.username,
-            password: fields.password,
-          }),
+          body: JSON.stringify(
+            fields.url
+              ? { name: fields.name, url: fields.url }
+              : {
+                  name: fields.name,
+                  protocol: fields.protocol,
+                  host: fields.host,
+                  port: fields.port,
+                  username: fields.username,
+                  password: fields.password,
+                },
+          ),
         });
         const data = await resp.json();
         if (!resp.ok) return data.error || "Failed to add proxy";

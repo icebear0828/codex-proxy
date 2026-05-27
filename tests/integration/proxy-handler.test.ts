@@ -289,7 +289,7 @@ describe("proxy-handler integration", () => {
     expect(affinityMap.lookup("resp_meta")).toBe("e1");
     expect(affinityMap.lookupConversationId("resp_meta")).toBe("thread-collect");
     expect(affinityMap.lookupTurnState("resp_meta")).toBe("turn-success");
-    expect(affinityMap.lookupInstructions("resp_meta")).toBe("You are helpful");
+    expect(affinityMap.lookupInstructionsHash("resp_meta")).toBe("58d0189aa8572b25a2e4ba09928df2c3d924d07f53de9aeb94ffe7f6f2a1de2b");
     expect(affinityMap.lookupInputTokens("resp_meta")).toBe(33);
     expect(affinityMap.lookupFunctionCallIds("resp_meta")).toEqual(["call_a", "call_b"]);
     expect(affinityMap.lookupLatestResponseIdByConversationId(
