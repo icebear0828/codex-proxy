@@ -413,6 +413,8 @@ export interface OpenAIModel {
   object: "model";
   created: number;
   owned_by: string;
+  context_window?: number;
+  max_output_tokens?: number;
 }
 
 export interface OpenAIModelList {

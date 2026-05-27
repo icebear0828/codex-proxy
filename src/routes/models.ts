@@ -21,12 +21,16 @@ import type { ApiKeyPool } from "../auth/api-key-pool.js";
 const MODEL_CREATED_TIMESTAMP = 1700000000;
 
 function toOpenAIModel(info: CodexModelInfo): OpenAIModel {
-  return {
+  const model: OpenAIModel = {
     id: info.id,
     object: "model",
     created: MODEL_CREATED_TIMESTAMP,
     owned_by: "openai",
   };
+  const contextWindow = info.maxContextWindow ?? info.contextWindow;
+  if (contextWindow !== undefined) model.context_window = contextWindow;
+  if (info.maxOutputTokens !== undefined) model.max_output_tokens = info.maxOutputTokens;
+  return model;
 }
 
 function toRuntimeOpenAIModel(id: string): OpenAIModel {
