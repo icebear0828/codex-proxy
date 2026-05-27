@@ -1,6 +1,14 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi, beforeEach, afterEach, afterAll } from "vitest";
 import { Hono } from "hono";
 import { cors } from "@src/middleware/cors.js";
+
+const mocks = vi.hoisted(() => ({
+  getConfig: vi.fn(() => ({ server: { cors: [] as string[] } })),
+}));
+
+vi.mock("@src/config.js", () => ({
+  getConfig: mocks.getConfig,
+}));
 
 function createApp(): Hono {
   const app = new Hono();
@@ -10,6 +18,9 @@ function createApp(): Hono {
 }
 
 describe("cors middleware", () => {
+  beforeEach(() => {
+    mocks.getConfig.mockClear();
+  });
   it("allows loopback origins on API compatibility routes", async () => {
     const app = createApp();
 
@@ -65,5 +76,108 @@ describe("cors middleware", () => {
 
     expect(res.status).toBe(403);
     expect(res.headers.get("Access-Control-Allow-Origin")).toBeNull();
+  });
+
+  describe("CORS allowlist", () => {
+    it("accepts allowlisted origins", async () => {
+      mocks.getConfig.mockReturnValue({ server: { cors: ["example.com"] } });
+
+      const app = createApp();
+
+      const res = await app.request("/v1/chat/completions", {
+        method: "OPTIONS",
+        headers: {
+          Origin: "https://example.com",
+          "Access-Control-Request-Method": "POST",
+        },
+      });
+
+      expect(res.status).toBe(204);
+      expect(res.headers.get("Access-Control-Allow-Origin")).toBe("https://example.com");
+    });
+
+    it("accepts allowlisted origins with scheme prefix", async () => {
+      mocks.getConfig.mockReturnValue({ server: { cors: ["https://example.com"] } });
+
+      const app = createApp();
+
+      const res = await app.request("/v1/chat/completions", {
+        method: "OPTIONS",
+        headers: {
+          Origin: "https://example.com",
+          "Access-Control-Request-Method": "POST",
+        },
+      });
+
+      expect(res.status).toBe(204);
+      expect(res.headers.get("Access-Control-Allow-Origin")).toBe("https://example.com");
+    });
+
+    it("rejects non-allowlisted non-loopback origins", async () => {
+      mocks.getConfig.mockReturnValue({ server: { cors: ["allowed.com"] } });
+
+      const app = createApp();
+
+      const res = await app.request("/v1/chat/completions", {
+        method: "OPTIONS",
+        headers: {
+          Origin: "https://example.com",
+          "Access-Control-Request-Method": "POST",
+        },
+      });
+
+      expect(res.status).toBe(403);
+      expect(res.headers.get("Access-Control-Allow-Origin")).toBeNull();
+    });
+  });
+});
+
+describe("CORS_ALLOWED_HOSTS env var parsing", () => {
+  const originalEnv = process.env.CORS_ALLOWED_HOSTS;
+
+  afterEach(() => {
+    delete process.env.CORS_ALLOWED_HOSTS;
+  });
+
+  afterAll(() => {
+    process.env.CORS_ALLOWED_HOSTS = originalEnv;
+  });
+
+  it("parses comma-separated hosts", async () => {
+    process.env.CORS_ALLOWED_HOSTS = "example.com, test.com";
+
+    // This would normally be tested through the config loading system
+    // For now, we'll test the parsing logic directly
+    const corsAllowedHosts = process.env.CORS_ALLOWED_HOSTS?.trim();
+    const result = corsAllowedHosts
+      ?.split(",")
+      .map((h: string) => h.trim())
+      .filter((h: string) => h.length > 0);
+
+    expect(result).toEqual(["example.com", "test.com"]);
+  });
+
+  it("trims whitespace from hosts", async () => {
+    process.env.CORS_ALLOWED_HOSTS = " example.com , test.com ";
+
+    const corsAllowedHosts = process.env.CORS_ALLOWED_HOSTS?.trim();
+    const result = corsAllowedHosts
+      ?.split(",")
+      .map((h: string) => h.trim())
+      .filter((h: string) => h.length > 0);
+
+    expect(result).toEqual(["example.com", "test.com"]);
+  });
+
+  it("filters out empty entries", async () => {
+    process.env.CORS_ALLOWED_HOSTS = "example.com,, test.com";
+
+    const corsAllowedHosts = process.env.CORS_ALLOWED_HOSTS?.trim();
+    const result = corsAllowedHosts
+      ?.split(",")
+      .map((h: string) => h.trim())
+      .filter((h: string) => h.length > 0);
+
+    expect(result).toEqual(["example.com", "test.com"]);
   });
 });

@@ -194,7 +194,9 @@ export function applyEnvOverrides(
     }
   }
   const corsAllowedHosts = process.env.CORS_ALLOWED_HOSTS?.trim();
-  if (corsAllowedHosts) {
+  const localServerCors = localOverrides?.server as Record<string, unknown> | undefined;
+  const localHasServerCors = localServerCors !== undefined && "cors" in localServerCors;
+  if (corsAllowedHosts && !localHasServerCors) {
     if (!raw.server) raw.server = {};
     (raw.server as Record<string, unknown>).cors = corsAllowedHosts
       .split(",")
@@ -202,8 +204,8 @@ export function applyEnvOverrides(
       .filter((h: string) => h.length > 0);
   }
   const serverHostEnv = process.env.CODEX_PROXY_HOST?.trim();
-  const localServer = localOverrides?.server as Record<string, unknown> | undefined;
-  const localHasServerHost = localServer !== undefined && "host" in localServer;
+  const localServerHost = localOverrides?.server as Record<string, unknown> | undefined;
+  const localHasServerHost = localServerHost !== undefined && "host" in localServerHost;
   if (serverHostEnv && !localHasServerHost) {
     if (!raw.server) raw.server = {};
     (raw.server as Record<string, unknown>).host = serverHostEnv;

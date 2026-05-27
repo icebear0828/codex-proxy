@@ -43,7 +43,7 @@ function isCorsEnabledPath(path: string): boolean {
     path.startsWith("/official-agent/");
 }
 
-function getAllowedOrigin(origin: string | undefined): string | null {
+export function getAllowedOrigin(origin: string | undefined): string | null {
   if (!origin) return null;
   try {
     const url = new URL(origin);
@@ -57,7 +57,11 @@ function getAllowedOrigin(origin: string | undefined): string | null {
     const allowedHosts = config.server.cors;
     if (allowedHosts.length > 0) {
       const normalizedHost = normalizeHostname(url.hostname);
-      if (allowedHosts.some((h: string) => normalizeHostname(h) === normalizedHost)) {
+      if (allowedHosts.some((h: string) => {
+        // Strip scheme from config entry before normalizing
+        const configHost = h.replace(/^https?:\/\//, '');
+        return normalizeHostname(configHost) === normalizedHost;
+      })) {
         return url.origin;
       }
     }
