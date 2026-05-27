@@ -511,6 +511,56 @@ describe("collectPassthrough premature close handling", () => {
     expect(response.output_text).toBe("{\"point\":[42,\"hello\"]}");
   });
 
+  it("backfills from output_item.done when response.output is missing entirely", async () => {
+    const api = createMockApi([
+      { event: "response.created", data: { response: { id: "resp_no_output" } } },
+      {
+        event: "response.output_item.done",
+        data: {
+          output_index: 0,
+          item: { id: "msg_1", type: "message", role: "assistant", status: "completed", content: [{ type: "output_text", text: "hello" }] },
+        },
+      },
+      {
+        event: "response.completed",
+        data: {
+          response: {
+            id: "resp_no_output",
+            usage: { input_tokens: 5, output_tokens: 10 },
+          },
+        },
+      },
+    ]);
+
+    const result = await collectPassthrough(api as never, new Response("ok"), "test-model");
+    const response = result.response as { output: unknown[]; output_text?: string };
+    expect(response.output).toHaveLength(1);
+    expect(response.output[0]).toMatchObject({ type: "message" });
+    expect(response.output_text).toBe("hello");
+  });
+
+  it("backfills from text deltas when response.output is missing entirely and no output items", async () => {
+    const api = createMockApi([
+      { event: "response.created", data: { response: { id: "resp_delta_no_output" } } },
+      { event: "response.output_text.delta", data: { delta: "こんに" } },
+      { event: "response.output_text.delta", data: { delta: "ちは" } },
+      {
+        event: "response.completed",
+        data: {
+          response: {
+            id: "resp_delta_no_output",
+            usage: { input_tokens: 2, output_tokens: 3 },
+          },
+        },
+      },
+    ]);
+
+    const result = await collectPassthrough(api as never, new Response("ok"), "test-model");
+    const response = result.response as { output: Array<{ content: Array<{ text: string }> }>; output_text?: string };
+    expect(response.output[0].content[0].text).toBe("こんにちは");
+    expect(response.output_text).toBe("こんにちは");
+  });
+
   it("rethrows original error if response.completed was already received", async () => {
     const api = createMockApi(
       [

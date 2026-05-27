@@ -406,8 +406,8 @@ export async function collectPassthrough(
           onResponseMetadata?.({ functionCallIds: [...collectFunctionCallIds] });
         }
         // Codex hosted search 经常完整流出 output_item.done/text delta，
-        // 但 completed.response.output 为空。这里用流式事件回填最终 JSON。
-        if (Array.isArray(resp.output) && resp.output.length === 0) {
+        // 但 completed.response.output 为空或缺失。这里用流式事件回填最终 JSON。
+        if (!Array.isArray(resp.output) || resp.output.length === 0) {
           if (outputItems.length > 0) {
             resp.output = outputItems;
           } else if (textDeltas) {
