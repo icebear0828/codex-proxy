@@ -277,6 +277,7 @@ export function ProxyPool({ proxies }: ProxyPoolProps) {
               />
             </div>
           ) : (
+          <>
           <div class="grid grid-cols-[auto_1fr_auto] sm:grid-cols-[auto_1fr_80px] gap-2 items-center">
             {/* Row 1: Protocol + Host + Port */}
             <select
@@ -327,6 +328,7 @@ export function ProxyPool({ proxies }: ProxyPoolProps) {
               class={`${inputCls} col-span-2 sm:col-span-1`}
             />
           </div>
+          </>
           )}
           <div class="flex items-center justify-between mt-3">
             {addError && (
