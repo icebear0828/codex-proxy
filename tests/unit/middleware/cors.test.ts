@@ -96,7 +96,7 @@ describe("cors middleware", () => {
       expect(res.headers.get("Access-Control-Allow-Origin")).toBe("https://example.com");
     });
 
-    it("accepts allowlisted origins with scheme prefix", async () => {
+    it("accepts allowlisted origins with https:// scheme prefix", async () => {
       mocks.getConfig.mockReturnValue({ server: { cors: ["https://example.com"] } });
 
       const app = createApp();
@@ -111,6 +111,23 @@ describe("cors middleware", () => {
 
       expect(res.status).toBe(204);
       expect(res.headers.get("Access-Control-Allow-Origin")).toBe("https://example.com");
+    });
+
+    it("accepts allowlisted origins with http:// scheme prefix", async () => {
+      mocks.getConfig.mockReturnValue({ server: { cors: ["http://example.com"] } });
+
+      const app = createApp();
+
+      const res = await app.request("/v1/chat/completions", {
+        method: "OPTIONS",
+        headers: {
+          Origin: "http://example.com",
+          "Access-Control-Request-Method": "POST",
+        },
+      });
+
+      expect(res.status).toBe(204);
+      expect(res.headers.get("Access-Control-Allow-Origin")).toBe("http://example.com");
     });
 
     it("rejects non-allowlisted non-loopback origins", async () => {
