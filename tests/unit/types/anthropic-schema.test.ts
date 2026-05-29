@@ -78,4 +78,17 @@ describe("AnthropicMessagesRequestSchema", () => {
     });
     expect(result.success).toBe(true);
   });
+
+  it("accepts forward-compatible message roles", () => {
+    const result = AnthropicMessagesRequestSchema.safeParse({
+      ...BASE_REQUEST,
+      messages: [
+        { role: "system", content: "You are an expert engineer." },
+        { role: "developer", content: "Follow company coding standards." },
+        { role: "user", content: "hello" },
+        { role: "future_role", content: "new role content" },
+      ],
+    });
+    expect(result.success).toBe(true);
+  });
 });

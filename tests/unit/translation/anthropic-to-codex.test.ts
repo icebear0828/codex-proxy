@@ -316,6 +316,91 @@ describe("translateAnthropicToCodexRequest", () => {
         "Error: something went wrong",
       );
     });
+
+    it("preserves system and developer message roles in order", () => {
+      const result = translateAnthropicToCodexRequest(
+        makeRequest({
+          messages: [
+            { role: "system", content: "You are an expert engineer." },
+            { role: "developer", content: "Follow company coding standards." },
+            { role: "user", content: "hello" },
+          ],
+        } as Partial<AnthropicMessagesRequest>),
+      );
+      expect(result.instructions).toBe("You are a helpful assistant.");
+      expect(result.input).toEqual([
+        { role: "system", content: "You are an expert engineer." },
+        { role: "developer", content: "Follow company coding standards." },
+        { role: "user", content: "hello" },
+      ]);
+    });
+
+    it("keeps tool call items ordered around system and developer messages", () => {
+      const result = translateAnthropicToCodexRequest(
+        makeRequest({
+          messages: [
+            { role: "system", content: "You are an expert engineer." },
+            {
+              role: "assistant",
+              content: [
+                {
+                  type: "tool_use" as const,
+                  id: "toolu_01",
+                  name: "search",
+                  input: { query: "test" },
+                },
+              ],
+            },
+            {
+              role: "user",
+              content: [
+                {
+                  type: "tool_result" as const,
+                  tool_use_id: "toolu_01",
+                  content: "result data",
+                },
+              ],
+            },
+            { role: "developer", content: "Keep coding standards." },
+            { role: "user", content: "continue" },
+          ],
+        } as Partial<AnthropicMessagesRequest>),
+      );
+      expect(result.input).toEqual([
+        { role: "system", content: "You are an expert engineer." },
+        {
+          type: "function_call",
+          call_id: "toolu_01",
+          name: "search",
+          arguments: '{"query":"test"}',
+        },
+        {
+          type: "function_call_output",
+          call_id: "toolu_01",
+          output: "result data",
+        },
+        { role: "developer", content: "Keep coding standards." },
+        { role: "user", content: "continue" },
+      ]);
+    });
+
+    it("downgrades unknown message roles to user", () => {
+      const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+      try {
+        const result = translateAnthropicToCodexRequest(
+          makeRequest({
+            messages: [{ role: "future_role", content: "new role content" }],
+          } as Partial<AnthropicMessagesRequest>),
+        );
+        expect(result.input).toEqual([{ role: "user", content: "new role content" }]);
+        expect(warn).toHaveBeenCalledWith(
+          "[anthropic-to-codex] Unknown message role, downgrading to user:",
+          "future_role",
+        );
+      } finally {
+        warn.mockRestore();
+      }
+    });
   });
 
   // ── Thinking → reasoning effort ──────────────────────────────────────

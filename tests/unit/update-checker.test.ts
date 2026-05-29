@@ -72,8 +72,14 @@ const APPCAST_XML = `<?xml version="1.0"?>
 
 type YamlMutator = (data: Record<string, unknown>) => void;
 
+function normalizeTestPath(path: unknown): string {
+  return String(path).replace(/\\/g, "/").replace(/^[A-Z]:/i, "");
+}
+
 function getClientYamlMutator(): YamlMutator {
-  const call = mockMutateYaml.mock.calls.find((entry) => entry[0] === "/fake/config/default.yaml");
+  const call = mockMutateYaml.mock.calls.find(
+    (entry) => normalizeTestPath(entry[0]) === "/fake/config/default.yaml",
+  );
   if (!call) {
     throw new Error("config/default.yaml mutator was not called");
   }
@@ -106,7 +112,7 @@ describe("update-checker syncs version state and config YAML", () => {
     );
     expect(versionWrites.length).toBeGreaterThanOrEqual(1);
     const writePath = versionWrites[0][0] as string;
-    expect(writePath).toBe("/fake/data/version-state.json");
+    expect(normalizeTestPath(writePath)).toBe("/fake/data/version-state.json");
 
     // Parse the written content
     const written = JSON.parse(versionWrites[0][1] as string) as {
