@@ -315,7 +315,7 @@ describe("translateAnthropicToCodexRequest", () => {
       expect((outputItem as Record<string, unknown>).output).toBe(
         "Error: something went wrong",
       );
-    });
+
 
     it("preserves system and developer message roles in order", () => {
       const result = translateAnthropicToCodexRequest(
@@ -400,7 +400,7 @@ describe("translateAnthropicToCodexRequest", () => {
       } finally {
         warn.mockRestore();
       }
-    });
+    });   });
   });
 
   // ── Thinking → reasoning effort ──────────────────────────────────────
