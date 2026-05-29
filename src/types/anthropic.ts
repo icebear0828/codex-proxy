@@ -76,7 +76,7 @@ const AnthropicContentSchema = z.union([
 ]);
 
 const AnthropicMessageSchema = z.object({
-  role: z.enum(["user", "assistant"]),
+  role: z.string().min(1),
   content: AnthropicContentSchema,
 });
 

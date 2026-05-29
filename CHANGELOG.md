@@ -26,6 +26,7 @@
 
 ### Fixed
 
+- Claude Messages 路径现在接受并保序透传 message-level system/developer role，未知 role 记录日志并降级为 user，避免新版 Claude Code 请求被 schema 拒绝或 role 顺序丢失（`src/types/anthropic.ts`、`src/translation/anthropic-to-codex.ts`）
 - `collectPassthrough` 在 `response.completed.response` 不含 `output` 字段时无法回填：条件从 `Array.isArray && length === 0` 改为 `!Array.isArray || length === 0`，覆盖 output 完全缺失的上游 shape。（#602，感谢 [@williamjameshandley](https://github.com/williamjameshandley)）
 - `/v1/chat/completions` 和 `/v1/messages` 路由在 `wantReasoning`/`wantThinking` 判断时现在读取翻译后的 `codexRequest.reasoning?.effort`，而非原始请求字段：此前仅当客户端显式传 `reasoning_effort` / `thinking.type` 时才向客户端透传推理摘要，通过 model suffix（如 `gpt-5.4-high`）或 `default_reasoning_effort` 配置注入的 effort 虽然正确发到上游，但 Codex 返回的 `response.reasoning_summary_text.delta` 被代理静默丢弃，导致客户端看不到任何推理内容、误以为 effort 无效（`src/routes/chat.ts`、`src/routes/messages.ts`、`tests/unit/translation/openai-to-codex.test.ts`）
 - 代理 host 字段粘贴完整 URL 时不再 double-prefix：`POST /api/proxies` body 的 `host` 如果是形如 `http://...` 或 `socks5://...` 的完整 URL，后端直接使用而不再拼接 protocol + port，避免生成 `http://http://...` 的畸形 URL；name 为空时自动回退到 URL 前，先去掉 username/password 防止凭证写入代理名称（`src/routes/proxies.ts`）
