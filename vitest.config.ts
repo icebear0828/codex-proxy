@@ -13,6 +13,7 @@ export default defineConfig({
     environment: "node",
     include: [
       "shared/**/*.{test,spec}.ts",
+      "web/src/**/*.{test,spec}.ts?(x)",
       "tests/unit/**/*.{test,spec}.ts",
       "tests/integration/**/*.{test,spec}.ts",
       "tests/e2e/**/*.{test,spec}.ts",

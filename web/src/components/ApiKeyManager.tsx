@@ -5,7 +5,7 @@
 
 import { useState, useCallback, useMemo, useRef } from "preact/hooks";
 import { useApiKeys } from "../../../shared/hooks/use-api-keys";
-import type { ApiKeyCapability, ApiKeyProvider, ApiKeyEntry, CatalogModel } from "../../../shared/hooks/use-api-keys";
+import type { ApiKeyCapability, ApiKeyProvider, ApiKeyEntry, CatalogModel, ApiKeyFormat } from "../../../shared/hooks/use-api-keys";
 
 const CUSTOM_MODELS_HINT = "请先输入key和url，将会获取模型列表";
 const CUSTOM_MODELS_FALLBACK_HINT = "模型列表获取失败，请手动输入模型名";
@@ -21,6 +21,10 @@ const PROVIDER_OPTIONS: Array<{ value: ApiKeyProvider; label: string }> = [
 const CAPABILITY_OPTIONS: Array<{ value: ApiKeyCapability; label: string }> = [
   { value: "chat", label: "Chat" },
   { value: "embeddings", label: "Embeddings" },
+];
+
+const API_KEY_FORMAT_OPTIONS: Array<{ value: ApiKeyFormat; label: string }> = [
+  { value: "openai", label: "OpenAI format" },
 ];
 
 type CustomModelStatus = "idle" | "loading" | "loaded" | "fallback";
@@ -58,6 +62,7 @@ function AddKeyForm({ onAdd, catalog, fetchCustomModels }: {
     baseUrl?: string;
     label?: string;
     capabilities?: ApiKeyCapability[];
+    format?: ApiKeyFormat;
   }) => Promise<{ ok: boolean; error?: string }>;
   catalog: Record<string, { displayName: string; defaultBaseUrl: string; models: Array<{ id: string; displayName: string }> }>;
   fetchCustomModels: (input: { provider: "custom"; apiKey: string; baseUrl: string }) => Promise<{ ok: true; models: CatalogModel[] } | { ok: false; error: string }>;
@@ -69,6 +74,7 @@ function AddKeyForm({ onAdd, catalog, fetchCustomModels }: {
   const [label, setLabel] = useState("");
   const [manualModelsInput, setManualModelsInput] = useState("");
   const [capabilities, setCapabilities] = useState<ApiKeyCapability[]>(["chat"]);
+  const [apiKeyFormat] = useState<ApiKeyFormat>("openai");
   const [customModels, setCustomModels] = useState<CatalogModel[]>([]);
   const [customModelStatus, setCustomModelStatus] = useState<CustomModelStatus>("idle");
   const [customModelMessage, setCustomModelMessage] = useState(CUSTOM_MODELS_HINT);
@@ -181,6 +187,7 @@ function AddKeyForm({ onAdd, catalog, fetchCustomModels }: {
       baseUrl: isCustom ? normalizedBaseUrl : undefined,
       label: label.trim() || undefined,
       capabilities,
+      format: apiKeyFormat,
     });
     setAdding(false);
     if (result.ok) {
@@ -200,8 +207,9 @@ function AddKeyForm({ onAdd, catalog, fetchCustomModels }: {
     <form onSubmit={handleSubmit} class="flex flex-col gap-3 p-4 bg-white dark:bg-card-dark border border-gray-200 dark:border-border-dark rounded-xl">
       <div class="flex flex-wrap gap-3">
         <div class="flex flex-col gap-1 min-w-[140px]">
-          <label class="text-[0.7rem] font-medium text-slate-500 dark:text-text-dim">Provider</label>
+          <label for="api-key-provider" class="text-[0.7rem] font-medium text-slate-500 dark:text-text-dim">Provider</label>
           <select
+            id="api-key-provider"
             value={provider}
             onChange={(e) => {
               const v = (e.target as HTMLSelectElement).value as ApiKeyProvider;
@@ -286,6 +294,21 @@ function AddKeyForm({ onAdd, catalog, fetchCustomModels }: {
             </label>
           ))}
         </div>
+      </div>
+
+      <div class="flex flex-col gap-1">
+        <label for="api-key-format" class="text-[0.7rem] font-medium text-slate-500 dark:text-text-dim">API Key Format</label>
+        <select
+          id="api-key-format"
+          value={apiKeyFormat}
+          disabled
+          class="px-2.5 py-1.5 text-sm rounded-lg border border-gray-200 dark:border-border-dark bg-slate-100 dark:bg-bg-dark text-slate-500 dark:text-text-dim disabled:opacity-70 disabled:cursor-not-allowed"
+        >
+          {API_KEY_FORMAT_OPTIONS.map((option) => (
+            <option key={option.value} value={option.value}>{option.label}</option>
+          ))}
+        </select>
+        <p class="text-xs text-slate-400 dark:text-text-dim">Only OpenAI-compatible API key format is available now. More formats will be supported later.</p>
       </div>
 
       {isCustom && (

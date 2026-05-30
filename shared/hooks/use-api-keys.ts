@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useRef } from "preact/hooks";
 
 export type ApiKeyProvider = "anthropic" | "openai" | "gemini" | "openrouter" | "custom";
 export type ApiKeyCapability = "chat" | "embeddings";
+export type ApiKeyFormat = "openai";
 
 export interface ApiKeyEntry {
   id: string;
@@ -11,6 +12,7 @@ export interface ApiKeyEntry {
   baseUrl: string;
   label: string | null;
   capabilities: ApiKeyCapability[];
+  format: ApiKeyFormat;
   status: "active" | "disabled" | "error";
   addedAt: string;
   lastUsedAt: string | null;
@@ -75,6 +77,7 @@ export function useApiKeys() {
     baseUrl?: string;
     label?: string | null;
     capabilities?: ApiKeyCapability[];
+    format?: ApiKeyFormat;
   }): Promise<{ ok: boolean; error?: string }> => {
     try {
       const resp = await fetch("/auth/api-keys", {
