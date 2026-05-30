@@ -24,6 +24,8 @@ import { isBuiltinProvider, PROVIDER_CATALOG } from "./api-key-catalog.js";
 export type ApiKeyStatus = "active" | "disabled" | "error";
 export const API_KEY_CAPABILITIES = ["chat", "embeddings"] as const;
 export type ApiKeyCapability = typeof API_KEY_CAPABILITIES[number];
+export const API_KEY_FORMATS = ["openai"] as const;
+export type ApiKeyFormat = typeof API_KEY_FORMATS[number];
 
 export interface ApiKeyEntry {
   id: string;
@@ -33,13 +35,15 @@ export interface ApiKeyEntry {
   baseUrl: string;
   label: string | null;
   capabilities: ApiKeyCapability[];
+  format: ApiKeyFormat;
   status: ApiKeyStatus;
   addedAt: string;
   lastUsedAt: string | null;
 }
 
-export type PersistedApiKeyEntry = Omit<ApiKeyEntry, "capabilities"> & {
+export type PersistedApiKeyEntry = Omit<ApiKeyEntry, "capabilities" | "format"> & {
   capabilities?: ApiKeyCapability[];
+  format?: ApiKeyFormat;
 };
 
 interface ApiKeysFile {
@@ -154,6 +158,7 @@ export class ApiKeyPool {
     baseUrl?: string;
     label?: string | null;
     capabilities?: ApiKeyCapability[];
+    format?: ApiKeyFormat;
   }): ApiKeyEntry {
     const baseUrl = input.baseUrl
       ?? (isBuiltinProvider(input.provider) ? PROVIDER_CATALOG[input.provider].defaultBaseUrl : "");
@@ -166,6 +171,7 @@ export class ApiKeyPool {
       baseUrl,
       label: input.label ?? null,
       capabilities: normalizeCapabilities(input.capabilities),
+      format: normalizeFormat(input.format),
       status: "active",
       addedAt: new Date().toISOString(),
       lastUsedAt: null,
@@ -215,6 +221,7 @@ export class ApiKeyPool {
     baseUrl?: string;
     label?: string | null;
     capabilities?: ApiKeyCapability[];
+    format?: ApiKeyFormat;
   }>): { added: number; failed: number; errors: string[] } {
     let added = 0;
     const errors: string[] = [];
@@ -247,6 +254,7 @@ export class ApiKeyPool {
     baseUrl: string;
     label: string | null;
     capabilities: ApiKeyCapability[];
+    format: ApiKeyFormat;
   }> {
     return this.entries.map((e) => ({
       provider: e.provider,
@@ -255,6 +263,7 @@ export class ApiKeyPool {
       baseUrl: e.baseUrl,
       label: e.label,
       capabilities: e.capabilities,
+      format: e.format,
     }));
   }
 
@@ -285,10 +294,15 @@ function normalizeCapabilities(value: unknown): ApiKeyCapability[] {
   return deduped.length > 0 ? deduped : ["chat"];
 }
 
+function normalizeFormat(value: unknown): ApiKeyFormat {
+  return value === "openai" ? value : "openai";
+}
+
 function normalizeEntry(entry: PersistedApiKeyEntry): ApiKeyEntry {
   return {
     ...entry,
     capabilities: normalizeCapabilities(entry.capabilities),
+    format: normalizeFormat(entry.format),
   };
 }
 

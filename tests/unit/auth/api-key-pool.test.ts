@@ -59,6 +59,23 @@ describe("ApiKeyPool", () => {
     expect(entry.baseUrl).toBe("https://my-api.example.com/v1");
   });
 
+  it("defaults new API keys to OpenAI request format", () => {
+    const entry = pool.add({ provider: "openai", model: "gpt-5.4", apiKey: "k1" });
+    expect(entry.format).toBe("openai");
+    expect(pool.getAll()[0].format).toBe("openai");
+  });
+
+  it("stores explicit OpenAI request format", () => {
+    const entry = pool.add({
+      provider: "custom",
+      model: "custom-model",
+      apiKey: "k1",
+      baseUrl: "https://example.com/v1",
+      format: "openai",
+    });
+    expect(entry.format).toBe("openai");
+  });
+
   it("getEntry returns the added entry", () => {
     const added = pool.add({ provider: "openai", model: "gpt-5.4", apiKey: "k1" });
     const found = pool.getEntry(added.id);
@@ -137,6 +154,7 @@ describe("ApiKeyPool", () => {
 
     const pool2 = new ApiKeyPool(legacyPersistence);
     expect(pool2.getAll()[0].capabilities).toEqual(["chat"]);
+    expect(pool2.getAll()[0].format).toBe("openai");
     expect(pool2.getByModelAndCapability("gpt-5.4", "chat")).toHaveLength(1);
     expect(pool2.getByModelAndCapability("gpt-5.4", "embeddings")).toHaveLength(0);
   });
@@ -239,6 +257,7 @@ describe("ApiKeyPool", () => {
       apiKey: "k1",
       label: "Prod",
       capabilities: ["chat", "embeddings"],
+      format: "openai",
     });
     const exported = pool.exportForReimport();
     expect(exported).toHaveLength(1);
@@ -249,6 +268,7 @@ describe("ApiKeyPool", () => {
       baseUrl: "https://api.anthropic.com/v1",
       label: "Prod",
       capabilities: ["chat", "embeddings"],
+      format: "openai",
     });
   });
 
