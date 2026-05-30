@@ -52,6 +52,7 @@ describe("api key routes", () => {
         models: ["gpt-5.4", "gpt-5.4-mini", "gpt-5.4"],
         apiKey: "sk-1234567890abcdef",
         label: "Team",
+        format: "openai",
       }),
     });
 
@@ -62,6 +63,8 @@ describe("api key routes", () => {
     expect(body.keys[0].apiKey).toBe("sk-1****cdef");
     expect(pool.getAll().map((entry) => entry.model)).toEqual(["gpt-5.4", "gpt-5.4-mini"]);
     expect(pool.getAll().map((entry) => entry.capabilities)).toEqual([["chat"], ["chat"]]);
+    expect(pool.getAll().map((entry) => entry.format)).toEqual(["openai", "openai"]);
+    expect(body.keys.map((entry: { format: string }) => entry.format)).toEqual(["openai", "openai"]);
   });
 
   it("stores explicit capabilities for selected models", async () => {
@@ -114,6 +117,7 @@ describe("api key routes", () => {
             apiKey: "custom-key",
             baseUrl: "https://example.com/v1",
             capabilities: ["chat", "embeddings"],
+            format: "openai",
           },
         ],
       }),
@@ -128,6 +132,7 @@ describe("api key routes", () => {
       "custom-a",
     ]);
     expect(pool.getAll()[2].capabilities).toEqual(["chat", "embeddings"]);
+    expect(pool.getAll().map((entry) => entry.format)).toEqual(["openai", "openai", "openai"]);
   });
 
   it("exports stored single-model entries as importable multi-model entries", async () => {
@@ -137,6 +142,7 @@ describe("api key routes", () => {
       apiKey: "sk-openai",
       label: "A",
       capabilities: ["chat", "embeddings"],
+      format: "openai",
     });
 
     const res = await app.request("/auth/api-keys/export");
@@ -151,6 +157,7 @@ describe("api key routes", () => {
         baseUrl: "https://api.openai.com/v1",
         label: "A",
         capabilities: ["chat", "embeddings"],
+        format: "openai",
       },
     ]);
   });
