@@ -249,6 +249,7 @@ describe("ApiKeyPool", () => {
       baseUrl: "https://api.anthropic.com/v1",
       label: "Prod",
       capabilities: ["chat", "embeddings"],
+      wire: "chat",
     });
   });
 
@@ -262,5 +263,34 @@ describe("ApiKeyPool", () => {
     const pool2 = new ApiKeyPool(persistence);
     expect(pool2.getAll()).toHaveLength(1);
     expect(pool2.getAll()[0].model).toBe("gpt-5.4");
+  });
+
+  // ── Wire protocol ─────────────────────────────────────────────
+
+  it("defaults wire to chat on add and preserves explicit responses", () => {
+    expect(pool.add({ provider: "openai", model: "gpt-5.5", apiKey: "k" }).wire).toBe("chat");
+    expect(pool.add({ provider: "custom", model: "m", apiKey: "k", baseUrl: "https://x.dev/v1", wire: "responses" }).wire).toBe("responses");
+  });
+
+  it("migrates legacy persisted entries without a wire field to chat", () => {
+    // Simulate an api-keys.json written before the wire field existed.
+    const legacy = {
+      id: "legacy1",
+      provider: "openai",
+      model: "gpt-5.4",
+      apiKey: "k",
+      baseUrl: "https://api.openai.com/v1",
+      label: null,
+      capabilities: ["chat"],
+      status: "active",
+      addedAt: "2026-01-01T00:00:00Z",
+      lastUsedAt: null,
+    };
+    const persistence: ApiKeyPersistence = {
+      load: () => [legacy as unknown as ApiKeyEntry],
+      save: () => { /* noop */ },
+    };
+    const pool2 = new ApiKeyPool(persistence);
+    expect(pool2.getAll()[0].wire).toBe("chat");
   });
 });

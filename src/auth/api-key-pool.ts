@@ -25,6 +25,15 @@ export type ApiKeyStatus = "active" | "disabled" | "error";
 export const API_KEY_CAPABILITIES = ["chat", "embeddings"] as const;
 export type ApiKeyCapability = typeof API_KEY_CAPABILITIES[number];
 
+/**
+ * Upstream wire protocol for OpenAI-family providers (openai/openrouter/custom).
+ * "chat" → POST /chat/completions (default; the only option for DeepSeek/Kimi/GLM
+ * and most gateways). "responses" → POST /responses (opt-in, higher fidelity for
+ * providers that support the native Responses API). Ignored for anthropic/gemini.
+ */
+export const API_KEY_WIRES = ["chat", "responses"] as const;
+export type ApiKeyWire = typeof API_KEY_WIRES[number];
+
 export interface ApiKeyEntry {
   id: string;
   provider: ApiKeyProvider;
@@ -33,13 +42,15 @@ export interface ApiKeyEntry {
   baseUrl: string;
   label: string | null;
   capabilities: ApiKeyCapability[];
+  wire: ApiKeyWire;
   status: ApiKeyStatus;
   addedAt: string;
   lastUsedAt: string | null;
 }
 
-export type PersistedApiKeyEntry = Omit<ApiKeyEntry, "capabilities"> & {
+export type PersistedApiKeyEntry = Omit<ApiKeyEntry, "capabilities" | "wire"> & {
   capabilities?: ApiKeyCapability[];
+  wire?: ApiKeyWire;
 };
 
 interface ApiKeysFile {
@@ -154,6 +165,7 @@ export class ApiKeyPool {
     baseUrl?: string;
     label?: string | null;
     capabilities?: ApiKeyCapability[];
+    wire?: ApiKeyWire;
   }): ApiKeyEntry {
     const baseUrl = input.baseUrl
       ?? (isBuiltinProvider(input.provider) ? PROVIDER_CATALOG[input.provider].defaultBaseUrl : "");
@@ -166,6 +178,7 @@ export class ApiKeyPool {
       baseUrl,
       label: input.label ?? null,
       capabilities: normalizeCapabilities(input.capabilities),
+      wire: normalizeWire(input.wire),
       status: "active",
       addedAt: new Date().toISOString(),
       lastUsedAt: null,
@@ -215,6 +228,7 @@ export class ApiKeyPool {
     baseUrl?: string;
     label?: string | null;
     capabilities?: ApiKeyCapability[];
+    wire?: ApiKeyWire;
   }>): { added: number; failed: number; errors: string[] } {
     let added = 0;
     const errors: string[] = [];
@@ -247,6 +261,7 @@ export class ApiKeyPool {
     baseUrl: string;
     label: string | null;
     capabilities: ApiKeyCapability[];
+    wire: ApiKeyWire;
   }> {
     return this.entries.map((e) => ({
       provider: e.provider,
@@ -255,6 +270,7 @@ export class ApiKeyPool {
       baseUrl: e.baseUrl,
       label: e.label,
       capabilities: e.capabilities,
+      wire: e.wire,
     }));
   }
 
@@ -285,10 +301,16 @@ function normalizeCapabilities(value: unknown): ApiKeyCapability[] {
   return deduped.length > 0 ? deduped : ["chat"];
 }
 
+function normalizeWire(value: unknown): ApiKeyWire {
+  // Legacy entries (and anthropic/gemini, where wire is irrelevant) default to chat.
+  return value === "responses" ? "responses" : "chat";
+}
+
 function normalizeEntry(entry: PersistedApiKeyEntry): ApiKeyEntry {
   return {
     ...entry,
     capabilities: normalizeCapabilities(entry.capabilities),
+    wire: normalizeWire(entry.wire),
   };
 }
 
