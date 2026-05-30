@@ -76,4 +76,19 @@ describe("translateCodexToAnthropicRequest", () => {
     const result = translateCodexToAnthropicRequest(req, "claude-3-5-haiku-20241022");
     expect(result.max_tokens).toBeGreaterThan(0);
   });
+
+  it("filters out developer role and merges developer/system messages into system instructions", () => {
+    const req = makeBaseRequest({
+      instructions: "Be helpful.",
+      input: [
+        { role: "developer", content: "Follow security standards." },
+        { role: "user", content: "hi" },
+        { role: "system", content: "Follow formatting." },
+      ],
+    });
+    const result = translateCodexToAnthropicRequest(req, "claude-3-5-sonnet-20241022");
+    expect(result.system).toBe("Be helpful.\n\nFollow security standards.\n\nFollow formatting.");
+    expect(result.messages).toHaveLength(1);
+    expect(result.messages[0]).toEqual({ role: "user", content: "hi" });
+  });
 });

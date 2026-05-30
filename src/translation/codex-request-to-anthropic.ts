@@ -48,7 +48,7 @@ function inputItemsToAnthropicMessages(input: CodexInputItem[]): AnthropicMessag
   for (const item of input) {
     if ("role" in item) {
       const role = item.role;
-      if (role === "system") continue; // handled via top-level system field
+      if (role === "system" || role === "developer") continue; // handled via top-level system field
 
       const oaiRole = role as "user" | "assistant";
       if (typeof item.content === "string") {
@@ -102,6 +102,20 @@ export function translateCodexToAnthropicRequest(
   req: CodexResponsesRequest,
   modelId: string,
 ): AnthropicMessageRequest {
+  const systemInstructions: string[] = [];
+  if (req.instructions) {
+    systemInstructions.push(req.instructions);
+  }
+
+  // Find additional system/developer instructions in input to merge into system field
+  for (const item of req.input) {
+    if ("role" in item && (item.role === "system" || item.role === "developer")) {
+      if (typeof item.content === "string" && item.content.trim()) {
+        systemInstructions.push(item.content.trim());
+      }
+    }
+  }
+
   const messages = inputItemsToAnthropicMessages(req.input);
 
   const body: AnthropicMessageRequest = {
@@ -111,8 +125,8 @@ export function translateCodexToAnthropicRequest(
     stream: req.stream,
   };
 
-  if (req.instructions) {
-    body.system = req.instructions;
+  if (systemInstructions.length > 0) {
+    body.system = systemInstructions.join("\n\n");
   }
 
   // Thinking budget for extended reasoning
