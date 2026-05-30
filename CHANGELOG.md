@@ -8,6 +8,10 @@
 
 ## [Unreleased]
 
+### Changed
+
+- 更新 `README_EN.md` 中过时的模型推荐说明以匹配最新的模型别名映射（`README_EN.md`）
+
 ### Added
 
 - CORS allowlist 配置：新增 `server.cors` 配置项和 `CORS_ALLOWED_HOSTS` 环境变量，允许指定外部 hostname 访问 API 兼容路由；配置支持纯 hostname 或带 scheme 前缀两种写法；loopback 始终放行不受 allowlist 影响。（#596，感谢 [@aeltorio](https://github.com/aeltorio)）
