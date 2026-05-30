@@ -252,6 +252,11 @@ export async function* streamCodexToAnthropic(
       // if a done arrives without a preceding start, open the block now.
       let doneBlockIndex = toolBlockIndex.get(evt.functionCallDone.callId);
       if (doneBlockIndex === undefined) {
+        // No preceding functionCallStart — mark tool-call state so the final
+        // message_delta reports stop_reason "tool_use" (not "end_turn") and the
+        // empty-response guard does not misfire.
+        hasToolCalls = true;
+        hasContent = true;
         yield* closeThinkingIfOpen();
         yield* closeTextIfOpen();
         doneBlockIndex = contentIndex++;

@@ -17,11 +17,31 @@ function baseRequest(overrides: Partial<CodexResponsesRequest> = {}): CodexRespo
 }
 
 describe("buildResponsesUpstreamBody", () => {
-  it("strips codex-proxy-internal fields and rewrites the model to the native id", () => {
+  it("forwards standard Responses fields and rewrites the model to the native id", () => {
     const body = buildResponsesUpstreamBody(
       baseRequest({
         instructions: "be helpful",
         tools: [{ type: "function", name: "x" }],
+        tool_choice: "auto",
+        parallel_tool_calls: true,
+        reasoning: { effort: "medium" },
+      }),
+      "gpt-5.5",
+    );
+
+    expect(body.model).toBe("gpt-5.5");
+    expect(body.instructions).toBe("be helpful");
+    expect(body.tools).toEqual([{ type: "function", name: "x" }]);
+    expect(body.tool_choice).toBe("auto");
+    expect(body.parallel_tool_calls).toBe(true);
+    expect(body.reasoning).toEqual({ effort: "medium" });
+    expect(body.input).toEqual([]);
+    expect(body.stream).toBe(true);
+  });
+
+  it("is an allowlist: never leaks codex-internal / chatgpt.com-only fields", () => {
+    const body = buildResponsesUpstreamBody(
+      baseRequest({
         client_metadata: { foo: "bar" },
         useWebSocket: true,
         turnState: "ts",
@@ -32,15 +52,13 @@ describe("buildResponsesUpstreamBody", () => {
         codexWindowId: "win",
         parentThreadId: "parent",
         previous_response_id: "resp_prev",
+        // OpenAI-org-bound; must not reach a third-party /responses.
+        include: ["reasoning.encrypted_content"],
       }),
       "gpt-5.5",
     );
 
-    expect(body.model).toBe("gpt-5.5");
-    expect(body.instructions).toBe("be helpful");
-    expect(body.tools).toEqual([{ type: "function", name: "x" }]);
-
-    for (const stripped of [
+    for (const dropped of [
       "client_metadata",
       "useWebSocket",
       "turnState",
@@ -51,9 +69,22 @@ describe("buildResponsesUpstreamBody", () => {
       "codexWindowId",
       "parentThreadId",
       "previous_response_id",
+      "include",
     ]) {
-      expect(body).not.toHaveProperty(stripped);
+      expect(body).not.toHaveProperty(dropped);
     }
+  });
+
+  it("keeps store=false (no third-party retention) and forwards prompt_cache_key when present", () => {
+    const body = buildResponsesUpstreamBody(
+      baseRequest({ prompt_cache_key: "conv-uuid" }),
+      "m",
+    );
+    expect(body.store).toBe(false);
+    expect(body.prompt_cache_key).toBe("conv-uuid");
+
+    // Absent optional fields are not emitted.
+    expect(buildResponsesUpstreamBody(baseRequest(), "m")).not.toHaveProperty("prompt_cache_key");
   });
 
   it("normalizes service_tier 'fast' to 'priority' and drops empty tier", () => {

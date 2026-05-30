@@ -141,4 +141,24 @@ describe("Codex to Anthropic — parallel tool calls", () => {
     expect(argsByCall.get("call_a")).toBe('{"x":1}');
     expect(argsByCall.get("call_b")).toBe('{"y":2}');
   });
+
+  it("reports stop_reason tool_use even when a done arrives without a start", () => {
+    return collectEvents([
+      createCreated("resp_orphan"),
+      createInProgress("resp_orphan"),
+      // No createFunctionCallStart — the done-without-start defensive path.
+      createFunctionCallDone("call_x", "tool_x", '{"a":1}'),
+      createCompleted("resp_orphan", { input_tokens: 10, output_tokens: 5 }),
+    ]).then((events) => {
+      const toolStart = events.find(
+        (e) => e.event === "content_block_start"
+          && (e.data.content_block as Record<string, unknown> | undefined)?.type === "tool_use",
+      );
+      expect(toolStart).toBeDefined();
+
+      const messageDelta = events.find((e) => e.event === "message_delta");
+      const delta = messageDelta?.data.delta as Record<string, unknown> | undefined;
+      expect(delta?.stop_reason).toBe("tool_use");
+    });
+  });
 });

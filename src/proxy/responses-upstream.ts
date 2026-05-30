@@ -31,34 +31,47 @@ function normalizeServiceTier(serviceTier: string | null | undefined): string | 
 }
 
 /**
- * Strip codex-proxy-internal / chatgpt.com-only fields and rewrite the model to
- * the provider-native id. The remaining shape is a standard Responses request.
+ * Build the upstream `/responses` body from the internal request, rewriting the
+ * model to the provider-native id.
+ *
+ * This is an ALLOWLIST, not a denylist: only standard Responses API generation
+ * fields are forwarded. Everything else is intentionally dropped so nothing
+ * codex-proxy-internal ever leaks to an arbitrary third-party endpoint —
+ * routing fields (useWebSocket / turnState / …), chatgpt.com-scoped state
+ * (client_metadata), and the OpenAI-org-bound `include:
+ * ["reasoning.encrypted_content"]` (most likely to be rejected by, or
+ * meaningless to, a non-OpenAI provider; reasoning summaries still stream
+ * without it).
+ *
+ * Known limitation: `previous_response_id` is dropped, so server-side
+ * conversation continuation is not supported on third-party Responses backends.
+ * codex-proxy keeps no session affinity for direct upstreams, and the id is a
+ * chatgpt.com-scoped `resp_*` the third party cannot resolve (passing it through
+ * would guarantee a 404). This matches the Chat Completions wire, which has no
+ * continuation concept either.
  */
 export function buildResponsesUpstreamBody(
   req: CodexResponsesRequest,
   modelId: string,
 ): Record<string, unknown> {
-  const {
-    previous_response_id: _pid,
-    client_metadata: _cm,
-    useWebSocket: _ws,
-    turnState: _ts,
-    turnMetadata: _tm,
-    betaFeatures: _bf,
-    version: _ver,
-    includeTimingMetrics: _timing,
-    codexWindowId: _window,
-    parentThreadId: _parent,
-    service_tier,
-    ...rest
-  } = req;
-
-  const tier = normalizeServiceTier(service_tier);
-  return {
-    ...rest,
+  const body: Record<string, unknown> = {
     model: modelId,
-    ...(tier ? { service_tier: tier } : {}),
+    input: req.input,
+    stream: req.stream,
+    store: req.store, // keep false — third parties must not retain proxied data
   };
+  if (req.instructions != null) body.instructions = req.instructions;
+  if (req.reasoning !== undefined) body.reasoning = req.reasoning;
+  if (req.tools !== undefined) body.tools = req.tools;
+  if (req.tool_choice !== undefined) body.tool_choice = req.tool_choice;
+  if (req.parallel_tool_calls !== undefined) body.parallel_tool_calls = req.parallel_tool_calls;
+  if (req.text !== undefined) body.text = req.text;
+  if (req.prompt_cache_key !== undefined) body.prompt_cache_key = req.prompt_cache_key;
+
+  const tier = normalizeServiceTier(req.service_tier);
+  if (tier) body.service_tier = tier;
+
+  return body;
 }
 
 export class ResponsesUpstream implements UpstreamAdapter {
