@@ -49,6 +49,12 @@ function normalizeServiceTier(serviceTier: string | null | undefined): string | 
  * chatgpt.com-scoped `resp_*` the third party cannot resolve (passing it through
  * would guarantee a 404). This matches the Chat Completions wire, which has no
  * continuation concept either.
+ *
+ * The forwarded set is exactly the generation-relevant fields that exist on the
+ * Codex-shaped `CodexResponsesRequest`. Standard Responses controls that
+ * codex-proxy never threads through its internal model (temperature, top_p,
+ * max_output_tokens, stop, seed, response_format, …) are therefore not sent —
+ * identical to the Chat Completions wire, which drops them too.
  */
 export function buildResponsesUpstreamBody(
   req: CodexResponsesRequest,
