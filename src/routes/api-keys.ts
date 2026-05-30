@@ -106,8 +106,11 @@ const LabelSchema = z.object({ label: z.string().max(64).nullable() });
 const StatusSchema = z.object({ status: z.enum(["active", "disabled"]) });
 const BatchDeleteSchema = z.object({ ids: z.array(z.string()).min(1) });
 
-async function parseJsonRequest<T>(c: Context, schema: z.ZodSchema<T>): Promise<
-  { ok: true; data: T } | { ok: false; response: Response }
+async function parseJsonRequest<Output, Input>(
+  c: Context,
+  schema: z.ZodType<Output, z.ZodTypeDef, Input>,
+): Promise<
+  { ok: true; data: Output } | { ok: false; response: Response }
 > {
   let body: unknown;
   try {
