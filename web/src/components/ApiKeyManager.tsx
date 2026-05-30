@@ -5,7 +5,10 @@
 
 import { useState, useCallback, useMemo, useRef } from "preact/hooks";
 import { useApiKeys } from "../../../shared/hooks/use-api-keys";
-import type { ApiKeyCapability, ApiKeyProvider, ApiKeyEntry, CatalogModel } from "../../../shared/hooks/use-api-keys";
+import type { ApiKeyCapability, ApiKeyProvider, ApiKeyWire, ApiKeyEntry, CatalogModel } from "../../../shared/hooks/use-api-keys";
+
+/** Providers whose upstream wire protocol (chat vs responses) is selectable. */
+const WIRE_SELECTABLE_PROVIDERS: ReadonlySet<ApiKeyProvider> = new Set(["openai", "openrouter", "custom"]);
 
 const CUSTOM_MODELS_HINT = "请先输入key和url，将会获取模型列表";
 const CUSTOM_MODELS_FALLBACK_HINT = "模型列表获取失败，请手动输入模型名";
@@ -58,6 +61,7 @@ function AddKeyForm({ onAdd, catalog, fetchCustomModels }: {
     baseUrl?: string;
     label?: string;
     capabilities?: ApiKeyCapability[];
+    wire?: ApiKeyWire;
   }) => Promise<{ ok: boolean; error?: string }>;
   catalog: Record<string, { displayName: string; defaultBaseUrl: string; models: Array<{ id: string; displayName: string }> }>;
   fetchCustomModels: (input: { provider: "custom"; apiKey: string; baseUrl: string }) => Promise<{ ok: true; models: CatalogModel[] } | { ok: false; error: string }>;
@@ -69,6 +73,7 @@ function AddKeyForm({ onAdd, catalog, fetchCustomModels }: {
   const [label, setLabel] = useState("");
   const [manualModelsInput, setManualModelsInput] = useState("");
   const [capabilities, setCapabilities] = useState<ApiKeyCapability[]>(["chat"]);
+  const [wire, setWire] = useState<ApiKeyWire>("chat");
   const [customModels, setCustomModels] = useState<CatalogModel[]>([]);
   const [customModelStatus, setCustomModelStatus] = useState<CustomModelStatus>("idle");
   const [customModelMessage, setCustomModelMessage] = useState(CUSTOM_MODELS_HINT);
@@ -78,6 +83,7 @@ function AddKeyForm({ onAdd, catalog, fetchCustomModels }: {
   const latestResolvedSignatureRef = useRef("");
 
   const isCustom = provider === "custom";
+  const wireSelectable = WIRE_SELECTABLE_PROVIDERS.has(provider);
   const providerCatalog = !isCustom ? catalog[provider]?.models ?? [] : [];
   const selectedModelSet = useMemo(() => new Set(selectedModels), [selectedModels]);
   const selectedCapabilitySet = useMemo(() => new Set(capabilities), [capabilities]);
@@ -181,6 +187,7 @@ function AddKeyForm({ onAdd, catalog, fetchCustomModels }: {
       baseUrl: isCustom ? normalizedBaseUrl : undefined,
       label: label.trim() || undefined,
       capabilities,
+      wire: wireSelectable ? wire : undefined,
     });
     setAdding(false);
     if (result.ok) {
@@ -190,6 +197,7 @@ function AddKeyForm({ onAdd, catalog, fetchCustomModels }: {
       setLabel("");
       setManualModelsInput("");
       setCapabilities(["chat"]);
+      setWire("chat");
       resetCustomModels();
     } else {
       setError(result.error || "Failed to add key");
@@ -212,6 +220,7 @@ function AddKeyForm({ onAdd, catalog, fetchCustomModels }: {
               setLabel("");
               setManualModelsInput("");
               setCapabilities(["chat"]);
+              setWire("chat");
               latestResolvedSignatureRef.current = "";
               resetCustomModels();
             }}
@@ -287,6 +296,23 @@ function AddKeyForm({ onAdd, catalog, fetchCustomModels }: {
           ))}
         </div>
       </div>
+
+      {wireSelectable && (
+        <div class="flex flex-col gap-1">
+          <label class="text-[0.7rem] font-medium text-slate-500 dark:text-text-dim">Upstream protocol</label>
+          <select
+            value={wire}
+            onChange={(e) => setWire((e.target as HTMLSelectElement).value as ApiKeyWire)}
+            class="px-2.5 py-1.5 text-sm rounded-lg border border-gray-200 dark:border-border-dark bg-slate-50 dark:bg-bg-dark text-slate-800 dark:text-text-main"
+          >
+            <option value="chat">Chat Completions (default)</option>
+            <option value="responses">Responses API</option>
+          </select>
+          <span class="text-[0.65rem] text-slate-400 dark:text-text-dim">
+            多数第三方(DeepSeek / Kimi / GLM)只支持 Chat Completions；仅当上游支持原生 Responses API 时才选 Responses。
+          </span>
+        </div>
+      )}
 
       {isCustom && (
         <div class="flex flex-col gap-1">

@@ -151,6 +151,7 @@ describe("api key routes", () => {
         baseUrl: "https://api.openai.com/v1",
         label: "A",
         capabilities: ["chat", "embeddings"],
+        wire: "chat",
       },
     ]);
   });
