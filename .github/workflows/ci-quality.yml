@@ -30,3 +30,23 @@ jobs:
 
       - name: Type-check public update scripts
         run: npm run typecheck:scripts
+
+  frontend-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+
+      # web/ is an independent package (not a root workspace) with its own
+      # vitest; its component tests run under jsdom and are not picked up by the
+      # root vitest config.
+      - name: Install web dependencies
+        run: cd web && npm ci
+
+      - name: Run web frontend tests
+        run: cd web && npx vitest run
