@@ -3,10 +3,10 @@
  * POST /v1/messages — compatible with Claude Code CLI and other Anthropic clients.
  */
 
-import { Hono } from "hono";
+import { Hono, type Context } from "hono";
 import type { StatusCode } from "hono/utils/http-status";
-import { AnthropicMessagesRequestSchema } from "../types/anthropic.js";
-import type { AnthropicErrorBody, AnthropicErrorType } from "../types/anthropic.js";
+import { AnthropicCountTokensRequestSchema, AnthropicMessagesRequestSchema } from "../types/anthropic.js";
+import type { AnthropicCountTokensRequest, AnthropicErrorBody, AnthropicErrorType, AnthropicMessagesRequest } from "../types/anthropic.js";
 import type { AccountPool } from "../auth/account-pool.js";
 import type { CookieJar } from "../proxy/cookie-jar.js";
 import type { ProxyPool } from "../proxy/proxy-pool.js";
@@ -34,6 +34,78 @@ function makeError(
   message: string,
 ): AnthropicErrorBody {
   return { type: "error", error: { type, message } };
+}
+
+function checkProxyApiKey(c: Context, accountPool: AccountPool): Response | null {
+  const config = getConfig();
+  if (!config.server.proxy_api_key) return null;
+
+  const xApiKey = c.req.header("x-api-key");
+  const authHeader = c.req.header("Authorization");
+  const bearerKey = authHeader?.replace("Bearer ", "");
+  const providedKey = xApiKey ?? bearerKey;
+
+  if (!providedKey || !accountPool.validateProxyApiKey(providedKey)) {
+    c.status(401);
+    return c.json(makeError("authentication_error", "Invalid API key"));
+  }
+
+  return null;
+}
+
+function estimateTextTokens(text: string): number {
+  const trimmed = text.trim();
+  if (!trimmed) return 0;
+
+  const cjkMatches = trimmed.match(/[\u3400-\u9fff\uf900-\ufaff]/g);
+  const cjkCount = cjkMatches?.length ?? 0;
+  const nonCjkCount = Math.max(0, trimmed.length - cjkCount);
+
+  return Math.ceil(nonCjkCount / 4) + cjkCount;
+}
+
+function estimateUnknownTokens(value: unknown): number {
+  if (value === null || value === undefined) return 0;
+  if (typeof value === "string") return estimateTextTokens(value);
+  if (typeof value === "number" || typeof value === "boolean") {
+    return estimateTextTokens(String(value));
+  }
+  if (Array.isArray(value)) {
+    return value.reduce((sum, item) => sum + estimateUnknownTokens(item), 0) + value.length;
+  }
+  if (typeof value === "object") {
+    return Object.entries(value as Record<string, unknown>).reduce(
+      (sum, [key, item]) => sum + estimateTextTokens(key) + estimateUnknownTokens(item),
+      2,
+    );
+  }
+  return estimateTextTokens(String(value));
+}
+
+function estimateMessageContentTokens(content: AnthropicMessagesRequest["messages"][number]["content"]): number {
+  if (typeof content === "string") return estimateTextTokens(content);
+  return content.reduce((sum, block) => sum + estimateUnknownTokens(block), 0);
+}
+
+function estimateCountTokens(req: AnthropicCountTokensRequest): number {
+  const modelTokens = estimateTextTokens(req.model);
+  const systemTokens = req.system ? estimateUnknownTokens(req.system) + 4 : 0;
+  const messageTokens = req.messages.reduce(
+    (sum, message) =>
+      sum +
+      4 +
+      estimateTextTokens(message.role) +
+      estimateMessageContentTokens(message.content),
+    0,
+  );
+  const toolTokens = (req.tools ?? []).reduce(
+    (sum, tool) => sum + 16 + estimateUnknownTokens(tool),
+    0,
+  );
+  const toolChoiceTokens = req.tool_choice ? estimateUnknownTokens(req.tool_choice) : 0;
+  const thinkingTokens = req.thinking ? estimateUnknownTokens(req.thinking) : 0;
+
+  return Math.max(1, modelTokens + systemTokens + messageTokens + toolTokens + toolChoiceTokens + thinkingTokens + 3);
 }
 
 function makeAnthropicFormat(wantThinking: boolean): FormatAdapter {
@@ -77,6 +149,31 @@ export function createMessagesRoutes(
 ): Hono {
   const app = new Hono();
 
+  app.post("/v1/messages/count_tokens", async (c) => {
+    let body: unknown;
+    try {
+      body = await c.req.json();
+    } catch {
+      c.status(400);
+      return c.json(
+        makeError("invalid_request_error", "Invalid JSON in request body"),
+      );
+    }
+
+    const parsed = AnthropicCountTokensRequestSchema.safeParse(body);
+    if (!parsed.success) {
+      c.status(400);
+      return c.json(
+        makeError("invalid_request_error", `Invalid request: ${parsed.error.message}`),
+      );
+    }
+
+    const authError = checkProxyApiKey(c, accountPool);
+    if (authError) return authError;
+
+    return c.json({ input_tokens: estimateCountTokens(parsed.data) });
+  });
+
   app.post("/v1/messages", async (c) => {
     // Parse request
     let body: unknown;
@@ -108,19 +205,8 @@ export function createMessagesRoutes(
       );
     }
 
-    // Optional proxy API key check (x-api-key or Bearer token)
-    const config = getConfig();
-    if (config.server.proxy_api_key) {
-      const xApiKey = c.req.header("x-api-key");
-      const authHeader = c.req.header("Authorization");
-      const bearerKey = authHeader?.replace("Bearer ", "");
-      const providedKey = xApiKey ?? bearerKey;
-
-      if (!providedKey || !accountPool.validateProxyApiKey(providedKey)) {
-        c.status(401);
-        return c.json(makeError("authentication_error", "Invalid API key"));
-      }
-    }
+    const authError = checkProxyApiKey(c, accountPool);
+    if (authError) return authError;
 
     const clientConversationId = extractAnthropicClientConversationId(
       req,
