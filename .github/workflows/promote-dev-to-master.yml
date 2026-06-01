@@ -144,3 +144,36 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: gh workflow run docker-publish.yml --ref master
+
+  # If the promote job fails (most commonly the ff-precondition check exiting 1
+  # because master drifted ahead of dev), open a tracking issue so the breakage
+  # is visible instead of silently piling up for weeks. Soak/CI-not-green are
+  # normal skips that keep the job green, so they do not trigger this.
+  notify-ff-failure:
+    needs: promote
+    if: failure()
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write
+    steps:
+      - name: Open tracking issue on promote failure
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          TITLE="⚠️ promote-dev→master 卡住：fast-forward 前提被破坏"
+          EXISTING=$(gh issue list --repo "$REPO" --state open \
+            --search "$TITLE in:title" --json number --jq '.[0].number // empty')
+          if [ -n "$EXISTING" ]; then
+            echo "Already tracked in #$EXISTING, not duplicating"
+            exit 0
+          fi
+          gh issue create --repo "$REPO" --title "$TITLE" --body \
+          "\`promote-dev-to-master.yml\` 失败：master 有 dev 没有的提交，ff-promote 链路中断，dev 无法晋升到 master。
+
+          常见近因：master 侧自动产物（changelog→README sync、version bump、promote merge commit）未回流 dev，逐周漂移。
+
+          恢复方法：\`git merge -s ours origin/master\` 把 master 记为已合并（树取 dev），走 PR 进 dev，即可恢复 ff 前提。
+
+          失败 run：$RUN_URL"
