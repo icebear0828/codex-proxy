@@ -47,7 +47,24 @@ export interface StreamResponseOptions {
   usageHint?: UsageHint;
   onResponseMetadata?: (metadata: ResponseMetadata) => void;
   diagnostics?: StreamDiagnostics;
+  /** Idle heartbeat cadence in ms. A SSE comment line is written whenever no
+   *  real chunk has been forwarded for this long, keeping tunnels (ngrok /
+   *  cloudflared) and clients from idle-closing the connection while the
+   *  upstream model reasons silently. 0 disables. Defaults to
+   *  {@link HEARTBEAT_INTERVAL_MS}. */
+  heartbeatMs?: number;
 }
+
+/**
+ * Default client-facing SSE heartbeat cadence. Sits well under the 30-60s idle
+ * timeouts commonly enforced by tunnels / LBs / NAT middleboxes, so a long
+ * reasoning phase (no output bytes for tens of seconds on large contexts) does
+ * not get the connection silently closed mid-stream. See issue #597.
+ */
+export const HEARTBEAT_INTERVAL_MS = 15_000;
+
+/** SSE comment line — ignored by every spec-compliant SSE parser. */
+const HEARTBEAT_CHUNK = ": ping\n\n";
 
 /**
  * Stream SSE chunks from the Codex upstream to the client.
@@ -71,6 +88,27 @@ export async function streamResponse(options: StreamResponseOptions): Promise<vo
     diagnostics,
   } = options;
   const written = createWrittenStreamTrace();
+  const heartbeatMs = options.heartbeatMs ?? HEARTBEAT_INTERVAL_MS;
+  // Timestamp of the last byte forwarded to the client (real chunk OR
+  // heartbeat). The heartbeat tick only fires when the gap since this exceeds
+  // heartbeatMs, so an actively-streaming response never emits heartbeats.
+  let lastActivity = Date.now();
+  let streamDone = false;
+  const heartbeatTimer =
+    heartbeatMs > 0
+      ? setInterval(() => {
+          if (streamDone) return;
+          if (Date.now() - lastActivity < heartbeatMs) return;
+          lastActivity = Date.now();
+          // Fire-and-forget: a rejection means the client is already gone, in
+          // which case the main loop's next writer.write() surfaces and records
+          // the disconnect. Heartbeats are intentionally excluded from the
+          // `written` trace so they never masquerade as real stream progress.
+          void Promise.resolve(writer.write(HEARTBEAT_CHUNK)).catch(() => {});
+        }, heartbeatMs)
+      : null;
+  // Don't keep the event loop alive solely for heartbeats.
+  heartbeatTimer?.unref?.();
   // Diagnostic context passed into adapter-internal premature-close records
   // (e.g. streamPassthrough in responses.ts). The adapter is free to ignore
   // it; carrying it through here means audit entries land on the real
@@ -111,6 +149,7 @@ export async function streamResponse(options: StreamResponseOptions): Promise<vo
       try {
         await writer.write(chunk);
         applyWrittenChunkTrace(written, chunkTrace);
+        lastActivity = Date.now();
       } catch (writeErr) {
         const errMsg = writeErr instanceof Error ? writeErr.message : String(writeErr);
         console.warn(
@@ -205,5 +244,8 @@ export async function streamResponse(options: StreamResponseOptions): Promise<vo
           `data: ${JSON.stringify({ error: { message: errMsg, type: "stream_error" } })}\n\n`,
       );
     } catch { /* client already gone */ }
+  } finally {
+    streamDone = true;
+    if (heartbeatTimer) clearInterval(heartbeatTimer);
   }
 }

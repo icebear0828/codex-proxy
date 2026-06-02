@@ -89,6 +89,9 @@ export async function handleDirectRequest(options: HandleDirectRequestOptions): 
     c.header("Content-Type", "text/event-stream");
     c.header("Cache-Control", "no-cache");
     c.header("Connection", "keep-alive");
+    // Disable response buffering on nginx-class reverse proxies so SSE
+    // heartbeats and deltas reach the client immediately.
+    c.header("X-Accel-Buffering", "no");
 
     return stream(c, async (s) => {
       s.onAbort(() => {

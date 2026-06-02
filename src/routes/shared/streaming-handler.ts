@@ -52,6 +52,9 @@ export function handleStreaming(options: HandleStreamingOptions): Response {
   c.header("Content-Type", "text/event-stream");
   c.header("Cache-Control", "no-cache");
   c.header("Connection", "keep-alive");
+  // Disable response buffering on nginx-class reverse proxies so SSE heartbeats
+  // and deltas reach the client immediately instead of being held back.
+  c.header("X-Accel-Buffering", "no");
 
   const capturedEntryId = entryId;
   const capturedApi = api;
