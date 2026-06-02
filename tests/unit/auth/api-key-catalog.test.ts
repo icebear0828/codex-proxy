@@ -13,18 +13,9 @@ describe("api-key-catalog", () => {
     expect(PROVIDER_CATALOG.openrouter).toBeDefined();
   });
 
-  it("each provider has non-empty model list", () => {
+  it("starts with empty dynamic model lists", () => {
     for (const [, meta] of Object.entries(PROVIDER_CATALOG)) {
-      expect(meta.models.length).toBeGreaterThan(0);
-    }
-  });
-
-  it("each model has id and displayName", () => {
-    for (const [, meta] of Object.entries(PROVIDER_CATALOG)) {
-      for (const model of meta.models) {
-        expect(model.id).toBeTruthy();
-        expect(model.displayName).toBeTruthy();
-      }
+      expect(meta.models).toEqual([]);
     }
   });
 
