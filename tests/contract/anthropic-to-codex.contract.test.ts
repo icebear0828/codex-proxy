@@ -51,41 +51,32 @@ interface ContractFixture {
 const fixturesPath = resolve(__dirname, "fixtures/anthropic-to-codex.json");
 const fixtures: ContractFixture[] = JSON.parse(readFileSync(fixturesPath, "utf-8"));
 
-describe("Anthropic → Codex contract", () => {
-  it.each(fixtures)("$name: $description", ({ input, expectedOutput }) => {
-    const result = translateAnthropicToCodexRequest(input as AnthropicMessagesRequest);
+// Pre-compute all translation results once (pure function, no side effects)
+const results = fixtures.map((f) => ({
+  fixture: f,
+  result: translateAnthropicToCodexRequest(f.input as AnthropicMessagesRequest),
+}));
 
-    // Verify each expected field matches (partial match — only check specified fields)
-    for (const [key, expected] of Object.entries(expectedOutput)) {
-      const actual = (result as Record<string, unknown>)[key];
-      expect(actual, `Field "${key}" mismatch`).toEqual(expected);
-    }
+describe("Anthropic → Codex contract", () => {
+  it.each(results)("$fixture.name: $fixture.description", ({ fixture, result }) => {
+    expect(result).toMatchObject(fixture.expectedOutput);
   });
 
   it("always produces stream: true and store: false", () => {
-    for (const fixture of fixtures) {
-      const result = translateAnthropicToCodexRequest(
-        fixture.input as AnthropicMessagesRequest,
-      );
+    for (const { result } of results) {
       expect(result.stream).toBe(true);
       expect(result.store).toBe(false);
     }
   });
 
   it("always produces a non-empty input array", () => {
-    for (const fixture of fixtures) {
-      const result = translateAnthropicToCodexRequest(
-        fixture.input as AnthropicMessagesRequest,
-      );
+    for (const { result } of results) {
       expect(result.input.length).toBeGreaterThanOrEqual(1);
     }
   });
 
   it("never leaks thinking/redacted_thinking blocks into output", () => {
-    for (const fixture of fixtures) {
-      const result = translateAnthropicToCodexRequest(
-        fixture.input as AnthropicMessagesRequest,
-      );
+    for (const { result } of results) {
       const serialized = JSON.stringify(result.input);
       expect(serialized).not.toContain('"type":"thinking"');
       expect(serialized).not.toContain('"type":"redacted_thinking"');
@@ -93,10 +84,7 @@ describe("Anthropic → Codex contract", () => {
   });
 
   it("never contains billing header content in instructions", () => {
-    for (const fixture of fixtures) {
-      const result = translateAnthropicToCodexRequest(
-        fixture.input as AnthropicMessagesRequest,
-      );
+    for (const { result } of results) {
       if (result.instructions) {
         expect(result.instructions).not.toContain("x-anthropic-billing-header");
         expect(result.instructions).not.toContain("cc_version=");
