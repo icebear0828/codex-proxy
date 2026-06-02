@@ -90,9 +90,11 @@ export async function handleProxyRequest(options: HandleProxyRequestOptions): Pr
   const MAX_VERIFY_ATTEMPTS = 5;
   let verifyAttempts = 0;
   for (;;) {
+    if (!acquired) return respondWithNoAccount({ c, req, fmt });
     const entry = accountPool.getEntry(acquired.entryId);
     if (entry?.quotaVerifyRequired) {
-      console.log(`[${fmt.tag}] 🔍 Account ${acquired.entryId} (${entry.email ?? "?"}) requires quota verification due to local reset. Syncing with upstream...`);
+      const verifyingEntryId = acquired.entryId;
+      console.log(`[${fmt.tag}] 🔍 Account ${verifyingEntryId} (${entry.email ?? "?"}) requires quota verification due to local reset. Syncing with upstream...`);
       try {
         const usage = await new CodexApi(
           acquired.token,
@@ -123,7 +125,7 @@ export async function handleProxyRequest(options: HandleProxyRequestOptions): Pr
           continue; // Loop back to check the newly acquired account
         }
       } catch (err) {
-        console.warn(`[${fmt.tag}] ⚠️ Failed to verify dirty quota for ${acquired.entryId}:`, err);
+        console.warn(`[${fmt.tag}] ⚠️ Failed to verify dirty quota for ${verifyingEntryId}:`, err);
         // Keep quotaVerifyRequired=true so the flag isn't silently cleared on transient network errors.
         // The ActiveQuotaRefresher or the next request will retry. This avoids promoting a still-limited
         // account to "clean" just because the upstream check temporarily failed.
@@ -132,6 +134,7 @@ export async function handleProxyRequest(options: HandleProxyRequestOptions): Pr
     break; // Verified or no verification required, proceed!
   }
 
+  if (!acquired) return respondWithNoAccount({ c, req, fmt });
   let { entryId } = acquired;
 
   // ── Session Affinity Fallback Defense (Cascading Ban Prevention) ──
