@@ -77,7 +77,7 @@ jobs:
           echo "last_tag=$LAST_TAG" >> "$GITHUB_OUTPUT"
           echo "series=$SERIES" >> "$GITHUB_OUTPUT"
 
-      - name: Bump version + tag
+      - name: Tag stable release (tag-only)
         id: bump
         if: steps.check.outputs.skip != 'true'
         run: |
@@ -101,63 +101,26 @@ jobs:
             exit 0
           fi
 
-          # Bump root/electron package versions and the workspace lock metadata.
-          node -e "
-            const fs = require('fs');
-            const NEW_VERSION = '${NEW_VERSION}';
-            for (const p of ['package.json', 'packages/electron/package.json']) {
-              const pkg = JSON.parse(fs.readFileSync(p, 'utf-8'));
-              pkg.version = NEW_VERSION;
-              fs.writeFileSync(p, JSON.stringify(pkg, null, 2) + '\n');
-            }
-            const lock = JSON.parse(fs.readFileSync('package-lock.json', 'utf-8'));
-            lock.version = NEW_VERSION;
-            lock.packages[''].version = NEW_VERSION;
-            lock.packages['packages/electron'].version = NEW_VERSION;
-            fs.writeFileSync('package-lock.json', JSON.stringify(lock, null, 2) + '\n');
-          "
-
-          git add package.json packages/electron/package.json package-lock.json
-          # If version already matches (e.g. first tag in a new series), skip the commit
-          if git diff --cached --quiet; then
-            echo "package.json already at ${NEW_VERSION}, tagging without version commit"
-          else
-            git commit -m "chore: bump version to ${NEW_VERSION} [skip ci]"
-          fi
+          # Tag-only: do NOT commit package.json onto master. The release
+          # version is read from the tag (release.yml extraMetadata.version),
+          # and a version-bump commit on master cannot FF back to an
+          # always-ahead dev — that drift is what kept breaking promote and
+          # made package.json regress on the next dev→master reconcile.
+          # major.minor (series) is maintained by developers on dev and flows
+          # in via promote; patch is owned entirely by the tag. This mirrors
+          # bump-electron-beta.yml, which has always been tag-only.
           git tag -a "$NEW_TAG" -m "Release ${NEW_TAG}"
-
-          # Retry push with rebase on conflict (other workflows may push concurrently)
           for i in 1 2 3; do
-            if git push origin master --follow-tags; then
-              echo "Bumped to $NEW_VERSION, tagged $NEW_TAG"
+            if git push origin "$NEW_TAG"; then
+              echo "Tagged $NEW_TAG (tag-only, no version commit)"
               echo "new_tag=$NEW_TAG" >> "$GITHUB_OUTPUT"
               exit 0
             fi
-            echo "Push failed (attempt $i/3), rebasing and retrying..."
-            git tag -d "$NEW_TAG"
-            git pull --rebase origin master
-            git tag -a "$NEW_TAG" -m "Release ${NEW_TAG}"
+            echo "Tag push failed (attempt $i/3), retrying..."
             sleep 2
           done
-          echo "::error::Push failed after 3 attempts"
+          echo "::error::Tag push failed after 3 attempts"
           exit 1
-
-      - name: Sync bump commit back to dev (FF)
-        if: steps.bump.outputs.new_tag
-        # Without this, every stable bump leaves dev behind master by one commit.
-        # The next promote run would then fail FF check ("manual rebase needed")
-        # and stay stuck until someone manually rebases dev.
-        run: |
-          if ! git ls-remote --exit-code --heads origin dev >/dev/null 2>&1; then
-            echo "dev branch does not exist, skipping sync"
-            exit 0
-          fi
-          git fetch origin dev:refs/remotes/origin/dev
-          if git push origin master:dev; then
-            echo "Synced master ($(git rev-parse master)) to dev (FF)"
-          else
-            echo "::warning::FF push master:dev refused (dev moved during bump window). Manual sync needed."
-          fi
 
       - name: Trigger release workflow
         if: steps.bump.outputs.new_tag
