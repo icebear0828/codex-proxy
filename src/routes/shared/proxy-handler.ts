@@ -138,14 +138,16 @@ export async function handleProxyRequest(options: HandleProxyRequestOptions): Pr
   let { entryId } = acquired;
 
   // ── Session Affinity Fallback Defense (Cascading Ban Prevention) ──
-  // If we switched to a different account than the preferred one, strip
-  // previous_response_id / turnState to prevent cross-account chain poisoning.
-  if (sessionContext.preferredEntryId) {
+  // Only strip session identifiers when the preferred account is banned/disabled.
+  // Quota exhaustion is normal rotation — no ban propagation risk.
+  if (sessionContext.preferredEntryId && sessionContext.preferredEntryId !== entryId) {
+    const preferredEntry = accountPool.getEntry(sessionContext.preferredEntryId);
     applyCascadingBanDefense({
       request: req,
       affinityMap,
       preferredEntryId: sessionContext.preferredEntryId,
       acquiredEntryId: entryId,
+      preferredStatus: preferredEntry?.status,
       explicitPrevRespId: sessionContext.explicitPrevRespId,
       tag: fmt.tag,
     });

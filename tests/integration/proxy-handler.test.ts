@@ -1047,9 +1047,8 @@ describe("proxy-handler integration", () => {
     expect(accountPool.acquire).toHaveBeenCalledTimes(1);
   });
 
-  // 19. Cascading Ban Defense
-  it("strips previous_response_id and turnState when acquiring a different account than preferred (cascading ban defense)", async () => {
-    // Record preferred session in affinity map
+  // 19. Cascading Ban Defense — strips only when preferred is banned
+  it("strips previous_response_id and turnState when preferred account is banned (cascading ban defense)", async () => {
     const affinityMap = getSessionAffinityMap();
     affinityMap.record(
       "resp_preferred",
@@ -1058,16 +1057,20 @@ describe("proxy-handler integration", () => {
       "turn-state-preferred",
     );
 
-    // Mock createResponse to intercept request
     let capturedRequest: CodexResponsesRequest | null = null;
     mockCreateResponse = async (request) => {
       capturedRequest = request;
       return new Response("data: {}\n\n");
     };
 
-    // AccountPool returns a different active account ("e_new") instead of "e_preferred"
+    // Preferred account is banned — getEntry must reflect this
     const accountPool = createMockAccountPool({
       acquire: vi.fn(() => ({ entryId: "e_new", token: "tok_new", accountId: "acc_new" })),
+      getEntry: vi.fn((id: string) =>
+        id === "e_preferred"
+          ? { email: "banned@test.com", status: "banned" }
+          : { email: "new@test.com", status: "active" },
+      ),
     });
 
     const fmt = createMockFormatAdapter();
@@ -1084,13 +1087,54 @@ describe("proxy-handler integration", () => {
     const res = await app.request("/test", { method: "POST" });
     expect(res.status).toBe(200);
 
-    // Verify the previous_response_id and turnState were stripped from the outgoing request
     expect(capturedRequest).toBeDefined();
     expect(capturedRequest?.previous_response_id).toBeUndefined();
     expect(capturedRequest?.turnState).toBeUndefined();
-
-    // Verify it was forgotten from the affinity map to clean up
     expect(affinityMap.lookup("resp_preferred")).toBeNull();
+  });
+
+  // 19b. Cascading Ban Defense — does NOT strip for quota exhaustion
+  it("does NOT strip previous_response_id when preferred account is only quota_exhausted", async () => {
+    const affinityMap = getSessionAffinityMap();
+    affinityMap.record(
+      "resp_quota",
+      "e_quota",
+      "thread-quota-rotation",
+      "turn-state-quota",
+    );
+
+    let capturedRequest: CodexResponsesRequest | null = null;
+    mockCreateResponse = async (request) => {
+      capturedRequest = request;
+      return new Response("data: {}\n\n");
+    };
+
+    const accountPool = createMockAccountPool({
+      acquire: vi.fn(() => ({ entryId: "e_new", token: "tok_new", accountId: "acc_new" })),
+      getEntry: vi.fn((id: string) =>
+        id === "e_quota"
+          ? { email: "quota@test.com", status: "quota_exhausted" }
+          : { email: "new@test.com", status: "active" },
+      ),
+    });
+
+    const fmt = createMockFormatAdapter();
+    const req: ProxyRequest = {
+      ...createDefaultRequest(),
+      codexRequest: {
+        ...createDefaultRequest().codexRequest,
+        previous_response_id: "resp_quota",
+      },
+    };
+
+    const { app } = buildTestApp({ accountPool, fmt, req });
+
+    const res = await app.request("/test", { method: "POST" });
+    expect(res.status).toBe(200);
+
+    // previous_response_id should be PRESERVED (not stripped) for quota rotation
+    expect(capturedRequest).toBeDefined();
+    expect(capturedRequest?.previous_response_id).toBe("resp_quota");
   });
 
   // 20. Quota Drift-Defense Verification — proceed when quota is OK

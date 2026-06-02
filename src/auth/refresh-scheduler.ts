@@ -18,8 +18,12 @@ import { tryAcquireRefreshLock, releaseRefreshLock } from "./refresh-lock.js";
 import type { AccountPool } from "./account-pool.js";
 import type { ProxyPool } from "../proxy/proxy-pool.js";
 
-/** Errors that indicate the refresh token itself is invalid (permanent failure). */
-const PERMANENT_ERRORS = ["invalid_grant", "invalid_token", "access_denied", "refresh_token_expired", "refresh_token_reused", "account has been deactivated"];
+/** Errors indicating the account was banned/deactivated upstream (mark as "banned"). */
+const BAN_ERRORS = ["account has been deactivated", "refresh_token_reused"];
+/** Errors indicating the refresh token is invalid but not necessarily a ban (mark as "expired"). */
+const EXPIRED_ERRORS = ["invalid_grant", "invalid_token", "access_denied", "refresh_token_expired"];
+/** All permanent errors (union of ban + expired). */
+const PERMANENT_ERRORS = [...BAN_ERRORS, ...EXPIRED_ERRORS];
 
 const MAX_ATTEMPTS = 5;
 const BASE_DELAY_MS = 5_000;
@@ -268,13 +272,16 @@ export class RefreshScheduler {
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
 
-        // Track consecutive permanent errors — only mark expired after threshold
-        const isPermanent = PERMANENT_ERRORS.some((e) => msg.toLowerCase().includes(e));
+        // Track consecutive permanent errors — only mark after threshold
+        const lower = msg.toLowerCase();
+        const isPermanent = PERMANENT_ERRORS.some((e) => lower.includes(e));
         if (isPermanent) {
           permanentHits++;
           if (permanentHits >= PERMANENT_THRESHOLD) {
-            console.error(`[RefreshScheduler] Permanent failure (${permanentHits}x) for ${entryId}: ${msg}`);
-            this.pool.markStatus(entryId, "expired");
+            const isBan = BAN_ERRORS.some((e) => lower.includes(e));
+            const newStatus = isBan ? "banned" : "expired";
+            console.error(`[RefreshScheduler] Permanent failure (${permanentHits}x) for ${entryId}: ${msg} → ${newStatus}`);
+            this.pool.markStatus(entryId, newStatus);
             return;
           }
           console.warn(`[RefreshScheduler] Permanent error (${permanentHits}/${PERMANENT_THRESHOLD}) for ${entryId}: ${msg}, retrying...`);

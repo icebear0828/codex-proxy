@@ -102,23 +102,29 @@ export interface ApplyCascadingBanDefenseOptions {
   affinityMap: Pick<SessionAffinityMap, "forget">;
   preferredEntryId: string;
   acquiredEntryId: string;
+  preferredStatus: string | undefined;
   explicitPrevRespId: string | undefined;
   tag: string;
 }
 
+/** Statuses that indicate a potentially compromised account (ban propagation risk). */
+const BAN_RISK_STATUSES = new Set(["banned", "disabled"]);
+
 /**
  * Cross-account session isolation guard (Cascading Ban Defense).
  *
- * When the account pool hands us a different account than the session's preferred
- * one, any `previous_response_id` / `turnState` from the old account MUST NOT be
- * forwarded — upstream will treat the mismatch as suspicious and may ban the new
- * account too.  Returns true when stripping was applied.
+ * Only strips `previous_response_id` / `turnState` when the preferred account
+ * is in a ban-risk state (banned / disabled). Normal rotation due to quota
+ * exhaustion does NOT trigger stripping — the `previous_response_id` won't
+ * work cross-account anyway, but carrying it is harmless and the upstream will
+ * simply return a "not found" error that the retry path already handles.
  */
 export function applyCascadingBanDefense({
   request,
   affinityMap,
   preferredEntryId,
   acquiredEntryId,
+  preferredStatus,
   explicitPrevRespId,
   tag,
 }: ApplyCascadingBanDefenseOptions): boolean {
@@ -129,8 +135,12 @@ export function applyCascadingBanDefense({
     return false;
   }
 
+  if (!preferredStatus || !BAN_RISK_STATUSES.has(preferredStatus)) {
+    return false;
+  }
+
   console.warn(
-    `[${tag}] ⚠️ Account switched from preferred ${preferredEntryId} to ${acquiredEntryId}. ` +
+    `[${tag}] ⚠️ Account switched from preferred ${preferredEntryId} (${preferredStatus}) to ${acquiredEntryId}. ` +
     `Stripping previous_response_id (${request.codexRequest.previous_response_id}) and turnState to prevent upstream cascading ban.`,
   );
   request.codexRequest.previous_response_id = undefined;
