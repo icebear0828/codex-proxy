@@ -53,6 +53,7 @@ import {
   applyCascadingBanDefense,
   buildProxyRetryRecoveryDecision,
 } from "./proxy-retry-recovery.js";
+import { classifyRetryAction } from "./proxy-retry-classifier.js";
 import { buildProxySessionContext } from "./proxy-session-context.js";
 import { staggerIfNeeded } from "./proxy-stagger.js";
 import { sendProxyUpstreamAttempt } from "./proxy-upstream-attempt.js";
@@ -298,68 +299,68 @@ export async function handleProxyRequest(options: HandleProxyRequestOptions): Pr
         variantHash: sessionContext.variantHash,
       });
     } catch (err) {
-      if (!(err instanceof CodexApiError)) {
-        releaseAccount(accountPool, entryId, annotateImageGenOutcome(undefined, req.expectsImageGen), released);
-        throw err;
-      }
-
-      if (implicitResume.replayFullInputAfterError(err)) {
-        continue;
-      }
-
-      const retryRecovery = buildProxyRetryRecoveryDecision({
+      const retryAction = classifyRetryAction(
         err,
-        tag: fmt.tag,
-        entryId,
-        stripAndRetryDone,
-        previousResponseId: req.codexRequest.previous_response_id,
-      });
-      if (retryRecovery.action === "retry") {
-        stripAndRetryDone = true;
-        applyProxyRetryRecoveryDecision({
-          decision: retryRecovery,
-          request: req,
-          affinityMap,
-          restoreImplicitResumeRequest: implicitResume.restore,
-        });
-        continue;
-      }
-
-      const decision = handleCodexApiError(
-        err, accountPool, entryId, req.codexRequest.model, fmt.tag, modelRetried, cookieJar,
+        { stripAndRetryDone, modelRetried, implicitResumeActive: implicitResume.isActive(), previousResponseId: req.codexRequest.previous_response_id },
+        (e) => implicitResume.canReplayAfterError(e),
       );
 
-      const errorRetryTransition = applyProxyErrorRetryTransition({
-        accountPool,
-        entryId,
-        model: req.codexRequest.model,
-        triedEntryIds,
-        tag: fmt.tag,
-        decision,
-        released,
-        restoreImplicitResumeRequest: implicitResume.restore,
-        modelRetried,
-        expectsImageGen: req.expectsImageGen,
-        cookieJar,
-        proxyPool,
-      });
-      if (errorRetryTransition.action === "respond") {
-        return respondWithProxyError({
-          c,
-          req,
-          fmt,
-          status: errorRetryTransition.status,
-          message: errorRetryTransition.message,
-          ...(errorRetryTransition.useFormat429 ? { useFormat429: true } : {}),
-        });
-      }
+      switch (retryAction.type) {
+        case "not_codex_error":
+          releaseAccount(accountPool, entryId, annotateImageGenOutcome(undefined, req.expectsImageGen), released);
+          throw err;
 
-      modelRetried = errorRetryTransition.modelRetried;
-      entryId = errorRetryTransition.entryId;
-      triedEntryIds.push(errorRetryTransition.entryId);
-      codexApi = errorRetryTransition.api;
-      await staggerIfNeeded(errorRetryTransition.prevSlotMs);
-      continue;
+        case "implicit_resume_replay":
+          implicitResume.replayFullInputAfterError(err);
+          continue;
+
+        case "strip_and_retry": {
+          stripAndRetryDone = true;
+          const decision = buildProxyRetryRecoveryDecision({
+            err, tag: fmt.tag, entryId, stripAndRetryDone: false,
+            previousResponseId: req.codexRequest.previous_response_id,
+          });
+          applyProxyRetryRecoveryDecision({
+            decision,
+            request: req,
+            affinityMap,
+            restoreImplicitResumeRequest: implicitResume.restore,
+          });
+          continue;
+        }
+
+        case "error_handler_decides": {
+          const decision = handleCodexApiError(
+            err as CodexApiError, accountPool, entryId, req.codexRequest.model, fmt.tag, modelRetried, cookieJar,
+          );
+
+          const errorRetryTransition = applyProxyErrorRetryTransition({
+            accountPool, entryId,
+            model: req.codexRequest.model,
+            triedEntryIds, tag: fmt.tag,
+            decision, released,
+            restoreImplicitResumeRequest: implicitResume.restore,
+            modelRetried,
+            expectsImageGen: req.expectsImageGen,
+            cookieJar, proxyPool,
+          });
+          if (errorRetryTransition.action === "respond") {
+            return respondWithProxyError({
+              c, req, fmt,
+              status: errorRetryTransition.status,
+              message: errorRetryTransition.message,
+              ...(errorRetryTransition.useFormat429 ? { useFormat429: true } : {}),
+            });
+          }
+
+          modelRetried = errorRetryTransition.modelRetried;
+          entryId = errorRetryTransition.entryId;
+          triedEntryIds.push(errorRetryTransition.entryId);
+          codexApi = errorRetryTransition.api;
+          await staggerIfNeeded(errorRetryTransition.prevSlotMs);
+          continue;
+        }
+      }
     }
   }
 }
