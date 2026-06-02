@@ -80,6 +80,26 @@ export async function handleProxyRequest(options: HandleProxyRequestOptions): Pr
   }
 
   let { entryId } = acquired;
+
+  // ── Session Affinity Fallback Defense (Cascading Ban Prevention) ──
+  // If we switched to a different account than the preferred one (e.g. because the preferred account was banned/expired),
+  // we MUST strip the previous_response_id and turnState immediately. Sending a previous_response_id belonging to
+  // Account B using Account A's token is a high-risk trigger for upstream cascading account bans.
+  if (
+    sessionContext.preferredEntryId &&
+    entryId !== sessionContext.preferredEntryId &&
+    (req.codexRequest.previous_response_id || req.codexRequest.turnState)
+  ) {
+    console.warn(
+      `[${fmt.tag}] ⚠️ Account switched from preferred ${sessionContext.preferredEntryId} to ${entryId}. ` +
+      `Stripping previous_response_id (${req.codexRequest.previous_response_id}) and turnState to prevent upstream cascading ban.`
+    );
+    req.codexRequest.previous_response_id = undefined;
+    req.codexRequest.turnState = undefined;
+    if (sessionContext.explicitPrevRespId) {
+      affinityMap.forget(sessionContext.explicitPrevRespId);
+    }
+  }
   let codexApi = buildCodexApi(acquired.token, acquired.accountId, cookieJar, entryId, proxyPool);
   const triedEntryIds: string[] = [entryId];
   let modelRetried = false;
