@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from "preact/hooks";
+import { useState, useEffect, useCallback } from "preact/hooks";
 
 export type ApiKeyProvider = "anthropic" | "openai" | "gemini" | "openrouter" | "custom";
 export type ApiKeyCapability = "chat" | "embeddings";
@@ -30,10 +30,10 @@ export interface ProviderMeta {
   models: CatalogModel[];
 }
 
-export interface FetchCustomModelsInput {
-  provider: "custom";
+export interface FetchProviderModelsInput {
+  provider: ApiKeyProvider;
   apiKey: string;
-  baseUrl: string;
+  baseUrl?: string;
 }
 
 export type Catalog = Record<string, ProviderMeta>;
@@ -42,7 +42,6 @@ export function useApiKeys() {
   const [keys, setKeys] = useState<ApiKeyEntry[]>([]);
   const [catalog, setCatalog] = useState<Catalog>({});
   const [loading, setLoading] = useState(true);
-  const customModelCacheRef = useRef(new Map<string, CatalogModel[]>());
 
   const loadKeys = useCallback(async () => {
     try {
@@ -137,11 +136,7 @@ export function useApiKeys() {
     return { added: data.added || 0, failed: data.failed || 0, errors: data.errors || [] };
   }, [loadKeys]);
 
-  const fetchCustomModels = useCallback(async (input: FetchCustomModelsInput): Promise<{ ok: true; models: CatalogModel[] } | { ok: false; error: string }> => {
-    const cacheKey = `${input.baseUrl.trim()}::${input.apiKey.trim()}`;
-    const cached = customModelCacheRef.current.get(cacheKey);
-    if (cached) return { ok: true, models: cached };
-
+  const fetchProviderModels = useCallback(async (input: FetchProviderModelsInput): Promise<{ ok: true; models: CatalogModel[] } | { ok: false; error: string }> => {
     try {
       const resp = await fetch("/auth/api-keys/models", {
         method: "POST",
@@ -149,13 +144,12 @@ export function useApiKeys() {
         body: JSON.stringify({
           provider: input.provider,
           apiKey: input.apiKey.trim(),
-          baseUrl: input.baseUrl.trim(),
+          baseUrl: input.baseUrl?.trim(),
         }),
       });
       const data = await resp.json();
       if (!resp.ok) return { ok: false, error: data.error || "Failed to fetch models" };
       const models = Array.isArray(data.models) ? data.models : [];
-      customModelCacheRef.current.set(cacheKey, models);
       return { ok: true, models };
     } catch (err) {
       return { ok: false, error: err instanceof Error ? err.message : "Network error" };
@@ -187,7 +181,7 @@ export function useApiKeys() {
     updateLabel,
     importKeys,
     exportKeys,
-    fetchCustomModels,
+    fetchProviderModels,
     refresh: loadKeys,
   };
 }
