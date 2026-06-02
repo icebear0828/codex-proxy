@@ -477,6 +477,7 @@ export class AccountRegistry {
       entry.cachedQuota = quota;
     }
     entry.quotaFetchedAt = new Date().toISOString();
+    entry.quotaVerifyRequired = false; // Reset the dirty flag on fresh update
     this.schedulePersist();
   }
 
@@ -568,6 +569,7 @@ export class AccountRegistry {
       changed = resetExpiredQuotaWindow(quota.code_review_rate_limit, nowSec) || changed;
 
       if (changed) {
+        entry.quotaVerifyRequired = true; // Mark dirty when offline reset rolls over
         this.schedulePersist();
       }
     }
@@ -594,6 +596,9 @@ export class AccountRegistry {
     if (entry.cachedQuota) {
       info.quota = entry.cachedQuota;
       info.quotaFetchedAt = entry.quotaFetchedAt;
+      if (entry.quotaVerifyRequired) {
+        info.quotaVerifyRequired = entry.quotaVerifyRequired;
+      }
     }
     return info;
   }

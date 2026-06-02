@@ -73,6 +73,7 @@ export interface AccountEntry {
   cachedQuota: CodexQuota | null;
   /** ISO timestamp of when cachedQuota was last updated. */
   quotaFetchedAt: string | null;
+  quotaVerifyRequired?: boolean;
 }
 
 /** Public info (no token) */
@@ -89,6 +90,7 @@ export interface AccountInfo {
   expiresAt: string | null;
   quota?: CodexQuota;
   quotaFetchedAt?: string | null;
+  quotaVerifyRequired?: boolean;
 }
 
 /** A single rate limit window (primary or secondary). */

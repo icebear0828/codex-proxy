@@ -27,6 +27,9 @@ type MockCreateResponse = (
 
 let mockCreateResponse: MockCreateResponse | null = null;
 
+type MockGetUsage = () => Promise<any>;
+let mockGetUsage: MockGetUsage | null = null;
+
 vi.mock("@src/proxy/codex-api.js", () => {
   class CodexApiError extends Error {
     status: number;
@@ -69,6 +72,14 @@ vi.mock("@src/proxy/codex-api.js", () => {
     ): Promise<Response> => {
       if (mockCreateResponse) return mockCreateResponse(request, signal, onRateLimits, poolCtx);
       return Promise.resolve(new Response("data: {}\n\n"));
+    }),
+    getUsage: vi.fn((): Promise<any> => {
+      if (mockGetUsage) return mockGetUsage();
+      return Promise.resolve({
+        plan_type: "plus",
+        rate_limit: { allowed: true, limit_reached: false, primary_window: { used_percent: 0, reset_at: Date.now() / 1000 + 3600, limit_window_seconds: 3600 } },
+        additional_rate_limits: [],
+      });
     }),
   }));
 
@@ -199,6 +210,7 @@ function buildTestApp(opts: {
 describe("proxy-handler integration", () => {
   beforeEach(() => {
     mockCreateResponse = null;
+    mockGetUsage = null;
     getSessionAffinityMap().dispose();
     vi.clearAllMocks();
   });
@@ -1035,4 +1047,142 @@ describe("proxy-handler integration", () => {
     expect(accountPool.acquire).toHaveBeenCalledTimes(1);
   });
 
+  // 19. Cascading Ban Defense
+  it("strips previous_response_id and turnState when acquiring a different account than preferred (cascading ban defense)", async () => {
+    // Record preferred session in affinity map
+    const affinityMap = getSessionAffinityMap();
+    affinityMap.record(
+      "resp_preferred",
+      "e_preferred",
+      "thread-cascading-ban-defense",
+      "turn-state-preferred",
+    );
+
+    // Mock createResponse to intercept request
+    let capturedRequest: CodexResponsesRequest | null = null;
+    mockCreateResponse = async (request) => {
+      capturedRequest = request;
+      return new Response("data: {}\n\n");
+    };
+
+    // AccountPool returns a different active account ("e_new") instead of "e_preferred"
+    const accountPool = createMockAccountPool({
+      acquire: vi.fn(() => ({ entryId: "e_new", token: "tok_new", accountId: "acc_new" })),
+    });
+
+    const fmt = createMockFormatAdapter();
+    const req: ProxyRequest = {
+      ...createDefaultRequest(),
+      codexRequest: {
+        ...createDefaultRequest().codexRequest,
+        previous_response_id: "resp_preferred",
+      },
+    };
+
+    const { app } = buildTestApp({ accountPool, fmt, req });
+
+    const res = await app.request("/test", { method: "POST" });
+    expect(res.status).toBe(200);
+
+    // Verify the previous_response_id and turnState were stripped from the outgoing request
+    expect(capturedRequest).toBeDefined();
+    expect(capturedRequest?.previous_response_id).toBeUndefined();
+    expect(capturedRequest?.turnState).toBeUndefined();
+
+    // Verify it was forgotten from the affinity map to clean up
+    expect(affinityMap.lookup("resp_preferred")).toBeNull();
+  });
+
+  // 20. Quota Drift-Defense Verification — proceed when quota is OK
+  it("verifies dirty quota when quotaVerifyRequired is true and proceeds if quota is OK", async () => {
+    let usageCalls = 0;
+    mockGetUsage = async () => {
+      usageCalls++;
+      return {
+        plan_type: "plus",
+        rate_limit: { allowed: true, limit_reached: false, primary_window: { used_percent: 10, reset_at: Date.now() / 1000 + 3600, limit_window_seconds: 3600 } },
+        additional_rate_limits: [],
+      };
+    };
+
+    let responseCalls = 0;
+    mockCreateResponse = async () => {
+      responseCalls++;
+      return new Response("data: {}\n\n");
+    };
+
+    const entry = {
+      id: "e1",
+      token: "tok",
+      accountId: "acc1",
+      status: "active" as const,
+      quotaVerifyRequired: true,
+    };
+
+    const accountPool = createMockAccountPool({
+      getEntry: vi.fn(() => entry),
+      acquire: vi.fn(() => ({ entryId: "e1", token: "tok", accountId: "acc1" })),
+    });
+
+    const fmt = createMockFormatAdapter();
+    const { app } = buildTestApp({ accountPool, fmt });
+
+    const res = await app.request("/test", { method: "POST" });
+    expect(res.status).toBe(200);
+
+    // Should have checked usage and proceeded to response
+    expect(usageCalls).toBe(1);
+    expect(responseCalls).toBe(1);
+    expect(accountPool.updateCachedQuota).toHaveBeenCalledWith("e1", expect.objectContaining({
+      rate_limit: expect.objectContaining({ limit_reached: false }),
+    }));
+  });
+
+  // 21. Quota Drift-Defense Verification — failover when quota is still limit_reached
+  it("verifies dirty quota and releases/failovers to next account if quota is still limit_reached", async () => {
+    let usageCalls = 0;
+    mockGetUsage = async () => {
+      usageCalls++;
+      return {
+        plan_type: "plus",
+        rate_limit: { allowed: true, limit_reached: true, primary_window: { used_percent: 100, reset_at: Date.now() / 1000 + 3600, limit_window_seconds: 3600 } },
+        additional_rate_limits: [],
+      };
+    };
+
+    let responseCalls = 0;
+    mockCreateResponse = async () => {
+      responseCalls++;
+      return new Response("data: {}\n\n");
+    };
+
+    const entry1 = { id: "e1", token: "tok1", accountId: "acc1", status: "active" as const, quotaVerifyRequired: true };
+    const entry2 = { id: "e2", token: "tok2", accountId: "acc2", status: "active" as const, quotaVerifyRequired: false };
+
+    let acquireCount = 0;
+    const accountPool = createMockAccountPool({
+      getEntry: vi.fn((id) => (id === "e1" ? entry1 : entry2)),
+      acquire: vi.fn(() => {
+        acquireCount++;
+        if (acquireCount === 1) return { entryId: "e1", token: "tok1", accountId: "acc1" };
+        return { entryId: "e2", token: "tok2", accountId: "acc2" };
+      }),
+    });
+
+    const fmt = createMockFormatAdapter();
+    const { app } = buildTestApp({ accountPool, fmt });
+
+    const res = await app.request("/test", { method: "POST" });
+    expect(res.status).toBe(200);
+
+    // e1 should have been verified, found to be limit_reached, released, and we fall back to e2
+    expect(usageCalls).toBe(1);
+    expect(responseCalls).toBe(1); // e2 succeeds
+    expect(accountPool.release).toHaveBeenCalledWith("e1", undefined);
+    expect(accountPool.acquire).toHaveBeenNthCalledWith(2, {
+      model: "codex",
+      excludeIds: ["e1"],
+      preferredEntryId: undefined,
+    });
+  });
 });

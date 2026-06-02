@@ -22,7 +22,8 @@
  *   - non-streaming-handler.ts — collect / retry response lifecycle
  */
 
-import { CodexApiError } from "../../proxy/codex-api.js";
+import { CodexApi, CodexApiError } from "../../proxy/codex-api.js";
+import { toQuota } from "../../auth/quota-utils.js";
 import { acquireAccount, releaseAccount } from "./account-acquisition.js";
 import { handleCodexApiError } from "./proxy-error-handler.js";
 import { handleStreaming } from "./streaming-handler.js";
@@ -73,10 +74,50 @@ export async function handleProxyRequest(options: HandleProxyRequestOptions): Pr
     explicitTurnState: sessionContext.explicitTurnState,
   });
 
+  const released = new Set<string>();
+  const verifiedExcludeIds: string[] = [];
+
   // Single acquire call — preferredEntryId is a hint, not a hard requirement
-  const acquired = acquireAccount(accountPool, req.codexRequest.model, undefined, fmt.tag, sessionContext.preferredEntryId ?? undefined);
+  let acquired = acquireAccount(accountPool, req.codexRequest.model, undefined, fmt.tag, sessionContext.preferredEntryId ?? undefined);
   if (!acquired) {
     return respondWithNoAccount({ c, req, fmt });
+  }
+
+  // ── Drift-Defense & Verification Loop ──
+  for (;;) {
+    const entry = accountPool.getEntry(acquired.entryId);
+    if (entry?.quotaVerifyRequired) {
+      console.log(`[${fmt.tag}] 🔍 Account ${acquired.entryId} (${entry.email ?? "?"}) requires quota verification due to local reset. Syncing with upstream...`);
+      try {
+        const usage = await new CodexApi(
+          acquired.token,
+          acquired.accountId,
+          cookieJar,
+          acquired.entryId,
+          proxyPool?.resolveProxyUrl(acquired.entryId),
+        ).getUsage();
+        
+        const quota = toQuota(usage);
+        accountPool.updateCachedQuota(acquired.entryId, quota);
+
+        if (quota.rate_limit.limit_reached) {
+          console.warn(`[${fmt.tag}] 🚫 Upstream reports account ${acquired.entryId} is still limit_reached. Releasing and retrying another...`);
+          releaseAccount(accountPool, acquired.entryId, undefined, released);
+          verifiedExcludeIds.push(acquired.entryId);
+          
+          acquired = acquireAccount(accountPool, req.codexRequest.model, verifiedExcludeIds, fmt.tag, sessionContext.preferredEntryId ?? undefined);
+          if (!acquired) {
+            return respondWithNoAccount({ c, req, fmt });
+          }
+          continue; // Loop back to check the newly acquired account
+        }
+      } catch (err) {
+        console.warn(`[${fmt.tag}] ⚠️ Failed to verify dirty quota for ${acquired.entryId}:`, err);
+        // Fallback: if check failed (e.g. temporary network error), clear the flag to avoid deadlocking user requests
+        entry.quotaVerifyRequired = false;
+      }
+    }
+    break; // Verified or no verification required, proceed!
   }
 
   let { entryId } = acquired;
@@ -104,8 +145,6 @@ export async function handleProxyRequest(options: HandleProxyRequestOptions): Pr
   const triedEntryIds: string[] = [entryId];
   let modelRetried = false;
   let stripAndRetryDone = false;
-  // Idempotent-release guard: prevents double-release across retry branches
-  const released = new Set<string>();
 
   const implicitResume = createImplicitResumeLifecycle({
     request: req,
