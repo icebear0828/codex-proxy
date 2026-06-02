@@ -44,7 +44,7 @@ describe("ApiKeyModelCache", () => {
     expect(JSON.stringify(persistence.snapshot())).not.toContain("sk-one");
   });
 
-  it("expires cache entries after six months", async () => {
+  it("expires cache entries after seven days", async () => {
     const fetchedAt = new Date(new Date("2026-01-01T00:00:00Z").getTime() - MODEL_CACHE_TTL_MS - 1).toISOString();
     const persistence = createMemoryPersistence({
       entries: {
@@ -64,6 +64,14 @@ describe("ApiKeyModelCache", () => {
 
     await expect(cache.fetchModels({ provider: "openai", apiKey: "sk" })).resolves.toEqual([{ id: "fresh", displayName: "fresh" }]);
     expect(fetchFn).toHaveBeenCalledTimes(1);
+  });
+
+  it("includes original error message for network failures", async () => {
+    const fetchFn = vi.fn(async () => { throw new Error("ECONNREFUSED 127.0.0.1:443"); });
+    const cache = new ApiKeyModelCache({ persistence: createMemoryPersistence(), fetchFn });
+
+    await expect(cache.fetchModels({ provider: "openai", apiKey: "sk" }))
+      .rejects.toMatchObject({ kind: "network", message: expect.stringContaining("ECONNREFUSED") });
   });
 
   it("uses a Gemini request key without storing it in the cache URL", async () => {
@@ -108,8 +116,11 @@ describe("ApiKeyModelCache", () => {
 
     const catalog = cache.getCatalogWithCachedModels();
 
+    // Cached models override the static fallback for anthropic.
     expect(catalog.anthropic.models).toEqual([{ id: "claude-test", displayName: "Claude Test" }]);
-    expect(catalog.openai.models).toEqual([]);
+    // openai has no cached entry — falls back to static defaults (non-empty).
+    expect(catalog.openai.models.length).toBeGreaterThan(0);
+    expect(catalog.openai.models[0]).toHaveProperty("id");
   });
 
   it("normalizes provider model payloads", () => {

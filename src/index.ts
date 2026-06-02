@@ -43,6 +43,7 @@ import { AnthropicUpstream } from "./proxy/anthropic-upstream.js";
 import { GeminiUpstream } from "./proxy/gemini-upstream.js";
 import { ApiKeyPool } from "./auth/api-key-pool.js";
 import { createApiKeyRoutes } from "./routes/api-keys.js";
+import { ApiKeyModelCache } from "./auth/api-key-model-cache.js";
 import { createEmbeddingsRoutes } from "./routes/embeddings.js";
 import { createRuntimeUpstreamRouter } from "./proxy/upstream-router-bootstrap.js";
 import { startOllamaBridge, stopOllamaBridge } from "./ollama/server.js";
@@ -163,6 +164,9 @@ export async function startServer(options?: StartOptions): Promise<ServerHandle>
   const upstreamRouter = createRuntimeUpstreamRouter(adapters, cfg.model_routing, apiKeyPool);
   if (hasApiKeys) console.log(`[Init] API key pool: ${apiKeyPool.getAll().length} key(s) loaded`);
 
+  // Create a single model cache instance shared across all routes.
+  const apiKeyModelCache = new ApiKeyModelCache();
+
   // Mount routes
   const authRoutes = createAuthRoutes(accountPool, refreshScheduler);
   const accountRoutes = createAccountRoutes(accountPool, refreshScheduler, cookieJar, proxyPool);
@@ -170,7 +174,7 @@ export async function startServer(options?: StartOptions): Promise<ServerHandle>
   const messagesRoutes = createMessagesRoutes(accountPool, cookieJar, proxyPool, upstreamRouter);
   const geminiRoutes = createGeminiRoutes(accountPool, cookieJar, proxyPool, upstreamRouter);
   const responsesRoutes = createResponsesRoutes(accountPool, cookieJar, proxyPool, upstreamRouter);
-  const apiKeyRoutes = createApiKeyRoutes(apiKeyPool);
+  const apiKeyRoutes = createApiKeyRoutes(apiKeyPool, apiKeyModelCache);
   const embeddingsRoutes = createEmbeddingsRoutes(accountPool, apiKeyPool);
   const proxyRoutes = createProxyRoutes(proxyPool, accountPool);
   const usageStats = new UsageStatsStore();

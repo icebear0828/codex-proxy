@@ -4,7 +4,7 @@ import { getDataDir } from "../paths.js";
 import { PROVIDER_CATALOG, isBuiltinProvider } from "./api-key-catalog.js";
 import type { ApiKeyProvider, BuiltinProvider, CatalogModel, ProviderMeta } from "./api-key-catalog.js";
 
-export const MODEL_CACHE_TTL_MS = 183 * 24 * 60 * 60 * 1000;
+export const MODEL_CACHE_TTL_MS = 7 * 24 * 60 * 60 * 1000; // 7 days — provider model lists change frequently
 
 export interface ApiKeyModelCacheEntry {
   url: string;
@@ -90,19 +90,24 @@ export class ApiKeyModelCache {
   }
 
   getCatalogWithCachedModels(): Record<BuiltinProvider, ProviderMeta> {
+    // Load persistence once to avoid N disk reads for N providers.
+    const cache = this.persistence.load();
     const catalog = {} as Record<BuiltinProvider, ProviderMeta>;
     for (const provider of Object.keys(PROVIDER_CATALOG) as BuiltinProvider[]) {
       const meta = PROVIDER_CATALOG[provider];
       catalog[provider] = {
         ...meta,
-        models: this.getCachedModelsByUrl(BUILTIN_MODEL_URLS[provider]) ?? [],
+        models: this.getCachedModelsByUrlFromCache(cache, BUILTIN_MODEL_URLS[provider]) ?? meta.models,
       };
     }
     return catalog;
   }
 
   getCachedModelsByUrl(url: string): CatalogModel[] | null {
-    const cache = this.persistence.load();
+    return this.getCachedModelsByUrlFromCache(this.persistence.load(), url);
+  }
+
+  private getCachedModelsByUrlFromCache(cache: ApiKeyModelCacheFile, url: string): CatalogModel[] | null {
     const entry = cache.entries[url];
     if (!entry) return null;
     const fetchedAt = Date.parse(entry.fetchedAt);
@@ -113,7 +118,10 @@ export class ApiKeyModelCache {
 
   async fetchModels(input: FetchProviderModelsInput): Promise<CatalogModel[]> {
     const request = buildModelRequest(input);
-    const cached = this.getCachedModelsByUrl(request.cacheUrl);
+    // Load once — reuse for both cache-hit check and write-back to avoid
+    // two separate disk reads per request.
+    const cache = this.persistence.load();
+    const cached = this.getCachedModelsByUrlFromCache(cache, request.cacheUrl);
     if (cached) return cached;
 
     let response: Response;
@@ -121,8 +129,8 @@ export class ApiKeyModelCache {
       response = await this.fetchFn(request.requestUrl, {
         headers: request.headers,
       });
-    } catch {
-      throw new ProviderModelFetchError("network", "Failed to reach provider");
+    } catch (err) {
+      throw new ProviderModelFetchError("network", `Failed to reach provider: ${err instanceof Error ? err.message : String(err)}`);
     }
 
     if (response.status === 401 || response.status === 403) {
@@ -138,7 +146,6 @@ export class ApiKeyModelCache {
       throw new ProviderModelFetchError("empty", "Provider returned no models");
     }
 
-    const cache = this.persistence.load();
     cache.entries[request.cacheUrl] = {
       url: request.cacheUrl,
       models,
@@ -218,6 +225,8 @@ function bearerHeaders(apiKey: string): Record<string, string> {
 
 export function normalizeProviderModels(provider: ApiKeyProvider, payload: unknown): CatalogModel[] {
   if (provider === "gemini") return normalizeGeminiModels(payload);
+  // Anthropic's /v1/models response uses `id` + `display_name` (no `name` field).
+  // OpenAI and OpenRouter use `id` + `name` as the human-readable display.
   return normalizeDataModels(payload, provider === "anthropic" ? ["display_name", "name"] : ["name", "display_name"]);
 }
 
