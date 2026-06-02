@@ -31,6 +31,7 @@ export interface CreateImplicitResumeLifecycleOptions {
 export interface ImplicitResumeLifecycle {
   evaluation: ImplicitResumeEvaluation;
   activate(): void;
+  canReplayAfterError(err: unknown): boolean;
   getUsageHint(): UsageHint | undefined;
   isActive(): boolean;
   logSkippedWarnings(): void;
@@ -100,6 +101,9 @@ export function createImplicitResumeLifecycle(
           evaluation.unansweredCallIds.slice(0, 3).join(","),
         );
       }
+    },
+    canReplayAfterError(err: unknown): boolean {
+      return shouldReplayFullInputAfterImplicitResumeError(err, active);
     },
     replayFullInputAfterError(err: unknown): boolean {
       if (!shouldReplayFullInputAfterImplicitResumeError(err, active)) return false;
