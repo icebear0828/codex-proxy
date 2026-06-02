@@ -96,3 +96,58 @@ export function applyProxyRetryRecoveryDecision(
   request.codexRequest.turnState = undefined;
   return true;
 }
+
+export interface ApplyCascadingBanDefenseOptions {
+  request: ProxyRequest;
+  affinityMap: Pick<SessionAffinityMap, "forget">;
+  preferredEntryId: string;
+  acquiredEntryId: string;
+  preferredStatus: string | undefined;
+  explicitPrevRespId: string | undefined;
+  tag: string;
+}
+
+/** Statuses that indicate a potentially compromised account (ban propagation risk). */
+const BAN_RISK_STATUSES = new Set(["banned", "disabled"]);
+
+/**
+ * Cross-account session isolation guard (Cascading Ban Defense).
+ *
+ * Only strips `previous_response_id` / `turnState` when the preferred account
+ * is in a ban-risk state (banned / disabled). Normal rotation due to quota
+ * exhaustion does NOT trigger stripping — the `previous_response_id` won't
+ * work cross-account anyway, but carrying it is harmless and the upstream will
+ * simply return a "not found" error that the retry path already handles.
+ */
+export function applyCascadingBanDefense({
+  request,
+  affinityMap,
+  preferredEntryId,
+  acquiredEntryId,
+  preferredStatus,
+  explicitPrevRespId,
+  tag,
+}: ApplyCascadingBanDefenseOptions): boolean {
+  if (
+    acquiredEntryId === preferredEntryId ||
+    (!request.codexRequest.previous_response_id && !request.codexRequest.turnState)
+  ) {
+    return false;
+  }
+
+  if (!preferredStatus || !BAN_RISK_STATUSES.has(preferredStatus)) {
+    return false;
+  }
+
+  console.warn(
+    `[${tag}] ⚠️ Account switched from preferred ${preferredEntryId} (${preferredStatus}) to ${acquiredEntryId}. ` +
+    `Stripping previous_response_id (${request.codexRequest.previous_response_id}) and turnState to prevent upstream cascading ban.`,
+  );
+  request.codexRequest.previous_response_id = undefined;
+  request.codexRequest.turnState = undefined;
+  if (explicitPrevRespId) {
+    affinityMap.forget(explicitPrevRespId);
+  }
+  return true;
+}
+

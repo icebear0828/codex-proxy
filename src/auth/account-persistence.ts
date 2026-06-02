@@ -364,6 +364,13 @@ function loadPersisted(): {
         entry.quotaFetchedAt = null;
         needsPersist = true;
       }
+      // Backfill quotaVerifyRequired (added in cascading-ban-defense)
+      // If absent (pre-existing disk entry), default to false so old entries
+      // don't trigger unnecessary upstream verification.
+      if (entry.quotaVerifyRequired === undefined) {
+        entry.quotaVerifyRequired = false;
+        needsPersist = true;
+      }
       // Migrate legacy rate_limit_until + status="rate_limited" → cachedQuota
       if (migrateLegacyRateLimit(entry)) {
         needsPersist = true;

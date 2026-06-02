@@ -35,6 +35,7 @@ import { initTransport, getTransport } from "./tls/transport.js";
 import { loadStaticModels } from "./models/model-store.js";
 import { startModelRefresh, stopModelRefresh } from "./models/model-fetcher.js";
 import { startQuotaRefresh, stopQuotaRefresh } from "./auth/usage-refresher.js";
+import { ActiveQuotaRefresher } from "./auth/active-quota-refresher.js";
 import { UsageStatsStore } from "./auth/usage-stats.js";
 import { startSessionCleanup, stopSessionCleanup } from "./auth/dashboard-session.js";
 import { createDashboardAuthRoutes } from "./routes/dashboard-login.js";
@@ -242,6 +243,10 @@ export async function startServer(options?: StartOptions): Promise<ServerHandle>
   // Start usage stats snapshot timer (no upstream requests — quota is collected passively)
   startQuotaRefresh(accountPool, usageStats);
 
+  // Start active quota refresher — proactively syncs limit_reached / dirty accounts
+  const activeQuotaRefresher = new ActiveQuotaRefresher(accountPool, { cookieJar, proxyPool });
+  activeQuotaRefresher.start();
+
   // Start proxy health check timer (if proxies exist)
   proxyPool.startHealthCheckTimer();
 
@@ -272,6 +277,7 @@ export async function startServer(options?: StartOptions): Promise<ServerHandle>
         stopProxyUpdateChecker();
         stopModelRefresh();
         stopQuotaRefresh();
+        activeQuotaRefresher.stop();
         stopSessionCleanup();
         refreshScheduler.destroy();
         proxyPool.destroy();

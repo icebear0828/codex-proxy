@@ -22,7 +22,8 @@
  *   - non-streaming-handler.ts — collect / retry response lifecycle
  */
 
-import { CodexApiError } from "../../proxy/codex-api.js";
+import { CodexApi, CodexApiError } from "../../proxy/codex-api.js";
+import { toQuota } from "../../auth/quota-utils.js";
 import { acquireAccount, releaseAccount } from "./account-acquisition.js";
 import { handleCodexApiError } from "./proxy-error-handler.js";
 import { handleStreaming } from "./streaming-handler.js";
@@ -49,6 +50,7 @@ import {
 import { logRequestDiagnostics } from "./proxy-request-diagnostics.js";
 import {
   applyProxyRetryRecoveryDecision,
+  applyCascadingBanDefense,
   buildProxyRetryRecoveryDecision,
 } from "./proxy-retry-recovery.js";
 import { buildProxySessionContext } from "./proxy-session-context.js";
@@ -73,19 +75,87 @@ export async function handleProxyRequest(options: HandleProxyRequestOptions): Pr
     explicitTurnState: sessionContext.explicitTurnState,
   });
 
+  const released = new Set<string>();
+  const verifiedExcludeIds: string[] = [];
+
   // Single acquire call — preferredEntryId is a hint, not a hard requirement
-  const acquired = acquireAccount(accountPool, req.codexRequest.model, undefined, fmt.tag, sessionContext.preferredEntryId ?? undefined);
+  let acquired = acquireAccount(accountPool, req.codexRequest.model, undefined, fmt.tag, sessionContext.preferredEntryId ?? undefined);
   if (!acquired) {
     return respondWithNoAccount({ c, req, fmt });
   }
 
+  // ── Drift-Defense & Verification Loop ──
+  // Caps the number of upstream /usage checks per request to avoid amplification
+  // when many accounts are simultaneously dirty.
+  const MAX_VERIFY_ATTEMPTS = 5;
+  let verifyAttempts = 0;
+  for (;;) {
+    if (!acquired) return respondWithNoAccount({ c, req, fmt });
+    const entry = accountPool.getEntry(acquired.entryId);
+    if (entry?.quotaVerifyRequired) {
+      const verifyingEntryId = acquired.entryId;
+      console.log(`[${fmt.tag}] 🔍 Account ${verifyingEntryId} (${entry.email ?? "?"}) requires quota verification due to local reset. Syncing with upstream...`);
+      try {
+        const usage = await new CodexApi(
+          acquired.token,
+          acquired.accountId,
+          cookieJar,
+          acquired.entryId,
+          proxyPool?.resolveProxyUrl(acquired.entryId),
+        ).getUsage();
+        
+        const quota = toQuota(usage);
+        accountPool.updateCachedQuota(acquired.entryId, quota);
+
+        if (quota.rate_limit.limit_reached) {
+          console.warn(`[${fmt.tag}] 🚫 Upstream reports account ${acquired.entryId} is still limit_reached. Releasing and retrying another...`);
+          releaseAccount(accountPool, acquired.entryId, undefined, released);
+          verifiedExcludeIds.push(acquired.entryId);
+
+          verifyAttempts++;
+          if (verifyAttempts >= MAX_VERIFY_ATTEMPTS) {
+            console.warn(`[${fmt.tag}] ⚠️ Drift-defense hit MAX_VERIFY_ATTEMPTS (${MAX_VERIFY_ATTEMPTS}). Giving up to avoid excess upstream calls.`);
+            return respondWithNoAccount({ c, req, fmt });
+          }
+
+          acquired = acquireAccount(accountPool, req.codexRequest.model, verifiedExcludeIds, fmt.tag, sessionContext.preferredEntryId ?? undefined);
+          if (!acquired) {
+            return respondWithNoAccount({ c, req, fmt });
+          }
+          continue; // Loop back to check the newly acquired account
+        }
+      } catch (err) {
+        console.warn(`[${fmt.tag}] ⚠️ Failed to verify dirty quota for ${verifyingEntryId}:`, err);
+        // Keep quotaVerifyRequired=true so the flag isn't silently cleared on transient network errors.
+        // The ActiveQuotaRefresher or the next request will retry. This avoids promoting a still-limited
+        // account to "clean" just because the upstream check temporarily failed.
+      }
+    }
+    break; // Verified or no verification required, proceed!
+  }
+
+  if (!acquired) return respondWithNoAccount({ c, req, fmt });
   let { entryId } = acquired;
+
+  // ── Session Affinity Fallback Defense (Cascading Ban Prevention) ──
+  // Only strip session identifiers when the preferred account is banned/disabled.
+  // Quota exhaustion is normal rotation — no ban propagation risk.
+  if (sessionContext.preferredEntryId && sessionContext.preferredEntryId !== entryId) {
+    const preferredEntry = accountPool.getEntry(sessionContext.preferredEntryId);
+    applyCascadingBanDefense({
+      request: req,
+      affinityMap,
+      preferredEntryId: sessionContext.preferredEntryId,
+      acquiredEntryId: entryId,
+      preferredStatus: preferredEntry?.status,
+      explicitPrevRespId: sessionContext.explicitPrevRespId,
+      tag: fmt.tag,
+    });
+  }
   let codexApi = buildCodexApi(acquired.token, acquired.accountId, cookieJar, entryId, proxyPool);
   const triedEntryIds: string[] = [entryId];
   let modelRetried = false;
   let stripAndRetryDone = false;
-  // Idempotent-release guard: prevents double-release across retry branches
-  const released = new Set<string>();
 
   const implicitResume = createImplicitResumeLifecycle({
     request: req,
