@@ -1,0 +1,215 @@
+[
+  {
+    "name": "simple-text-message",
+    "description": "Basic single-turn text message",
+    "input": {
+      "model": "claude-sonnet-4-5",
+      "max_tokens": 8192,
+      "messages": [{ "role": "user", "content": "Hello" }],
+      "system": "You are helpful."
+    },
+    "expectedOutput": {
+      "model": "claude-sonnet-4-5",
+      "instructions": "You are helpful.",
+      "input": [{ "role": "user", "content": "Hello" }],
+      "stream": true,
+      "store": false
+    }
+  },
+  {
+    "name": "developer-role-message",
+    "description": "developer role should be preserved as-is (not dropped)",
+    "input": {
+      "model": "claude-sonnet-4-5",
+      "max_tokens": 4096,
+      "messages": [
+        { "role": "developer", "content": "Follow security standards." },
+        { "role": "user", "content": "Hi" }
+      ]
+    },
+    "expectedOutput": {
+      "input": [
+        { "role": "developer", "content": "Follow security standards." },
+        { "role": "user", "content": "Hi" }
+      ]
+    }
+  },
+  {
+    "name": "system-role-in-messages",
+    "description": "system role in messages array preserved (not only top-level system)",
+    "input": {
+      "model": "claude-sonnet-4-5",
+      "max_tokens": 4096,
+      "messages": [
+        { "role": "system", "content": "Be concise." },
+        { "role": "user", "content": "Explain AI" }
+      ]
+    },
+    "expectedOutput": {
+      "input": [
+        { "role": "system", "content": "Be concise." },
+        { "role": "user", "content": "Explain AI" }
+      ]
+    }
+  },
+  {
+    "name": "multi-turn-with-tool-use",
+    "description": "Assistant tool_use + user tool_result roundtrip",
+    "input": {
+      "model": "claude-sonnet-4-5",
+      "max_tokens": 8192,
+      "messages": [
+        { "role": "user", "content": "Search for TypeScript" },
+        {
+          "role": "assistant",
+          "content": [
+            { "type": "text", "text": "Let me search for that." },
+            { "type": "tool_use", "id": "toolu_abc", "name": "WebSearch", "input": { "query": "TypeScript" } }
+          ]
+        },
+        {
+          "role": "user",
+          "content": [
+            { "type": "tool_result", "tool_use_id": "toolu_abc", "content": "TypeScript is a typed superset of JavaScript." }
+          ]
+        }
+      ],
+      "system": "You are helpful."
+    },
+    "expectedOutput": {
+      "input": [
+        { "role": "user", "content": "Search for TypeScript" },
+        { "role": "assistant", "content": "Let me search for that." },
+        { "type": "function_call", "call_id": "toolu_abc", "name": "WebSearch", "arguments": "{\"query\":\"TypeScript\"}" },
+        { "type": "function_call_output", "call_id": "toolu_abc", "output": "TypeScript is a typed superset of JavaScript." }
+      ]
+    }
+  },
+  {
+    "name": "tool-result-with-image",
+    "description": "tool_result containing image extracts to follow-up user message",
+    "input": {
+      "model": "claude-sonnet-4-5",
+      "max_tokens": 4096,
+      "messages": [
+        {
+          "role": "user",
+          "content": [
+            {
+              "type": "tool_result",
+              "tool_use_id": "toolu_screenshot",
+              "content": [
+                { "type": "text", "text": "Screenshot captured" },
+                { "type": "image", "source": { "type": "base64", "media_type": "image/png", "data": "iVBORw0KGgo=" } }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "expectedOutput": {
+      "input": [
+        { "type": "function_call_output", "call_id": "toolu_screenshot", "output": "Screenshot captured" },
+        { "role": "user", "content": [{ "type": "input_image", "image_url": "data:image/png;base64,iVBORw0KGgo=" }] }
+      ]
+    }
+  },
+  {
+    "name": "thinking-blocks-filtered",
+    "description": "thinking and redacted_thinking blocks stripped from assistant content",
+    "input": {
+      "model": "claude-sonnet-4-5",
+      "max_tokens": 4096,
+      "messages": [
+        {
+          "role": "assistant",
+          "content": [
+            { "type": "thinking", "thinking": "internal reasoning" },
+            { "type": "redacted_thinking", "data": "encrypted" },
+            { "type": "text", "text": "visible answer" }
+          ]
+        },
+        { "role": "user", "content": "continue" }
+      ]
+    },
+    "expectedOutput": {
+      "input": [
+        { "role": "assistant", "content": "visible answer" },
+        { "role": "user", "content": "continue" }
+      ]
+    }
+  },
+  {
+    "name": "thinking-budget-to-reasoning-effort",
+    "description": "thinking.budget_tokens maps to reasoning.effort",
+    "input": {
+      "model": "claude-sonnet-4-5",
+      "max_tokens": 16384,
+      "messages": [{ "role": "user", "content": "Solve this problem" }],
+      "thinking": { "type": "enabled", "budget_tokens": 10000 }
+    },
+    "expectedOutput": {
+      "reasoning": { "effort": "high", "summary": "auto" }
+    }
+  },
+  {
+    "name": "parallel-tool-use-blocks",
+    "description": "Multiple tool_use blocks in single assistant message produce separate function_call items",
+    "input": {
+      "model": "claude-sonnet-4-5",
+      "max_tokens": 8192,
+      "messages": [
+        {
+          "role": "assistant",
+          "content": [
+            { "type": "tool_use", "id": "toolu_1", "name": "Read", "input": { "path": "/a.ts" } },
+            { "type": "tool_use", "id": "toolu_2", "name": "Read", "input": { "path": "/b.ts" } }
+          ]
+        },
+        {
+          "role": "user",
+          "content": [
+            { "type": "tool_result", "tool_use_id": "toolu_1", "content": "file a content" },
+            { "type": "tool_result", "tool_use_id": "toolu_2", "content": "file b content" }
+          ]
+        }
+      ]
+    },
+    "expectedOutput": {
+      "input": [
+        { "type": "function_call", "call_id": "toolu_1", "name": "Read", "arguments": "{\"path\":\"/a.ts\"}" },
+        { "type": "function_call", "call_id": "toolu_2", "name": "Read", "arguments": "{\"path\":\"/b.ts\"}" },
+        { "type": "function_call_output", "call_id": "toolu_1", "output": "file a content" },
+        { "type": "function_call_output", "call_id": "toolu_2", "output": "file b content" }
+      ]
+    }
+  },
+  {
+    "name": "billing-header-stripped",
+    "description": "Claude Code billing system block stripped from instructions",
+    "input": {
+      "model": "claude-sonnet-4-5",
+      "max_tokens": 4096,
+      "messages": [{ "role": "user", "content": "Hello" }],
+      "system": [
+        { "type": "text", "text": "x-anthropic-billing-header: cc_version=2.1.84-c8e; cc_entrypoint=cli; cch=a1b2c;" },
+        { "type": "text", "text": "You are a helpful coding assistant." }
+      ]
+    },
+    "expectedOutput": {
+      "instructions": "You are a helpful coding assistant."
+    }
+  },
+  {
+    "name": "empty-system-defaults",
+    "description": "Empty/missing system falls back to default instructions",
+    "input": {
+      "model": "claude-sonnet-4-5",
+      "max_tokens": 4096,
+      "messages": [{ "role": "user", "content": "Hi" }]
+    },
+    "expectedOutput": {
+      "instructions": "You are a helpful assistant."
+    }
+  }
+]

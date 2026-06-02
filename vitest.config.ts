@@ -15,6 +15,7 @@ export default defineConfig({
       "shared/**/*.{test,spec}.ts",
       "tests/unit/**/*.{test,spec}.ts",
       "tests/integration/**/*.{test,spec}.ts",
+      "tests/contract/**/*.{test,spec}.ts",
       "tests/e2e/**/*.{test,spec}.ts",
       "packages/electron/__tests__/**/*.{test,spec}.ts",
     ],
