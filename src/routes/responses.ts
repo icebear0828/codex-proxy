@@ -7,38 +7,31 @@
  */
 
 import { Hono, type Context } from "hono";
-import type { StatusCode } from "hono/utils/http-status";
 import type { AccountPool } from "../auth/account-pool.js";
 import type { CookieJar } from "../proxy/cookie-jar.js";
 import type { ProxyPool } from "../proxy/proxy-pool.js";
-import { CodexApi, CodexApiError } from "../proxy/codex-api.js";
-import type { CodexResponsesRequest, CodexCompactRequest, CodexInputItem, CodexSSEEvent } from "../proxy/codex-api.js";
+import type { CodexResponsesRequest, CodexInputItem } from "../proxy/codex-api.js";
 import { enqueueLogEntry } from "../logs/entry.js";
-import { recordStreamCloseEvent } from "../logs/stream-close-event.js";
 import { summarizeRequestForLog } from "../logs/request-summary.js";
 import { getRealClientIp } from "../utils/get-real-client-ip.js";
 import { randomUUID } from "crypto";
-import type { UpstreamAdapter } from "../proxy/upstream-adapter.js";
 import { getConfig } from "../config.js";
 import { prepareSchema } from "../translation/shared-utils.js";
-import { reconvertTupleValues } from "../translation/tuple-schema.js";
-import { parseModelName, resolveModelId, getModelInfo, buildDisplayModelName } from "../models/model-store.js";
-import { EmptyResponseError, type UsageInfo } from "../translation/codex-event-extractor.js";
+import { parseModelName, resolveModelId, buildDisplayModelName } from "../models/model-store.js";
 import { handleProxyRequest } from "./shared/proxy-handler.js";
-import { staggerIfNeeded } from "./shared/proxy-stagger.js";
 import { handleDirectRequest } from "./shared/direct-request-handler.js";
-import type { FormatAdapter, StreamTranslatorContext } from "./shared/proxy-handler-types.js";
 import type { UpstreamRouter } from "../proxy/upstream-router.js";
-import { acquireAccount, releaseAccount } from "./shared/account-acquisition.js";
-import { handleCodexApiError } from "./shared/proxy-error-handler.js";
-import { withRetry } from "../utils/retry.js";
-import { extractCodexError } from "../types/codex-events.js";
 import {
   extractOpenAISubagentFromMetadata,
   normalizeOpenAISubagent,
   OPENAI_SUBAGENT_HEADER,
   sanitizeClientMetadata,
 } from "../proxy/openai-subagent.js";
+import { isRecord, PASSTHROUGH_FORMAT } from "./responses-passthrough.js";
+import { handleCompact } from "./responses-compact.js";
+
+// Re-export for downstream consumers
+export { extractResponseUsage, extractImageGenUsage, streamPassthrough, collectPassthrough } from "./responses-passthrough.js";
 
 const X_CODEX_TURN_STATE_HEADER = "x-codex-turn-state";
 const X_CODEX_TURN_METADATA_HEADER = "x-codex-turn-metadata";
@@ -47,11 +40,7 @@ const X_RESPONSESAPI_INCLUDE_TIMING_METRICS_HEADER = "x-responsesapi-include-tim
 const X_CODEX_PARENT_THREAD_ID_HEADER = "x-codex-parent-thread-id";
 const X_CODEX_WINDOW_ID_HEADER = "x-codex-window-id";
 
-// ── Helpers ────────────────────────────────────────────────────────
-
-function isRecord(v: unknown): v is Record<string, unknown> {
-  return typeof v === "object" && v !== null && !Array.isArray(v);
-}
+// ── Helpers ───────────────────────────────────────────────────────
 
 function nonEmptyString(value: unknown): string | null {
   return typeof value === "string" && value.trim() ? value.trim() : null;
@@ -65,455 +54,7 @@ function firstHeaderOrMetadata(
   return nonEmptyString(c.req.header(headerName)) ?? nonEmptyString(metadata[headerName]);
 }
 
-function extractOutputTextFromItem(item: unknown): string {
-  if (!isRecord(item) || !Array.isArray(item.content)) return "";
-  const chunks: string[] = [];
-  for (const part of item.content) {
-    if (
-      isRecord(part) &&
-      (part.type === "output_text" || part.type === "text") &&
-      typeof part.text === "string"
-    ) {
-      chunks.push(part.text);
-    }
-  }
-  return chunks.join("");
-}
-
-function syncOutputTextFromOutput(response: Record<string, unknown>): void {
-  if (!Array.isArray(response.output)) return;
-  const outputText = (response.output as unknown[])
-    .map(extractOutputTextFromItem)
-    .join("");
-  if (outputText) response.output_text = outputText;
-}
-
-// ── Passthrough stream translator ──────────────────────────────────
-
-const STREAM_DISCONNECTED_CODE = "stream_disconnected";
-const STREAM_DISCONNECTED_MESSAGE = "Upstream stream closed before response.completed";
-
-interface ResponsesStreamError {
-  type: string;
-  code: string;
-  message: string;
-}
-
-function isTerminalResponsesEvent(event: string): boolean {
-  return event === "response.completed" || event === "response.failed" || event === "error";
-}
-
-function extractResponseIdFromEventData(data: unknown): string | null {
-  if (!isRecord(data) || !isRecord(data.response)) return null;
-  return typeof data.response.id === "string" ? data.response.id : null;
-}
-
-function buildPrematureCloseFailedEvent(responseId: string | null, detail?: string): string {
-  const message = detail ? `${STREAM_DISCONNECTED_MESSAGE}: ${detail}` : STREAM_DISCONNECTED_MESSAGE;
-  return buildResponseFailedEvent(responseId, {
-    type: "server_error",
-    code: STREAM_DISCONNECTED_CODE,
-    message,
-  });
-}
-
-function buildResponseFailedEvent(responseId: string | null, error: ResponsesStreamError): string {
-  const id = responseId ?? `resp_proxy_${randomUUID().replace(/-/g, "").slice(0, 24)}`;
-  return `event: response.failed\ndata: ${JSON.stringify({
-    type: "response.failed",
-    response: {
-      id,
-      status: "failed",
-      error,
-    },
-    error,
-  })}\n\n`;
-}
-
-function stripCodexErrorPrefix(message: string): string {
-  return message.replace(/^Codex API error \(\d+\):\s*/, "");
-}
-
-function classifyResponsesStreamError(status: number, message: string): ResponsesStreamError {
-  const cleanMessage = stripCodexErrorPrefix(message);
-  if (status === 429) {
-    return {
-      type: "rate_limit_error",
-      code: "rate_limit_exceeded",
-      message: cleanMessage,
-    };
-  }
-  if (status === 401 || status === 403) {
-    return {
-      type: "invalid_request_error",
-      code: "authentication_error",
-      message: cleanMessage,
-    };
-  }
-  if (cleanMessage.toLowerCase().includes("error sending request")) {
-    return {
-      type: "server_error",
-      code: "upstream_transport_error",
-      message: cleanMessage,
-    };
-  }
-  return {
-    type: status >= 400 && status < 500 ? "invalid_request_error" : "server_error",
-    code: "codex_api_error",
-    message: cleanMessage,
-  };
-}
-
-function buildResponsesStreamError(status: number, message: string): string {
-  return buildResponseFailedEvent(null, classifyResponsesStreamError(status, message));
-}
-
-/** Extract usage from a response.completed payload, including cached_tokens
- *  (nested in input_tokens_details per the OpenAI Responses API contract). */
-export function extractResponseUsage(usage: Record<string, unknown>): { input_tokens: number; output_tokens: number; cached_tokens?: number } {
-  const result: { input_tokens: number; output_tokens: number; cached_tokens?: number } = {
-    input_tokens: typeof usage.input_tokens === "number" ? usage.input_tokens : 0,
-    output_tokens: typeof usage.output_tokens === "number" ? usage.output_tokens : 0,
-  };
-  const inputDetails = isRecord(usage.input_tokens_details) ? usage.input_tokens_details : null;
-  if (inputDetails && typeof inputDetails.cached_tokens === "number") {
-    result.cached_tokens = inputDetails.cached_tokens;
-  }
-  return result;
-}
-
-/** Extract image_generation tool tokens from a response payload's tool_usage.image_gen
- *  block. Returns undefined when no image generation occurred (or counts are zero). */
-export function extractImageGenUsage(response: Record<string, unknown>): { image_input_tokens: number; image_output_tokens: number } | undefined {
-  if (!isRecord(response.tool_usage)) return undefined;
-  const img = response.tool_usage.image_gen;
-  if (!isRecord(img)) return undefined;
-  const image_input_tokens = typeof img.input_tokens === "number" ? img.input_tokens : 0;
-  const image_output_tokens = typeof img.output_tokens === "number" ? img.output_tokens : 0;
-  if (image_input_tokens === 0 && image_output_tokens === 0) return undefined;
-  return { image_input_tokens, image_output_tokens };
-}
-
-export async function* streamPassthrough(
-  api: UpstreamAdapter,
-  response: Response,
-  model: string,
-  onUsage: (u: { input_tokens: number; output_tokens: number; cached_tokens?: number; image_input_tokens?: number; image_output_tokens?: number }) => void,
-  onResponseId: (id: string) => void,
-  tupleSchema?: Record<string, unknown> | null,
-  streamContext?: StreamTranslatorContext,
-  onResponseCompleted?: (id?: string) => void,
-  onResponseMetadata?: (metadata: { functionCallIds?: string[] }) => void,
-): AsyncGenerator<string> {
-  // When tupleSchema is present, buffer text deltas and reconvert on completion.
-  // This means the client receives zero incremental text — all text arrives at once
-  // after response.completed. This is a known tradeoff for tuple reconversion correctness.
-  let tupleTextBuffer = tupleSchema ? "" : null;
-  let sawTerminal = false;
-  let responseId: string | null = null;
-  const streamFunctionCallIds = new Set<string>();
-
-  const stream = api.parseStream(response);
-  let upstreamDone = false;
-  try {
-    while (true) {
-      let next: IteratorResult<CodexSSEEvent>;
-      try {
-        next = await stream.next();
-      } catch (err) {
-        if (sawTerminal) return;
-        if (streamContext?.abortSignal?.aborted) return;
-        const detail = err instanceof Error ? err.message : String(err);
-        console.warn(
-          `[Responses] premature stream close before terminal event responseId=${responseId ?? "unknown"}: ${detail}`,
-        );
-        recordStreamCloseEvent({
-          kind: "upstream-premature",
-          tag: streamContext?.tag ?? "Responses",
-          requestId: streamContext?.requestId,
-          provider: streamContext?.provider,
-          path: streamContext?.path,
-          model: streamContext?.model ?? model,
-          accountEntryId: streamContext?.accountEntryId,
-          variantHash: streamContext?.variantHash,
-          responseId,
-          detail,
-        });
-        yield buildPrematureCloseFailedEvent(responseId, detail);
-        return;
-      }
-
-      if (next.done) {
-        upstreamDone = true;
-        break;
-      }
-
-      const raw = next.value;
-      responseId = extractResponseIdFromEventData(raw.data) ?? responseId;
-      if (isTerminalResponsesEvent(raw.event)) sawTerminal = true;
-
-      // Buffer text deltas when tuple reconversion is active
-      if (tupleTextBuffer !== null && raw.event === "response.output_text.delta") {
-        const data = raw.data;
-        if (isRecord(data) && typeof data.delta === "string") {
-          tupleTextBuffer += data.delta;
-          continue; // suppress this event — will flush reconverted text on completion
-        }
-      }
-
-      // On completion, flush reconverted text before emitting the completed event
-      if (tupleTextBuffer !== null && tupleSchema && raw.event === "response.completed") {
-        if (tupleTextBuffer) {
-          let reconvertedText = tupleTextBuffer;
-          try {
-            const parsed = JSON.parse(tupleTextBuffer) as unknown;
-            reconvertedText = JSON.stringify(reconvertTupleValues(parsed, tupleSchema));
-          } catch (e) {
-            console.warn("[tuple-reconvert] streaming JSON parse failed, emitting raw text:", e);
-          }
-          // Emit a single text delta with reconverted content
-          yield `event: response.output_text.delta\ndata: ${JSON.stringify({ type: "response.output_text.delta", delta: reconvertedText })}\n\n`;
-        }
-        // Patch the completed event's output text if present
-        const data = raw.data;
-        if (isRecord(data) && isRecord(data.response) && tupleTextBuffer) {
-          const resp = data.response;
-          if (Array.isArray(resp.output)) {
-            for (const item of resp.output as unknown[]) {
-              if (isRecord(item) && Array.isArray(item.content)) {
-                for (const part of item.content as unknown[]) {
-                  if (
-                    isRecord(part) &&
-                    (part.type === "output_text" || part.type === "text") &&
-                    typeof part.text === "string"
-                  ) {
-                    try {
-                      const parsed = JSON.parse(part.text) as unknown;
-                      part.text = JSON.stringify(reconvertTupleValues(parsed, tupleSchema));
-                    } catch { /* leave as-is */ }
-                  }
-                }
-              }
-            }
-          }
-        }
-      }
-
-      // Re-emit raw SSE event
-      yield `event: ${raw.event}\ndata: ${JSON.stringify(raw.data)}\n\n`;
-
-      // Collect function_call IDs so session affinity can validate tool-output continuations
-      if (raw.event === "response.output_item.done") {
-        const data = raw.data;
-        if (isRecord(data) && isRecord(data.item) && data.item.type === "function_call") {
-          const callId = data.item.call_id;
-          if (typeof callId === "string" && callId) streamFunctionCallIds.add(callId);
-        }
-      }
-
-      // Extract usage and responseId for account pool bookkeeping
-      if (
-        raw.event === "response.created" ||
-        raw.event === "response.in_progress" ||
-        raw.event === "response.completed"
-      ) {
-        const data = raw.data;
-        if (isRecord(data) && isRecord(data.response)) {
-          const resp = data.response;
-          if (typeof resp.id === "string") onResponseId(resp.id);
-          if (raw.event === "response.completed" && isRecord(resp.usage)) {
-            const imgUsage = extractImageGenUsage(resp);
-            onUsage({ ...extractResponseUsage(resp.usage), ...(imgUsage ?? {}) });
-          }
-          if (raw.event === "response.completed") {
-            onResponseCompleted?.(typeof resp.id === "string" ? resp.id : undefined);
-            if (streamFunctionCallIds.size > 0) {
-              onResponseMetadata?.({ functionCallIds: [...streamFunctionCallIds] });
-            }
-          }
-        }
-      }
-    }
-  } finally {
-    if (!upstreamDone) {
-      try { await stream.return(undefined); } catch { /* cleanup best effort */ }
-    }
-  }
-
-  if (!sawTerminal) {
-    if (streamContext?.abortSignal?.aborted) return;
-    console.warn(
-      `[Responses] premature stream close before terminal event responseId=${responseId ?? "unknown"}`,
-    );
-    recordStreamCloseEvent({
-      kind: "upstream-premature",
-      tag: streamContext?.tag ?? "Responses",
-      requestId: streamContext?.requestId,
-      provider: streamContext?.provider,
-      path: streamContext?.path,
-      model: streamContext?.model ?? model,
-      accountEntryId: streamContext?.accountEntryId,
-      variantHash: streamContext?.variantHash,
-      responseId,
-    });
-    yield buildPrematureCloseFailedEvent(responseId);
-  }
-}
-
-// ── Passthrough collect translator ─────────────────────────────────
-
-export async function collectPassthrough(
-  api: UpstreamAdapter,
-  response: Response,
-  _model: string,
-  tupleSchema?: Record<string, unknown> | null,
-  onResponseMetadata?: (metadata: { functionCallIds?: string[] }) => void,
-): Promise<{
-  response: unknown;
-  usage: { input_tokens: number; output_tokens: number; cached_tokens?: number; image_input_tokens?: number; image_output_tokens?: number };
-  responseId: string | null;
-}> {
-  let finalResponse: unknown = null;
-  let usage: { input_tokens: number; output_tokens: number; cached_tokens?: number; image_input_tokens?: number; image_output_tokens?: number } = { input_tokens: 0, output_tokens: 0 };
-  let responseId: string | null = null;
-  const outputItems: unknown[] = [];
-  const collectFunctionCallIds = new Set<string>();
-  let textDeltas = "";
-
-  try {
-    for await (const raw of api.parseStream(response)) {
-      const data = raw.data;
-      if (!isRecord(data)) continue;
-      const resp = isRecord(data.response) ? data.response : null;
-
-      if (raw.event === "response.created" || raw.event === "response.in_progress") {
-        if (resp && typeof resp.id === "string") responseId = resp.id;
-      }
-
-      if (raw.event === "response.output_text.delta" && typeof data.delta === "string") {
-        textDeltas += data.delta;
-      }
-
-      if (raw.event === "response.output_item.done" && isRecord(data.item)) {
-        outputItems.push(data.item);
-        if (data.item.type === "function_call" && typeof data.item.call_id === "string" && data.item.call_id) {
-          collectFunctionCallIds.add(data.item.call_id as string);
-        }
-      }
-
-      if (raw.event === "response.completed" && resp) {
-        if (collectFunctionCallIds.size > 0) {
-          onResponseMetadata?.({ functionCallIds: [...collectFunctionCallIds] });
-        }
-        // Codex hosted search 经常完整流出 output_item.done/text delta，
-        // 但 completed.response.output 为空或缺失。这里用流式事件回填最终 JSON。
-        if (!Array.isArray(resp.output) || resp.output.length === 0) {
-          if (outputItems.length > 0) {
-            resp.output = outputItems;
-          } else if (textDeltas) {
-            resp.output = [{
-              type: "message",
-              role: "assistant",
-              status: "completed",
-              content: [{ type: "output_text", text: textDeltas }],
-            }];
-          }
-        }
-        if (typeof resp.output_text !== "string" || !resp.output_text) {
-          syncOutputTextFromOutput(resp);
-        }
-        finalResponse = resp;
-        if (typeof resp.id === "string") responseId = resp.id;
-        if (isRecord(resp.usage)) {
-          const imgUsage = extractImageGenUsage(resp);
-          usage = { ...extractResponseUsage(resp.usage), ...(imgUsage ?? {}) };
-        }
-      }
-
-      if (raw.event === "error" || raw.event === "response.failed") {
-        const err = extractCodexError(data);
-        throw new Error(
-          `Codex API error: ${err.code}: ${err.message}`,
-        );
-      }
-    }
-  } catch (streamErr) {
-    if (!finalResponse) {
-      throw new EmptyResponseError(responseId, usage);
-    }
-    throw streamErr;
-  }
-
-  if (!finalResponse) {
-    throw new EmptyResponseError(responseId, usage);
-  }
-
-  // Reconvert tuple objects back to arrays in output text
-  if (tupleSchema && isRecord(finalResponse)) {
-    const resp = finalResponse;
-    if (Array.isArray(resp.output)) {
-      for (const item of resp.output as unknown[]) {
-        if (isRecord(item) && Array.isArray(item.content)) {
-          for (const part of item.content as unknown[]) {
-            if (
-              isRecord(part) &&
-              (part.type === "output_text" || part.type === "text") &&
-              typeof part.text === "string"
-            ) {
-              try {
-                const parsed = JSON.parse(part.text) as unknown;
-                part.text = JSON.stringify(reconvertTupleValues(parsed, tupleSchema));
-              } catch (e) {
-                console.warn("[tuple-reconvert] collect JSON parse failed, passing through:", e);
-              }
-            }
-          }
-        }
-      }
-      syncOutputTextFromOutput(resp);
-    }
-  }
-
-  return { response: finalResponse, usage, responseId };
-}
-
-// ── Format adapter ─────────────────────────────────────────────────
-
-const PASSTHROUGH_FORMAT: FormatAdapter = {
-  tag: "Responses",
-  noAccountStatus: 503,
-  formatNoAccount: () => ({
-    type: "error",
-    error: {
-      type: "server_error",
-      code: "no_available_accounts",
-      message: "No available accounts. All accounts are expired or rate-limited.",
-    },
-  }),
-  format429: (msg) => ({
-    type: "error",
-    error: {
-      type: "rate_limit_error",
-      code: "rate_limit_exceeded",
-      message: msg,
-    },
-  }),
-  formatError: (_status, msg) => ({
-    type: "error",
-    error: {
-      type: "server_error",
-      code: "codex_api_error",
-      message: msg,
-    },
-  }),
-  formatStreamError: (status, msg) => buildResponsesStreamError(status, msg),
-  streamTranslator: ({ api, response, model, onUsage, onResponseId, onResponseCompleted, tupleSchema, streamContext, onResponseMetadata }) =>
-    streamPassthrough(api, response, model, onUsage, onResponseId, tupleSchema, streamContext, onResponseCompleted, onResponseMetadata),
-  collectTranslator: ({ api, response, model, tupleSchema, onResponseMetadata }) =>
-    collectPassthrough(api, response, model, tupleSchema, onResponseMetadata),
-};
-
-// ── Shared auth check ─────────────────────────────────────────────
+// ── Auth check ────────────────────────────────────────────────────
 
 function checkAuth(
   c: Context,
@@ -566,191 +107,7 @@ function parseBody(c: Context, body: unknown): Record<string, unknown> | Respons
   return body;
 }
 
-function formatResponsesError(status: number, msg: string): unknown {
-  return {
-    type: "error",
-    error: {
-      type: "server_error",
-      code: "codex_api_error",
-      message: msg,
-    },
-  };
-}
-
-// ── Build CodexApi helper ─────────────────────────────────────────
-
-function buildCodexApi(
-  token: string,
-  accountId: string | null,
-  cookieJar: CookieJar | undefined,
-  entryId: string,
-  proxyPool?: ProxyPool,
-): CodexApi {
-  const proxyUrl = proxyPool?.resolveProxyUrl(entryId);
-  return new CodexApi(token, accountId, cookieJar, entryId, proxyUrl);
-}
-
-// ── Compact handler (non-streaming JSON proxy) ────────────────────
-
-async function handleCompact(
-  c: Context,
-  accountPool: AccountPool,
-  cookieJar: CookieJar | undefined,
-  proxyPool: ProxyPool | undefined,
-  body: Record<string, unknown>,
-  upstreamRouter?: UpstreamRouter,
-): Promise<Response> {
-  const rawModel = typeof body.model === "string" ? body.model : "codex";
-  const parsed = parseModelName(rawModel);
-  const modelId = resolveModelId(parsed.modelId);
-
-  // Build CodexCompactRequest — matches codex-rs CompactionInput
-  const compactRequest: CodexCompactRequest = {
-    model: modelId,
-    input: Array.isArray(body.input) ? (body.input as CodexInputItem[]) : [],
-    instructions: typeof body.instructions === "string" ? body.instructions : "",
-  };
-  if (Array.isArray(body.tools) && body.tools.length > 0) {
-    compactRequest.tools = body.tools;
-  }
-  // Compact responses don't surface tool_usage.image_gen, so any image_generation
-  // tool sent here can only be classified as failed regardless of upstream outcome.
-  // Counting it still catches accidental misuse on the dashboard.
-  const compactExpectsImageGen = Array.isArray(body.tools)
-    && body.tools.some((t): t is Record<string, unknown> => isRecord(t) && t.type === "image_generation");
-  const compactImageFailedUsage: UsageInfo | undefined = compactExpectsImageGen
-    ? { input_tokens: 0, output_tokens: 0, image_request_attempted: true, image_request_succeeded: false }
-    : undefined;
-  if (typeof body.parallel_tool_calls === "boolean") {
-    compactRequest.parallel_tool_calls = body.parallel_tool_calls;
-  }
-  if (isRecord(body.reasoning)) {
-    const r: Record<string, string> = {};
-    if (typeof body.reasoning.effort === "string") r.effort = body.reasoning.effort;
-    if (typeof body.reasoning.summary === "string") r.summary = body.reasoning.summary;
-    if (Object.keys(r).length > 0) compactRequest.reasoning = r;
-  }
-  if (
-    isRecord(body.text) &&
-    isRecord(body.text.format) &&
-    typeof body.text.format.type === "string"
-  ) {
-    compactRequest.text = {
-      format: {
-        type: body.text.format.type as "text" | "json_object" | "json_schema",
-        ...(typeof body.text.format.name === "string" ? { name: body.text.format.name } : {}),
-        ...(isRecord(body.text.format.schema) ? { schema: body.text.format.schema as Record<string, unknown> } : {}),
-        ...(typeof body.text.format.strict === "boolean" ? { strict: body.text.format.strict } : {}),
-      },
-    };
-  }
-
-  const compactRouteMatch = upstreamRouter?.resolveMatch(rawModel);
-  if (compactRouteMatch?.kind === "api-key" || compactRouteMatch?.kind === "adapter") {
-    const directModel = compactRouteMatch.resolvedModel ?? rawModel;
-    const directReq = {
-      codexRequest: {
-        model: directModel,
-        input: compactRequest.input,
-        instructions: compactRequest.instructions,
-        stream: true as const,
-        store: false as const,
-        ...(compactRequest.tools ? { tools: compactRequest.tools } : {}),
-        ...(compactRequest.parallel_tool_calls !== undefined
-          ? { parallel_tool_calls: compactRequest.parallel_tool_calls }
-          : {}),
-        ...(compactRequest.reasoning ? { reasoning: compactRequest.reasoning } : {}),
-        ...(compactRequest.text ? { text: compactRequest.text } : {}),
-      },
-      model: directModel,
-      isStreaming: false,
-    };
-    return handleDirectRequest({ c, upstream: compactRouteMatch.adapter, req: directReq, fmt: PASSTHROUGH_FORMAT });
-  }
-
-  // Acquire account
-  const TAG = "Compact";
-  const triedEntryIds: string[] = [];
-  const released = new Set<string>();
-
-  const acquired = acquireAccount(accountPool, modelId, undefined, TAG);
-  if (!acquired) {
-    c.status(503);
-    return c.json(formatResponsesError(503, "No available accounts. All accounts are expired or rate-limited."));
-  }
-
-  let entryId = acquired.entryId;
-  triedEntryIds.push(entryId);
-  let codexApi = buildCodexApi(acquired.token, acquired.accountId, cookieJar, entryId, proxyPool);
-
-  console.log(
-    `[${TAG}] Account ${entryId} | model=${modelId} | input_items=${compactRequest.input.length}`,
-  );
-
-  await staggerIfNeeded(acquired.prevSlotMs);
-
-  const MAX_COMPACT_RETRIES = 8;
-  for (let attempt = 0; attempt < MAX_COMPACT_RETRIES; attempt++) {
-    try {
-      const result = await withRetry(
-        () => codexApi.createCompactResponse(compactRequest, c.req.raw.signal),
-        { tag: TAG },
-      );
-
-      releaseAccount(accountPool, entryId, compactImageFailedUsage, released);
-      return c.json(result);
-    } catch (err) {
-      if (!(err instanceof CodexApiError)) {
-        releaseAccount(accountPool, entryId, compactImageFailedUsage, released);
-        throw err;
-      }
-
-      const decision = handleCodexApiError(
-        err, accountPool, entryId, modelId, TAG, false,
-      );
-
-      if (decision.action === "respond") {
-        releaseAccount(accountPool, entryId, compactImageFailedUsage, released);
-        c.status(decision.status as StatusCode);
-        return c.json(formatResponsesError(decision.status, decision.message));
-      }
-
-      if (decision.releaseBeforeRetry) {
-        releaseAccount(accountPool, entryId, compactImageFailedUsage, released);
-      }
-
-      const retry = acquireAccount(accountPool, modelId, triedEntryIds, TAG);
-      if (!retry) {
-        const status = decision.status as StatusCode;
-        c.status(status);
-        if (decision.useFormat429) {
-          return c.json({
-            type: "error",
-            error: {
-              type: "rate_limit_error",
-              code: "rate_limit_exceeded",
-              message: decision.message,
-            },
-          });
-        }
-        return c.json(formatResponsesError(status, decision.message));
-      }
-
-      entryId = retry.entryId;
-      triedEntryIds.push(entryId);
-      codexApi = buildCodexApi(retry.token, retry.accountId, cookieJar, entryId, proxyPool);
-      console.log(`[${TAG}] Fallback → account ${retry.entryId}`);
-      await staggerIfNeeded(retry.prevSlotMs);
-      continue;
-    }
-  }
-
-  releaseAccount(accountPool, entryId, compactImageFailedUsage, released);
-  c.status(502);
-  return c.json(formatResponsesError(502, "Compact failed after maximum retry attempts"));
-}
-
-// ── Route ──────────────────────────────────────────────────────────
+// ── Route ─────────────────────────────────────────────────────────
 
 export function createResponsesRoutes(
   accountPool: AccountPool,
@@ -759,8 +116,6 @@ export function createResponsesRoutes(
   upstreamRouter?: UpstreamRouter,
 ): Hono {
   const app = new Hono();
-
-  // ── POST /v1/responses — streaming SSE passthrough ──
 
   const responsesHandler = async (c: Context) => {
     let rawBody: unknown;
@@ -791,7 +146,6 @@ export function createResponsesRoutes(
     const parsed = parseModelName(rawModel);
     const modelId = resolveModelId(parsed.modelId);
     const displayModel = buildDisplayModelName(parsed);
-    const modelInfo = getModelInfo(modelId);
 
     const codexRequest: CodexResponsesRequest = {
       model: modelId,
@@ -880,9 +234,6 @@ export function createResponsesRoutes(
       codexRequest.parallel_tool_calls = body.parallel_tool_calls;
     }
 
-    // Detect image_generation tool at request time so we can classify the
-    // outcome on release (success / failed / silently stripped) regardless
-    // of whether the response actually arrived.
     const expectsImageGen = Array.isArray(body.tools)
       && body.tools.some((t): t is Record<string, unknown> => isRecord(t) && t.type === "image_generation");
 
@@ -944,8 +295,6 @@ export function createResponsesRoutes(
 
     return handleProxyRequest({ c, accountPool, cookieJar, req: proxyReq, fmt: PASSTHROUGH_FORMAT, proxyPool });
   };
-
-  // ── POST /v1/responses/compact — non-streaming JSON proxy ──
 
   const compactHandler = async (c: Context) => {
     let rawBody: unknown;
