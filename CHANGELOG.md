@@ -8,6 +8,10 @@
 
 ## [Unreleased]
 
+### Changed
+
+- 更新 `README_EN.md` 中过时的模型推荐说明以匹配最新的模型别名映射（`README_EN.md`）
+
 ### Added
 
 - Web 前端测试接入 CI 门禁:`web/` 是独立 package(非 root workspace)、用自己的 vitest(jsdom),其组件测试此前不被 root `npm test` 收录、不在任何自动化里跑。新增 root `test:web` 脚本(`cd web && npx vitest run`)和 `ci-quality.yml` 独立 `frontend-tests` job(`cd web && npm ci` + vitest),把现存 7 个 web 测试文件 16 用例纳入 PR 门禁;并给 `web/vite.config.ts` 补 `preact/devtools` / `preact/debug` alias——`@preact/preset-vite` 会把这两个 import 注入 `shared/` 文件,干净 `npm ci`(CI)从 web/ 外解析不到会在 import 阶段直接炸(本地因根 node_modules 有 preact 兜底而测不出)(`package.json`、`.github/workflows/ci-quality.yml`、`web/vite.config.ts`)

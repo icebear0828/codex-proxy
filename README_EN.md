@@ -247,7 +247,7 @@ claude
 
 > Copy env vars from the **Anthropic SDK Setup** card in the dashboard (includes Opus / Sonnet / Haiku tier model config).
 >
-> Recommended models: Opus → `gpt-5.4`, Sonnet → `gpt-5.3-codex`, Haiku → `gpt-5.4-mini`.
+> Recommended models: Opus → `gpt-5.5`, Sonnet → `gpt-5.4`, Haiku → `gpt-5.3-codex`.
 
 ### Codex CLI
 
