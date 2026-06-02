@@ -8,6 +8,7 @@ const ROOT = process.cwd();
 const STAGGER_MODULE = "src/routes/shared/proxy-stagger.ts";
 const PROXY_HANDLER_MODULE = "src/routes/shared/proxy-handler.ts";
 const RESPONSES_MODULE = "src/routes/responses.ts";
+const RESPONSES_COMPACT_MODULE = "src/routes/responses-compact.ts";
 
 function source(path: string): string {
   return readFileSync(resolve(ROOT, path), "utf-8");
@@ -64,10 +65,10 @@ describe("proxy stagger helper boundary", () => {
   });
 
   it("keeps compact responses from importing utility functions from the runtime handler", () => {
-    const responses = source(RESPONSES_MODULE);
+    const compact = source(RESPONSES_COMPACT_MODULE);
 
-    expect(importsNamedBinding(responses, "shared/proxy-stagger.js", "staggerIfNeeded", RESPONSES_MODULE)).toBe(true);
-    expect(importsNamedBinding(responses, "shared/proxy-handler.js", "handleProxyRequest", RESPONSES_MODULE)).toBe(true);
-    expect(importsNamedBinding(responses, "shared/proxy-handler.js", "staggerIfNeeded", RESPONSES_MODULE)).toBe(false);
+    expect(importsNamedBinding(compact, "shared/proxy-stagger.js", "staggerIfNeeded", RESPONSES_COMPACT_MODULE)).toBe(true);
+    expect(importsNamedBinding(compact, "shared/proxy-handler.js", "handleProxyRequest", RESPONSES_COMPACT_MODULE)).toBe(false);
+    expect(importsNamedBinding(compact, "shared/proxy-handler.js", "staggerIfNeeded", RESPONSES_COMPACT_MODULE)).toBe(false);
   });
 });

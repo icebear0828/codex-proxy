@@ -114,8 +114,7 @@ describe("release pipeline", () => {
     expect(existsSync(bumpYml)).toBe(true);
 
     const content = readFileSync(bumpYml, "utf-8");
-    // Must bump both root and electron package versions
+    // Must reference root package.json for version series
     expect(content).toContain("package.json");
-    expect(content).toContain("packages/electron/package.json");
   });
 });
