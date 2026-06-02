@@ -50,6 +50,7 @@ import {
 import { logRequestDiagnostics } from "./proxy-request-diagnostics.js";
 import {
   applyProxyRetryRecoveryDecision,
+  applyCascadingBanDefense,
   buildProxyRetryRecoveryDecision,
 } from "./proxy-retry-recovery.js";
 import { buildProxySessionContext } from "./proxy-session-context.js";
@@ -84,6 +85,10 @@ export async function handleProxyRequest(options: HandleProxyRequestOptions): Pr
   }
 
   // ── Drift-Defense & Verification Loop ──
+  // Caps the number of upstream /usage checks per request to avoid amplification
+  // when many accounts are simultaneously dirty.
+  const MAX_VERIFY_ATTEMPTS = 5;
+  let verifyAttempts = 0;
   for (;;) {
     const entry = accountPool.getEntry(acquired.entryId);
     if (entry?.quotaVerifyRequired) {
@@ -104,7 +109,13 @@ export async function handleProxyRequest(options: HandleProxyRequestOptions): Pr
           console.warn(`[${fmt.tag}] 🚫 Upstream reports account ${acquired.entryId} is still limit_reached. Releasing and retrying another...`);
           releaseAccount(accountPool, acquired.entryId, undefined, released);
           verifiedExcludeIds.push(acquired.entryId);
-          
+
+          verifyAttempts++;
+          if (verifyAttempts >= MAX_VERIFY_ATTEMPTS) {
+            console.warn(`[${fmt.tag}] ⚠️ Drift-defense hit MAX_VERIFY_ATTEMPTS (${MAX_VERIFY_ATTEMPTS}). Giving up to avoid excess upstream calls.`);
+            return respondWithNoAccount({ c, req, fmt });
+          }
+
           acquired = acquireAccount(accountPool, req.codexRequest.model, verifiedExcludeIds, fmt.tag, sessionContext.preferredEntryId ?? undefined);
           if (!acquired) {
             return respondWithNoAccount({ c, req, fmt });
@@ -113,8 +124,9 @@ export async function handleProxyRequest(options: HandleProxyRequestOptions): Pr
         }
       } catch (err) {
         console.warn(`[${fmt.tag}] ⚠️ Failed to verify dirty quota for ${acquired.entryId}:`, err);
-        // Fallback: if check failed (e.g. temporary network error), clear the flag to avoid deadlocking user requests
-        entry.quotaVerifyRequired = false;
+        // Keep quotaVerifyRequired=true so the flag isn't silently cleared on transient network errors.
+        // The ActiveQuotaRefresher or the next request will retry. This avoids promoting a still-limited
+        // account to "clean" just because the upstream check temporarily failed.
       }
     }
     break; // Verified or no verification required, proceed!
@@ -123,23 +135,17 @@ export async function handleProxyRequest(options: HandleProxyRequestOptions): Pr
   let { entryId } = acquired;
 
   // ── Session Affinity Fallback Defense (Cascading Ban Prevention) ──
-  // If we switched to a different account than the preferred one (e.g. because the preferred account was banned/expired),
-  // we MUST strip the previous_response_id and turnState immediately. Sending a previous_response_id belonging to
-  // Account B using Account A's token is a high-risk trigger for upstream cascading account bans.
-  if (
-    sessionContext.preferredEntryId &&
-    entryId !== sessionContext.preferredEntryId &&
-    (req.codexRequest.previous_response_id || req.codexRequest.turnState)
-  ) {
-    console.warn(
-      `[${fmt.tag}] ⚠️ Account switched from preferred ${sessionContext.preferredEntryId} to ${entryId}. ` +
-      `Stripping previous_response_id (${req.codexRequest.previous_response_id}) and turnState to prevent upstream cascading ban.`
-    );
-    req.codexRequest.previous_response_id = undefined;
-    req.codexRequest.turnState = undefined;
-    if (sessionContext.explicitPrevRespId) {
-      affinityMap.forget(sessionContext.explicitPrevRespId);
-    }
+  // If we switched to a different account than the preferred one, strip
+  // previous_response_id / turnState to prevent cross-account chain poisoning.
+  if (sessionContext.preferredEntryId) {
+    applyCascadingBanDefense({
+      request: req,
+      affinityMap,
+      preferredEntryId: sessionContext.preferredEntryId,
+      acquiredEntryId: entryId,
+      explicitPrevRespId: sessionContext.explicitPrevRespId,
+      tag: fmt.tag,
+    });
   }
   let codexApi = buildCodexApi(acquired.token, acquired.accountId, cookieJar, entryId, proxyPool);
   const triedEntryIds: string[] = [entryId];

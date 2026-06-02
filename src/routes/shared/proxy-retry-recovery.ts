@@ -96,3 +96,48 @@ export function applyProxyRetryRecoveryDecision(
   request.codexRequest.turnState = undefined;
   return true;
 }
+
+export interface ApplyCascadingBanDefenseOptions {
+  request: ProxyRequest;
+  affinityMap: Pick<SessionAffinityMap, "forget">;
+  preferredEntryId: string;
+  acquiredEntryId: string;
+  explicitPrevRespId: string | undefined;
+  tag: string;
+}
+
+/**
+ * Cross-account session isolation guard (Cascading Ban Defense).
+ *
+ * When the account pool hands us a different account than the session's preferred
+ * one, any `previous_response_id` / `turnState` from the old account MUST NOT be
+ * forwarded — upstream will treat the mismatch as suspicious and may ban the new
+ * account too.  Returns true when stripping was applied.
+ */
+export function applyCascadingBanDefense({
+  request,
+  affinityMap,
+  preferredEntryId,
+  acquiredEntryId,
+  explicitPrevRespId,
+  tag,
+}: ApplyCascadingBanDefenseOptions): boolean {
+  if (
+    acquiredEntryId === preferredEntryId ||
+    (!request.codexRequest.previous_response_id && !request.codexRequest.turnState)
+  ) {
+    return false;
+  }
+
+  console.warn(
+    `[${tag}] ⚠️ Account switched from preferred ${preferredEntryId} to ${acquiredEntryId}. ` +
+    `Stripping previous_response_id (${request.codexRequest.previous_response_id}) and turnState to prevent upstream cascading ban.`,
+  );
+  request.codexRequest.previous_response_id = undefined;
+  request.codexRequest.turnState = undefined;
+  if (explicitPrevRespId) {
+    affinityMap.forget(explicitPrevRespId);
+  }
+  return true;
+}
+

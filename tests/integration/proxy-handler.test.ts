@@ -9,7 +9,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { Hono } from "hono";
 import type { FormatCollectTranslatorOptions, ProxyRequest } from "@src/routes/shared/proxy-handler-types.js";
 import type { WsPoolContext } from "@src/proxy/codex-api.js";
-import type { CodexResponsesRequest } from "@src/proxy/codex-types.js";
+import type { CodexResponsesRequest, CodexUsageResponse } from "@src/proxy/codex-types.js";
 import type { ParsedRateLimit } from "@src/proxy/rate-limit-headers.js";
 import { createMockFormatAdapter } from "@helpers/format-adapter.js";
 import { getSessionAffinityMap } from "@src/auth/session-affinity.js";
@@ -27,7 +27,7 @@ type MockCreateResponse = (
 
 let mockCreateResponse: MockCreateResponse | null = null;
 
-type MockGetUsage = () => Promise<any>;
+type MockGetUsage = () => Promise<CodexUsageResponse>;
 let mockGetUsage: MockGetUsage | null = null;
 
 vi.mock("@src/proxy/codex-api.js", () => {
