@@ -15,10 +15,15 @@ export function createHealthRoutes(accountPool: AccountPool): Hono {
   app.get("/health", async (c) => {
     const authenticated = accountPool.isAuthenticated();
     const poolSummary = accountPool.getPoolSummary();
+    const capacitySummary = accountPool.getCapacitySummary();
     return c.json({
       status: "ok",
       authenticated,
-      pool: { total: poolSummary.total, active: poolSummary.active },
+      pool: {
+        total: poolSummary.total,
+        active: poolSummary.active,
+        ...capacitySummary,
+      },
       timestamp: new Date().toISOString(),
     });
   });

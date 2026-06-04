@@ -11,6 +11,7 @@ import { createFsPersistence } from "./account-persistence.js";
 import { AccountRegistry } from "./account-registry.js";
 import { AccountLifecycle } from "./account-lifecycle.js";
 import type { AccountPersistence, PersistenceLoadHealth } from "./account-persistence.js";
+import type { AccountCapacitySummary } from "./account-lifecycle.js";
 import type { RotationStrategyName } from "./rotation-strategy.js";
 import type {
   AccountEntry,
@@ -273,6 +274,10 @@ export class AccountPool {
     banned: number;
   } {
     return this.registry.getPoolSummary();
+  }
+
+  getCapacitySummary(): AccountCapacitySummary {
+    return this.lifecycle.getCapacitySummary();
   }
 
   // ── Persistence ───────────────────────────────────────────────────

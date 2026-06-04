@@ -122,6 +122,36 @@ afterAll(() => {
   process.env.NODE_ENV = origEnv;
 });
 
+describe("GET /health", () => {
+  it("returns pool capacity without removing existing pool fields", async () => {
+    pool.addAccount("token-health");
+    const acquired = pool.acquire({});
+    expect(acquired).not.toBeNull();
+
+    const res = await app.request("/health");
+    expect(res.status).toBe(200);
+    const body = await res.json() as {
+      authenticated: boolean;
+      pool: {
+        total: number;
+        active: number;
+        max_concurrent_per_account: number;
+        total_slots: number;
+        used_slots: number;
+        available_slots: number;
+      };
+    };
+
+    expect(body.authenticated).toBe(true);
+    expect(body.pool.total).toBe(1);
+    expect(body.pool.active).toBe(1);
+    expect(body.pool.max_concurrent_per_account).toBe(3);
+    expect(body.pool.total_slots).toBe(3);
+    expect(body.pool.used_slots).toBe(1);
+    expect(body.pool.available_slots).toBe(2);
+  });
+});
+
 describe("GET /debug/fingerprint", () => {
   it("returns fingerprint data from localhost", async () => {
     const res = await app.request("/debug/fingerprint");

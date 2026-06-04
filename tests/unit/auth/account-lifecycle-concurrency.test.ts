@@ -117,6 +117,29 @@ describe("per-account concurrent request slots", () => {
       expect(pool.acquire({})).toBeNull();
     });
 
+    it("reports slot capacity and in-flight usage", () => {
+      const { pool } = createPool(2);
+      expect(pool.getCapacitySummary()).toEqual({
+        max_concurrent_per_account: 3,
+        total_slots: 6,
+        used_slots: 0,
+        available_slots: 6,
+      });
+
+      const first = pool.acquire({})!;
+      const second = pool.acquire({})!;
+      expect(pool.getCapacitySummary()).toEqual({
+        max_concurrent_per_account: 3,
+        total_slots: 6,
+        used_slots: 2,
+        available_slots: 4,
+      });
+
+      pool.release(first.entryId);
+      pool.release(second.entryId);
+      expect(pool.getCapacitySummary().available_slots).toBe(6);
+    });
+
     it("release frees exactly one slot", () => {
       const { pool } = createPool(1);
       const acquired = [];
@@ -257,6 +280,27 @@ describe("per-account concurrent request slots", () => {
       expect(pool.acquire({})).not.toBeNull();
       expect(pool.acquire({})).not.toBeNull();
       expect(pool.acquire({})).toBeNull();
+
+      vi.useRealTimers();
+    });
+
+    it("capacity summary releases stale slots before counting availability", () => {
+      vi.useFakeTimers({ shouldAdvanceTime: true });
+      const { pool } = createPool(1);
+
+      pool.acquire({});
+      pool.acquire({});
+      expect(pool.getCapacitySummary()).toMatchObject({
+        used_slots: 2,
+        available_slots: 1,
+      });
+
+      vi.advanceTimersByTime(6 * 60 * 1000);
+
+      expect(pool.getCapacitySummary()).toMatchObject({
+        used_slots: 0,
+        available_slots: 3,
+      });
 
       vi.useRealTimers();
     });
