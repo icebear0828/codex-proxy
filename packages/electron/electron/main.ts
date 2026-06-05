@@ -139,10 +139,10 @@ app.on("ready", async () => {
 
     // 4. Start the proxy server (try configured port first, fall back to random if occupied)
     try {
-      serverHandle = await startServer({ host: "127.0.0.1" });
+      serverHandle = await startServer({});
     } catch {
       console.warn("[Electron] Default port in use, using random port");
-      serverHandle = await startServer({ host: "127.0.0.1", port: 0 });
+      serverHandle = await startServer({ port: 0 });
     }
     console.log(`[Electron] Server started on port ${serverHandle.port}`);
 

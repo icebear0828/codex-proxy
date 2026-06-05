@@ -182,4 +182,28 @@ server:
 
     expect(resolved).toBe("127.0.0.1");
   });
+
+  it("respects CODEX_PROXY_HOST env variable when options.host is undefined", async () => {
+    const originalEnv = process.env.CODEX_PROXY_HOST;
+    process.env.CODEX_PROXY_HOST = "0.0.0.0";
+    try {
+      const configDir = makeTempConfig(MINIMAL_DEFAULT);
+      const { loadConfig, hasLocalOverride } = await import("@src/config.js");
+      const config = loadConfig(configDir);
+
+      // Simulate startServer host resolution with undefined options.host
+      const optionsHost = undefined;
+      const resolved = hasLocalOverride("server", "host")
+        ? config.server.host
+        : (optionsHost ?? config.server.host);
+
+      expect(resolved).toBe("0.0.0.0");
+    } finally {
+      if (originalEnv === undefined) {
+        delete process.env.CODEX_PROXY_HOST;
+      } else {
+        process.env.CODEX_PROXY_HOST = originalEnv;
+      }
+    }
+  });
 });
