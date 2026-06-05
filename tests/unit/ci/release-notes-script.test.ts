@@ -97,4 +97,51 @@ describe("generate-release-notes.sh", () => {
     expect(notes).toContain("- refactor: internal helper cleanup (#11)");
     expect(notes).not.toContain("promote dev release fixes");
   });
+
+  it("uses topological sorting (git describe) rather than semver sorting to avoid pulling in old history from unrelated higher-version tags", () => {
+    const cwd = createRepo(); // v1.0.0 is created here (commit C1)
+
+    // Make an intermediary stable fix and tag it v1.0.1 (commit C2)
+    writeText(cwd, "src/app.txt", "v1.0.1 fix\n");
+    commitAll(cwd, "fix: intermediary stable fix (#50)");
+    git(cwd, ["tag", "v1.0.1"]);
+
+    // Create a higher-version beta tag v2.0.0-beta.1 branch off v1.0.0 (contains C1, but not C2)
+    git(cwd, ["checkout", "-b", "feature-v2", "v1.0.0"]);
+    writeText(cwd, "src/app.txt", "v2 base\n");
+    commitAll(cwd, "feat: v2 feature work");
+    git(cwd, ["tag", "v2.0.0-beta.1"]);
+
+    // Go back to master (which is at v1.0.1) and make a new commit for v1.0.2-beta.1
+    git(cwd, ["checkout", "master"]);
+    writeText(cwd, "src/app.txt", "v1.0.2 fix\n");
+    commitAll(cwd, "fix: critical v1.0.2 bugfix (#100)");
+    git(cwd, ["tag", "v1.0.2-beta.1"]);
+
+    const notes = runNotes(cwd, "v1.0.2-beta.1");
+
+    // The release notes should only contain the commits since the last release (v1.0.1)
+    expect(notes).toContain("- fix: critical v1.0.2 bugfix (#100)");
+    expect(notes).not.toContain("- fix: intermediary stable fix (#50)");
+  });
+
+  it("translates the release notes to Chinese and generates bilingual output", () => {
+    const cwd = createRepo();
+    writeText(cwd, "src/app.txt", "translation fix\n");
+    commitAll(cwd, "fix(translation): preserve anthropic message roles (#1)");
+    git(cwd, ["tag", "v1.0.1"]);
+
+    const notes = runNotes(cwd, "v1.0.1");
+
+    // Must contain English header and raw commit
+    expect(notes).toContain("## 🌐 English / 英文版");
+    expect(notes).toContain("- fix(translation): preserve anthropic message roles (#1)");
+
+    // Must contain Chinese header and translated commit
+    expect(notes).toContain("## 🇨🇳 中文版 (翻译)");
+    expect(notes).toContain("- 修复(翻译)：保留 anthropic 消息角色 (#1)");
+  });
 });
+
+
+
