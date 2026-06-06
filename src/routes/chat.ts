@@ -81,9 +81,7 @@ export function createChatRoutes(
   upstreamRouter?: UpstreamRouter,
 ): Hono {
   const app = new Hono();
-  app.use("*", apiKeyAuth(accountPool));
-
-  app.post("/v1/chat/completions", async (c) => {
+  app.post("/v1/chat/completions", apiKeyAuth(accountPool), async (c) => {
     // Parse request
     const body = await c.req.json();
     const parsed = ChatCompletionRequestSchema.safeParse(body);
