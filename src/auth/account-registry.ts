@@ -21,6 +21,7 @@ import type {
   CodexQuota,
 } from "./types.js";
 import { hasReachedCachedQuota } from "./quota-skip.js";
+import { isCfChallengeCooldownActive } from "./cf-challenge-cooldown.js";
 
 function safeEqual(a: string, b: string): boolean {
   const bufA = Buffer.from(a);
@@ -318,6 +319,7 @@ export class AccountRegistry {
       // usable and we must report authenticated.
       if (
         entry.status === "active" &&
+        !isCfChallengeCooldownActive(entry.id) &&
         (!skipExhausted || !hasReachedCachedQuota(entry))
       ) {
         return true;
@@ -336,6 +338,7 @@ export class AccountRegistry {
       if (
         entry.status === "active" &&
         (!excludeSet || !excludeSet.has(entry.id)) &&
+        !isCfChallengeCooldownActive(entry.id) &&
         (!skipExhausted || !hasReachedCachedQuota(entry))
       ) {
         return true;

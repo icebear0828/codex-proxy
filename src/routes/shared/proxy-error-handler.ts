@@ -9,6 +9,7 @@ import type { AccountPool } from "../../auth/account-pool.js";
 import {
   extractRetryAfterSec,
   isBanError,
+  isCfChallengeError,
   isCfPathBlockError,
   isQuotaExhaustedError,
   isTokenInvalidError,
@@ -18,6 +19,7 @@ import type { CodexApiError } from "../../proxy/codex-types.js";
 import type { StatusCode } from "hono/utils/http-status";
 import type { CookieJar } from "../../proxy/cookie-jar.js";
 import { recordCfPathBlock } from "../../auth/cf-path-block-tracker.js";
+import { recordCfChallengeCooldown } from "../../auth/cf-challenge-cooldown.js";
 import { appendErrorLog } from "../../logs/error-log.js";
 
 /** Consecutive CF path-blocks before the account is auto-disabled. */
@@ -116,7 +118,22 @@ export function handleCodexApiError(
     return { action: "retry", status: 403, message: err.message };
   }
 
-  // 5. Token invalidated / account deactivated
+  // 5. Cloudflare challenge (403 HTML/challenge response) — cooldown, not ban.
+  if (isCfChallengeError(err)) {
+    const cooldown = recordCfChallengeCooldown(entryId);
+    console.warn(
+      `[${tag}] Account ${entryId} (${email}) | Cloudflare challenge 403, ` +
+        `cooling down for ${cooldown.delaySeconds}s and trying different account...`,
+    );
+    return {
+      action: "retry",
+      releaseBeforeRetry: true,
+      status: 502,
+      message: "Upstream blocked the request (Cloudflare challenge)",
+    };
+  }
+
+  // 6. Token invalidated / account deactivated
   if (isTokenInvalidError(err)) {
     const isDeactivated = err.message.toLowerCase().includes("deactivated");
     const newStatus = isDeactivated ? "banned" : "expired";
@@ -127,7 +144,7 @@ export function handleCodexApiError(
     return { action: "retry", status: 401, message: err.message };
   }
 
-  // 6. Cloudflare path block (empty-body 404). CF's Bot Management can
+  // 7. Cloudflare path block (empty-body 404). CF's Bot Management can
   //    "hide" the /codex/responses path by returning 404 with no body when
   //    the captured __cf_bm cookie no longer matches the request
   //    fingerprint. Clear the cookie jar (so the next attempt is a clean,
@@ -164,7 +181,7 @@ export function handleCodexApiError(
     };
   }
 
-  // 7. Generic error — return to client (preserve original body for passthrough)
+  // 8. Generic error — return to client (preserve original body for passthrough)
   const status = toErrorStatus(err.status);
   return { action: "respond", status, message: err.message, errorBody: err.body };
 }

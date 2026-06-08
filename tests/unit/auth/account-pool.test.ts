@@ -59,6 +59,10 @@ import { AccountPool } from "@src/auth/account-pool.js";
 import { getConfig } from "@src/config.js";
 import { isTokenExpired, extractUserProfile } from "@src/auth/jwt-utils.js";
 import { getModelPlanTypes } from "@src/models/model-store.js";
+import {
+  _resetAllCfChallengeCooldowns,
+  recordCfChallengeCooldown,
+} from "@src/auth/cf-challenge-cooldown.js";
 
 describe("AccountPool", () => {
   let pool: AccountPool;
@@ -76,6 +80,7 @@ describe("AccountPool", () => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     } as ReturnType<typeof getConfig>);
     vi.mocked(getModelPlanTypes).mockReturnValue([]);
+    _resetAllCfChallengeCooldowns();
     // extractUserProfile: derive plan from token name for test flexibility
     vi.mocked(extractUserProfile).mockImplementation((token: string) => {
       let plan = "free";
@@ -123,6 +128,17 @@ describe("AccountPool", () => {
       vi.mocked(isTokenExpired).mockReturnValue(true);
       pool.addAccount("token-expired");
       expect(pool.acquire()).toBeNull();
+    });
+
+    it("skips accounts with active Cloudflare challenge cooldown", () => {
+      const cooledDownId = pool.addAccount("token-aaa");
+      const availableId = pool.addAccount("token-bbb");
+      recordCfChallengeCooldown(cooledDownId);
+
+      const acquired = pool.acquire();
+
+      expect(acquired).not.toBeNull();
+      expect(acquired!.entryId).toBe(availableId);
     });
   });
 

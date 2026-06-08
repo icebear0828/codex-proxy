@@ -1,7 +1,12 @@
 import type { AccountPool } from "@src/auth/account-pool.js";
+import {
+  _resetAllCfChallengeCooldowns,
+  getCfChallengeCooldown,
+  recordCfChallengeCooldown,
+} from "@src/auth/cf-challenge-cooldown.js";
 import { releaseNonStreamingSuccessAccount } from "@src/routes/shared/non-streaming-helpers.js";
 import type { UsageInfo } from "@src/translation/codex-event-extractor.js";
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 function makePool(): AccountPool {
   return {
@@ -10,6 +15,10 @@ function makePool(): AccountPool {
 }
 
 describe("releaseNonStreamingSuccessAccount", () => {
+  beforeEach(() => {
+    _resetAllCfChallengeCooldowns();
+  });
+
   it("releases the successful account with collected usage", () => {
     const accountPool = makePool();
     const released = new Set<string>();
@@ -67,5 +76,20 @@ describe("releaseNonStreamingSuccessAccount", () => {
     });
 
     expect(accountPool.release).not.toHaveBeenCalled();
+  });
+
+  it("clears Cloudflare challenge cooldown after a successful release", () => {
+    const accountPool = makePool();
+    const usage: UsageInfo = { input_tokens: 1, output_tokens: 2 };
+    recordCfChallengeCooldown("entry-cf");
+
+    releaseNonStreamingSuccessAccount({
+      accountPool,
+      entryId: "entry-cf",
+      usage,
+      released: new Set<string>(),
+    });
+
+    expect(getCfChallengeCooldown("entry-cf")).toBeNull();
   });
 });

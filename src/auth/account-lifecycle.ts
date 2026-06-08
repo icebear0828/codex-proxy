@@ -12,6 +12,7 @@ import { getRotationStrategy } from "./rotation-strategy.js";
 import type { RotationStrategy, RotationState, RotationStrategyName } from "./rotation-strategy.js";
 import type { AccountRegistry } from "./account-registry.js";
 import type { AccountEntry, AcquiredAccount } from "./types.js";
+import { isCfChallengeCooldownActive } from "./cf-challenge-cooldown.js";
 
 const ACQUIRE_LOCK_TTL_MS = 5 * 60 * 1000; // 5 minutes
 
@@ -92,6 +93,7 @@ export class AccountLifecycle {
         a.status === "active" &&
         this.slotCount(a.id) < maxConcurrent &&
         (!excludeSet || !excludeSet.has(a.id)) &&
+        !isCfChallengeCooldownActive(a.id) &&
         (!skipExhausted || !hasReachedCachedQuota(a)),
     );
 
@@ -204,6 +206,7 @@ export class AccountLifecycle {
         a.status === "active" &&
         this.slotCount(a.id) < maxConcurrent &&
         a.planType &&
+        !isCfChallengeCooldownActive(a.id) &&
         (!skipExhausted || !hasReachedCachedQuota(a)),
     );
 

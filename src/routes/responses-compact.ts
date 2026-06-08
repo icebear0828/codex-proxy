@@ -5,6 +5,7 @@
 import type { Context } from "hono";
 import type { StatusCode } from "hono/utils/http-status";
 import type { AccountPool } from "../auth/account-pool.js";
+import { clearCfChallengeCooldown } from "../auth/cf-challenge-cooldown.js";
 import type { CookieJar } from "../proxy/cookie-jar.js";
 import type { ProxyPool } from "../proxy/proxy-pool.js";
 import { CodexApi, CodexApiError } from "../proxy/codex-api.js";
@@ -146,6 +147,7 @@ export async function handleCompact(
         { tag: TAG },
       );
 
+      clearCfChallengeCooldown(entryId);
       releaseAccount(accountPool, entryId, compactImageFailedUsage, released);
       return c.json(result);
     } catch (err) {

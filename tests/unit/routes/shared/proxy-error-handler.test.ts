@@ -2,6 +2,10 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { handleCodexApiError, type ErrorAction } from "@src/routes/shared/proxy-error-handler.js";
 import { CodexApiError } from "@src/proxy/codex-types.js";
 import { _resetAllCfPathBlocks } from "@src/auth/cf-path-block-tracker.js";
+import {
+  _resetAllCfChallengeCooldowns,
+  getCfChallengeCooldown,
+} from "@src/auth/cf-challenge-cooldown.js";
 
 /* ── Minimal mock matching AccountPool subset used by error handler ── */
 interface MockPool {
@@ -38,6 +42,7 @@ describe("handleCodexApiError", () => {
 
   beforeEach(() => {
     pool = createMockPool();
+    _resetAllCfChallengeCooldowns();
   });
 
   // ── model-not-supported ──
@@ -147,14 +152,17 @@ describe("handleCodexApiError", () => {
       expect(pool.markStatus).toHaveBeenCalledWith(entryId, "banned");
     });
 
-    it("does not treat Cloudflare challenge as ban", () => {
+    it("records Cloudflare challenge cooldown and retries without banning", () => {
       const err = new CodexApiError(403, "<html>cf_chl challenge</html>");
 
       const result = handleCodexApiError(err, pool as never, entryId, model, tag, false);
 
-      // Cloudflare 403 is not a ban → generic error path
-      expect(result.action).toBe("respond");
+      expect(result.action).toBe("retry");
+      expect(result.releaseBeforeRetry).toBe(true);
+      expect(result.status).toBe(502);
+      expect(result.message).toContain("Cloudflare challenge");
       expect(pool.markStatus).not.toHaveBeenCalled();
+      expect(getCfChallengeCooldown(entryId)?.delaySeconds).toBe(10);
     });
   });
 

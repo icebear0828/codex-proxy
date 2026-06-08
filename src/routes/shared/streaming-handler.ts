@@ -1,6 +1,7 @@
 import type { Context } from "hono";
 import { stream } from "hono/streaming";
 import type { AccountPool } from "../../auth/account-pool.js";
+import { clearCfChallengeCooldown } from "../../auth/cf-challenge-cooldown.js";
 import type { SessionAffinityMap } from "../../auth/session-affinity.js";
 import type { CodexApi } from "../../proxy/codex-api.js";
 import { recordStreamCloseEvent } from "../../logs/stream-close-event.js";
@@ -61,6 +62,7 @@ export function handleStreaming(options: HandleStreamingOptions): Response {
   let usageInfo: UsageInfo | undefined;
   let capturedResponseId: string | null = null;
   let responseCompleted = false;
+  let streamCompletedWithoutError = false;
   const metadataCollector = createResponseMetadataCollector();
 
   return stream(c, async (s) => {
@@ -127,9 +129,11 @@ export function handleStreaming(options: HandleStreamingOptions): Response {
           abortSignal: abortController.signal,
         },
       });
+      streamCompletedWithoutError = true;
     } finally {
       abortController.abort();
       recordStreamAffinity();
+      if (streamCompletedWithoutError) clearCfChallengeCooldown(capturedEntryId);
       if (usageInfo) {
         logProxyUsage({
           tag: fmt.tag,

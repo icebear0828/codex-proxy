@@ -54,6 +54,10 @@ vi.mock("@src/models/model-store.js", () => ({
 import { AccountPool } from "@src/auth/account-pool.js";
 import { isTokenExpired } from "@src/auth/jwt-utils.js";
 import type { CodexQuota } from "@src/auth/types.js";
+import {
+  _resetAllCfChallengeCooldowns,
+  recordCfChallengeCooldown,
+} from "@src/auth/cf-challenge-cooldown.js";
 
 function makeQuota(overrides?: Partial<CodexQuota>): CodexQuota {
   return {
@@ -76,6 +80,7 @@ describe("AccountPool.hasAvailableAccounts", () => {
 
   beforeEach(() => {
     vi.mocked(isTokenExpired).mockReturnValue(false);
+    _resetAllCfChallengeCooldowns();
     pool = new AccountPool({ rotationStrategy: "least_used" });
   });
 
@@ -128,6 +133,12 @@ describe("AccountPool.hasAvailableAccounts", () => {
     const id1 = pool.addAccount("token-a");
     const id2 = pool.addAccount("token-b");
     expect(pool.hasAvailableAccounts([id1, id2])).toBe(false);
+  });
+
+  it("returns false when all active accounts are in Cloudflare challenge cooldown", () => {
+    const id = pool.addAccount("token-a");
+    recordCfChallengeCooldown(id);
+    expect(pool.hasAvailableAccounts()).toBe(false);
   });
 
   it("returns false when active accounts only have cached primary quota exhaustion", () => {
@@ -190,6 +201,7 @@ describe("AccountPool.isAuthenticated", () => {
 
   beforeEach(() => {
     vi.mocked(isTokenExpired).mockReturnValue(false);
+    _resetAllCfChallengeCooldowns();
     pool = new AccountPool({ rotationStrategy: "least_used" });
   });
 
@@ -244,6 +256,12 @@ describe("AccountPool.isAuthenticated", () => {
   it("returns false when only disabled accounts exist, regardless of skip_exhausted", () => {
     const id = pool.addAccount("token-a");
     pool.markStatus(id, "disabled");
+    expect(pool.isAuthenticated()).toBe(false);
+  });
+
+  it("returns false when only active accounts are in Cloudflare challenge cooldown", () => {
+    const id = pool.addAccount("token-a");
+    recordCfChallengeCooldown(id);
     expect(pool.isAuthenticated()).toBe(false);
   });
 });

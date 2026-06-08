@@ -2,6 +2,7 @@ import type { Context } from "hono";
 import type { StatusCode } from "hono/utils/http-status";
 import type { SessionAffinityMap } from "../../auth/session-affinity.js";
 import type { AccountPool } from "../../auth/account-pool.js";
+import { clearCfChallengeCooldown } from "../../auth/cf-challenge-cooldown.js";
 import type { CodexApi, WsPoolContext } from "../../proxy/codex-api.js";
 import { CodexApiError } from "../../proxy/codex-api.js";
 import type { CookieJar } from "../../proxy/cookie-jar.js";
@@ -396,6 +397,7 @@ export function releaseNonStreamingSuccessAccount(options: ReleaseNonStreamingSu
     released,
   } = options;
 
+  clearCfChallengeCooldown(entryId);
   releaseAccount(accountPool, entryId, annotateImageGenOutcome(usage, expectsImageGen), released);
 }
 

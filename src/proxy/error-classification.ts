@@ -51,6 +51,21 @@ export function isBanError(err: unknown): boolean {
   return true;
 }
 
+/** Check if a 403 body is a Cloudflare challenge rather than an account ban. */
+export function isCfChallengeError(err: unknown): boolean {
+  if (!isCodexLike(err)) return false;
+  if (err.status !== 403) return false;
+  const body = err.body.toLowerCase();
+  return (
+    body.includes("cf-mitigated") ||
+    body.includes("cf-chl-bypass") ||
+    body.includes("_cf_chl") ||
+    body.includes("cf_chl") ||
+    body.includes("attention required") ||
+    body.includes("just a moment")
+  );
+}
+
 /** Check if an error is a 401 token invalidation (revoked/expired upstream). */
 export function isTokenInvalidError(err: unknown): boolean {
   if (!isCodexLike(err)) return false;

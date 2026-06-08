@@ -3,6 +3,7 @@ import { CodexApiError } from "@src/proxy/codex-types.js";
 import {
   extractRetryAfterSec,
   isBanError,
+  isCfChallengeError,
   isCfPathBlockError,
   isQuotaExhaustedError,
   isTokenInvalidError,
@@ -86,6 +87,24 @@ describe("isBanError", () => {
     expect(isBanError(new Error("random"))).toBe(false);
     expect(isBanError("string")).toBe(false);
     expect(isBanError(null)).toBe(false);
+  });
+});
+
+describe("isCfChallengeError", () => {
+  it("returns true for Cloudflare challenge indicators", () => {
+    expect(isCfChallengeError(new CodexApiError(403, "<html>cf_chl challenge</html>"))).toBe(true);
+    expect(isCfChallengeError(new CodexApiError(403, "<html>Just a Moment</html>"))).toBe(true);
+    expect(isCfChallengeError(new CodexApiError(403, "cf-mitigated: challenge"))).toBe(true);
+  });
+
+  it("returns false for non-CF 403 bans", () => {
+    const err = new CodexApiError(403, '{"detail": "Your account has been flagged"}');
+    expect(isCfChallengeError(err)).toBe(false);
+  });
+
+  it("returns false for non-403 and non-Codex errors", () => {
+    expect(isCfChallengeError(new CodexApiError(404, "<html>cf_chl challenge</html>"))).toBe(false);
+    expect(isCfChallengeError(new Error("cf_chl"))).toBe(false);
   });
 });
 
