@@ -45,6 +45,10 @@ export function createSettingsRoutes(): Hono {
   const app = new Hono();
 
   app.use("/admin/*", async (c, next) => {
+    const path = c.req.path;
+    if (path.startsWith("/admin/error-logs")) {
+      return next();
+    }
     if (c.req.method !== "POST" && c.req.method !== "PUT" && c.req.method !== "PATCH" && c.req.method !== "DELETE") {
       return next();
     }
