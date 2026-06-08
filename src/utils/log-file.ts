@@ -32,6 +32,19 @@ export function installFileLogger(opts: InstallFileLoggerOptions): FileLoggerHan
   process.stdout.write = wrap(originalStdout, process.stdout, fd);
   process.stderr.write = wrap(originalStderr, process.stderr, fd);
 
+  const errorHandler = (err: unknown): void => {
+    if (err && typeof err === "object" && "code" in err) {
+      const code = (err as { code?: unknown }).code;
+      if (code === "EPIPE" || code === "ECONNRESET") {
+        return;
+      }
+    }
+    throw err;
+  };
+
+  process.stdout.on("error", errorHandler);
+  process.stderr.on("error", errorHandler);
+
   let uninstalled = false;
 
   return {
@@ -41,6 +54,8 @@ export function installFileLogger(opts: InstallFileLoggerOptions): FileLoggerHan
       uninstalled = true;
       process.stdout.write = originalStdout;
       process.stderr.write = originalStderr;
+      process.stdout.off("error", errorHandler);
+      process.stderr.off("error", errorHandler);
       try {
         closeSync(fd);
       } catch {
@@ -60,7 +75,11 @@ function wrap(original: WriteFn, stream: NodeJS.WriteStream, fd: number): WriteF
     } catch {
       // never let the file sink break the caller — stdout/stderr must stay live
     }
-    return (original as (...a: unknown[]) => boolean).apply(stream, args);
+    try {
+      return (original as (...a: unknown[]) => boolean).apply(stream, args);
+    } catch {
+      return false;
+    }
   };
   return wrapped as WriteFn;
 }
