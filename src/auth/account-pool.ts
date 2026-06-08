@@ -134,6 +134,15 @@ export class AccountPool {
     return this.registry.addAccount(token, refreshToken);
   }
 
+  async withPersistenceBatch<T>(fn: () => Promise<T>): Promise<T> {
+    this.registry.beginPersistenceBatch();
+    try {
+      return await fn();
+    } finally {
+      this.registry.endPersistenceBatch();
+    }
+  }
+
   removeAccount(id: string): boolean {
     this.lifecycle.clearLock(id);
     this.evictWsPool(id);

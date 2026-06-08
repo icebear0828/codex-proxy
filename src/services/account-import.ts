@@ -54,49 +54,51 @@ export class AccountImportService {
   ) {}
 
   async importMany(entries: ImportEntry[]): Promise<ImportResult> {
-    let added = 0;
-    let updated = 0;
-    let failed = 0;
-    const errors: string[] = [];
-    const existingIds = new Set(this.pool.getAccounts().map((a) => a.id));
+    return this.pool.withPersistenceBatch(async () => {
+      let added = 0;
+      let updated = 0;
+      let failed = 0;
+      const errors: string[] = [];
+      const existingIds = new Set(this.pool.getAccounts().map((a) => a.id));
 
-    for (const entry of entries) {
-      const resolved = await this.resolveToken(
-        entry.token,
-        entry.refreshToken ?? null,
-      );
-      if (!resolved.ok) {
-        failed++;
-        errors.push(resolved.error);
-        continue;
-      }
+      for (const entry of entries) {
+        const resolved = await this.resolveToken(
+          entry.token,
+          entry.refreshToken ?? null,
+        );
+        if (!resolved.ok) {
+          failed++;
+          errors.push(resolved.error);
+          continue;
+        }
 
-      const entryId = this.pool.addAccount(resolved.token, resolved.rt);
-      this.scheduler.scheduleOne(entryId, resolved.token);
+        const entryId = this.pool.addAccount(resolved.token, resolved.rt);
+        this.scheduler.scheduleOne(entryId, resolved.token);
 
-      if (entry.label) {
-        this.pool.setLabel(entryId, entry.label);
-      }
+        if (entry.label) {
+          this.pool.setLabel(entryId, entry.label);
+        }
 
-      // Warmup: establish session cookies to avoid cold-start detection
-      if (this.deps.warmup) {
-        const accountId = extractChatGptAccountId(resolved.token);
-        try {
-          await this.deps.warmup(entryId, resolved.token, accountId);
-        } catch (err) {
-          console.warn(`[Import] Warmup failed for ${entryId}: ${err instanceof Error ? err.message : err}`);
+        // Warmup: establish session cookies to avoid cold-start detection
+        if (this.deps.warmup) {
+          const accountId = extractChatGptAccountId(resolved.token);
+          try {
+            await this.deps.warmup(entryId, resolved.token, accountId);
+          } catch (err) {
+            console.warn(`[Import] Warmup failed for ${entryId}: ${err instanceof Error ? err.message : err}`);
+          }
+        }
+
+        if (existingIds.has(entryId)) {
+          updated++;
+        } else {
+          added++;
+          existingIds.add(entryId);
         }
       }
 
-      if (existingIds.has(entryId)) {
-        updated++;
-      } else {
-        added++;
-        existingIds.add(entryId);
-      }
-    }
-
-    return { added, updated, failed, errors };
+      return { added, updated, failed, errors };
+    });
   }
 
   async importOne(

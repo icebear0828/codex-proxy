@@ -3,7 +3,7 @@
  * All deps injected via constructor.
  */
 
-import { describe, it, expect, beforeEach } from "vitest";
+import { describe, it, expect, beforeEach, vi } from "vitest";
 import { createMemoryPersistence } from "@helpers/account-pool-factory.js";
 import { createValidJwt } from "@helpers/jwt.js";
 import { setConfigForTesting, resetConfigForTesting } from "@src/config.js";
@@ -181,6 +181,41 @@ describe("AccountImportService", () => {
       ]);
 
       expect(pool.getAccounts()[0].label).toBe("Team Alpha");
+    });
+
+    it("persists once after bulk import instead of once per account", async () => {
+      const persistence = createMemoryPersistence();
+      const saveSpy = vi.spyOn(persistence, "save");
+      const pool = new AccountPool({
+        persistence,
+        rotationStrategy: "least_used",
+        initialToken: null,
+        rateLimitBackoffSeconds: 300,
+      });
+      const svc = new AccountImportService(
+        pool,
+        makeScheduler(),
+        makeDeps(),
+      );
+
+      const entries = Array.from({ length: 200 }, (_, index) => {
+        const number = index + 1;
+        return {
+          token: createValidJwt({
+            accountId: `batch-${number}`,
+            email: `b${number}@test.com`,
+          }),
+          label: `Batch ${number}`,
+        };
+      });
+
+      const result = await svc.importMany(entries);
+
+      expect(result).toMatchObject({ added: 200, updated: 0, failed: 0 });
+      expect(saveSpy).toHaveBeenCalledTimes(1);
+      expect(persistence._store).toHaveLength(200);
+      expect(persistence._store.at(0)?.label).toBe("Batch 1");
+      expect(persistence._store.at(-1)?.label).toBe("Batch 200");
     });
 
     it("counts updated for duplicate accounts", async () => {

@@ -62,6 +62,8 @@ export class AccountRegistry {
   private persistTimer: ReturnType<typeof setTimeout> | null = null;
   private persistence: AccountPersistence;
   private persistDisabled: boolean;
+  private persistBatchDepth = 0;
+  private persistDirty = false;
 
   constructor(
     persistence: AccountPersistence,
@@ -84,6 +86,19 @@ export class AccountRegistry {
    */
   isPersistDisabled(): boolean {
     return this.persistDisabled;
+  }
+
+  beginPersistenceBatch(): void {
+    this.persistBatchDepth++;
+  }
+
+  endPersistenceBatch(): void {
+    if (this.persistBatchDepth === 0) return;
+    this.persistBatchDepth--;
+    if (this.persistBatchDepth === 0 && this.persistDirty) {
+      this.persistDirty = false;
+      this.persistNow();
+    }
   }
 
   // ── CRUD ──────────────────────────────────────────────────────────
@@ -607,6 +622,10 @@ export class AccountRegistry {
 
   schedulePersist(): void {
     if (this.persistDisabled) return;
+    if (this.persistBatchDepth > 0) {
+      this.persistDirty = true;
+      return;
+    }
     if (this.persistTimer) return;
     this.persistTimer = setTimeout(() => {
       this.persistTimer = null;
@@ -620,6 +639,10 @@ export class AccountRegistry {
       this.persistTimer = null;
     }
     if (this.persistDisabled) return;
+    if (this.persistBatchDepth > 0) {
+      this.persistDirty = true;
+      return;
+    }
     this.persistence.save([...this.accounts.values()]);
   }
 

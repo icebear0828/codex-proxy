@@ -10,6 +10,7 @@ import {
   existsSync,
   mkdirSync,
 } from "fs";
+import { createRequire } from "module";
 import { resolve, dirname } from "path";
 import { randomBytes } from "crypto";
 import { getDataDir } from "../paths.js";
@@ -20,6 +21,8 @@ import {
   isTokenExpired,
 } from "./jwt-utils.js";
 import type { AccountEntry, AccountsFile, CodexQuota } from "./types.js";
+
+const require = createRequire(import.meta.url);
 
 /**
  * Migrate a legacy entry to the new schema:
@@ -114,8 +117,42 @@ export interface AccountPersistence {
   save(accounts: AccountEntry[]): void;
 }
 
+interface PersistenceLoadResult {
+  entries: AccountEntry[];
+  needsPersist: boolean;
+  loadFailed?: boolean;
+  health?: PersistenceLoadHealth;
+}
+
+interface SqliteRunResult {
+  changes: number;
+  lastInsertRowid: number | bigint;
+}
+
+interface SqliteStatement {
+  all(...params: unknown[]): unknown[];
+  run(...params: unknown[]): SqliteRunResult;
+}
+
+interface SqliteDatabase {
+  exec(sql: string): void;
+  prepare(sql: string): SqliteStatement;
+  close(): void;
+}
+
+type SqliteDatabaseConstructor = new (filename: string) => SqliteDatabase;
+
+type SqliteLoadResult =
+  | { ok: true; entries: AccountEntry[]; needsPersist: boolean }
+  | { ok: false; error: unknown };
+
+type PersistenceBackend = "sqlite" | "json" | null;
+
 function getAccountsFile(): string {
   return resolve(getDataDir(), "accounts.json");
+}
+function getAccountsSqliteFile(): string {
+  return resolve(getDataDir(), "accounts.sqlite");
 }
 function getLegacyAuthFile(): string {
   return resolve(getDataDir(), "auth.json");
@@ -131,30 +168,89 @@ export function createFsPersistence(): AccountPersistence {
   // latch is the second line of defense.
   let quarantineActive = false;
   let quarantineHealth: PersistenceLoadHealth | null = null;
+  let activeBackend: PersistenceBackend = null;
 
   const persistence: AccountPersistence = {
     load() {
       // Migrate from legacy auth.json if needed
       const migrated = migrateFromLegacy();
 
-      // Load from accounts.json
-      const { entries: loaded, needsPersist, loadFailed, health } = loadPersisted();
-      if (loadFailed) {
-        quarantineActive = true;
-        quarantineHealth = health ?? { quarantined: false, backupPath: null };
+      const sqliteFile = getAccountsSqliteFile();
+      if (existsSync(sqliteFile)) {
+        const sqliteLoad = loadSqlitePersisted(sqliteFile);
+        if (sqliteLoad.ok) {
+          if (sqliteLoad.entries.length > 0 || !existsSync(getAccountsFile())) {
+            activeBackend = "sqlite";
+            if (sqliteLoad.needsPersist) {
+              persistence.save(sqliteLoad.entries);
+            }
+            return {
+              entries: sqliteLoad.entries,
+              needsPersist: sqliteLoad.needsPersist,
+            };
+          }
+
+          const jsonLoad = loadJsonOrQuarantine();
+          if (jsonLoad.loadFailed) return jsonLoad;
+          if (jsonLoad.entries.length > 0) {
+            if (tryPromoteJsonToSqlite(jsonLoad.entries)) {
+              activeBackend = "sqlite";
+              if (jsonLoad.needsPersist) {
+                trySaveJsonMirror(jsonLoad.entries);
+              }
+            } else {
+              activeBackend = "json";
+              if (jsonLoad.needsPersist) {
+                trySaveJsonMirror(jsonLoad.entries);
+              }
+            }
+            return jsonLoad;
+          }
+
+          activeBackend = "sqlite";
+          return { entries: [], needsPersist: false };
+        }
+
+        console.warn(
+          "[AccountPool] Failed to load accounts.sqlite; falling back to accounts.json:",
+          sqliteLoad.error instanceof Error ? sqliteLoad.error.message : sqliteLoad.error,
+        );
       }
 
-      const entries = migrated.length > 0 && loaded.length === 0 ? migrated : loaded;
+      const jsonLoad = loadJsonOrQuarantine();
+      if (jsonLoad.loadFailed) return jsonLoad;
 
-      // Auto-persist when backfill was applied (preserves original behavior).
-      // Suppressed when loadFailed — the registry will be put into a
-      // persist-disabled state by AccountPool, and we must not write the
-      // partially-recovered map back over the (now quarantined) original.
-      if (needsPersist && loaded.length > 0 && !loadFailed) {
-        persistence.save(loaded);
+      const entries = migrated.length > 0 && jsonLoad.entries.length === 0
+        ? migrated
+        : jsonLoad.entries;
+
+      if (entries.length > 0) {
+        if (tryPromoteJsonToSqlite(entries)) {
+          activeBackend = "sqlite";
+          if (jsonLoad.needsPersist) {
+            trySaveJsonMirror(entries);
+          }
+        } else {
+          activeBackend = "json";
+          if (jsonLoad.needsPersist) {
+            trySaveJsonMirror(entries);
+          }
+        }
+        return { entries, needsPersist: jsonLoad.needsPersist };
       }
 
-      return { entries, needsPersist, loadFailed, health };
+      activeBackend = "sqlite";
+      return { entries, needsPersist: jsonLoad.needsPersist };
+
+      function loadJsonOrQuarantine(): PersistenceLoadResult {
+        const loaded = loadPersisted();
+        if (loaded.loadFailed) {
+          quarantineActive = true;
+          quarantineHealth = loaded.health ?? { quarantined: false, backupPath: null };
+          activeBackend = "json";
+        }
+        return loaded;
+      }
     },
 
     save(accounts: AccountEntry[]): void {
@@ -166,20 +262,298 @@ export function createFsPersistence(): AccountPersistence {
         );
         return;
       }
-      try {
-        const accountsFile = getAccountsFile();
-        const dir = dirname(accountsFile);
-        if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
-        const data: AccountsFile = { accounts };
-        const tmpFile = accountsFile + ".tmp";
-        writeFileSync(tmpFile, JSON.stringify(data, null, 2), "utf-8");
-        renameSync(tmpFile, accountsFile);
-      } catch (err) {
-        console.error("[AccountPool] Failed to persist accounts:", err instanceof Error ? err.message : err);
+
+      if (activeBackend !== "json") {
+        try {
+          saveSqliteAccounts(getAccountsSqliteFile(), accounts);
+          activeBackend = "sqlite";
+          trySaveJsonMirror(accounts);
+          return;
+        } catch (err) {
+          console.warn(
+            "[AccountPool] Failed to persist accounts.sqlite; falling back to accounts.json:",
+            err instanceof Error ? err.message : err,
+          );
+          activeBackend = "json";
+        }
       }
+
+      trySaveJsonMirror(accounts);
     },
   };
   return persistence;
+}
+
+function tryPromoteJsonToSqlite(entries: AccountEntry[]): boolean {
+  try {
+    saveSqliteAccounts(getAccountsSqliteFile(), entries);
+    return true;
+  } catch (err) {
+    console.warn(
+      "[AccountPool] Failed to migrate accounts.json to accounts.sqlite; continuing with JSON persistence:",
+      err instanceof Error ? err.message : err,
+    );
+    return false;
+  }
+}
+
+function trySaveJsonMirror(accounts: AccountEntry[]): void {
+  try {
+    saveJsonAccounts(accounts);
+  } catch (err) {
+    console.error("[AccountPool] Failed to persist accounts.json:", err instanceof Error ? err.message : err);
+  }
+}
+
+function saveJsonAccounts(accounts: AccountEntry[]): void {
+  const accountsFile = getAccountsFile();
+  const dir = dirname(accountsFile);
+  if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
+  const data: AccountsFile = { accounts };
+  const tmpFile = accountsFile + ".tmp";
+  writeFileSync(tmpFile, JSON.stringify(data, null, 2), "utf-8");
+  renameSync(tmpFile, accountsFile);
+}
+
+function loadSqliteConstructor(): SqliteDatabaseConstructor {
+  const nodeSqlite = loadNodeSqliteConstructor();
+  if (nodeSqlite) return nodeSqlite;
+
+  const loaded = require("better-sqlite3") as unknown;
+  if (typeof loaded !== "function") {
+    throw new Error("better-sqlite3 did not export a database constructor");
+  }
+  return loaded as SqliteDatabaseConstructor;
+}
+
+function loadNodeSqliteConstructor(): SqliteDatabaseConstructor | null {
+  try {
+    const loaded = require("node:sqlite") as unknown;
+    if (isNodeSqliteModule(loaded)) {
+      return loaded.DatabaseSync;
+    }
+  } catch {
+    return null;
+  }
+  return null;
+}
+
+function isNodeSqliteModule(value: unknown): value is { DatabaseSync: SqliteDatabaseConstructor } {
+  return (
+    value !== null &&
+    typeof value === "object" &&
+    typeof (value as { DatabaseSync?: unknown }).DatabaseSync === "function"
+  );
+}
+
+function openSqliteDatabase(sqliteFile: string): SqliteDatabase {
+  const Database = loadSqliteConstructor();
+  return new Database(sqliteFile);
+}
+
+function initSqliteSchema(db: SqliteDatabase): void {
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS accounts (
+      id TEXT PRIMARY KEY,
+      token TEXT NOT NULL,
+      refresh_token TEXT,
+      email TEXT,
+      account_id TEXT,
+      user_id TEXT,
+      label TEXT,
+      plan_type TEXT,
+      proxy_api_key TEXT NOT NULL,
+      status TEXT NOT NULL,
+      entry_json TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    )
+  `);
+  db.exec("PRAGMA user_version = 1");
+}
+
+function saveSqliteAccounts(sqliteFile: string, accounts: AccountEntry[]): void {
+  const dir = dirname(sqliteFile);
+  if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
+
+  const db = openSqliteDatabase(sqliteFile);
+  try {
+    initSqliteSchema(db);
+    const deleteAll = db.prepare("DELETE FROM accounts");
+    const insert = db.prepare(`
+      INSERT INTO accounts (
+        id,
+        token,
+        refresh_token,
+        email,
+        account_id,
+        user_id,
+        label,
+        plan_type,
+        proxy_api_key,
+        status,
+        entry_json,
+        updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `);
+    db.exec("BEGIN IMMEDIATE");
+    try {
+      deleteAll.run();
+      const updatedAt = new Date().toISOString();
+      for (const entry of accounts) {
+        insert.run(
+          entry.id,
+          entry.token,
+          entry.refreshToken,
+          entry.email,
+          entry.accountId,
+          entry.userId,
+          entry.label,
+          entry.planType,
+          entry.proxyApiKey,
+          entry.status,
+          JSON.stringify(entry),
+          updatedAt,
+        );
+      }
+      db.exec("COMMIT");
+    } catch (err) {
+      try {
+        db.exec("ROLLBACK");
+      } catch {
+        // Ignore rollback failures; rethrow the original write error.
+      }
+      throw err;
+    }
+  } finally {
+    db.close();
+  }
+}
+
+function loadSqlitePersisted(sqliteFile: string): SqliteLoadResult {
+  try {
+    const db = openSqliteDatabase(sqliteFile);
+    try {
+      initSqliteSchema(db);
+      const rows = db.prepare("SELECT entry_json FROM accounts ORDER BY rowid").all();
+      const rawEntries = rows.map((row) => {
+        if (!isAccountSqliteRow(row)) {
+          throw new Error("accounts.sqlite row is missing entry_json");
+        }
+        return JSON.parse(row.entry_json) as unknown;
+      });
+      const normalized = normalizeAccountEntries(rawEntries);
+      return { ok: true, ...normalized };
+    } finally {
+      db.close();
+    }
+  } catch (error) {
+    return { ok: false, error };
+  }
+}
+
+function isAccountSqliteRow(value: unknown): value is { entry_json: string } {
+  return (
+    value !== null &&
+    typeof value === "object" &&
+    !Array.isArray(value) &&
+    typeof (value as { entry_json?: unknown }).entry_json === "string"
+  );
+}
+
+function normalizeAccountEntries(rawEntries: unknown[]): {
+  entries: AccountEntry[];
+  needsPersist: boolean;
+} {
+  const entries: AccountEntry[] = [];
+  let needsPersist = false;
+
+  for (const rawEntry of rawEntries) {
+    if (rawEntry === null || typeof rawEntry !== "object" || Array.isArray(rawEntry)) {
+      continue;
+    }
+    const entry = rawEntry as AccountEntry;
+    if (!entry.id || !entry.token) continue;
+
+    // Backfill missing fields from JWT
+    if (!entry.planType || !entry.email || !entry.accountId || !entry.userId) {
+      const profile = extractUserProfile(entry.token);
+      const accountId = extractChatGptAccountId(entry.token);
+      if (!entry.planType && profile?.chatgpt_plan_type) {
+        entry.planType = profile.chatgpt_plan_type;
+        needsPersist = true;
+      }
+      if (!entry.email && profile?.email) {
+        entry.email = profile.email;
+        needsPersist = true;
+      }
+      if (!entry.accountId && accountId) {
+        entry.accountId = accountId;
+        needsPersist = true;
+      }
+      if (!entry.userId && profile?.chatgpt_user_id) {
+        entry.userId = profile.chatgpt_user_id;
+        needsPersist = true;
+      }
+    }
+    // Backfill userId for entries missing it (pre-v1.0.68)
+    if (entry.userId === undefined) {
+      entry.userId = null;
+      needsPersist = true;
+    }
+    // Backfill empty_response_count
+    if (entry.usage.empty_response_count == null) {
+      entry.usage.empty_response_count = 0;
+      needsPersist = true;
+    }
+    // Backfill window counter fields
+    if (entry.usage.window_request_count == null) {
+      entry.usage.window_request_count = 0;
+      entry.usage.window_input_tokens = 0;
+      entry.usage.window_output_tokens = 0;
+      entry.usage.window_counters_reset_at = null;
+      entry.usage.limit_window_seconds = null;
+      needsPersist = true;
+    }
+    // Backfill cached_tokens fields (added in cache-hit-rate stats)
+    if (entry.usage.cached_tokens == null) {
+      entry.usage.cached_tokens = 0;
+      needsPersist = true;
+    }
+    if (entry.usage.window_cached_tokens == null) {
+      entry.usage.window_cached_tokens = 0;
+      needsPersist = true;
+    }
+    // Backfill window_reset_at (missing causes NaN in refreshStatus)
+    if (!("window_reset_at" in entry.usage)) {
+      entry.usage.window_reset_at = null;
+      needsPersist = true;
+    }
+    // Backfill label field
+    if ((entry as unknown as Record<string, unknown>).label === undefined) {
+      entry.label = null;
+      needsPersist = true;
+    }
+    // Backfill cachedQuota fields
+    if (entry.cachedQuota === undefined) {
+      entry.cachedQuota = null;
+      entry.quotaFetchedAt = null;
+      needsPersist = true;
+    }
+    // Backfill quotaVerifyRequired (added in cascading-ban-defense)
+    // If absent (pre-existing disk entry), default to false so old entries
+    // don't trigger unnecessary upstream verification.
+    if (entry.quotaVerifyRequired === undefined) {
+      entry.quotaVerifyRequired = false;
+      needsPersist = true;
+    }
+    // Migrate legacy rate_limit_until + status="rate_limited" → cachedQuota
+    if (migrateLegacyRateLimit(entry)) {
+      needsPersist = true;
+    }
+    entries.push(entry);
+  }
+
+  return { entries, needsPersist };
 }
 
 function migrateFromLegacy(): AccountEntry[] {
@@ -247,12 +621,7 @@ function migrateFromLegacy(): AccountEntry[] {
   }
 }
 
-function loadPersisted(): {
-  entries: AccountEntry[];
-  needsPersist: boolean;
-  loadFailed?: boolean;
-  health?: PersistenceLoadHealth;
-} {
+function loadPersisted(): PersistenceLoadResult {
   const accountsFile = getAccountsFile();
   if (!existsSync(accountsFile)) return { entries: [], needsPersist: false };
 
@@ -293,92 +662,7 @@ function loadPersisted(): {
   }
 
   try {
-    const entries: AccountEntry[] = [];
-    let needsPersist = false;
-
-    for (const entry of data.accounts) {
-      if (!entry.id || !entry.token) continue;
-
-      // Backfill missing fields from JWT
-      if (!entry.planType || !entry.email || !entry.accountId || !entry.userId) {
-        const profile = extractUserProfile(entry.token);
-        const accountId = extractChatGptAccountId(entry.token);
-        if (!entry.planType && profile?.chatgpt_plan_type) {
-          entry.planType = profile.chatgpt_plan_type;
-          needsPersist = true;
-        }
-        if (!entry.email && profile?.email) {
-          entry.email = profile.email;
-          needsPersist = true;
-        }
-        if (!entry.accountId && accountId) {
-          entry.accountId = accountId;
-          needsPersist = true;
-        }
-        if (!entry.userId && profile?.chatgpt_user_id) {
-          entry.userId = profile.chatgpt_user_id;
-          needsPersist = true;
-        }
-      }
-      // Backfill userId for entries missing it (pre-v1.0.68)
-      if (entry.userId === undefined) {
-        entry.userId = null;
-        needsPersist = true;
-      }
-      // Backfill empty_response_count
-      if (entry.usage.empty_response_count == null) {
-        entry.usage.empty_response_count = 0;
-        needsPersist = true;
-      }
-      // Backfill window counter fields
-      if (entry.usage.window_request_count == null) {
-        entry.usage.window_request_count = 0;
-        entry.usage.window_input_tokens = 0;
-        entry.usage.window_output_tokens = 0;
-        entry.usage.window_counters_reset_at = null;
-        entry.usage.limit_window_seconds = null;
-        needsPersist = true;
-      }
-      // Backfill cached_tokens fields (added in cache-hit-rate stats)
-      if (entry.usage.cached_tokens == null) {
-        entry.usage.cached_tokens = 0;
-        needsPersist = true;
-      }
-      if (entry.usage.window_cached_tokens == null) {
-        entry.usage.window_cached_tokens = 0;
-        needsPersist = true;
-      }
-      // Backfill window_reset_at (missing causes NaN in refreshStatus)
-      if (!("window_reset_at" in entry.usage)) {
-        entry.usage.window_reset_at = null;
-        needsPersist = true;
-      }
-      // Backfill label field
-      if ((entry as unknown as Record<string, unknown>).label === undefined) {
-        entry.label = null;
-        needsPersist = true;
-      }
-      // Backfill cachedQuota fields
-      if (entry.cachedQuota === undefined) {
-        entry.cachedQuota = null;
-        entry.quotaFetchedAt = null;
-        needsPersist = true;
-      }
-      // Backfill quotaVerifyRequired (added in cascading-ban-defense)
-      // If absent (pre-existing disk entry), default to false so old entries
-      // don't trigger unnecessary upstream verification.
-      if (entry.quotaVerifyRequired === undefined) {
-        entry.quotaVerifyRequired = false;
-        needsPersist = true;
-      }
-      // Migrate legacy rate_limit_until + status="rate_limited" → cachedQuota
-      if (migrateLegacyRateLimit(entry)) {
-        needsPersist = true;
-      }
-      entries.push(entry);
-    }
-
-    return { entries, needsPersist };
+    return normalizeAccountEntries(data.accounts);
   } catch (err) {
     // The per-entry migration/backfill loop threw. Treat as corruption.
     return quarantineCorruptFile(accountsFile, raw, err, "entry_processing_failed");
