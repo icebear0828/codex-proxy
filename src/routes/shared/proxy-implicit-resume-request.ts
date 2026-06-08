@@ -18,6 +18,7 @@ export interface ApplyImplicitResumeRequestOptions {
   implicitPrevRespId: string;
   continuationInputStart: number;
   affinityMap: ImplicitResumeAffinityLookup;
+  reasoningReplayItems?: ProxyRequest["codexRequest"]["input"];
 }
 
 export interface RestoreImplicitResumeRequestStateOptions {
@@ -40,11 +41,20 @@ export function captureImplicitResumeRequestState(
 export function applyImplicitResumeRequest(
   options: ApplyImplicitResumeRequestOptions,
 ): UsageHint {
-  const { request, implicitPrevRespId, continuationInputStart, affinityMap } = options;
+  const {
+    request,
+    implicitPrevRespId,
+    continuationInputStart,
+    affinityMap,
+    reasoningReplayItems = [],
+  } = options;
 
   request.codexRequest.previous_response_id = implicitPrevRespId;
   request.codexRequest.useWebSocket = true;
-  request.codexRequest.input = request.codexRequest.input.slice(continuationInputStart);
+  request.codexRequest.input = [
+    ...reasoningReplayItems,
+    ...request.codexRequest.input.slice(continuationInputStart),
+  ];
   const implicitTurnState = affinityMap.lookupTurnState(implicitPrevRespId);
   if (implicitTurnState) request.codexRequest.turnState = implicitTurnState;
 

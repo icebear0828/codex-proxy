@@ -7,6 +7,10 @@ import { handleStreaming } from "@src/routes/shared/streaming-handler.js";
 import type { ProxyRequest } from "@src/routes/shared/proxy-handler-types.js";
 import type { FormatStreamTranslatorOptions } from "@src/routes/shared/proxy-handler-types.js";
 import { createMockFormatAdapter } from "@helpers/format-adapter.js";
+import {
+  getReasoningReplayCache,
+  resetReasoningReplayCacheForTests,
+} from "@src/proxy/reasoning-replay-cache.js";
 
 function createMockAccountPool(): { pool: AccountPool; release: ReturnType<typeof vi.fn> } {
   const release = vi.fn();
@@ -35,6 +39,7 @@ describe("handleStreaming", () => {
 
   afterEach(() => {
     vi.restoreAllMocks();
+    resetReasoningReplayCacheForTests();
     for (const affinityMap of affinityMaps) {
       affinityMap.dispose();
     }
@@ -59,7 +64,10 @@ describe("handleStreaming", () => {
           image_output_tokens: 4,
         });
         options.onResponseId("resp_stream");
-        options.onResponseMetadata?.({ functionCallIds: ["call_stream"] });
+        options.onResponseMetadata?.({
+          functionCallIds: ["call_stream"],
+          reasoningReplayItems: [{ type: "reasoning", encrypted_content: "encrypted-stream" }],
+        });
         options.onResponseCompleted?.("resp_stream");
         yield "event: response.completed\ndata: {}\n\n";
       }),
@@ -112,6 +120,12 @@ describe("handleStreaming", () => {
       undefined,
       "variant-stream",
     )).toBe("resp_stream");
+    expect(getReasoningReplayCache().lookup({
+      responseId: "resp_stream",
+      entryId: "entry-stream",
+      conversationId: "conversation-stream",
+      variantHash: "variant-stream",
+    })).toEqual([{ type: "reasoning", encrypted_content: "encrypted-stream" }]);
     expect(logSpy).toHaveBeenCalledWith(
       "[Test] Account entry-stream | rid=request- | Usage: in=10001 (cached=10 uncached=9991) out=7 reasoning=5 image=3/4 | hit=0.1%",
     );

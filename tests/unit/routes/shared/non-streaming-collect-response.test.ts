@@ -74,4 +74,28 @@ describe("collectNonStreamingResponse", () => {
       req: makeRequest(),
     })).rejects.toBe(err);
   });
+
+  it("forwards response metadata to the caller as it is collected", async () => {
+    const onResponseMetadata = vi.fn();
+    const fmt = createMockFormatAdapter({
+      collectTranslator: vi.fn(async (options: FormatCollectTranslatorOptions) => {
+        options.onResponseMetadata?.({ invalidReasoningReplay: true });
+        return {
+          response: { id: "resp_1" },
+          usage: { input_tokens: 1, output_tokens: 2 },
+          responseId: "resp_1",
+        };
+      }),
+    });
+
+    await collectNonStreamingResponse({
+      fmt,
+      api: {} as unknown as CodexApi,
+      rawResponse: new Response("ok"),
+      req: makeRequest(),
+      onResponseMetadata,
+    });
+
+    expect(onResponseMetadata).toHaveBeenCalledWith({ invalidReasoningReplay: true });
+  });
 });

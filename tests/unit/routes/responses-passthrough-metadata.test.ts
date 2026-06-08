@@ -171,7 +171,7 @@ describe("Responses passthrough metadata", () => {
     }
 
     expect(chunks.join("")).toContain("response.output_item.done");
-    expect(metadata).toEqual([{ functionCallIds: ["call_issue_571"] }]);
+    expect(metadata).toContainEqual({ functionCallIds: ["call_issue_571"] });
   });
 
   it("collects function_call call_id metadata through the Responses format adapter", async () => {
@@ -186,6 +186,91 @@ describe("Responses passthrough metadata", () => {
     });
 
     expect(result.responseId).toBe("resp_issue_571");
-    expect(metadata).toEqual([{ functionCallIds: ["call_issue_571"] }]);
+    expect(metadata).toContainEqual({ functionCallIds: ["call_issue_571"] });
+  });
+
+  it("streams sanitized reasoning replay artifacts through metadata", async () => {
+    const format = await captureResponsesFormat();
+    const metadata: ResponseMetadata[] = [];
+
+    const events: CodexSSEEvent[] = [
+      {
+        event: "response.completed",
+        data: {
+          type: "response.completed",
+          response: {
+            id: "resp_reasoning",
+            output: [
+              {
+                type: "reasoning",
+                id: "rs_1",
+                encrypted_content: "encrypted",
+                signature: "unsupported",
+                content: [{ type: "reasoning_text", text: "kept" }],
+              },
+              functionCallItem,
+            ],
+            usage: { input_tokens: 1, output_tokens: 1 },
+          },
+        },
+      },
+    ];
+
+    const chunks: string[] = [];
+    for await (const chunk of format.streamTranslator({
+      api: createMockAdapter(events),
+      response: new Response(),
+      model: "test-upstream-model",
+      onUsage: () => {},
+      onResponseId: () => {},
+      onResponseMetadata: (value) => metadata.push(value),
+    })) {
+      chunks.push(chunk);
+    }
+
+    expect(chunks.join("")).toContain("response.completed");
+    expect(metadata.flatMap((item) => item.reasoningReplayItems ?? [])).toEqual([
+      {
+        type: "reasoning",
+        id: "rs_1",
+        encrypted_content: "encrypted",
+        content: [{ type: "reasoning_text", text: "kept" }],
+      },
+      functionCallItem,
+    ]);
+  });
+
+  it("marks invalid encrypted reasoning content errors for cache eviction", async () => {
+    const format = await captureResponsesFormat();
+    const metadata: ResponseMetadata[] = [];
+
+    const chunks: string[] = [];
+    for await (const chunk of format.streamTranslator({
+      api: createMockAdapter([
+        {
+          event: "response.failed",
+          data: {
+            type: "response.failed",
+            response: {
+              id: "resp_failed",
+              error: {
+                code: "invalid_encrypted_content",
+                message: "Invalid encrypted content.",
+              },
+            },
+          },
+        },
+      ]),
+      response: new Response(),
+      model: "test-upstream-model",
+      onUsage: () => {},
+      onResponseId: () => {},
+      onResponseMetadata: (value) => metadata.push(value),
+    })) {
+      chunks.push(chunk);
+    }
+
+    expect(chunks.join("")).toContain("response.failed");
+    expect(metadata).toContainEqual({ invalidReasoningReplay: true });
   });
 });

@@ -7,8 +7,20 @@ describe("createResponseMetadataCollector", () => {
 
     collector.onResponseMetadata({ functionCallIds: ["call-a", "call-b"] });
     collector.onResponseMetadata({ functionCallIds: ["call-a", "call-c"] });
+    collector.onResponseMetadata({
+      reasoningReplayItems: [
+        { type: "reasoning", encrypted_content: "encrypted" },
+        { type: "function_call", call_id: "call-a", name: "read_file", arguments: "{}" },
+      ],
+    });
+    collector.onResponseMetadata({ invalidReasoningReplay: true });
     collector.onResponseMetadata({});
 
     expect(Array.from(collector.responseFunctionCallIds)).toEqual(["call-a", "call-b", "call-c"]);
+    expect(collector.reasoningReplayItems).toEqual([
+      { type: "reasoning", encrypted_content: "encrypted" },
+      { type: "function_call", call_id: "call-a", name: "read_file", arguments: "{}" },
+    ]);
+    expect(collector.invalidReasoningReplay).toBe(true);
   });
 });

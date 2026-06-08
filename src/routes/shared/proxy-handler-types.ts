@@ -7,6 +7,7 @@ import type { ProxyPool } from "../../proxy/proxy-pool.js";
 import type { UpstreamAdapter } from "../../proxy/upstream-adapter.js";
 import type { UsageInfo } from "../../translation/codex-event-extractor.js";
 import type { StreamCloseContextBase } from "../../logs/stream-close-event.js";
+import type { ReasoningReplayItem } from "../../proxy/reasoning-replay-cache.js";
 
 export interface StreamTranslatorContext extends StreamCloseContextBase {
   /** Request abort signal so format-specific translators can distinguish a
@@ -37,6 +38,8 @@ export interface UsageHint {
 
 export interface ResponseMetadata {
   functionCallIds?: string[];
+  reasoningReplayItems?: ReasoningReplayItem[];
+  invalidReasoningReplay?: boolean;
 }
 
 export interface FormatStreamTranslatorOptions {

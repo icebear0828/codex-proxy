@@ -23,6 +23,7 @@ export interface CreateImplicitResumeLifecycleOptions {
   tag: string;
   implicitPrevRespId: string | null;
   continuationInputStart: number;
+  reasoningReplayItems?: ProxyRequest["codexRequest"]["input"];
   resumeEvaluationInput: ImplicitResumeEvaluationInput;
   acquiredEntryId: string;
   warn?: ImplicitResumeWarn;
@@ -50,6 +51,7 @@ export function createImplicitResumeLifecycle(
     tag,
     implicitPrevRespId,
     continuationInputStart,
+    reasoningReplayItems,
     resumeEvaluationInput,
     acquiredEntryId,
     warn = console.warn,
@@ -78,6 +80,7 @@ export function createImplicitResumeLifecycle(
         implicitPrevRespId,
         continuationInputStart,
         affinityMap,
+        reasoningReplayItems,
       });
       active = true;
     },

@@ -12,8 +12,16 @@ import { EmptyResponseError } from "../translation/codex-event-extractor.js";
 import { reconvertTupleValues } from "../translation/tuple-schema.js";
 import { extractCodexError } from "../types/codex-events.js";
 import { recordStreamCloseEvent } from "../logs/stream-close-event.js";
-import type { FormatAdapter, StreamTranslatorContext } from "./shared/proxy-handler-types.js";
+import type {
+  FormatAdapter,
+  ResponseMetadata,
+  StreamTranslatorContext,
+} from "./shared/proxy-handler-types.js";
 import { isRecord } from "../translation/shared-utils.js";
+import {
+  containsInvalidEncryptedContentSignal,
+  sanitizeReasoningReplayItems,
+} from "../proxy/reasoning-replay-cache.js";
 
 // ── Shared helpers ────────────────────────────────────────────────
 
@@ -158,12 +166,13 @@ export async function* streamPassthrough(
   tupleSchema?: Record<string, unknown> | null,
   streamContext?: StreamTranslatorContext,
   onResponseCompleted?: (id?: string) => void,
-  onResponseMetadata?: (metadata: { functionCallIds?: string[] }) => void,
+  onResponseMetadata?: (metadata: ResponseMetadata) => void,
 ): AsyncGenerator<string> {
   let tupleTextBuffer = tupleSchema ? "" : null;
   let sawTerminal = false;
   let responseId: string | null = null;
   const streamFunctionCallIds = new Set<string>();
+  const streamReplayCandidates: unknown[] = [];
 
   const stream = api.parseStream(response);
   let upstreamDone = false;
@@ -203,6 +212,12 @@ export async function* streamPassthrough(
       const raw = next.value;
       responseId = extractResponseIdFromEventData(raw.data) ?? responseId;
       if (isTerminalResponsesEvent(raw.event)) sawTerminal = true;
+      if (
+        (raw.event === "error" || raw.event === "response.failed") &&
+        containsInvalidEncryptedContentSignal(raw.data)
+      ) {
+        onResponseMetadata?.({ invalidReasoningReplay: true });
+      }
 
       if (tupleTextBuffer !== null && raw.event === "response.output_text.delta") {
         const data = raw.data;
@@ -255,6 +270,9 @@ export async function* streamPassthrough(
           const callId = data.item.call_id;
           if (typeof callId === "string" && callId) streamFunctionCallIds.add(callId);
         }
+        if (isRecord(data) && isRecord(data.item)) {
+          streamReplayCandidates.push(data.item);
+        }
       }
 
       if (
@@ -271,6 +289,13 @@ export async function* streamPassthrough(
             onUsage({ ...extractResponseUsage(resp.usage), ...(imgUsage ?? {}) });
           }
           if (raw.event === "response.completed") {
+            if (Array.isArray(resp.output)) {
+              streamReplayCandidates.push(...resp.output);
+            }
+            const replayItems = sanitizeReasoningReplayItems(streamReplayCandidates);
+            if (replayItems.length > 0) {
+              onResponseMetadata?.({ reasoningReplayItems: replayItems });
+            }
             onResponseCompleted?.(typeof resp.id === "string" ? resp.id : undefined);
             if (streamFunctionCallIds.size > 0) {
               onResponseMetadata?.({ functionCallIds: [...streamFunctionCallIds] });
@@ -312,7 +337,7 @@ export async function collectPassthrough(
   response: Response,
   _model: string,
   tupleSchema?: Record<string, unknown> | null,
-  onResponseMetadata?: (metadata: { functionCallIds?: string[] }) => void,
+  onResponseMetadata?: (metadata: ResponseMetadata) => void,
 ): Promise<{
   response: unknown;
   usage: { input_tokens: number; output_tokens: number; cached_tokens?: number; image_input_tokens?: number; image_output_tokens?: number };
@@ -323,6 +348,7 @@ export async function collectPassthrough(
   let responseId: string | null = null;
   const outputItems: unknown[] = [];
   const collectFunctionCallIds = new Set<string>();
+  const collectReplayCandidates: unknown[] = [];
   let textDeltas = "";
 
   try {
@@ -341,12 +367,20 @@ export async function collectPassthrough(
 
       if (raw.event === "response.output_item.done" && isRecord(data.item)) {
         outputItems.push(data.item);
+        collectReplayCandidates.push(data.item);
         if (data.item.type === "function_call" && typeof data.item.call_id === "string" && data.item.call_id) {
           collectFunctionCallIds.add(data.item.call_id as string);
         }
       }
 
       if (raw.event === "response.completed" && resp) {
+        if (Array.isArray(resp.output)) {
+          collectReplayCandidates.push(...resp.output);
+        }
+        const replayItems = sanitizeReasoningReplayItems(collectReplayCandidates);
+        if (replayItems.length > 0) {
+          onResponseMetadata?.({ reasoningReplayItems: replayItems });
+        }
         if (collectFunctionCallIds.size > 0) {
           onResponseMetadata?.({ functionCallIds: [...collectFunctionCallIds] });
         }
@@ -374,6 +408,9 @@ export async function collectPassthrough(
       }
 
       if (raw.event === "error" || raw.event === "response.failed") {
+        if (containsInvalidEncryptedContentSignal(data)) {
+          onResponseMetadata?.({ invalidReasoningReplay: true });
+        }
         const err = extractCodexError(data);
         throw new Error(
           `Codex API error: ${err.code}: ${err.message}`,

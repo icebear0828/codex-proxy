@@ -19,6 +19,10 @@ import {
   releaseNonStreamingSuccessAccount,
   collectNonStreamingResponse,
 } from "./non-streaming-helpers.js";
+import {
+  containsInvalidEncryptedContentSignal,
+  getReasoningReplayCache,
+} from "../../proxy/reasoning-replay-cache.js";
 
 
 const MAX_EMPTY_RETRIES = 2;
@@ -72,6 +76,14 @@ export async function handleNonStreaming(options: HandleNonStreamingOptions): Pr
   let currentEntryId = initialEntryId;
   let currentApi = initialApi;
   let currentRawResponse = initialResponse;
+  const evictReasoningReplayIdentity = (): void => {
+    if (!conversationId || !variantHash) return;
+    getReasoningReplayCache().evictByIdentity({
+      entryId: currentEntryId,
+      conversationId,
+      variantHash,
+    });
+  };
 
   for (let attempt = 1; ; attempt++) {
     try {
@@ -81,8 +93,11 @@ export async function handleNonStreaming(options: HandleNonStreamingOptions): Pr
         rawResponse: currentRawResponse,
         req,
         usageHint: getUsageHint?.(),
+        onResponseMetadata: (metadata) => {
+          if (metadata.invalidReasoningReplay) evictReasoningReplayIdentity();
+        },
       });
-      const { result, responseFunctionCallIds } = collected;
+      const { result, responseFunctionCallIds, reasoningReplayItems } = collected;
       recordNonStreamingSuccessAffinity({
         affinityMap,
         responseId: result.responseId,
@@ -94,6 +109,15 @@ export async function handleNonStreaming(options: HandleNonStreamingOptions): Pr
         responseFunctionCallIds,
         variantHash,
       });
+      if (result.responseId && conversationId && variantHash && reasoningReplayItems.length > 0) {
+        getReasoningReplayCache().record({
+          responseId: result.responseId,
+          entryId: currentEntryId,
+          conversationId,
+          variantHash,
+          items: reasoningReplayItems,
+        });
+      }
       if (result.usage) {
         logNonStreamingUsage({ tag: fmt.tag, entryId: currentEntryId, requestId, usage: result.usage });
       }
@@ -106,6 +130,9 @@ export async function handleNonStreaming(options: HandleNonStreamingOptions): Pr
       });
       return c.json(result.response);
     } catch (collectErr) {
+      if (conversationId && variantHash && containsInvalidEncryptedContentSignal(collectErr)) {
+        evictReasoningReplayIdentity();
+      }
       // Upstream FIN'd mid-reasoning (typically gpt-5.5 xhigh > 120 s cap).
       // Cross-account retry would re-hit the same cap and burn the pool, so
       // we fail fast with 504. The proxy can't recover this — the client

@@ -58,6 +58,10 @@ import { buildProxySessionContext } from "./proxy-session-context.js";
 import { staggerIfNeeded } from "./proxy-stagger.js";
 import { sendProxyUpstreamAttempt } from "./proxy-upstream-attempt.js";
 import { buildWsPoolContext } from "./proxy-ws-context.js";
+import {
+  containsInvalidEncryptedContentSignal,
+  getReasoningReplayCache,
+} from "../../proxy/reasoning-replay-cache.js";
 
 export async function handleProxyRequest(options: HandleProxyRequestOptions): Promise<Response> {
   const { c, accountPool, cookieJar, req, fmt, proxyPool } = options;
@@ -157,6 +161,15 @@ export async function handleProxyRequest(options: HandleProxyRequestOptions): Pr
   const triedEntryIds: string[] = [entryId];
   let modelRetried = false;
   let stripAndRetryDone = false;
+  const reasoningReplayCache = getReasoningReplayCache();
+  const reasoningReplayItems = sessionContext.implicitPrevRespId
+    ? reasoningReplayCache.lookup({
+        responseId: sessionContext.implicitPrevRespId,
+        entryId,
+        conversationId: sessionContext.chainConversationId,
+        variantHash: sessionContext.variantHash,
+      })
+    : [];
 
   const implicitResume = createImplicitResumeLifecycle({
     request: req,
@@ -165,6 +178,7 @@ export async function handleProxyRequest(options: HandleProxyRequestOptions): Pr
     tag: fmt.tag,
     implicitPrevRespId: sessionContext.implicitPrevRespId,
     continuationInputStart: sessionContext.continuationInputStart,
+    reasoningReplayItems,
     resumeEvaluationInput: sessionContext.resumeEvaluationInput,
     acquiredEntryId: entryId,
   });
@@ -299,6 +313,13 @@ export async function handleProxyRequest(options: HandleProxyRequestOptions): Pr
         variantHash: sessionContext.variantHash,
       });
     } catch (err) {
+      if (containsInvalidEncryptedContentSignal(err)) {
+        reasoningReplayCache.evictByIdentity({
+          entryId,
+          conversationId: sessionContext.chainConversationId,
+          variantHash: sessionContext.variantHash,
+        });
+      }
       const retryAction = classifyRetryAction(
         err,
         { stripAndRetryDone, modelRetried, implicitResumeActive: implicitResume.isActive(), previousResponseId: req.codexRequest.previous_response_id },

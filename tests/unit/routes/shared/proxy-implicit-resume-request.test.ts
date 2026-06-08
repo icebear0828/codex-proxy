@@ -77,6 +77,34 @@ describe("implicit resume request state helpers", () => {
     expect(affinityMap.lookupInputTokens).toHaveBeenCalledWith("resp_implicit");
   });
 
+  it("prepends account-scoped reasoning replay items before the continuation slice", () => {
+    const request = makeProxyRequest();
+
+    const usageHint = applyImplicitResumeRequest({
+      request,
+      implicitPrevRespId: "resp_implicit",
+      continuationInputStart: 2,
+      affinityMap: makeAffinityLookup({
+        turnState: "turn-implicit",
+        inputTokens: 123,
+      }),
+      reasoningReplayItems: [
+        { type: "reasoning", encrypted_content: "encrypted" },
+        { type: "function_call", call_id: "call_1", name: "read_file", arguments: "{}" },
+      ],
+    });
+
+    expect(request.codexRequest.previous_response_id).toBe("resp_implicit");
+    expect(request.codexRequest.useWebSocket).toBe(true);
+    expect(request.codexRequest.turnState).toBe("turn-implicit");
+    expect(request.codexRequest.input).toEqual([
+      { type: "reasoning", encrypted_content: "encrypted" },
+      { type: "function_call", call_id: "call_1", name: "read_file", arguments: "{}" },
+      { role: "user", content: "continue" },
+    ]);
+    expect(usageHint).toEqual({ reusedInputTokensUpperBound: 123 });
+  });
+
   it("does not overwrite an existing turn state when the affinity map has none", () => {
     const request = makeProxyRequest();
 
@@ -99,6 +127,7 @@ describe("implicit resume request state helpers", () => {
       implicitPrevRespId: "resp_implicit",
       continuationInputStart: 2,
       affinityMap: makeAffinityLookup({ turnState: "turn-implicit", inputTokens: 123 }),
+      reasoningReplayItems: [{ type: "reasoning", encrypted_content: "encrypted" }],
     });
     request.codexRequest.instructions = "mutated-system";
 

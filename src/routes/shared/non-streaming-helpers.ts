@@ -7,7 +7,13 @@ import { CodexApiError } from "../../proxy/codex-api.js";
 import type { CookieJar } from "../../proxy/cookie-jar.js";
 import type { ProxyPool } from "../../proxy/proxy-pool.js";
 import type { UpstreamPrematureCloseError, UsageInfo, EmptyResponseError } from "../../translation/codex-event-extractor.js";
-import type { FormatAdapter, FormatCollectTranslatorResult, ProxyRequest, UsageHint } from "./proxy-handler-types.js";
+import type {
+  FormatAdapter,
+  FormatCollectTranslatorResult,
+  ProxyRequest,
+  ResponseMetadata,
+  UsageHint,
+} from "./proxy-handler-types.js";
 import { releaseAccount, acquireAccount } from "./account-acquisition.js";
 import { toErrorStatus } from "./proxy-error-handler.js";
 import { annotateImageGenOutcome, buildCodexApi, stripCodexErrorPrefix } from "./proxy-handler-utils.js";
@@ -16,6 +22,7 @@ import { withRetry } from "../../utils/retry.js";
 import { recordProxyEgressLog } from "./proxy-egress-log.js";
 import { recordStreamCloseEvent } from "../../logs/stream-close-event.js";
 import { logProxyUsage } from "./proxy-usage-log.js";
+import type { ReasoningReplayItem } from "../../proxy/reasoning-replay-cache.js";
 
 // ── 1. non-streaming-affinity ─────────────────────────────────────
 export interface RecordNonStreamingSuccessAffinityOptions {
@@ -127,11 +134,14 @@ export interface CollectNonStreamingResponseOptions {
   rawResponse: Response;
   req: ProxyRequest;
   usageHint?: UsageHint;
+  onResponseMetadata?: (metadata: ResponseMetadata) => void;
 }
 
 export interface CollectNonStreamingResponseResult {
   result: FormatCollectTranslatorResult;
   responseFunctionCallIds: Set<string>;
+  reasoningReplayItems: ReasoningReplayItem[];
+  invalidReasoningReplay: boolean;
 }
 
 export async function collectNonStreamingResponse(
@@ -143,6 +153,7 @@ export async function collectNonStreamingResponse(
     rawResponse,
     req,
     usageHint,
+    onResponseMetadata,
   } = options;
   const metadataCollector = createResponseMetadataCollector();
   const result = await fmt.collectTranslator({
@@ -151,12 +162,17 @@ export async function collectNonStreamingResponse(
     model: req.model,
     tupleSchema: req.tupleSchema,
     usageHint,
-    onResponseMetadata: metadataCollector.onResponseMetadata,
+    onResponseMetadata: (metadata) => {
+      metadataCollector.onResponseMetadata(metadata);
+      onResponseMetadata?.(metadata);
+    },
   });
 
   return {
     result,
     responseFunctionCallIds: metadataCollector.responseFunctionCallIds,
+    reasoningReplayItems: metadataCollector.reasoningReplayItems,
+    invalidReasoningReplay: metadataCollector.invalidReasoningReplay,
   };
 }
 
