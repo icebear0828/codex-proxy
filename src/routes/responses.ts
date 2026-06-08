@@ -10,7 +10,8 @@ import { Hono, type Context } from "hono";
 import type { AccountPool } from "../auth/account-pool.js";
 import type { CookieJar } from "../proxy/cookie-jar.js";
 import type { ProxyPool } from "../proxy/proxy-pool.js";
-import type { CodexResponsesRequest, CodexInputItem } from "../proxy/codex-api.js";
+import type { CodexResponsesRequest } from "../proxy/codex-api.js";
+import { sanitizeCodexInputItems } from "../proxy/reasoning-input-sanitizer.js";
 import { enqueueLogEntry } from "../logs/entry.js";
 import { summarizeRequestForLog } from "../logs/request-summary.js";
 import { getRealClientIp } from "../utils/get-real-client-ip.js";
@@ -121,7 +122,7 @@ export function createResponsesRoutes(
     const codexRequest: CodexResponsesRequest = {
       model: modelId,
       instructions: typeof body.instructions === "string" ? body.instructions : "",
-      input: Array.isArray(body.input) ? (body.input as CodexInputItem[]) : [],
+      input: Array.isArray(body.input) ? sanitizeCodexInputItems(body.input) : [],
       stream: true,
       store: false,
     };

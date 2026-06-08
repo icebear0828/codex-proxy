@@ -251,6 +251,38 @@ describe("POST /v1/responses/compact", () => {
     expect(format.strict).toBe(true);
   });
 
+  it("sanitizes reasoning input items before compact forwarding", async () => {
+    await app.request("/v1/responses/compact", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        model: "codex",
+        input: [
+          {
+            type: "reasoning",
+            id: "rs_1",
+            encrypted_content: "",
+            signature: "unsupported",
+            content: [{ type: "reasoning_text", text: "kept" }],
+          },
+          { type: "compaction", encrypted_content: 123 },
+          { role: "user", content: "Hello" },
+        ],
+        instructions: "",
+      }),
+    });
+
+    const req = capturedCompactRequest as Record<string, unknown>;
+    expect(req.input).toEqual([
+      {
+        type: "reasoning",
+        id: "rs_1",
+        content: [{ type: "reasoning_text", text: "kept" }],
+      },
+      { role: "user", content: "Hello" },
+    ]);
+  });
+
   it("defaults instructions to empty string when omitted", async () => {
     await app.request("/v1/responses/compact", {
       method: "POST",

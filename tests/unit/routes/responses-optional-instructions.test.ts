@@ -268,6 +268,38 @@ describe("/v1/responses — optional instructions", () => {
     expect(req.version).toBe("26.318.11754");
   });
 
+  it("sanitizes reasoning input items before proxy forwarding", async () => {
+    await app.request("/v1/responses", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        model: "codex",
+        input: [
+          {
+            type: "reasoning",
+            id: "rs_1",
+            encrypted_content: "",
+            signature: "unsupported",
+            summary: [{ type: "summary_text", text: "kept" }],
+          },
+          { type: "compaction", encrypted_content: 123 },
+          { role: "user", content: "Hello" },
+        ],
+        stream: true,
+      }),
+    });
+
+    const req = capturedCodexRequest as Record<string, unknown>;
+    expect(req.input).toEqual([
+      {
+        type: "reasoning",
+        id: "rs_1",
+        summary: [{ type: "summary_text", text: "kept" }],
+      },
+      { role: "user", content: "Hello" },
+    ]);
+  });
+
   it("still rejects non-object body", async () => {
     const res = await app.request("/v1/responses", {
       method: "POST",

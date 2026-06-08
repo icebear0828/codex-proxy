@@ -87,13 +87,43 @@ export type CodexContentPart =
   | { type: "input_text"; text: string }
   | { type: "input_image"; image_url: string };
 
+export type CodexReasoningStatus = "in_progress" | "completed" | "incomplete";
+
+export interface CodexReasoningSummaryPart {
+  type: "summary_text";
+  text: string;
+}
+
+export interface CodexReasoningTextPart {
+  type: "reasoning_text";
+  text: string;
+}
+
+export interface CodexReasoningItem {
+  type: "reasoning";
+  id?: string;
+  status?: CodexReasoningStatus;
+  encrypted_content?: string;
+  summary?: CodexReasoningSummaryPart[];
+  content?: CodexReasoningTextPart[];
+}
+
+export interface CodexCompactionItem {
+  type: "compaction";
+  id?: string;
+  encrypted_content: string;
+  created_by?: string;
+}
+
 export type CodexInputItem =
   | { role: "user"; content: string | CodexContentPart[] }
   | { role: "assistant"; content: string }
   | { role: "system"; content: string }
   | { role: "developer"; content: string }
   | { type: "function_call"; id?: string; call_id: string; name: string; arguments: string }
-  | { type: "function_call_output"; call_id: string; output: string };
+  | { type: "function_call_output"; call_id: string; output: string }
+  | CodexReasoningItem
+  | CodexCompactionItem;
 
 /** Parsed SSE event from the Codex Responses stream */
 export interface CodexSSEEvent {
