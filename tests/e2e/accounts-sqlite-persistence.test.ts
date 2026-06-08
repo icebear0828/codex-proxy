@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { existsSync, mkdtempSync, readFileSync, rmSync } from "fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "fs";
 import { tmpdir } from "os";
 import { resolve } from "path";
 import { Hono } from "hono";
@@ -184,6 +184,32 @@ describe("accounts SQLite persistence E2E", () => {
     });
     expect(keep?.cachedQuota?.rate_limit.used_percent).toBe(42);
     expect(reloaded.getEntry(deleteId)).toBeUndefined();
+    reloaded.destroy();
+  });
+
+  it("reads refresh tokens from SQLite before a stale JSON mirror", () => {
+    const pool = new AccountPool();
+    const entryId = pool.addAccount(
+      createValidJwt({ accountId: "sqlite-rt-read", email: "rt@test.com", planType: "plus" }),
+      "rt-original",
+    );
+    pool.updateToken(
+      entryId,
+      createValidJwt({ accountId: "sqlite-rt-read", email: "rt@test.com", planType: "plus" }),
+      "rt-sqlite-new",
+    );
+    pool.destroy();
+
+    const mirrored = JSON.parse(readFileSync(accountsJsonPath(), "utf-8")) as {
+      accounts: Array<{ id: string; refreshToken?: string | null }>;
+    };
+    const staleMirrorEntry = mirrored.accounts.find((account) => account.id === entryId);
+    expect(staleMirrorEntry).toBeDefined();
+    staleMirrorEntry!.refreshToken = "rt-json-stale";
+    writeFileSync(accountsJsonPath(), JSON.stringify(mirrored, null, 2), "utf-8");
+
+    const reloaded = new AccountPool();
+    expect(reloaded.readEntryRTFromDisk(entryId)).toBe("rt-sqlite-new");
     reloaded.destroy();
   });
 });

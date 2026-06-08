@@ -96,7 +96,7 @@ export function migrateLegacyRateLimit(entry: AccountEntry): boolean {
 
 export interface PersistenceLoadHealth {
   /**
-   * Whether the corrupt `accounts.json` was successfully renamed aside.
+   * Whether the corrupt account persistence file was successfully renamed aside.
    * False means the rename itself failed — the original file is still
    * on disk and the user-facing message must NOT instruct recovery
    * from a `.bak` that does not exist.
@@ -104,6 +104,8 @@ export interface PersistenceLoadHealth {
   quarantined: boolean;
   /** Absolute path of the `.bak` file if quarantine succeeded. */
   backupPath: string | null;
+  /** The account persistence file that failed to load. */
+  store?: "accounts.json" | "accounts.sqlite";
 }
 
 export interface AccountPersistence {
@@ -115,6 +117,7 @@ export interface AccountPersistence {
     health?: PersistenceLoadHealth;
   };
   save(accounts: AccountEntry[]): void;
+  readRefreshToken?(entryId: string): string | null;
 }
 
 interface PersistenceLoadResult {
@@ -144,6 +147,10 @@ type SqliteDatabaseConstructor = new (filename: string) => SqliteDatabase;
 
 type SqliteLoadResult =
   | { ok: true; entries: AccountEntry[]; needsPersist: boolean }
+  | { ok: false; error: unknown };
+
+type SqliteRefreshTokenResult =
+  | { ok: true; value: string | null }
   | { ok: false; error: unknown };
 
 type PersistenceBackend = "sqlite" | "json" | null;
@@ -176,6 +183,7 @@ export function createFsPersistence(): AccountPersistence {
       const migrated = migrateFromLegacy();
 
       const sqliteFile = getAccountsSqliteFile();
+      let sqliteLoadError: unknown = null;
       if (existsSync(sqliteFile)) {
         const sqliteLoad = loadSqlitePersisted(sqliteFile);
         if (sqliteLoad.ok) {
@@ -211,6 +219,7 @@ export function createFsPersistence(): AccountPersistence {
           return { entries: [], needsPersist: false };
         }
 
+        sqliteLoadError = sqliteLoad.error;
         console.warn(
           "[AccountPool] Failed to load accounts.sqlite; falling back to accounts.json:",
           sqliteLoad.error instanceof Error ? sqliteLoad.error.message : sqliteLoad.error,
@@ -223,6 +232,14 @@ export function createFsPersistence(): AccountPersistence {
       const entries = migrated.length > 0 && jsonLoad.entries.length === 0
         ? migrated
         : jsonLoad.entries;
+
+      if (sqliteLoadError != null && entries.length === 0) {
+        const failed = quarantineCorruptFile(sqliteFile, null, sqliteLoadError, "sqlite_load_failed");
+        quarantineActive = true;
+        quarantineHealth = failed.health;
+        activeBackend = "sqlite";
+        return failed;
+      }
 
       if (entries.length > 0) {
         if (tryPromoteJsonToSqlite(entries)) {
@@ -255,8 +272,9 @@ export function createFsPersistence(): AccountPersistence {
 
     save(accounts: AccountEntry[]): void {
       if (quarantineActive) {
+        const store = quarantineHealth?.store ?? "accounts.json";
         console.warn(
-          "[AccountPool] save() refused: accounts.json was quarantined this session" +
+          `[AccountPool] save() refused: ${store} was quarantined this session` +
             (quarantineHealth?.backupPath ? ` (backup: ${quarantineHealth.backupPath})` : "") +
             ". Restore a healthy file and restart the process to resume auto-save.",
         );
@@ -279,6 +297,24 @@ export function createFsPersistence(): AccountPersistence {
       }
 
       trySaveJsonMirror(accounts);
+    },
+
+    readRefreshToken(entryId: string): string | null {
+      if (activeBackend === "json") {
+        return readJsonRefreshToken(entryId);
+      }
+
+      const sqliteFile = getAccountsSqliteFile();
+      if (existsSync(sqliteFile)) {
+        const sqliteResult = readSqliteRefreshToken(sqliteFile, entryId);
+        if (sqliteResult.ok) return sqliteResult.value;
+        console.warn(
+          "[AccountPool] Failed to read refresh token from accounts.sqlite; falling back to accounts.json:",
+          sqliteResult.error instanceof Error ? sqliteResult.error.message : sqliteResult.error,
+        );
+      }
+
+      return readJsonRefreshToken(entryId);
     },
   };
   return persistence;
@@ -403,12 +439,12 @@ function saveSqliteAccounts(sqliteFile: string, accounts: AccountEntry[]): void 
         insert.run(
           entry.id,
           entry.token,
-          entry.refreshToken,
-          entry.email,
-          entry.accountId,
-          entry.userId,
-          entry.label,
-          entry.planType,
+          entry.refreshToken ?? null,
+          entry.email ?? null,
+          entry.accountId ?? null,
+          entry.userId ?? null,
+          entry.label ?? null,
+          entry.planType ?? null,
           entry.proxyApiKey,
           entry.status,
           JSON.stringify(entry),
@@ -451,6 +487,52 @@ function loadSqlitePersisted(sqliteFile: string): SqliteLoadResult {
   }
 }
 
+function readSqliteRefreshToken(sqliteFile: string, entryId: string): SqliteRefreshTokenResult {
+  try {
+    const db = openSqliteDatabase(sqliteFile);
+    try {
+      initSqliteSchema(db);
+      const rows = db
+        .prepare("SELECT refresh_token FROM accounts WHERE id = ? LIMIT 1")
+        .all(entryId);
+      if (rows.length === 0) return { ok: true, value: null };
+      const row = rows[0];
+      if (row === null || typeof row !== "object" || Array.isArray(row)) {
+        throw new Error("accounts.sqlite refresh token row is not an object");
+      }
+      const refreshToken = (row as { refresh_token?: unknown }).refresh_token;
+      if (refreshToken !== null && refreshToken !== undefined && typeof refreshToken !== "string") {
+        throw new Error("accounts.sqlite refresh_token is not a string or null");
+      }
+      return { ok: true, value: refreshToken ?? null };
+    } finally {
+      db.close();
+    }
+  } catch (error) {
+    return { ok: false, error };
+  }
+}
+
+function readJsonRefreshToken(entryId: string): string | null {
+  try {
+    const raw = readFileSync(getAccountsFile(), "utf-8");
+    const parsed = JSON.parse(raw) as unknown;
+    if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) return null;
+    const accounts = (parsed as { accounts?: unknown }).accounts;
+    if (!Array.isArray(accounts)) return null;
+    for (const account of accounts) {
+      if (account === null || typeof account !== "object" || Array.isArray(account)) continue;
+      const record = account as { id?: unknown; refreshToken?: unknown };
+      if (record.id === entryId) {
+        return typeof record.refreshToken === "string" ? record.refreshToken : null;
+      }
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
 function isAccountSqliteRow(value: unknown): value is { entry_json: string } {
   return (
     value !== null &&
@@ -474,6 +556,11 @@ function normalizeAccountEntries(rawEntries: unknown[]): {
     const entry = rawEntry as AccountEntry;
     if (!entry.id || !entry.token) continue;
 
+    if (entry.refreshToken === undefined) {
+      entry.refreshToken = null;
+      needsPersist = true;
+    }
+
     // Backfill missing fields from JWT
     if (!entry.planType || !entry.email || !entry.accountId || !entry.userId) {
       const profile = extractUserProfile(entry.token);
@@ -495,9 +582,21 @@ function normalizeAccountEntries(rawEntries: unknown[]): {
         needsPersist = true;
       }
     }
+    if (entry.email === undefined) {
+      entry.email = null;
+      needsPersist = true;
+    }
+    if (entry.accountId === undefined) {
+      entry.accountId = null;
+      needsPersist = true;
+    }
     // Backfill userId for entries missing it (pre-v1.0.68)
     if (entry.userId === undefined) {
       entry.userId = null;
+      needsPersist = true;
+    }
+    if (entry.planType === undefined) {
+      entry.planType = null;
       needsPersist = true;
     }
     // Backfill empty_response_count
@@ -536,6 +635,10 @@ function normalizeAccountEntries(rawEntries: unknown[]): {
     // Backfill cachedQuota fields
     if (entry.cachedQuota === undefined) {
       entry.cachedQuota = null;
+      entry.quotaFetchedAt = null;
+      needsPersist = true;
+    }
+    if (entry.quotaFetchedAt === undefined) {
       entry.quotaFetchedAt = null;
       needsPersist = true;
     }
@@ -738,6 +841,10 @@ function quarantineCorruptFile(
     entries: [],
     needsPersist: false,
     loadFailed: true,
-    health: { quarantined, backupPath: quarantined ? backupPath : null },
+    health: {
+      quarantined,
+      backupPath: quarantined ? backupPath : null,
+      store: accountsFile.endsWith(".sqlite") ? "accounts.sqlite" : "accounts.json",
+    },
   };
 }

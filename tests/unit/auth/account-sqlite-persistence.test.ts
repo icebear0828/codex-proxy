@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "fs";
+import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "fs";
 import { tmpdir } from "os";
 import { resolve } from "path";
 import type { AccountEntry, AccountsFile } from "@src/auth/types.js";
@@ -158,5 +158,86 @@ describe("SQLite account persistence", () => {
 
     persistence.save([{ ...result.entries[0], label: "Fallback Saved" }]);
     expect(readAccountsJson().accounts[0].label).toBe("Fallback Saved");
+  });
+
+  it("reports load failure when SQLite is corrupt and no JSON fallback exists", async () => {
+    writeFileSync(accountsSqlitePath(), "not a sqlite database", "utf-8");
+
+    const { createFsPersistence } = await freshModule();
+    const result = createFsPersistence().load();
+
+    expect(result.loadFailed).toBe(true);
+    expect(result.health).toMatchObject({
+      quarantined: true,
+      store: "accounts.sqlite",
+    });
+    expect(existsSync(accountsSqlitePath())).toBe(false);
+    expect(
+      readdirSync(tmpData).some((name) => (
+        name.startsWith("accounts.sqlite.corrupt-") && name.endsWith(".bak")
+      )),
+    ).toBe(true);
+  });
+
+  it("migrates legacy JSON entries that omit nullable fields into SQLite", async () => {
+    const legacy = makeEntry("missing-nullables", null);
+    const rawLegacy = { ...legacy } as Record<string, unknown>;
+    delete rawLegacy.refreshToken;
+    delete rawLegacy.email;
+    delete rawLegacy.accountId;
+    delete rawLegacy.userId;
+    delete rawLegacy.label;
+    delete rawLegacy.planType;
+    writeFileSync(
+      accountsJsonPath(),
+      JSON.stringify({ accounts: [rawLegacy] }, null, 2),
+      "utf-8",
+    );
+
+    const { createFsPersistence } = await freshModule();
+    const firstLoad = createFsPersistence().load();
+
+    expect(firstLoad.loadFailed).toBeFalsy();
+    expect(firstLoad.entries[0]).toMatchObject({
+      id: "missing-nullables",
+      refreshToken: null,
+      email: null,
+      accountId: null,
+      userId: null,
+      label: null,
+      planType: null,
+    });
+    expect(existsSync(accountsSqlitePath())).toBe(true);
+
+    rmSync(accountsJsonPath());
+
+    const sqliteReload = createFsPersistence().load();
+    expect(sqliteReload.loadFailed).toBeFalsy();
+    expect(sqliteReload.entries[0]).toMatchObject({
+      id: "missing-nullables",
+      refreshToken: null,
+      email: null,
+      accountId: null,
+      userId: null,
+      label: null,
+      planType: null,
+    });
+  });
+
+  it("reads refresh tokens from SQLite before a stale JSON mirror", async () => {
+    const entry = makeEntry("rt-source", "rt-json-original");
+    writeAccountsJson([entry]);
+
+    const { createFsPersistence } = await freshModule();
+    const persistence = createFsPersistence();
+    const loaded = persistence.load();
+    persistence.save([{ ...loaded.entries[0], refreshToken: "rt-sqlite-new" }]);
+
+    writeAccountsJson([{ ...entry, refreshToken: "rt-json-stale" }]);
+
+    const readablePersistence = persistence as {
+      readRefreshToken?: (entryId: string) => string | null;
+    };
+    expect(readablePersistence.readRefreshToken?.("rt-source")).toBe("rt-sqlite-new");
   });
 });
