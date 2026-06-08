@@ -5,6 +5,7 @@ import { resolve } from "path";
 import { Hono } from "hono";
 import { createValidJwt } from "@helpers/jwt.js";
 import { createMockConfig } from "@helpers/config.js";
+import type { CodexQuota } from "@src/auth/types.js";
 
 let tmpData: string;
 
@@ -39,6 +40,21 @@ function buildApp(pool: AccountPool, scheduler: RefreshScheduler): Hono {
   const app = new Hono();
   app.route("/", createAccountRoutes(pool, scheduler));
   return app;
+}
+
+function makeQuota(): CodexQuota {
+  return {
+    plan_type: "plus",
+    rate_limit: {
+      allowed: true,
+      limit_reached: false,
+      used_percent: 42,
+      reset_at: Math.floor(Date.now() / 1000) + 3600,
+      limit_window_seconds: 3600,
+    },
+    secondary_rate_limit: null,
+    code_review_rate_limit: null,
+  };
 }
 
 describe("accounts SQLite persistence E2E", () => {
@@ -122,5 +138,52 @@ describe("accounts SQLite persistence E2E", () => {
       "E2E 2",
       "E2E 3",
     ]);
+  });
+
+  it("persists existing account mutation paths through SQLite reload", () => {
+    const pool = new AccountPool();
+    const keepId = pool.addAccount(
+      createValidJwt({ accountId: "sqlite-mutation-keep", email: "keep@test.com", planType: "plus" }),
+      "rt-keep",
+    );
+
+    pool.setLabel(keepId, "Mutation Label");
+    pool.markStatus(keepId, "disabled");
+    pool.markStatus(keepId, "active");
+    pool.updateCachedQuota(keepId, makeQuota());
+
+    const acquired = pool.acquire({ preferredEntryId: keepId });
+    expect(acquired?.entryId).toBe(keepId);
+    pool.release(keepId, { input_tokens: 123, output_tokens: 45, cached_tokens: 12 });
+
+    const deleteId = pool.addAccount(
+      createValidJwt({ accountId: "sqlite-mutation-delete", email: "delete@test.com", planType: "plus" }),
+      "rt-delete",
+    );
+    expect(pool.removeAccount(deleteId)).toBe(true);
+    pool.destroy();
+
+    const reloaded = new AccountPool();
+    const keep = reloaded.getEntry(keepId);
+
+    expect(keep).toMatchObject({
+      id: keepId,
+      label: "Mutation Label",
+      status: "active",
+      refreshToken: "rt-keep",
+      usage: {
+        request_count: 1,
+        input_tokens: 123,
+        output_tokens: 45,
+        cached_tokens: 12,
+        window_request_count: 1,
+        window_input_tokens: 123,
+        window_output_tokens: 45,
+        window_cached_tokens: 12,
+      },
+    });
+    expect(keep?.cachedQuota?.rate_limit.used_percent).toBe(42);
+    expect(reloaded.getEntry(deleteId)).toBeUndefined();
+    reloaded.destroy();
   });
 });
