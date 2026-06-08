@@ -46,7 +46,10 @@ export function createSettingsRoutes(): Hono {
 
   app.use("/admin/*", async (c, next) => {
     const path = c.req.path;
-    if (path.startsWith("/admin/error-logs")) {
+    // Error-log routes use dashboard session auth (dashboardAuth middleware).
+    // Only skip this Bearer-token gate for read-only GET requests; mutating
+    // operations (POST seen, DELETE) still need to pass through.
+    if (path.startsWith("/admin/error-logs") && c.req.method === "GET") {
       return next();
     }
     if (c.req.method !== "POST" && c.req.method !== "PUT" && c.req.method !== "PATCH" && c.req.method !== "DELETE") {

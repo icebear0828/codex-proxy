@@ -257,6 +257,12 @@ function readJsonlFileTail(path: string, limit: number): ErrorLogEntry[] {
   }
 }
 
+/**
+ * Count newline characters in a file as a proxy for the number of JSONL entries.
+ * Assumes each entry is written as exactly one line terminated by '\n' with no
+ * trailing blank lines.  appendErrorLog() always appends `JSON.stringify(e)+"\n"`,
+ * so this invariant holds under normal operation.
+ */
 function countLines(path: string): number {
   if (!existsSync(path)) return 0;
   const fd = openSync(path, "r");
@@ -283,6 +289,18 @@ function countLines(path: string): number {
   }
 }
 
+/**
+ * Count log entries whose `ts` field is strictly greater than `cursor` by
+ * scanning both files backwards from the tail.
+ *
+ * INVARIANT: Entries within each file are assumed to be written in
+ * monotonically non-decreasing `ts` order.  appendErrorLog() always appends
+ * to the tail, and callers use Date.now() / new Date().toISOString(), so this
+ * holds under normal operation.  If entries were ever written out-of-order
+ * (e.g. concurrent writers with clock skew), the early-stop heuristic could
+ * under-count unread entries.  In practice the Electron main process is the
+ * sole writer, so the invariant is safe.
+ */
 function countUnreadSince(cursor: string): number {
   const path = logPath();
   if (!existsSync(path)) return 0;
