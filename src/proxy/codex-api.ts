@@ -10,6 +10,7 @@
  */
 
 import { getConfig } from "../config.js";
+import { createHash } from "crypto";
 import { getTransport, type TlsTransport } from "../tls/transport.js";
 import {
   buildHeaders,
@@ -108,18 +109,33 @@ export class CodexApi {
     conversationId: string | null;
     windowId: string | null;
   } {
-    const conversationId =
+    const clientConversationId =
       typeof request.prompt_cache_key === "string" && request.prompt_cache_key.trim()
         ? request.prompt_cache_key.trim()
         : null;
+    const conversationId = clientConversationId
+      ? this.buildAccountScopedIdentity("conversation", clientConversationId)
+      : null;
+    const clientWindowId = this.firstRequestString(request, X_CODEX_WINDOW_ID_HEADER);
     return {
       conversationId,
-      windowId:
-        (typeof request.codexWindowId === "string" && request.codexWindowId.trim()
-          ? request.codexWindowId.trim()
-          : null) ??
-        (conversationId ? `${conversationId}:0` : null),
+      windowId: clientWindowId
+        ? this.buildAccountScopedIdentity("window", clientWindowId)
+        : conversationId ? `${conversationId}:0` : null,
     };
+  }
+
+  private buildAccountScopedIdentity(kind: "conversation" | "window", clientValue: string): string {
+    const accountScope = this.entryId ?? this.accountId ?? "anonymous";
+    const digest = createHash("sha256")
+      .update(kind)
+      .update("\0")
+      .update(accountScope)
+      .update("\0")
+      .update(clientValue)
+      .digest("hex")
+      .slice(0, 32);
+    return `${kind === "conversation" ? "cp" : "cw"}_${digest}`;
   }
 
   private firstRequestString(request: CodexResponsesRequest, key: string): string | null {
@@ -337,7 +353,7 @@ export class CodexApi {
     if (request.text) wsRequest.text = request.text;
     const serviceTier = normalizeServiceTierForUpstream(request.service_tier);
     if (serviceTier) wsRequest.service_tier = serviceTier;
-    if (request.prompt_cache_key) wsRequest.prompt_cache_key = request.prompt_cache_key;
+    if (identity.conversationId) wsRequest.prompt_cache_key = identity.conversationId;
     if (request.include?.length) wsRequest.include = request.include;
     wsRequest.client_metadata = this.buildCodexClientMetadata(request, installationId, identity.windowId);
 
@@ -392,6 +408,7 @@ export class CodexApi {
     const bodyWithMetadata = {
       ...bodyFields,
       ...(upstreamServiceTier ? { service_tier: upstreamServiceTier } : {}),
+      ...(identity.conversationId ? { prompt_cache_key: identity.conversationId } : {}),
       client_metadata: this.buildCodexClientMetadata(request, installationId, identity.windowId),
     };
     const body = JSON.stringify(bodyWithMetadata);
