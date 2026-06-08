@@ -32,8 +32,9 @@ ENV CODEX_PROXY_HOST=0.0.0.0
 # curl: needed by full-update.ts
 # unzip: needed by full-update.ts to extract Codex.app
 # gosu: needed by entrypoint to drop from root to node user
+# build-essential/python3: needed when better-sqlite3 falls back to node-gyp
 RUN apt-get update && \
-    apt-get install -y --no-install-recommends curl unzip ca-certificates gosu && \
+    apt-get install -y --no-install-recommends curl unzip ca-certificates gosu build-essential python3 && \
     rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
