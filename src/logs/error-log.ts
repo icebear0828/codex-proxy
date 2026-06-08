@@ -22,9 +22,12 @@
 
 import {
   appendFileSync,
+  closeSync,
   existsSync,
   mkdirSync,
+  openSync,
   readFileSync,
+  readSync,
   renameSync,
   statSync,
   unlinkSync,
@@ -200,19 +203,215 @@ function readJsonlFile(path: string): ErrorLogEntry[] {
   return out;
 }
 
+function readJsonlFileTail(path: string, limit: number): ErrorLogEntry[] {
+  if (!existsSync(path)) return [];
+  const size = statSync(path).size;
+  if (size === 0) return [];
+
+  const fd = openSync(path, "r");
+  try {
+    const out: ErrorLogEntry[] = [];
+    const chunkSize = 64 * 1024;
+    let position = size;
+    let leftover = "";
+
+    while (position > 0 && out.length < limit) {
+      const readLength = Math.min(position, chunkSize);
+      position -= readLength;
+
+      const buffer = Buffer.alloc(readLength);
+      readSync(fd, buffer, 0, readLength, position);
+
+      const chunkStr = buffer.toString("utf-8") + leftover;
+      const lines = chunkStr.split("\n");
+
+      if (position > 0) {
+        leftover = lines.shift() || "";
+      } else {
+        leftover = "";
+      }
+
+      for (let i = lines.length - 1; i >= 0; i--) {
+        const line = lines[i].trim();
+        if (!line) continue;
+        try {
+          out.push(JSON.parse(line) as ErrorLogEntry);
+          if (out.length >= limit) break;
+        } catch {
+          // ignore corrupted
+        }
+      }
+    }
+
+    if (leftover.trim() && out.length < limit) {
+      try {
+        out.push(JSON.parse(leftover.trim()) as ErrorLogEntry);
+      } catch {
+        // ignore
+      }
+    }
+
+    return out;
+  } finally {
+    closeSync(fd);
+  }
+}
+
+function countLines(path: string): number {
+  if (!existsSync(path)) return 0;
+  const fd = openSync(path, "r");
+  try {
+    const size = statSync(path).size;
+    if (size === 0) return 0;
+    let count = 0;
+    const chunkSize = 64 * 1024;
+    let position = 0;
+    while (position < size) {
+      const readLength = Math.min(size - position, chunkSize);
+      const buffer = Buffer.alloc(readLength);
+      readSync(fd, buffer, 0, readLength, position);
+      position += readLength;
+      for (let i = 0; i < readLength; i++) {
+        if (buffer[i] === 0x0a) {
+          count++;
+        }
+      }
+    }
+    return count;
+  } finally {
+    closeSync(fd);
+  }
+}
+
+function countUnreadSince(cursor: string): number {
+  const path = logPath();
+  if (!existsSync(path)) return 0;
+  const size = statSync(path).size;
+  if (size === 0) return 0;
+
+  const fd = openSync(path, "r");
+  try {
+    let unreadCount = 0;
+    const chunkSize = 64 * 1024;
+    let position = size;
+    let leftover = "";
+    let stop = false;
+
+    while (position > 0 && !stop) {
+      const readLength = Math.min(position, chunkSize);
+      position -= readLength;
+
+      const buffer = Buffer.alloc(readLength);
+      readSync(fd, buffer, 0, readLength, position);
+
+      const chunkStr = buffer.toString("utf-8") + leftover;
+      const lines = chunkStr.split("\n");
+
+      if (position > 0) {
+        leftover = lines.shift() || "";
+      } else {
+        leftover = "";
+      }
+
+      for (let i = lines.length - 1; i >= 0; i--) {
+        const line = lines[i].trim();
+        if (!line) continue;
+        try {
+          const entry = JSON.parse(line) as ErrorLogEntry;
+          if (entry.ts > cursor) {
+            unreadCount++;
+          } else {
+            stop = true;
+            break;
+          }
+        } catch {
+          // ignore
+        }
+      }
+    }
+
+    if (!stop && leftover.trim()) {
+      try {
+        const entry = JSON.parse(leftover.trim()) as ErrorLogEntry;
+        if (entry.ts > cursor) {
+          unreadCount++;
+        }
+      } catch {
+        // ignore
+      }
+    }
+
+    if (!stop) {
+      const backup = backupPath();
+      if (existsSync(backup)) {
+        const backupFd = openSync(backup, "r");
+        try {
+          let backupPosition = statSync(backup).size;
+          let backupLeftover = "";
+          while (backupPosition > 0 && !stop) {
+            const readLength = Math.min(backupPosition, chunkSize);
+            backupPosition -= readLength;
+            const buffer = Buffer.alloc(readLength);
+            readSync(backupFd, buffer, 0, readLength, backupPosition);
+            const chunkStr = buffer.toString("utf-8") + backupLeftover;
+            const lines = chunkStr.split("\n");
+            if (backupPosition > 0) {
+              backupLeftover = lines.shift() || "";
+            } else {
+              backupLeftover = "";
+            }
+            for (let i = lines.length - 1; i >= 0; i--) {
+              const line = lines[i].trim();
+              if (!line) continue;
+              try {
+                const entry = JSON.parse(line) as ErrorLogEntry;
+                if (entry.ts > cursor) {
+                  unreadCount++;
+                } else {
+                  stop = true;
+                  break;
+                }
+              } catch {
+                // ignore
+              }
+            }
+          }
+          if (!stop && backupLeftover.trim()) {
+            try {
+              const entry = JSON.parse(backupLeftover.trim()) as ErrorLogEntry;
+              if (entry.ts > cursor) {
+                unreadCount++;
+              }
+            } catch {
+              // ignore
+            }
+          }
+        } finally {
+          closeSync(backupFd);
+        }
+      }
+    }
+
+    return unreadCount;
+  } finally {
+    closeSync(fd);
+  }
+}
+
 /**
  * Read entries from current + backup files, newest first.
  * `limit`, when given, caps the number of returned entries.
+ * Defaults to 1000 to prevent OOM / CPU lock when logs are huge.
  */
 export function readErrorLog(limit?: number): ErrorLogEntry[] {
-  // Backup is older; current is newer. Concatenate then reverse so
-  // the newest entries appear first.
-  const oldest = readJsonlFile(backupPath());
-  const newest = readJsonlFile(logPath());
-  const combined = [...oldest, ...newest];
-  combined.reverse();
-  if (limit !== undefined) return combined.slice(0, limit);
-  return combined;
+  const targetLimit = limit ?? 1000;
+  const newest = readJsonlFileTail(logPath(), targetLimit);
+  const remaining = targetLimit - newest.length;
+  if (remaining > 0) {
+    const oldest = readJsonlFileTail(backupPath(), remaining);
+    return [...newest, ...oldest];
+  }
+  return newest;
 }
 
 /** Remove all persisted error log entries and the read cursor. */
@@ -303,13 +502,22 @@ export function setReadCursor(ts: string): void {
  */
 export function getUnreadCount(entries?: ErrorLogEntry[]): number {
   const cursor = getReadCursor();
-  const list = entries ?? readErrorLog();
-  if (cursor === null) return list.length;
-  let count = 0;
-  for (const e of list) {
-    if (e.ts > cursor) count += 1;
+  if (entries !== undefined) {
+    if (cursor === null) return entries.length;
+    let count = 0;
+    for (const e of entries) {
+      if (e.ts > cursor) count += 1;
+    }
+    return count;
   }
-  return count;
+  if (cursor === null) {
+    return countLines(logPath()) + countLines(backupPath());
+  }
+  return countUnreadSince(cursor);
+}
+
+export function getTotalCount(): number {
+  return countLines(logPath()) + countLines(backupPath());
 }
 
 // ── Process-level handlers ──────────────────────────────────────────

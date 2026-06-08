@@ -5,6 +5,7 @@ import {
   clearErrorLog,
   groupErrorLog,
   getUnreadCount,
+  getTotalCount,
   readErrorLog,
   setReadCursor,
   type ErrorSource,
@@ -47,8 +48,7 @@ export function createErrorLogRoutes(): Hono {
   });
 
   app.get("/admin/error-logs/count", (c) => {
-    const entries = readErrorLog();
-    return c.json({ total: entries.length, unread: getUnreadCount(entries) });
+    return c.json({ total: getTotalCount(), unread: getUnreadCount() });
   });
 
   app.post("/admin/error-logs/seen", (c) => {

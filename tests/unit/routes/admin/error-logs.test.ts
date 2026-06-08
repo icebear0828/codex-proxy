@@ -283,3 +283,80 @@ describe("POST /admin/error-logs/report", () => {
     expect(res.status).toBe(400);
   });
 });
+
+describe("large log performance and limit tests", () => {
+  it("processes seen, count, and lists efficiently with 15,000+ entries", async () => {
+    // Generate a large log file with 8000 entries and a backup file with 8000 entries
+    const backupFile = resolve(tmpDataDir, "error-log.1.jsonl");
+    const currentFile = resolve(tmpDataDir, "error-log.jsonl");
+
+    let backupContent = "";
+    let currentContent = "";
+
+    const now = Date.now();
+    for (let i = 0; i < 8000; i++) {
+      const ts = new Date(now - 200000 + i * 10).toISOString();
+      backupContent += JSON.stringify({
+        ts,
+        version: "0.0.0-test",
+        platform: "darwin",
+        source: "server",
+        error: { name: "BackupError", message: `err ${i}`, stack: "at backup.js:1" }
+      }) + "\n";
+    }
+
+    for (let i = 0; i < 8000; i++) {
+      const ts = new Date(now - 100000 + i * 10).toISOString();
+      currentContent += JSON.stringify({
+        ts,
+        version: "0.0.0-test",
+        platform: "darwin",
+        source: "main",
+        error: { name: "CurrentError", message: `err ${i}`, stack: "at current.js:1" }
+      }) + "\n";
+    }
+
+    writeFileSync(backupFile, backupContent, "utf-8");
+    writeFileSync(currentFile, currentContent, "utf-8");
+
+    const app = await buildApp();
+
+    // 1. Check count performance and correctness
+    const startCount = performance.now();
+    const countRes = await app.request("/admin/error-logs/count");
+    const endCount = performance.now();
+    expect(countRes.status).toBe(200);
+    const countBody = await countRes.json() as { total: number; unread: number };
+    expect(countBody.total).toBe(16000);
+    expect(countBody.unread).toBe(16000);
+    expect(endCount - startCount).toBeLessThan(100); // Should be very fast (under 100ms)
+
+    // 2. Check seen performance and correctness
+    const startSeen = performance.now();
+    const seenRes = await app.request("/admin/error-logs/seen", { method: "POST" });
+    const endSeen = performance.now();
+    expect(seenRes.status).toBe(200);
+    const seenBody = await seenRes.json() as { ok: boolean; cursor: string };
+    expect(seenBody.ok).toBe(true);
+    expect(seenBody.cursor).toBeTruthy();
+    expect(endSeen - startSeen).toBeLessThan(100); // Should be very fast (under 100ms)
+
+    // Verify unread becomes 0
+    const countAfterRes = await app.request("/admin/error-logs/count");
+    const countAfterBody = await countAfterRes.json() as { unread: number };
+    expect(countAfterBody.unread).toBe(0);
+
+    // 3. Check grouped errors list limit (should default to processing at most 1000 items)
+    const startGrouped = performance.now();
+    const groupedRes = await app.request("/admin/error-logs");
+    const endGrouped = performance.now();
+    expect(groupedRes.status).toBe(200);
+    const groupedBody = await groupedRes.json() as { groups: Array<{ name: string; count: number }> };
+    
+    // Default limit should apply. The total count across groups should sum to the limit (1000)
+    const totalGroupedCount = groupedBody.groups.reduce((acc, g) => acc + g.count, 0);
+    expect(totalGroupedCount).toBe(1000);
+    expect(endGrouped - startGrouped).toBeLessThan(100);
+  });
+});
+
