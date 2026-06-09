@@ -134,6 +134,12 @@ describeIfBash("select-promote-candidate.sh", () => {
     expect(() => run(cwd, { MIN_AGE_SECONDS: "24h" })).toThrow();
   });
 
+  it("fails loudly on a missing ref instead of emitting an empty candidate list", () => {
+    const cwd = createRepo();
+    commitAt(cwd, "fix: aged", NOW - 2 * DAY);
+    expect(() => run(cwd, { MASTER_REF: "refs/remotes/origin/nonexistent" })).toThrow();
+  });
+
   it("FORCE=true bypasses soak and returns dev HEAD", () => {
     const cwd = createRepo();
     const fresh = commitAt(cwd, "fix: fresh hotfix", NOW - 1 * HOUR);

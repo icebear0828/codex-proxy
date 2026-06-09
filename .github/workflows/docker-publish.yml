@@ -37,10 +37,11 @@ jobs:
           TAG_INPUT: ${{ inputs.tag }}
         run: |
           # Dispatch inputs are arbitrary strings; refuse anything that is not
-          # a plain semver tag (also blocks newline injection into the
+          # a plain semver tag. bash [[ =~ ]] anchors the WHOLE string (grep
+          # would match per-line and let a multiline payload through into the
           # GITHUB_OUTPUT heredoc below).
-          if [ -n "$TAG_INPUT" ] && ! printf '%s' "$TAG_INPUT" | grep -qE '^v[0-9]+\.[0-9]+\.[0-9]+(-[A-Za-z0-9.]+)?$'; then
-            echo "::error::invalid tag input: $TAG_INPUT"
+          if [ -n "$TAG_INPUT" ] && ! [[ "$TAG_INPUT" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[A-Za-z0-9.]+)?$ ]]; then
+            echo "::error::invalid tag input"
             exit 1
           fi
 

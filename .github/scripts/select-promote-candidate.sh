@@ -32,6 +32,16 @@ for VAR in MIN_AGE_SECONDS MAX_CANDIDATES NOW_EPOCH; do
   fi
 done
 
+# Fail loudly on missing refs: a rev-list error inside the process
+# substitution below would otherwise be swallowed (empty output looks like a
+# normal "nothing eligible" soak skip and could mask a config error for weeks).
+for REF in "$MASTER_REF" "$DEV_REF"; do
+  if ! git rev-parse --verify -q "${REF}^{commit}" >/dev/null; then
+    echo "error: ref not found: $REF" >&2
+    exit 2
+  fi
+done
+
 if [ "${FORCE:-false}" = "true" ]; then
   git rev-parse "$DEV_REF"
   exit 0

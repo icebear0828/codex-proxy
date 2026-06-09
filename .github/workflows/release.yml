@@ -68,7 +68,7 @@ jobs:
               PUBLISHED=1; break
             fi
             echo "release edit/create failed (attempt $i/3), retrying..."
-            sleep 5
+            sleep $(( i * 15 ))
           done
           if [ -z "$PUBLISHED" ]; then
             echo "::error::could not create or update release $TAG after 3 attempts"
@@ -234,8 +234,9 @@ jobs:
           # to arrive needs to. `|| true` swallows the 422 that the
           # concurrent matrix jobs hit when a peer wins the race.
           IS_PRERELEASE=""
-          if [[ "$TAG" == *-* ]]; then IS_PRERELEASE="--prerelease"; fi
-          gh release create "$TAG" --title "$TAG" --notes "" --draft=false $IS_PRERELEASE 2>/dev/null || true
+          LATEST_FLAG=""
+          if [[ "$TAG" == *-* ]]; then IS_PRERELEASE="--prerelease"; else LATEST_FLAG="--latest=false"; fi
+          gh release create "$TAG" --title "$TAG" --notes "" --draft=false $IS_PRERELEASE $LATEST_FLAG 2>/dev/null || true
           cd packages/electron/release
           case "${{ matrix.platform }}" in
             mac)
@@ -374,8 +375,9 @@ jobs:
           # depends on) already created the release with real notes, so
           # this create normally no-ops with "already exists".
           IS_PRERELEASE=""
-          if [[ "$TAG" == *-* ]]; then IS_PRERELEASE="--prerelease"; fi
-          gh release create "$TAG" --title "$TAG" --notes "" --draft=false $IS_PRERELEASE 2>/dev/null || true
+          LATEST_FLAG=""
+          if [[ "$TAG" == *-* ]]; then IS_PRERELEASE="--prerelease"; else LATEST_FLAG="--latest=false"; fi
+          gh release create "$TAG" --title "$TAG" --notes "" --draft=false $IS_PRERELEASE $LATEST_FLAG 2>/dev/null || true
           cd packages/electron/release
           for f in *; do
             [ -f "$f" ] || continue
@@ -420,24 +422,52 @@ jobs:
           ref: ${{ inputs.tag || github.ref }}
 
       - name: Mark stable release as latest (assets are complete now)
+        id: flip
         if: ${{ !contains(needs.*.result, 'failure') && !contains(needs.*.result, 'cancelled') }}
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAG: ${{ inputs.tag || github.ref_name }}
         run: |
-          case "$TAG" in
-            *-*) echo "prerelease, never latest" ;;
-            *) gh release edit "$TAG" --latest ;;
-          esac
+          case "$TAG" in *-*) echo "prerelease, never latest"; exit 0 ;; esac
+          # A flip failure makes a fully-built stable release invisible to the
+          # auto-updater (/releases/latest keeps pointing at the previous
+          # one) — retry, and let the webhook below report the failure.
+          for i in 1 2 3; do
+            if gh release edit "$TAG" --latest; then exit 0; fi
+            echo "marking latest failed (attempt $i/3), retrying..."
+            sleep 10
+          done
+          echo "::error::failed to mark $TAG as latest after 3 attempts"
+          exit 1
+
+      - name: Delete asset-less release on build failure
+        if: ${{ contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled') }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ inputs.tag || github.ref_name }}
+        run: |
+          # The notes job publishes the release before any artifact exists.
+          # If every platform failed, a published zero-asset release would
+          # break beta clients (allow_prerelease resolves the NEWEST release
+          # and 404s on latest*.yml). Delete it — the tag survives, so a
+          # manual re-dispatch of release.yml can retry the same version.
+          COUNT=$(gh release view "$TAG" --json assets -q '.assets | length' 2>/dev/null || echo "")
+          if [ "$COUNT" = "0" ]; then
+            echo "deleting zero-asset release $TAG (tag kept)"
+            gh release delete "$TAG" -y || true
+          else
+            echo "release $TAG has ${COUNT:-unknown} asset(s), leaving it in place"
+          fi
 
       - name: Send webhook notification
+        if: always()
         env:
           NOTIFY_WEBHOOK_URL: ${{ secrets.NOTIFY_WEBHOOK_URL }}
           TAG: ${{ inputs.tag || github.ref_name }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
           RELEASE_URL: ${{ github.server_url }}/${{ github.repository }}/releases/tag/${{ inputs.tag || github.ref_name }}
         run: |
-          if [ "${{ contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled') }}" = "true" ]; then
+          if [ "${{ contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled') || steps.flip.outcome == 'failure' }}" = "true" ]; then
             MSG="❌ Release $TAG failed: $RUN_URL"
           else
             MSG="✅ Release $TAG published: $RELEASE_URL"
