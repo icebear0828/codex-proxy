@@ -139,4 +139,7 @@ jobs:
         if: steps.bump.outputs.new_tag
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: gh workflow run docker-publish.yml --ref master
+          NEW_TAG: ${{ steps.bump.outputs.new_tag }}
+        # tag input → docker-publish builds FROM the tag and also publishes
+        # the ghcr.io vX.Y.Z version image (branch pushes are latest-only).
+        run: gh workflow run docker-publish.yml --ref master -f tag="$NEW_TAG"

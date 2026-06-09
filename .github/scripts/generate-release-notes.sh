@@ -7,7 +7,9 @@ if [ -z "$TAG" ]; then
   exit 2
 fi
 
-release_notes_filter='^(chore|docs|ci)(\(.*\))?:'
+# Mirrors SKIP_RELEASE_PATTERN in bump-electron(-beta).yml so the notes never
+# list commits that wouldn't have triggered a release on their own.
+release_notes_filter='^(chore|docs|ci|test|refactor|style)(\(.*\))?:'
 promotion_filter='^(fix: promote dev release fixes to master|chore: promote dev to master)'
 
 find_previous_tag() {
@@ -66,5 +68,5 @@ if [ -z "$BODY" ]; then
   BODY="Bug fixes and improvements"
 fi
 
-printf '%s\n' "$BODY" | node "$(dirname "$0")/translate-notes.js"
+printf '%s\n' "$BODY" | node "$(dirname "$0")/summarize-release-notes.mjs" "$TAG"
 

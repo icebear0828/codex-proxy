@@ -15,7 +15,52 @@ permissions:
   contents: write
 
 jobs:
+  # Runs FIRST so the GitHub Release exists with real notes before any
+  # artifact upload. Previously notes were generated in the last job: upload
+  # steps created the release with `--notes ""`, and a notes-job failure left
+  # the body empty forever (exactly what beta users see in the update popup).
+  notes:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag || github.ref }}
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Fetch dev for stable release notes
+        run: git fetch origin dev:refs/remotes/origin/dev || true
+
+      - name: Resolve tag
+        id: tag
+        run: |
+          TAG="${{ inputs.tag || github.ref_name }}"
+          echo "name=$TAG" >> "$GITHUB_OUTPUT"
+
+      - name: Generate release notes and create release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_NOTES_BASE_URL: ${{ secrets.RELEASE_NOTES_BASE_URL }}
+          RELEASE_NOTES_API_KEY: ${{ secrets.RELEASE_NOTES_API_KEY }}
+          RELEASE_NOTES_MODEL: ${{ secrets.RELEASE_NOTES_MODEL }}
+        run: |
+          TAG="${{ steps.tag.outputs.name }}"
+          bash .github/scripts/generate-release-notes.sh "$TAG" > /tmp/release-notes.md
+
+          # Tag like v1.2.3-beta.SHA → mark as prerelease (semver convention).
+          PRERELEASE_FLAG=""
+          case "$TAG" in *-*) PRERELEASE_FLAG="--prerelease" ;; esac
+
+          gh release edit "$TAG" --draft=false $PRERELEASE_FLAG --notes-file /tmp/release-notes.md 2>/dev/null || \
+            gh release create "$TAG" --title "$TAG" $PRERELEASE_FLAG --notes-file /tmp/release-notes.md
+
   build:
+    needs: notes
     strategy:
       fail-fast: false
       matrix:
@@ -42,7 +87,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
           cache: npm
           cache-dependency-path: |
             package-lock.json
@@ -218,7 +263,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
           cache: npm
           cache-dependency-path: |
             package-lock.json
@@ -348,44 +393,25 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-  release:
-    needs: [build, build-mac-x64]
+  notify:
+    needs: [notes, build, build-mac-x64]
     runs-on: ubuntu-latest
-    if: startsWith(github.ref, 'refs/tags/v') || inputs.tag
-
+    if: always() && (startsWith(github.ref, 'refs/tags/v') || inputs.tag)
     steps:
-      - name: Checkout
+      - name: Checkout (scripts only)
         uses: actions/checkout@v4
         with:
           ref: ${{ inputs.tag || github.ref }}
-          fetch-depth: 0
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: 20
-
-      - name: Fetch dev for stable release notes
-        run: git fetch origin dev:refs/remotes/origin/dev || true
-
-      - name: Resolve tag
-        id: tag
+      - name: Send webhook notification
+        env:
+          NOTIFY_WEBHOOK_URL: ${{ secrets.NOTIFY_WEBHOOK_URL }}
         run: |
           TAG="${{ inputs.tag || github.ref_name }}"
-          echo "name=$TAG" >> "$GITHUB_OUTPUT"
-
-      - name: Generate release notes and publish
-        run: |
-          TAG="${{ steps.tag.outputs.name }}"
-          bash .github/scripts/generate-release-notes.sh "$TAG" > /tmp/release-notes.md
-
-          # Tag like v1.2.3-beta.SHA → mark as prerelease (semver convention).
-          # Defensive: electron-builder normally does this, but the create fallback
-          # below would miss it when electron-builder's draft creation didn't fire.
-          PRERELEASE_FLAG=""
-          case "$TAG" in *-*) PRERELEASE_FLAG="--prerelease" ;; esac
-
-          gh release edit "$TAG" --draft=false $PRERELEASE_FLAG --notes-file /tmp/release-notes.md 2>/dev/null || \
-            gh release create "$TAG" --title "$TAG" $PRERELEASE_FLAG --notes-file /tmp/release-notes.md
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RUN_URL="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          if [ "${{ contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled') }}" = "true" ]; then
+            MSG="❌ Release $TAG failed: $RUN_URL"
+          else
+            MSG="✅ Release $TAG published: ${{ github.server_url }}/${{ github.repository }}/releases/tag/$TAG"
+          fi
+          bash .github/scripts/notify-webhook.sh "$MSG"
