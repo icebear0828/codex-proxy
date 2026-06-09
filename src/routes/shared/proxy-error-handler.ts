@@ -109,16 +109,7 @@ export function handleCodexApiError(
     return { action: "retry", status: 402, message: err.message };
   }
 
-  // 4. Ban (non-Cloudflare 403)
-  if (isBanError(err)) {
-    pool.markStatus(entryId, "banned");
-    console.warn(
-      `[${tag}] Account ${entryId} (${email}) | 403 banned, trying different account...`,
-    );
-    return { action: "retry", status: 403, message: err.message };
-  }
-
-  // 5. Cloudflare challenge (403 HTML/challenge response) — cooldown, not ban.
+  // 4. Cloudflare challenge (403 HTML/challenge response) — cooldown, not ban.
   if (isCfChallengeError(err)) {
     const cooldown = recordCfChallengeCooldown(entryId);
     console.warn(
@@ -131,6 +122,15 @@ export function handleCodexApiError(
       status: 502,
       message: "Upstream blocked the request (Cloudflare challenge)",
     };
+  }
+
+  // 5. Ban (non-Cloudflare 403)
+  if (isBanError(err)) {
+    pool.markStatus(entryId, "banned");
+    console.warn(
+      `[${tag}] Account ${entryId} (${email}) | 403 banned, trying different account...`,
+    );
+    return { action: "retry", status: 403, message: err.message };
   }
 
   // 6. Token invalidated / account deactivated

@@ -42,15 +42,6 @@ export function isQuotaExhaustedError(err: unknown): boolean {
   return err.status === 402;
 }
 
-/** Check if an error indicates the account is banned/suspended (non-CF 403). */
-export function isBanError(err: unknown): boolean {
-  if (!isCodexLike(err)) return false;
-  if (err.status !== 403) return false;
-  const body = err.body.toLowerCase();
-  if (body.includes("cf_chl") || body.includes("<!doctype") || body.includes("<html")) return false;
-  return true;
-}
-
 /** Check if a 403 body is a Cloudflare challenge rather than an account ban. */
 export function isCfChallengeError(err: unknown): boolean {
   if (!isCodexLike(err)) return false;
@@ -64,6 +55,16 @@ export function isCfChallengeError(err: unknown): boolean {
     body.includes("attention required") ||
     body.includes("just a moment")
   );
+}
+
+/** Check if an error indicates the account is banned/suspended (non-CF 403). */
+export function isBanError(err: unknown): boolean {
+  if (!isCodexLike(err)) return false;
+  if (err.status !== 403) return false;
+  if (isCfChallengeError(err)) return false;
+  const body = err.body.toLowerCase();
+  if (body.includes("<!doctype") || body.includes("<html")) return false;
+  return true;
 }
 
 /** Check if an error is a 401 token invalidation (revoked/expired upstream). */

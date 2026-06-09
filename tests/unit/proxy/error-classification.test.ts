@@ -73,6 +73,11 @@ describe("isBanError", () => {
     expect(isBanError(err)).toBe(false);
   });
 
+  it("returns false for CF challenge 403 (mitigation headers)", () => {
+    const err = new CodexApiError(403, "cf-mitigated: challenge; cf-chl-bypass: managed");
+    expect(isBanError(err)).toBe(false);
+  });
+
   it("returns false for CF challenge 403 (HTML page)", () => {
     const err = new CodexApiError(403, '<!DOCTYPE html><html><head></head></html>');
     expect(isBanError(err)).toBe(false);

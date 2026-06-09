@@ -164,6 +164,18 @@ describe("handleCodexApiError", () => {
       expect(pool.markStatus).not.toHaveBeenCalled();
       expect(getCfChallengeCooldown(entryId)?.delaySeconds).toBe(10);
     });
+
+    it("does not ban Cloudflare challenge responses that do not include HTML markers", () => {
+      const err = new CodexApiError(403, "cf-mitigated: challenge; cf-chl-bypass: managed");
+
+      const result = handleCodexApiError(err, pool as never, entryId, model, tag, false);
+
+      expect(result.action).toBe("retry");
+      expect(result.releaseBeforeRetry).toBe(true);
+      expect(result.status).toBe(502);
+      expect(pool.markStatus).not.toHaveBeenCalled();
+      expect(getCfChallengeCooldown(entryId)?.delaySeconds).toBe(10);
+    });
   });
 
   // ── 401 token-invalid ──
