@@ -101,10 +101,10 @@ export interface CodexReasoningTextPart {
 
 export interface CodexReasoningItem {
   type: "reasoning";
-  id?: string;
+  id: string;
   status?: CodexReasoningStatus;
   encrypted_content?: string;
-  summary?: CodexReasoningSummaryPart[];
+  summary: CodexReasoningSummaryPart[];
   content?: CodexReasoningTextPart[];
 }
 
