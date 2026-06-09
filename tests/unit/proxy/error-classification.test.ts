@@ -78,6 +78,11 @@ describe("isBanError", () => {
     expect(isBanError(err)).toBe(false);
   });
 
+  it("returns false for CF challenge 403 when the signal is only in response headers", () => {
+    const err = new CodexApiError(403, "", new Headers({ "cf-mitigated": "challenge" }));
+    expect(isBanError(err)).toBe(false);
+  });
+
   it("returns false for CF challenge 403 (HTML page)", () => {
     const err = new CodexApiError(403, '<!DOCTYPE html><html><head></head></html>');
     expect(isBanError(err)).toBe(false);
@@ -100,6 +105,7 @@ describe("isCfChallengeError", () => {
     expect(isCfChallengeError(new CodexApiError(403, "<html>cf_chl challenge</html>"))).toBe(true);
     expect(isCfChallengeError(new CodexApiError(403, "<html>Just a Moment</html>"))).toBe(true);
     expect(isCfChallengeError(new CodexApiError(403, "cf-mitigated: challenge"))).toBe(true);
+    expect(isCfChallengeError(new CodexApiError(403, "", new Headers({ "cf-chl-bypass": "managed" })))).toBe(true);
   });
 
   it("returns false for non-CF 403 bans", () => {

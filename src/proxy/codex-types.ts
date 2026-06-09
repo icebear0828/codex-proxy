@@ -160,9 +160,12 @@ export interface CodexUsageResponse {
 }
 
 export class CodexApiError extends Error {
+  public readonly headers: Headers | undefined;
+
   constructor(
     public readonly status: number,
     public readonly body: string,
+    headers?: Headers,
   ) {
     let detail: string;
     try {
@@ -178,6 +181,7 @@ export class CodexApiError extends Error {
       detail = body;
     }
     super(`Codex API error (${status}): ${detail}`);
+    this.headers = headers ? new Headers(headers) : undefined;
   }
 }
 

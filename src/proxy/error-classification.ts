@@ -11,12 +11,22 @@ interface CodexLikeError {
   status: number;
   body: string;
   message: string;
+  headers?: unknown;
 }
 
 function isCodexLike(err: unknown): err is CodexLikeError {
   if (!(err instanceof Error)) return false;
   const rec = err as unknown as Record<string, unknown>;
   return typeof rec.status === "number" && typeof rec.body === "string";
+}
+
+function headersToLowerHaystack(headers: unknown): string {
+  if (!(headers instanceof Headers)) return "";
+  const parts: string[] = [];
+  headers.forEach((value, key) => {
+    parts.push(key, value);
+  });
+  return parts.join(" ").toLowerCase();
 }
 
 /** Extract the rate-limit reset duration from a 429 error body, if available. */
@@ -46,14 +56,14 @@ export function isQuotaExhaustedError(err: unknown): boolean {
 export function isCfChallengeError(err: unknown): boolean {
   if (!isCodexLike(err)) return false;
   if (err.status !== 403) return false;
-  const body = err.body.toLowerCase();
+  const haystack = `${err.body.toLowerCase()} ${headersToLowerHaystack(err.headers)}`;
   return (
-    body.includes("cf-mitigated") ||
-    body.includes("cf-chl-bypass") ||
-    body.includes("_cf_chl") ||
-    body.includes("cf_chl") ||
-    body.includes("attention required") ||
-    body.includes("just a moment")
+    haystack.includes("cf-mitigated") ||
+    haystack.includes("cf-chl-bypass") ||
+    haystack.includes("_cf_chl") ||
+    haystack.includes("cf_chl") ||
+    haystack.includes("attention required") ||
+    haystack.includes("just a moment")
   );
 }
 

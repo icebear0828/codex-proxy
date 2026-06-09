@@ -297,6 +297,48 @@ describe("CodexApi.createResponse", () => {
     }
   });
 
+  it("preserves response headers on non-2xx CodexApiError", async () => {
+    const errorBody = "";
+    const responseHeaders = new Headers({ "cf-mitigated": "challenge" });
+    const mockTransport = makeMockTransport({
+      post: vi.fn().mockImplementation(() =>
+        Promise.resolve({
+          status: 403,
+          body: new ReadableStream<Uint8Array>({
+            start(controller) {
+              controller.enqueue(new TextEncoder().encode(errorBody));
+              controller.close();
+            },
+          }),
+          headers: responseHeaders,
+          setCookieHeaders: [],
+        } satisfies TlsTransportResponse),
+      ),
+    });
+    vi.mocked(getTransport).mockReturnValue(mockTransport);
+
+    const api = new CodexApi("test-token", null);
+    const request = {
+      model: "gpt-5.4",
+      instructions: "test",
+      input: [{ role: "user" as const, content: "Hi" }],
+      stream: true as const,
+      store: false as const,
+    };
+
+    let caught: unknown;
+    try {
+      await api.createResponse(request);
+    } catch (e) {
+      caught = e;
+    }
+
+    expect(caught).toBeInstanceOf(CodexApiError);
+    const err = caught as CodexApiError;
+    expect(err.status).toBe(403);
+    expect(err.headers?.get("cf-mitigated")).toBe("challenge");
+  });
+
   it("truncates error body exceeding 1MB", async () => {
     const largeBody = "x".repeat(2 * 1024 * 1024); // 2MB
     const mockTransport = makeMockTransport({

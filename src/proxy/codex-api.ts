@@ -427,7 +427,7 @@ export class CodexApi {
         }
       }
       const errorBody = Buffer.concat(chunks).toString("utf-8");
-      throw new CodexApiError(transportRes.status, errorBody);
+      throw new CodexApiError(transportRes.status, errorBody, transportRes.headers);
     }
 
     return new Response(transportRes.body, {
@@ -481,7 +481,7 @@ export class CodexApi {
     const responseBody = Buffer.concat(chunks).toString("utf-8");
 
     if (transportRes.status < 200 || transportRes.status >= 300) {
-      throw new CodexApiError(transportRes.status, responseBody);
+      throw new CodexApiError(transportRes.status, responseBody, transportRes.headers);
     }
 
     try {

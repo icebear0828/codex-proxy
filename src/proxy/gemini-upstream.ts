@@ -58,7 +58,7 @@ export class GeminiUpstream implements UpstreamAdapter {
 
     if (!response.ok) {
       const errorText = await response.text().catch(() => `HTTP ${response.status}`);
-      throw new CodexApiError(response.status, errorText);
+      throw new CodexApiError(response.status, errorText, response.headers);
     }
 
     return response;
