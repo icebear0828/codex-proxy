@@ -22,6 +22,7 @@ import {
   containsInvalidEncryptedContentSignal,
   sanitizeReasoningReplayItems,
 } from "../proxy/reasoning-replay-cache.js";
+import type { ReasoningReplayItem } from "../proxy/reasoning-replay-cache.js";
 
 // ── Shared helpers ────────────────────────────────────────────────
 
@@ -155,6 +156,13 @@ export function extractImageGenUsage(response: Record<string, unknown>): { image
   return { image_input_tokens, image_output_tokens };
 }
 
+function appendReplayArtifacts(
+  target: ReasoningReplayItem[],
+  candidates: readonly unknown[],
+): void {
+  target.push(...sanitizeReasoningReplayItems(candidates));
+}
+
 // ── Stream passthrough ────────────────────────────────────────────
 
 export async function* streamPassthrough(
@@ -172,7 +180,7 @@ export async function* streamPassthrough(
   let sawTerminal = false;
   let responseId: string | null = null;
   const streamFunctionCallIds = new Set<string>();
-  const streamReplayCandidates: unknown[] = [];
+  const streamReplayItems: ReasoningReplayItem[] = [];
 
   const stream = api.parseStream(response);
   let upstreamDone = false;
@@ -271,7 +279,7 @@ export async function* streamPassthrough(
           if (typeof callId === "string" && callId) streamFunctionCallIds.add(callId);
         }
         if (isRecord(data) && isRecord(data.item)) {
-          streamReplayCandidates.push(data.item);
+          appendReplayArtifacts(streamReplayItems, [data.item]);
         }
       }
 
@@ -290,9 +298,9 @@ export async function* streamPassthrough(
           }
           if (raw.event === "response.completed") {
             if (Array.isArray(resp.output)) {
-              streamReplayCandidates.push(...resp.output);
+              appendReplayArtifacts(streamReplayItems, resp.output);
             }
-            const replayItems = sanitizeReasoningReplayItems(streamReplayCandidates);
+            const replayItems = sanitizeReasoningReplayItems(streamReplayItems);
             if (replayItems.length > 0) {
               onResponseMetadata?.({ reasoningReplayItems: replayItems });
             }
@@ -348,7 +356,7 @@ export async function collectPassthrough(
   let responseId: string | null = null;
   const outputItems: unknown[] = [];
   const collectFunctionCallIds = new Set<string>();
-  const collectReplayCandidates: unknown[] = [];
+  const collectReplayItems: ReasoningReplayItem[] = [];
   let textDeltas = "";
 
   try {
@@ -367,7 +375,7 @@ export async function collectPassthrough(
 
       if (raw.event === "response.output_item.done" && isRecord(data.item)) {
         outputItems.push(data.item);
-        collectReplayCandidates.push(data.item);
+        appendReplayArtifacts(collectReplayItems, [data.item]);
         if (data.item.type === "function_call" && typeof data.item.call_id === "string" && data.item.call_id) {
           collectFunctionCallIds.add(data.item.call_id as string);
         }
@@ -375,9 +383,9 @@ export async function collectPassthrough(
 
       if (raw.event === "response.completed" && resp) {
         if (Array.isArray(resp.output)) {
-          collectReplayCandidates.push(...resp.output);
+          appendReplayArtifacts(collectReplayItems, resp.output);
         }
-        const replayItems = sanitizeReasoningReplayItems(collectReplayCandidates);
+        const replayItems = sanitizeReasoningReplayItems(collectReplayItems);
         if (replayItems.length > 0) {
           onResponseMetadata?.({ reasoningReplayItems: replayItems });
         }

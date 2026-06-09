@@ -89,7 +89,7 @@ describe("implicit resume request state helpers", () => {
         inputTokens: 123,
       }),
       reasoningReplayItems: [
-        { type: "reasoning", encrypted_content: "encrypted" },
+        { type: "reasoning", id: "rs_replay", summary: [], encrypted_content: "encrypted" },
         { type: "function_call", call_id: "call_1", name: "read_file", arguments: "{}" },
       ],
     });
@@ -98,7 +98,7 @@ describe("implicit resume request state helpers", () => {
     expect(request.codexRequest.useWebSocket).toBe(true);
     expect(request.codexRequest.turnState).toBe("turn-implicit");
     expect(request.codexRequest.input).toEqual([
-      { type: "reasoning", encrypted_content: "encrypted" },
+      { type: "reasoning", id: "rs_replay", summary: [], encrypted_content: "encrypted" },
       { type: "function_call", call_id: "call_1", name: "read_file", arguments: "{}" },
       { role: "user", content: "continue" },
     ]);
@@ -127,7 +127,7 @@ describe("implicit resume request state helpers", () => {
       implicitPrevRespId: "resp_implicit",
       continuationInputStart: 2,
       affinityMap: makeAffinityLookup({ turnState: "turn-implicit", inputTokens: 123 }),
-      reasoningReplayItems: [{ type: "reasoning", encrypted_content: "encrypted" }],
+      reasoningReplayItems: [{ type: "reasoning", id: "rs_replay", summary: [], encrypted_content: "encrypted" }],
     });
     request.codexRequest.instructions = "mutated-system";
 

@@ -66,7 +66,12 @@ describe("handleStreaming", () => {
         options.onResponseId("resp_stream");
         options.onResponseMetadata?.({
           functionCallIds: ["call_stream"],
-          reasoningReplayItems: [{ type: "reasoning", encrypted_content: "encrypted-stream" }],
+          reasoningReplayItems: [{
+            type: "reasoning",
+            id: "rs_stream",
+            summary: [],
+            encrypted_content: "encrypted-stream",
+          }],
         });
         options.onResponseCompleted?.("resp_stream");
         yield "event: response.completed\ndata: {}\n\n";
@@ -125,7 +130,12 @@ describe("handleStreaming", () => {
       entryId: "entry-stream",
       conversationId: "conversation-stream",
       variantHash: "variant-stream",
-    })).toEqual([{ type: "reasoning", encrypted_content: "encrypted-stream" }]);
+    })).toEqual([{
+      type: "reasoning",
+      id: "rs_stream",
+      summary: [],
+      encrypted_content: "encrypted-stream",
+    }]);
     expect(logSpy).toHaveBeenCalledWith(
       "[Test] Account entry-stream | rid=request- | Usage: in=10001 (cached=10 uncached=9991) out=7 reasoning=5 image=3/4 | hit=0.1%",
     );

@@ -27,17 +27,24 @@ export interface ReasoningReplayRecord extends ReasoningReplayLookup {
 export interface ReasoningReplayCacheOptions {
   ttlMs?: number;
   maxEntries?: number;
+  maxEntryBytes?: number;
+  maxTotalBytes?: number;
   nowMs?: () => number;
 }
 
 interface ReasoningReplayCacheEntry extends ReasoningReplayLookup {
   items: ReasoningReplayItem[];
+  byteSize: number;
   createdAt: number;
   sequence: number;
 }
 
-const DEFAULT_TTL_MS = 4 * 60 * 60 * 1000;
+export const REASONING_REPLAY_CACHE_TTL_MS = 55 * 60 * 1000;
+const DEFAULT_TTL_MS = REASONING_REPLAY_CACHE_TTL_MS;
 const DEFAULT_MAX_ENTRIES = 512;
+const DEFAULT_MAX_ENTRY_BYTES = 256 * 1024;
+const DEFAULT_MAX_TOTAL_BYTES = 4 * 1024 * 1024;
+const textEncoder = new TextEncoder();
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -54,13 +61,12 @@ function isReasoningStatus(value: unknown): value is CodexReasoningStatus {
 
 function sanitizeSummary(value: unknown): CodexReasoningSummaryPart[] | undefined {
   if (!Array.isArray(value)) return undefined;
-  const parts = value.flatMap((part): CodexReasoningSummaryPart[] => {
+  return value.flatMap((part): CodexReasoningSummaryPart[] => {
     if (!isRecord(part) || part.type !== "summary_text" || typeof part.text !== "string") {
       return [];
     }
     return [{ type: "summary_text", text: part.text }];
   });
-  return parts.length > 0 ? parts : undefined;
 }
 
 function sanitizeContent(value: unknown): CodexReasoningTextPart[] | undefined {
@@ -76,18 +82,18 @@ function sanitizeContent(value: unknown): CodexReasoningTextPart[] | undefined {
 
 function sanitizeReasoningReplayItem(value: unknown): CodexReasoningItem | null {
   if (!isRecord(value) || value.type !== "reasoning") return null;
+  const id = nonEmptyString(value.id);
+  const summary = sanitizeSummary(value.summary);
   const encryptedContent = nonEmptyString(value.encrypted_content);
-  if (!encryptedContent) return null;
+  if (!id || summary === undefined || !encryptedContent) return null;
 
   const item: CodexReasoningItem = {
     type: "reasoning",
+    id,
+    summary,
     encrypted_content: encryptedContent,
   };
-  const id = nonEmptyString(value.id);
-  if (id) item.id = id;
   if (isReasoningStatus(value.status)) item.status = value.status;
-  const summary = sanitizeSummary(value.summary);
-  if (summary) item.summary = summary;
   const content = sanitizeContent(value.content);
   if (content) item.content = content;
   return item;
@@ -146,10 +152,10 @@ function cloneReplayItem(item: ReasoningReplayItem): ReasoningReplayItem {
   }
   return {
     type: "reasoning",
-    ...(item.id ? { id: item.id } : {}),
+    id: item.id,
     ...(item.status ? { status: item.status } : {}),
     ...(item.encrypted_content ? { encrypted_content: item.encrypted_content } : {}),
-    ...(item.summary ? { summary: item.summary.map((part) => ({ ...part })) } : {}),
+    summary: item.summary.map((part) => ({ ...part })),
     ...(item.content ? { content: item.content.map((part) => ({ ...part })) } : {}),
   };
 }
@@ -163,16 +169,25 @@ function matchesIdentity(
     entry.variantHash === identity.variantHash;
 }
 
+function estimateReplayItemsBytes(items: readonly ReasoningReplayItem[]): number {
+  return textEncoder.encode(JSON.stringify(items)).byteLength;
+}
+
 export class ReasoningReplayCache {
   private entries = new Map<string, ReasoningReplayCacheEntry>();
   private readonly ttlMs: number;
   private readonly maxEntries: number;
+  private readonly maxEntryBytes: number;
+  private readonly maxTotalBytes: number;
   private readonly nowMs: () => number;
   private nextSequence = 0;
+  private totalBytes = 0;
 
   constructor(options: ReasoningReplayCacheOptions = {}) {
     this.ttlMs = options.ttlMs ?? DEFAULT_TTL_MS;
-    this.maxEntries = options.maxEntries ?? DEFAULT_MAX_ENTRIES;
+    this.maxEntries = Math.max(0, options.maxEntries ?? DEFAULT_MAX_ENTRIES);
+    this.maxEntryBytes = Math.max(0, options.maxEntryBytes ?? DEFAULT_MAX_ENTRY_BYTES);
+    this.maxTotalBytes = Math.max(0, options.maxTotalBytes ?? DEFAULT_MAX_TOTAL_BYTES);
     this.nowMs = options.nowMs ?? Date.now;
   }
 
@@ -180,20 +195,29 @@ export class ReasoningReplayCache {
     this.cleanupExpired();
     const items = sanitizeReasoningReplayItems(record.items);
     if (items.length === 0) {
-      this.entries.delete(record.responseId);
+      this.deleteEntry(record.responseId);
       return 0;
     }
+    const clonedItems = items.map(cloneReplayItem);
+    const byteSize = estimateReplayItemsBytes(clonedItems);
+    if (byteSize > this.maxEntryBytes) {
+      this.deleteEntry(record.responseId);
+      return 0;
+    }
+    this.deleteEntry(record.responseId);
     this.entries.set(record.responseId, {
       responseId: record.responseId,
       entryId: record.entryId,
       conversationId: record.conversationId,
       variantHash: record.variantHash,
-      items: items.map(cloneReplayItem),
+      items: clonedItems,
+      byteSize,
       createdAt: this.nowMs(),
       sequence: this.nextSequence++,
     });
+    this.totalBytes += byteSize;
     this.evictOverflow();
-    return items.length;
+    return this.entries.has(record.responseId) ? items.length : 0;
   }
 
   lookup(lookup: ReasoningReplayLookup): ReasoningReplayItem[] {
@@ -207,18 +231,19 @@ export class ReasoningReplayCache {
     let evicted = 0;
     for (const [responseId, entry] of this.entries) {
       if (!matchesIdentity(entry, identity)) continue;
-      this.entries.delete(responseId);
+      this.deleteEntry(responseId);
       evicted++;
     }
     return evicted;
   }
 
   evictByResponseId(responseId: string): boolean {
-    return this.entries.delete(responseId);
+    return this.deleteEntry(responseId);
   }
 
   clear(): void {
     this.entries.clear();
+    this.totalBytes = 0;
   }
 
   get size(): number {
@@ -230,13 +255,13 @@ export class ReasoningReplayCache {
     const now = this.nowMs();
     for (const [responseId, entry] of this.entries) {
       if (now - entry.createdAt > this.ttlMs) {
-        this.entries.delete(responseId);
+        this.deleteEntry(responseId);
       }
     }
   }
 
   private evictOverflow(): void {
-    while (this.entries.size > this.maxEntries) {
+    while (this.entries.size > this.maxEntries || this.totalBytes > this.maxTotalBytes) {
       let oldestResponseId: string | null = null;
       let oldestCreatedAt = Number.POSITIVE_INFINITY;
       let oldestSequence = Number.POSITIVE_INFINITY;
@@ -251,8 +276,16 @@ export class ReasoningReplayCache {
         }
       }
       if (!oldestResponseId) return;
-      this.entries.delete(oldestResponseId);
+      this.deleteEntry(oldestResponseId);
     }
+  }
+
+  private deleteEntry(responseId: string): boolean {
+    const entry = this.entries.get(responseId);
+    if (!entry) return false;
+    this.entries.delete(responseId);
+    this.totalBytes = Math.max(0, this.totalBytes - entry.byteSize);
+    return true;
   }
 }
 

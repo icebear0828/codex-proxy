@@ -204,6 +204,7 @@ describe("Responses passthrough metadata", () => {
               {
                 type: "reasoning",
                 id: "rs_1",
+                summary: [],
                 encrypted_content: "encrypted",
                 signature: "unsupported",
                 content: [{ type: "reasoning_text", text: "kept" }],
@@ -233,6 +234,7 @@ describe("Responses passthrough metadata", () => {
       {
         type: "reasoning",
         id: "rs_1",
+        summary: [],
         encrypted_content: "encrypted",
         content: [{ type: "reasoning_text", text: "kept" }],
       },
