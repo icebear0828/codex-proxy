@@ -33,7 +33,10 @@ export function buildWsPoolContext(
   const entryId = options.entryId;
   return {
     pool: (deps.getWsPool ?? defaultDeps.getWsPool)(),
-    poolKey: `${entryId}:${options.conversationId}:${options.variantHash}`,
+    // Physical WS affinity must follow the upstream response chain. Explicit
+    // previous_response_id continuations can legitimately change instructions
+    // (and therefore variantHash), but upstream still requires the same WS.
+    poolKey: `${entryId}:${options.conversationId}`,
     entryId,
     onDecision: (decision) => {
       const ridShort = options.requestId.slice(0, 8);

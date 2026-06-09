@@ -62,7 +62,7 @@ describe("buildWsPoolContext", () => {
     }
   });
 
-  it("builds a pool context keyed by entry id, chain conversation id, and variant hash", () => {
+  it("builds a pool context keyed by entry id and chain conversation id", () => {
     const pool = createPool();
     const deps = createDeps(pool);
 
@@ -71,8 +71,24 @@ describe("buildWsPoolContext", () => {
     expect(context).toBeDefined();
     expect(context?.pool).toBe(pool);
     expect(context?.entryId).toBe("entry-A");
-    expect(context?.poolKey).toBe("entry-A:conv-1:vh-123");
+    expect(context?.poolKey).toBe("entry-A:conv-1");
     expect(deps.getPoolCalls).toBe(1);
+  });
+
+  it("keeps the same physical WebSocket across explicit previous-response variant changes", () => {
+    const deps = createDeps();
+
+    const first = buildWsPoolContext(
+      { ...baseOptions(), variantHash: "main-turn" },
+      deps.deps,
+    );
+    const continuation = buildWsPoolContext(
+      { ...baseOptions(), variantHash: "changed-instructions" },
+      deps.deps,
+    );
+
+    expect(first?.poolKey).toBe("entry-A:conv-1");
+    expect(continuation?.poolKey).toBe(first?.poolKey);
   });
 
   it("logs pool decisions with the route tag and shortened request id", () => {
