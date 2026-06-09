@@ -68,5 +68,13 @@ if [ -z "$BODY" ]; then
   BODY="Bug fixes and improvements"
 fi
 
-printf '%s\n' "$BODY" | node "$(dirname "$0")/summarize-release-notes.mjs" "$TAG"
+# Notes must never block a release: if node itself dies (missing binary,
+# OOM, import-time error), fall back to the raw commit list instead of
+# letting pipefail propagate a non-zero exit into release.yml.
+if NOTES="$(printf '%s\n' "$BODY" | node "$(dirname "$0")/summarize-release-notes.mjs" "$TAG")"; then
+  printf '%s\n' "$NOTES"
+else
+  echo "warning: summarize-release-notes.mjs failed, emitting raw commit list" >&2
+  printf '%s\n' "$BODY"
+fi
 

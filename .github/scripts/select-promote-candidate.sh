@@ -25,6 +25,13 @@ MIN_AGE_SECONDS="${MIN_AGE_SECONDS:-86400}"
 MAX_CANDIDATES="${MAX_CANDIDATES:-10}"
 NOW_EPOCH="${NOW_EPOCH:-$(date +%s)}"
 
+for VAR in MIN_AGE_SECONDS MAX_CANDIDATES NOW_EPOCH; do
+  if ! [[ "${!VAR}" =~ ^[0-9]+$ ]]; then
+    echo "error: $VAR must be a non-negative integer, got '${!VAR}'" >&2
+    exit 2
+  fi
+done
+
 if [ "${FORCE:-false}" = "true" ]; then
   git rev-parse "$DEV_REF"
   exit 0
@@ -32,9 +39,21 @@ fi
 
 CUTOFF=$(( NOW_EPOCH - MIN_AGE_SECONDS ))
 
-# First-parent keeps us on dev's mainline so every candidate is a state dev
-# actually passed through (and a fast-forward of master by construction).
-git rev-list --first-parent --format="%H %ct" --no-commit-header \
-  "${MASTER_REF}..${DEV_REF}" \
-  | awk -v cutoff="$CUTOFF" -v max="$MAX_CANDIDATES" \
-      '$2 <= cutoff && n < max { print $1; n++ }'
+# First-parent keeps us on dev's mainline (states dev actually passed
+# through). That alone does NOT guarantee a fast-forward: after a sync-back
+# merge (master merged INTO dev as a second parent), first-parent commits
+# below the merge are not descendants of master, and pushing one would be
+# rejected as non-ff. Filter each candidate explicitly.
+COUNT=0
+while read -r SHA; do
+  if [ -z "$SHA" ]; then continue; fi
+  git merge-base --is-ancestor "$MASTER_REF" "$SHA" 2>/dev/null || continue
+  echo "$SHA"
+  COUNT=$(( COUNT + 1 ))
+  if [ "$COUNT" -ge "$MAX_CANDIDATES" ]; then break; fi
+done < <(
+  git rev-list --first-parent --format="%H %ct" --no-commit-header \
+    "${MASTER_REF}..${DEV_REF}" \
+    | awk -v cutoff="$CUTOFF" '$2 <= cutoff { print $1 }'
+)
+exit 0

@@ -107,6 +107,9 @@ jobs:
           PICKED=""
           while read -r SHA; do
             [ -z "$SHA" ] && continue
+            # `|| STATUS=api-error`: a transient gh/API failure must skip the
+            # candidate (like missing-checks), not abort the job — an abort
+            # here would fire the ff-failure issue/webhook with a wrong cause.
             STATUS=$(gh api "repos/${{ github.repository }}/commits/${SHA}/check-runs" \
               --jq '
                 [.check_runs[]
@@ -120,7 +123,7 @@ jobs:
                     else "not-green"
                     end
                   end
-              ')
+              ') || STATUS="api-error"
             echo "$SHA → $STATUS"
             if [ "$STATUS" = "green" ]; then
               PICKED="$SHA"
@@ -174,7 +177,21 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       issues: write
+      # job-level permissions reset everything else to none; checkout (for
+      # notify-webhook.sh) needs explicit read even on a public repo clone
+      # via the default token.
+      contents: read
     steps:
+      - name: Checkout (scripts only)
+        uses: actions/checkout@v4
+
+      - name: Notify promote failure
+        env:
+          NOTIFY_WEBHOOK_URL: ${{ secrets.NOTIFY_WEBHOOK_URL }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          bash .github/scripts/notify-webhook.sh "❌ promote dev→master job failed: $RUN_URL"
+
       - name: Open tracking issue on promote failure
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -196,13 +213,3 @@ jobs:
           恢复方法：\`git merge -s ours origin/master\` 把 master 记为已合并（树取 dev），走 PR 进 dev，即可恢复 ff 前提。
 
           失败 run：$RUN_URL"
-
-      - name: Checkout (scripts only)
-        uses: actions/checkout@v4
-
-      - name: Notify promote failure
-        env:
-          NOTIFY_WEBHOOK_URL: ${{ secrets.NOTIFY_WEBHOOK_URL }}
-          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
-        run: |
-          bash .github/scripts/notify-webhook.sh "❌ promote dev→master failed (ff precondition broken): $RUN_URL"

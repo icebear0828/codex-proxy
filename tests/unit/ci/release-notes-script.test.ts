@@ -160,6 +160,27 @@ describeIfBash("generate-release-notes.sh bash behavior", () => {
     expect(notes).not.toContain("add coverage");
   });
 
+  it("falls back to the raw commit list when node itself dies (notes must never block a release)", () => {
+    const cwd = createRepo();
+    writeText(cwd, "src/app.txt", "fix\n");
+    commitAll(cwd, "fix: survives node crash (#1)");
+    git(cwd, ["tag", "v1.0.1"]);
+
+    // fake `node` that always fails, first on PATH
+    const shimDir = join(cwd, "shim");
+    mkdirSync(shimDir, { recursive: true });
+    writeFileSync(join(shimDir, "node"), "#!/bin/sh\nexit 1\n", { mode: 0o755 });
+
+    const notes = execFileSync("bash", [SCRIPT, "v1.0.1"], {
+      cwd,
+      encoding: "utf-8",
+      env: { ...process.env, PATH: `${shimDir}:${process.env.PATH}` },
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+
+    expect(notes).toContain("- fix: survives node crash (#1)");
+  });
+
   it("produces grouped English fallback (not dictionary word salad) without LLM env", () => {
     const cwd = createRepo();
     writeText(cwd, "src/app.txt", "translation fix\n");

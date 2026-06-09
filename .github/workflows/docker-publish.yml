@@ -33,14 +33,40 @@ jobs:
 
       - name: Resolve image tags
         id: version
+        env:
+          TAG_INPUT: ${{ inputs.tag }}
         run: |
+          # Dispatch inputs are arbitrary strings; refuse anything that is not
+          # a plain semver tag (also blocks newline injection into the
+          # GITHUB_OUTPUT heredoc below).
+          if [ -n "$TAG_INPUT" ] && ! printf '%s' "$TAG_INPUT" | grep -qE '^v[0-9]+\.[0-9]+\.[0-9]+(-[A-Za-z0-9.]+)?$'; then
+            echo "::error::invalid tag input: $TAG_INPUT"
+            exit 1
+          fi
+
           SHORT_SHA=$(git rev-parse --short=7 HEAD)
+
+          # Re-tagging `latest` is only safe when we're building the current
+          # master tip. A manual dispatch of an OLD tag (re-publishing a
+          # version image) must not silently move `latest` backwards.
+          PUSH_LATEST=true
+          if [ -n "$TAG_INPUT" ]; then
+            git fetch origin master --depth=1 >/dev/null 2>&1 || true
+            MASTER_SHA=$(git rev-parse FETCH_HEAD 2>/dev/null || echo "")
+            if [ "$(git rev-parse HEAD)" != "$MASTER_SHA" ]; then
+              echo "tag $TAG_INPUT is not the master tip, skipping latest"
+              PUSH_LATEST=false
+            fi
+          fi
+
           {
             echo "tags<<EOF"
-            echo "type=raw,value=latest"
+            if [ "$PUSH_LATEST" = "true" ]; then
+              echo "type=raw,value=latest"
+            fi
             echo "type=raw,value=sha-${SHORT_SHA}"
-            if [ -n "${{ inputs.tag }}" ]; then
-              echo "type=raw,value=${{ inputs.tag }}"
+            if [ -n "$TAG_INPUT" ]; then
+              echo "type=raw,value=${TAG_INPUT}"
             fi
             echo "EOF"
           } >> "$GITHUB_OUTPUT"

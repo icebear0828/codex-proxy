@@ -43,11 +43,23 @@ export function parseHighlights(raw) {
   }
   const zh = parsed?.highlights_zh;
   const en = parsed?.highlights_en;
+  // Single-line + length-capped: commit subjects reach the LLM verbatim, so a
+  // prompt-injected response must not be able to smuggle extra markdown
+  // structure (headings, fake sections) into the published notes.
   const isStringList = (v) =>
-    Array.isArray(v) && v.length > 0 && v.length <= MAX_HIGHLIGHTS && v.every((s) => typeof s === "string" && s.trim() !== "");
+    Array.isArray(v) &&
+    v.length > 0 &&
+    v.length <= MAX_HIGHLIGHTS &&
+    v.every((s) => typeof s === "string" && s.trim() !== "" && !s.includes("\n") && s.length <= 300);
   if (!isStringList(zh) || !isStringList(en)) return null;
   if (!CJK_RE.test(zh.join(""))) return null;
   return { zh, en };
+}
+
+// A commit subject containing literal HTML (e.g. "</details>") must not be
+// able to break out of the details block in the published release body.
+function escapeHtml(line) {
+  return line.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 }
 
 export function renderNotes(highlights, commitLines) {
@@ -65,7 +77,7 @@ export function renderNotes(highlights, commitLines) {
     "<details>",
     "<summary>完整提交记录 / Full commit list</summary>",
     "",
-    commitLines.join("\n"),
+    commitLines.map(escapeHtml).join("\n"),
     "",
     "</details>",
   ].join("\n");
@@ -82,7 +94,7 @@ export function renderFallback(commitLines) {
   const other = [];
   for (const line of commitLines) {
     const subject = line.replace(/^- /, "");
-    const match = subject.match(/^([a-z]+)(?:\([^)]*\))?:\s*(.*)$/i);
+    const match = subject.match(/^([a-z]+)(?:\([^)]*\))?!?:\s*(.*)$/i);
     const entry = `- ${match ? match[2] : subject}`;
     const group = match ? TYPE_GROUPS.find(([type]) => type === match[1].toLowerCase()) : undefined;
     if (group) {
@@ -164,26 +176,34 @@ export async function generateNotes({ tag, input, env, fetchImpl = fetch, change
   return renderFallback(commitLines);
 }
 
-async function main() {
-  const tag = process.argv[2] ?? "unreleased";
-  const input = fs.readFileSync(0, "utf-8");
-  const notes = await generateNotes({
-    tag,
-    input,
-    env: process.env,
-    changelogExcerpt: readChangelogExcerpt(),
-  });
-  console.log(notes);
+function isMainModule() {
+  try {
+    return Boolean(process.argv[1]) && fileURLToPath(import.meta.url) === fs.realpathSync(process.argv[1]);
+  } catch {
+    return false;
+  }
 }
 
-if (process.argv[1] && fileURLToPath(import.meta.url) === fs.realpathSync(process.argv[1])) {
-  main().catch((error) => {
-    // Last-resort guard: emit stdin as-is rather than blocking the release.
-    console.error(`[release-notes] fatal: ${error instanceof Error ? error.message : error}`);
-    try {
-      console.log(fs.readFileSync(0, "utf-8").trim());
-    } catch {
-      console.log("Bug fixes and improvements");
-    }
-  });
+if (isMainModule()) {
+  // Read stdin exactly once: fd 0 is at EOF after the first read, so the
+  // fatal fallback below must reuse this capture instead of re-reading.
+  let capturedInput = "";
+  try {
+    capturedInput = fs.readFileSync(0, "utf-8");
+  } catch {
+    capturedInput = "";
+  }
+  const tag = process.argv[2] ?? "unreleased";
+  generateNotes({
+    tag,
+    input: capturedInput,
+    env: process.env,
+    changelogExcerpt: readChangelogExcerpt(),
+  })
+    .then((notes) => console.log(notes))
+    .catch((error) => {
+      // Last-resort guard: emit the captured input rather than blocking the release.
+      console.error(`[release-notes] fatal: ${error instanceof Error ? error.message : error}`);
+      console.log(capturedInput.trim() || "Bug fixes and improvements");
+    });
 }

@@ -117,6 +117,15 @@ describe("summarize-release-notes generateNotes", () => {
 });
 
 describe("summarize-release-notes parseHighlights", () => {
+  it("rejects multi-line and oversized highlight items (markdown injection guard)", () => {
+    expect(
+      parseHighlights(JSON.stringify({ highlights_zh: ["修复\n## 假标题"], highlights_en: ["ok"] })),
+    ).toBeNull();
+    expect(
+      parseHighlights(JSON.stringify({ highlights_zh: ["修" + "复".repeat(400)], highlights_en: ["ok"] })),
+    ).toBeNull();
+  });
+
   it("rejects empty, oversized, or non-string arrays", () => {
     expect(parseHighlights(JSON.stringify({ highlights_zh: [], highlights_en: ["x"] }))).toBeNull();
     expect(parseHighlights(JSON.stringify({ highlights_zh: ["中文", 42], highlights_en: ["x", "y"] }))).toBeNull();
@@ -143,6 +152,29 @@ describe("summarize-release-notes renderFallback", () => {
     expect(out).toContain("### Performance\n\n- faster");
     expect(out).toContain("### Other\n\n- 1.2.3 misc");
   });
+
+  it("groups breaking-change commits (feat!:) under their type", () => {
+    const out = renderFallback(["- feat!: breaking thing", "- fix(scope)!: breaking fix"]);
+    expect(out).toContain("### Features\n\n- breaking thing");
+    expect(out).toContain("### Fixes\n\n- breaking fix");
+    expect(out).not.toContain("### Other");
+  });
+});
+
+describe("summarize-release-notes renderNotes escaping", () => {
+  it("neutralizes HTML in commit lines so </details> cannot break the block", async () => {
+    const stub = stubLLM(200, VALID_LLM_JSON);
+    const out = await generateNotes({
+      tag: "v9.9.9",
+      input: "- fix: close </details> tag <b>bold</b>",
+      env: LLM_ENV,
+      fetchImpl: stub.fetchImpl,
+    });
+    expect(out).not.toContain("close </details>");
+    expect(out).toContain("&lt;/details&gt;");
+    // exactly one real closing tag: the one renderNotes emits itself
+    expect(out.match(/<\/details>/g)).toHaveLength(1);
+  });
 });
 
 describe("summarize-release-notes.mjs CLI", () => {
@@ -167,5 +199,23 @@ describe("summarize-release-notes.mjs CLI", () => {
 
   it("passes through single-line input", () => {
     expect(runScript("Initial release").trim()).toBe("Initial release");
+  });
+
+  it("exits zero with fallback when the LLM endpoint is unreachable (real fetch path)", () => {
+    // .invalid TLD resolves nowhere (RFC 2606) → fast DNS failure, both
+    // retries fail, grouped fallback, exit 0. Pins the never-blocks-release
+    // invariant through the exact subprocess mode release.yml uses.
+    const out = execFileSync("node", [SCRIPT, "v9.9.9"], {
+      encoding: "utf-8",
+      input: COMMITS,
+      env: {
+        ...process.env,
+        RELEASE_NOTES_BASE_URL: "http://release-notes-test.invalid/v1",
+        RELEASE_NOTES_API_KEY: "k",
+        RELEASE_NOTES_MODEL: "m",
+      },
+      timeout: 30000,
+    });
+    expect(out).toContain("### Fixes");
   });
 });

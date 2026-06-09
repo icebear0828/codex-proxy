@@ -36,28 +36,44 @@ jobs:
       - name: Fetch dev for stable release notes
         run: git fetch origin dev:refs/remotes/origin/dev || true
 
-      - name: Resolve tag
-        id: tag
-        run: |
-          TAG="${{ inputs.tag || github.ref_name }}"
-          echo "name=$TAG" >> "$GITHUB_OUTPUT"
-
       - name: Generate release notes and create release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ inputs.tag || github.ref_name }}
           RELEASE_NOTES_BASE_URL: ${{ secrets.RELEASE_NOTES_BASE_URL }}
           RELEASE_NOTES_API_KEY: ${{ secrets.RELEASE_NOTES_API_KEY }}
           RELEASE_NOTES_MODEL: ${{ secrets.RELEASE_NOTES_MODEL }}
         run: |
-          TAG="${{ steps.tag.outputs.name }}"
           bash .github/scripts/generate-release-notes.sh "$TAG" > /tmp/release-notes.md
 
           # Tag like v1.2.3-beta.SHA → mark as prerelease (semver convention).
+          # Stable tags stay --latest=false until assets are uploaded: this
+          # release has zero assets for the whole build window, and stable
+          # update isolation relies on GitHub /releases/latest — clients must
+          # keep resolving the previous good release until the notify job
+          # flips --latest after all platforms pass smoke.
           PRERELEASE_FLAG=""
-          case "$TAG" in *-*) PRERELEASE_FLAG="--prerelease" ;; esac
+          LATEST_FLAG=""
+          case "$TAG" in
+            *-*) PRERELEASE_FLAG="--prerelease" ;;
+            *) LATEST_FLAG="--latest=false" ;;
+          esac
 
-          gh release edit "$TAG" --draft=false $PRERELEASE_FLAG --notes-file /tmp/release-notes.md 2>/dev/null || \
-            gh release create "$TAG" --title "$TAG" $PRERELEASE_FLAG --notes-file /tmp/release-notes.md
+          PUBLISHED=""
+          for i in 1 2 3; do
+            if gh release edit "$TAG" --draft=false $PRERELEASE_FLAG $LATEST_FLAG --notes-file /tmp/release-notes.md; then
+              PUBLISHED=1; break
+            fi
+            if gh release create "$TAG" --title "$TAG" $PRERELEASE_FLAG $LATEST_FLAG --notes-file /tmp/release-notes.md; then
+              PUBLISHED=1; break
+            fi
+            echo "release edit/create failed (attempt $i/3), retrying..."
+            sleep 5
+          done
+          if [ -z "$PUBLISHED" ]; then
+            echo "::error::could not create or update release $TAG after 3 attempts"
+            exit 1
+          fi
 
   build:
     needs: notes
@@ -354,9 +370,9 @@ jobs:
       - name: Upload x64 artifacts to release
         run: |
           TAG="${{ inputs.tag || github.ref_name }}"
-          # Same release-create safety net as the main build job —
-          # this job runs after `build` but if all 3 main matrix
-          # platforms failed smoke, the release wouldn't exist yet.
+          # Cheap backstop only: the `notes` job (which every build job
+          # depends on) already created the release with real notes, so
+          # this create normally no-ops with "already exists".
           IS_PRERELEASE=""
           if [[ "$TAG" == *-* ]]; then IS_PRERELEASE="--prerelease"; fi
           gh release create "$TAG" --title "$TAG" --notes "" --draft=false $IS_PRERELEASE 2>/dev/null || true
@@ -403,15 +419,27 @@ jobs:
         with:
           ref: ${{ inputs.tag || github.ref }}
 
+      - name: Mark stable release as latest (assets are complete now)
+        if: ${{ !contains(needs.*.result, 'failure') && !contains(needs.*.result, 'cancelled') }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ inputs.tag || github.ref_name }}
+        run: |
+          case "$TAG" in
+            *-*) echo "prerelease, never latest" ;;
+            *) gh release edit "$TAG" --latest ;;
+          esac
+
       - name: Send webhook notification
         env:
           NOTIFY_WEBHOOK_URL: ${{ secrets.NOTIFY_WEBHOOK_URL }}
+          TAG: ${{ inputs.tag || github.ref_name }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          RELEASE_URL: ${{ github.server_url }}/${{ github.repository }}/releases/tag/${{ inputs.tag || github.ref_name }}
         run: |
-          TAG="${{ inputs.tag || github.ref_name }}"
-          RUN_URL="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
           if [ "${{ contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled') }}" = "true" ]; then
             MSG="❌ Release $TAG failed: $RUN_URL"
           else
-            MSG="✅ Release $TAG published: ${{ github.server_url }}/${{ github.repository }}/releases/tag/$TAG"
+            MSG="✅ Release $TAG published: $RELEASE_URL"
           fi
           bash .github/scripts/notify-webhook.sh "$MSG"

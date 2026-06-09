@@ -31,8 +31,8 @@ function hasBash(): boolean {
 
 const describeIfBash = hasBash() ? describe : describe.skip;
 
-function commitAt(cwd: string, message: string, epoch: number): string {
-  writeFileSync(join(cwd, "file.txt"), `${message}\n${epoch}\n`);
+function commitAt(cwd: string, message: string, epoch: number, file = "file.txt"): string {
+  writeFileSync(join(cwd, file), `${message}\n${epoch}\n`);
   git(cwd, ["add", "."]);
   const date = `${epoch} +0000`;
   git(cwd, ["commit", "-m", message], {
@@ -102,6 +102,36 @@ describeIfBash("select-promote-candidate.sh", () => {
     expect(candidates[0]).toBe(agedTip);
     expect(candidates).toContain(aged);
     expect(candidates).toHaveLength(2);
+  });
+
+  it("filters first-parent commits that are not descendants of master (sync-back merge)", () => {
+    // master gets a hotfix AFTER dev branched; dev then merges master back in
+    // (the repo's documented drift-recovery flow). Aged dev commits below the
+    // sync-back merge are NOT fast-forwards of master and must be excluded.
+    const cwd = createRepo();
+    const belowMerge = commitAt(cwd, "fix: aged, predates master hotfix", NOW - 3 * DAY);
+
+    git(cwd, ["checkout", "master"]);
+    commitAt(cwd, "fix: hotfix directly on master", NOW - 2 * DAY - HOUR, "hotfix.txt");
+    git(cwd, ["update-ref", "refs/remotes/origin/master", "HEAD"]);
+
+    git(cwd, ["checkout", "dev"]);
+    const mergeDate = `${NOW - 2 * DAY} +0000`;
+    git(cwd, ["merge", "--no-ff", "-m", "chore: sync master back into dev", "refs/remotes/origin/master"], {
+      GIT_AUTHOR_DATE: mergeDate,
+      GIT_COMMITTER_DATE: mergeDate,
+    });
+    const mergeSha = git(cwd, ["rev-parse", "HEAD"]).trim();
+
+    const candidates = run(cwd);
+    expect(candidates).toEqual([mergeSha]);
+    expect(candidates).not.toContain(belowMerge);
+  });
+
+  it("rejects non-numeric MIN_AGE_SECONDS loudly", () => {
+    const cwd = createRepo();
+    commitAt(cwd, "fix: aged", NOW - 2 * DAY);
+    expect(() => run(cwd, { MIN_AGE_SECONDS: "24h" })).toThrow();
   });
 
   it("FORCE=true bypasses soak and returns dev HEAD", () => {
