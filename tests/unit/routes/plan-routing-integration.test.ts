@@ -334,6 +334,84 @@ describe("GET /v1/models with runtime API keys", () => {
     expect(body.data.some((m: { id: string }) => m.id === "gpt-5.4")).toBe(true);
   });
 
+  it("includes Codex token metadata in /v1/models for CLI auto compact", async () => {
+    applyBackendModelsForPlan("team", [
+      {
+        slug: "gpt-5.5",
+        display_name: "GPT-5.5",
+        context_window: 272_000,
+        max_context_window: 272_000,
+        max_output_tokens: 128_000,
+        truncation_policy: { limit: 10_000 },
+      },
+      {
+        slug: "gpt-5.4",
+        display_name: "GPT-5.4",
+        context_window: 200_000,
+        auto_compact_token_limit: 120_000,
+      },
+    ]);
+
+    const app = createModelRoutes();
+    const res = await app.request("/v1/models");
+    expect(res.status).toBe(200);
+
+    const body = await res.json() as {
+      data: Array<{
+        id: string;
+        context_window?: number;
+        max_context_window?: number;
+        max_output_tokens?: number;
+        auto_compact_token_limit?: number;
+        effective_context_window_percent?: number;
+        truncation_policy?: { mode?: string; limit?: number };
+      }>;
+    };
+    const model = body.data.find((m) => m.id === "gpt-5.5");
+
+    expect(model).toBeDefined();
+    expect(model?.context_window).toBe(272_000);
+    expect(model?.max_context_window).toBe(272_000);
+    expect(model?.max_output_tokens).toBe(128_000);
+    expect(model?.auto_compact_token_limit).toBe(50_000);
+    expect(model?.effective_context_window_percent).toBe(95);
+    expect(model?.truncation_policy).toEqual({ mode: "tokens", limit: 10_000 });
+
+    const backendLimitModel = body.data.find((m) => m.id === "gpt-5.4");
+    expect(backendLimitModel?.auto_compact_token_limit).toBe(120_000);
+  });
+
+  it("preserves catalog metadata when a runtime API key uses the same model id", async () => {
+    applyBackendModelsForPlan("team", [
+      {
+        slug: "gpt-5.4",
+        display_name: "GPT-5.4",
+        context_window: 200_000,
+        auto_compact_token_limit: 120_000,
+      },
+    ]);
+    const pool = new ApiKeyPool(createApiKeyMemoryPersistence());
+    pool.add({ provider: "openai", model: "gpt-5.4", apiKey: "k1" });
+
+    const app = createModelRoutes(pool);
+    const res = await app.request("/v1/models");
+    expect(res.status).toBe(200);
+
+    const body = await res.json() as {
+      data: Array<{
+        id: string;
+        context_window?: number;
+        auto_compact_token_limit?: number;
+        effective_context_window_percent?: number;
+      }>;
+    };
+    const model = body.data.find((m) => m.id === "gpt-5.4");
+
+    expect(model?.context_window).toBe(200_000);
+    expect(model?.auto_compact_token_limit).toBe(120_000);
+    expect(model?.effective_context_window_percent).toBe(95);
+  });
+
   it("excludes disabled API key models from /v1/models", async () => {
     const pool = new ApiKeyPool(createApiKeyMemoryPersistence());
     const added = pool.add({ provider: "custom", model: "disabled-runtime-model", apiKey: "k1", baseUrl: "https://example.com/v1" });

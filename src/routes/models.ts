@@ -18,14 +18,47 @@ import type { ApiKeyPool } from "../auth/api-key-pool.js";
 
 /** Stable timestamp used for all model `created` fields (2023-11-14T22:13:20Z). */
 const MODEL_CREATED_TIMESTAMP = 1700000000;
+const DEFAULT_EFFECTIVE_CONTEXT_WINDOW_PERCENT = 95;
+const AUTO_COMPACT_CONTEXT_WINDOW_PERCENT = 80;
+const AUTO_COMPACT_TOKEN_LIMIT_OVERRIDES: Record<string, number> = {
+  "gpt-5.5": 50_000,
+};
+
+function resolvedContextWindow(info: CodexModelInfo): number | undefined {
+  return info.contextWindow ?? info.maxContextWindow;
+}
+
+function autoCompactTokenLimit(info: CodexModelInfo): number | undefined {
+  const override = AUTO_COMPACT_TOKEN_LIMIT_OVERRIDES[info.id];
+  if (override !== undefined) return override;
+  if (info.autoCompactTokenLimit !== undefined) return info.autoCompactTokenLimit;
+  const contextWindow = resolvedContextWindow(info);
+  if (contextWindow === undefined) return undefined;
+  return Math.floor((contextWindow * AUTO_COMPACT_CONTEXT_WINDOW_PERCENT) / 100);
+}
 
 function toOpenAIModel(info: CodexModelInfo): OpenAIModel {
-  return {
+  const model: OpenAIModel = {
     id: info.id,
     object: "model",
     created: MODEL_CREATED_TIMESTAMP,
     owned_by: "openai",
   };
+
+  if (info.contextWindow !== undefined) model.context_window = info.contextWindow;
+  if (info.maxContextWindow !== undefined) model.max_context_window = info.maxContextWindow;
+  if (info.maxOutputTokens !== undefined) model.max_output_tokens = info.maxOutputTokens;
+  if (info.truncationPolicyLimit !== undefined) {
+    model.truncation_policy = { mode: "tokens", limit: info.truncationPolicyLimit };
+  }
+
+  const compactLimit = autoCompactTokenLimit(info);
+  if (compactLimit !== undefined) {
+    model.auto_compact_token_limit = compactLimit;
+    model.effective_context_window_percent = DEFAULT_EFFECTIVE_CONTEXT_WINDOW_PERCENT;
+  }
+
+  return model;
 }
 
 function toRuntimeOpenAIModel(id: string): OpenAIModel {
@@ -48,7 +81,9 @@ export function createModelRoutes(apiKeyPool?: ApiKeyPool): Hono {
       modelsById.set(model.id, toOpenAIModel(model));
     }
     for (const modelId of apiKeyPool?.getActiveModels() ?? []) {
-      modelsById.set(modelId, toRuntimeOpenAIModel(modelId));
+      if (!modelsById.has(modelId)) {
+        modelsById.set(modelId, toRuntimeOpenAIModel(modelId));
+      }
     }
 
     const response: OpenAIModelList = { object: "list", data: [...modelsById.values()] };

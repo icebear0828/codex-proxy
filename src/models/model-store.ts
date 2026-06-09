@@ -39,6 +39,8 @@ export interface CodexModelInfo {
   maxContextWindow?: number;
   /** Maximum configurable output token budget, when known. */
   maxOutputTokens?: number;
+  /** Token threshold where clients should compact conversation history, when known. */
+  autoCompactTokenLimit?: number;
   /** Backend truncation policy limit, when reported. */
   truncationPolicyLimit?: number;
   /** Where this model entry came from */
@@ -87,6 +89,8 @@ export interface BackendModelEntry {
   maxContextWindow?: number;
   max_output_tokens?: number;
   maxOutputTokens?: number;
+  auto_compact_token_limit?: number | null;
+  autoCompactTokenLimit?: number | null;
   truncation_policy?: {
     limit?: number;
   };
@@ -512,6 +516,11 @@ function normalizeBackendModel(raw: BackendModelEntry): NormalizedModelWithMeta 
     out.maxOutputTokens = raw.max_output_tokens;
   } else if (typeof raw.maxOutputTokens === "number") {
     out.maxOutputTokens = raw.maxOutputTokens;
+  }
+  if (typeof raw.auto_compact_token_limit === "number") {
+    out.autoCompactTokenLimit = raw.auto_compact_token_limit;
+  } else if (typeof raw.autoCompactTokenLimit === "number") {
+    out.autoCompactTokenLimit = raw.autoCompactTokenLimit;
   }
   if (typeof raw.truncation_policy?.limit === "number") {
     out.truncationPolicyLimit = raw.truncation_policy.limit;

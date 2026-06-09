@@ -413,6 +413,16 @@ export interface OpenAIModel {
   object: "model";
   created: number;
   owned_by: string;
+  /** Codex CLI reads these hints from /v1/models to size context and auto compact. */
+  context_window?: number;
+  max_context_window?: number;
+  max_output_tokens?: number;
+  auto_compact_token_limit?: number;
+  effective_context_window_percent?: number;
+  truncation_policy?: {
+    mode: "tokens";
+    limit: number;
+  };
 }
 
 export interface OpenAIModelList {
