@@ -232,7 +232,7 @@ describe("E2E: POST /v1/messages", () => {
     expect(typeof usage.output_tokens).toBe("number");
   });
 
-  it("uses Claude Code session id as prompt_cache_key", async () => {
+  it("maps Claude Code session id to an account-scoped upstream prompt_cache_key", async () => {
     const res = await ctx.app.request("/v1/messages", {
       method: "POST",
       headers: {
@@ -250,8 +250,15 @@ describe("E2E: POST /v1/messages", () => {
       throw new Error("Expected upstream transport body to be captured");
     }
 
-    const upstreamRequest = JSON.parse(transportBody) as { prompt_cache_key?: unknown };
-    expect(upstreamRequest.prompt_cache_key).toBe("claude-code-session-123");
+    const upstreamRequest = JSON.parse(transportBody) as {
+      prompt_cache_key?: unknown;
+      client_metadata?: Record<string, unknown>;
+    };
+    expect(upstreamRequest.prompt_cache_key).toMatch(/^cp_[0-9a-f]{32}$/);
+    expect(upstreamRequest.prompt_cache_key).not.toBe("claude-code-session-123");
+    expect(upstreamRequest.client_metadata?.["x-codex-window-id"]).toBe(
+      `${upstreamRequest.prompt_cache_key}:0`,
+    );
   });
 
   // ── Anthropic error format ─────────────────────────────────────
