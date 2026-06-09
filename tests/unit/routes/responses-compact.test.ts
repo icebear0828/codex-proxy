@@ -261,6 +261,7 @@ describe("POST /v1/responses/compact", () => {
           {
             type: "reasoning",
             id: "rs_1",
+            summary: [],
             encrypted_content: "",
             signature: "unsupported",
             content: [{ type: "reasoning_text", text: "kept" }],
@@ -277,6 +278,7 @@ describe("POST /v1/responses/compact", () => {
       {
         type: "reasoning",
         id: "rs_1",
+        summary: [],
         content: [{ type: "reasoning_text", text: "kept" }],
       },
       { role: "user", content: "Hello" },

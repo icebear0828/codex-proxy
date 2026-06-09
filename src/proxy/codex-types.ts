@@ -112,7 +112,6 @@ export interface CodexCompactionItem {
   type: "compaction";
   id?: string;
   encrypted_content: string;
-  created_by?: string;
 }
 
 export type CodexInputItem =

@@ -23,13 +23,12 @@ function isReasoningStatus(value: unknown): value is CodexReasoningStatus {
 
 function sanitizeSummary(value: unknown): CodexReasoningSummaryPart[] | undefined {
   if (!Array.isArray(value)) return undefined;
-  const parts = value.flatMap((part): CodexReasoningSummaryPart[] => {
+  return value.flatMap((part): CodexReasoningSummaryPart[] => {
     if (!isRecord(part) || part.type !== "summary_text" || typeof part.text !== "string") {
       return [];
     }
     return [{ type: "summary_text", text: part.text }];
   });
-  return parts.length > 0 ? parts : undefined;
 }
 
 function sanitizeContent(value: unknown): CodexReasoningTextPart[] | undefined {
@@ -43,15 +42,15 @@ function sanitizeContent(value: unknown): CodexReasoningTextPart[] | undefined {
   return parts.length > 0 ? parts : undefined;
 }
 
-function sanitizeReasoningItem(item: Record<string, unknown>): CodexReasoningItem {
-  const sanitized: CodexReasoningItem = { type: "reasoning" };
+function sanitizeReasoningItem(item: Record<string, unknown>): CodexReasoningItem | null {
   const id = nonEmptyString(item.id);
-  if (id) sanitized.id = id;
+  const summary = sanitizeSummary(item.summary);
+  if (!id || summary === undefined) return null;
+
+  const sanitized: CodexReasoningItem = { type: "reasoning", id, summary };
   if (isReasoningStatus(item.status)) sanitized.status = item.status;
   const encryptedContent = nonEmptyString(item.encrypted_content);
   if (encryptedContent) sanitized.encrypted_content = encryptedContent;
-  const summary = sanitizeSummary(item.summary);
-  if (summary) sanitized.summary = summary;
   const content = sanitizeContent(item.content);
   if (content) sanitized.content = content;
   return sanitized;
@@ -63,15 +62,16 @@ function sanitizeCompactionItem(item: Record<string, unknown>): CodexCompactionI
   const sanitized: CodexCompactionItem = { type: "compaction", encrypted_content: encryptedContent };
   const id = nonEmptyString(item.id);
   if (id) sanitized.id = id;
-  const createdBy = nonEmptyString(item.created_by);
-  if (createdBy) sanitized.created_by = createdBy;
   return sanitized;
 }
 
 export function sanitizeCodexInputItems(input: unknown[]): CodexInputItem[] {
   return input.flatMap((item): CodexInputItem[] => {
     if (!isRecord(item)) return [item as CodexInputItem];
-    if (item.type === "reasoning") return [sanitizeReasoningItem(item)];
+    if (item.type === "reasoning") {
+      const sanitized = sanitizeReasoningItem(item);
+      return sanitized ? [sanitized] : [];
+    }
     if (item.type === "compaction") {
       const sanitized = sanitizeCompactionItem(item);
       return sanitized ? [sanitized] : [];

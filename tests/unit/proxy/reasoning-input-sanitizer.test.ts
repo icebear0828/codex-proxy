@@ -24,23 +24,40 @@ describe("sanitizeCodexInputItems", () => {
     }]);
   });
 
+  it("preserves reasoning items with an empty summary array", () => {
+    const input = [{
+      type: "reasoning",
+      id: "rs_empty_summary",
+      summary: [],
+      encrypted_content: "enc_valid",
+    }];
+
+    expect(sanitizeCodexInputItems(input)).toEqual([{
+      type: "reasoning",
+      id: "rs_empty_summary",
+      summary: [],
+      encrypted_content: "enc_valid",
+    }]);
+  });
+
   it("drops invalid encrypted_content values instead of forwarding them", () => {
     const input = [
-      { type: "reasoning", id: "rs_empty", encrypted_content: "" },
-      { type: "reasoning", id: "rs_number", encrypted_content: 123 },
-      { type: "reasoning", id: "rs_spaces", encrypted_content: "   " },
+      { type: "reasoning", id: "rs_empty", summary: [], encrypted_content: "" },
+      { type: "reasoning", id: "rs_number", summary: [], encrypted_content: 123 },
+      { type: "reasoning", id: "rs_spaces", summary: [], encrypted_content: "   " },
     ];
 
     expect(sanitizeCodexInputItems(input)).toEqual([
-      { type: "reasoning", id: "rs_empty" },
-      { type: "reasoning", id: "rs_number" },
-      { type: "reasoning", id: "rs_spaces" },
+      { type: "reasoning", id: "rs_empty", summary: [] },
+      { type: "reasoning", id: "rs_number", summary: [] },
+      { type: "reasoning", id: "rs_spaces", summary: [] },
     ]);
   });
 
   it("filters malformed reasoning summary and content parts", () => {
     const input = [{
       type: "reasoning",
+      id: "rs_filtered",
       summary: [
         { type: "summary_text", text: "keep" },
         { type: "summary_text", text: 42 },
@@ -55,9 +72,20 @@ describe("sanitizeCodexInputItems", () => {
 
     expect(sanitizeCodexInputItems(input)).toEqual([{
       type: "reasoning",
+      id: "rs_filtered",
       summary: [{ type: "summary_text", text: "keep" }],
       content: [{ type: "reasoning_text", text: "keep reasoning" }],
     }]);
+  });
+
+  it("drops malformed reasoning items that are missing required identity fields", () => {
+    const input = [
+      { type: "reasoning", summary: [], encrypted_content: "enc_missing_id" },
+      { type: "reasoning", id: "rs_missing_summary", encrypted_content: "enc_missing_summary" },
+      { type: "reasoning", id: "", summary: [], encrypted_content: "enc_empty_id" },
+    ];
+
+    expect(sanitizeCodexInputItems(input)).toEqual([]);
   });
 
   it("drops compaction items with invalid encrypted_content", () => {
@@ -68,7 +96,7 @@ describe("sanitizeCodexInputItems", () => {
     ];
 
     expect(sanitizeCodexInputItems(input)).toEqual([
-      { type: "compaction", id: "cmp_1", encrypted_content: "enc_compact", created_by: "codex" },
+      { type: "compaction", id: "cmp_1", encrypted_content: "enc_compact" },
     ]);
   });
 
@@ -82,7 +110,6 @@ describe("sanitizeCodexInputItems", () => {
       callOutput,
     ])).toEqual([
       user,
-      { type: "reasoning" },
       callOutput,
     ]);
   });
