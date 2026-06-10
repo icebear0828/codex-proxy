@@ -8,6 +8,11 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- RT-only 导入兼容性：Refresh Token 兑换的 access token 缺少 `chatgpt_account_id` 时，优先从响应中的 `id_token` 回填账号元数据（accountId / userId / email / planType）；若 `id_token` 同样缺失但 token 未过期，也允许导入继续完成（accountId 置 null），避免 RT-only 导入静默失败。新增 `extractCodexTokenMetadata()` 统一提取双 token 元数据，`addAccount` / `AccountRegistry` 接受可选 `metadata` 参数。（#674，感谢 [@xiaoliu10](https://github.com/xiaoliu10)）
+- OAuth refresh 请求新增 `scope` 参数（`openid profile email offline_access`），确保服务端返回 `id_token`；部分账户的 access token 不含 `chatgpt_account_id`，`id_token` 是唯一可靠的回填来源。（#674）
+
 ### Changed
 
 - 更新 `README_EN.md` 中过时的模型推荐说明以匹配最新的模型别名映射（`README_EN.md`）
