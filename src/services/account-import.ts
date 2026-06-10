@@ -5,7 +5,12 @@
 
 import type { AccountPool } from "../auth/account-pool.js";
 import type { AccountInfo } from "../auth/types.js";
-import { extractChatGptAccountId } from "../auth/jwt-utils.js";
+import {
+  extractChatGptAccountId,
+  extractCodexTokenMetadata,
+  isTokenExpired,
+  type CodexTokenMetadata,
+} from "../auth/jwt-utils.js";
 
 export interface ImportEntry {
   token?: string;
@@ -30,7 +35,7 @@ export interface ImportDeps {
   refreshToken(
     rt: string,
     proxyUrl: string | null,
-  ): Promise<{ access_token: string; refresh_token?: string }>;
+  ): Promise<{ access_token: string; refresh_token?: string; id_token?: string }>;
   getProxyUrl(): string | null;
   /** Optional warmup: establishes session cookies after import to avoid cold-start bans. */
   warmup?(entryId: string, token: string, accountId: string | null): Promise<void>;
@@ -71,7 +76,7 @@ export class AccountImportService {
         continue;
       }
 
-      const entryId = this.pool.addAccount(resolved.token, resolved.rt);
+      const entryId = this.pool.addAccount(resolved.token, resolved.rt, resolved.metadata);
       this.scheduler.scheduleOne(entryId, resolved.token);
 
       if (entry.label) {
@@ -139,7 +144,7 @@ export class AccountImportService {
       }
     }
 
-    const entryId = this.pool.addAccount(resolved.token, resolved.rt);
+    const entryId = this.pool.addAccount(resolved.token, resolved.rt, resolved.metadata);
     this.scheduler.scheduleOne(entryId, resolved.token);
 
     // Cache quota from verification (so dashboard shows data immediately)
@@ -161,7 +166,7 @@ export class AccountImportService {
     token: string | undefined,
     rt: string | null,
   ): Promise<
-    | { ok: true; token: string; rt: string | null }
+    | { ok: true; token: string; rt: string | null; metadata?: Partial<CodexTokenMetadata> }
     | { ok: false; error: string; kind: "validation" | "refresh_failed" }
   > {
     if (token) {
@@ -187,8 +192,9 @@ export class AccountImportService {
     try {
       const proxyUrl = this.deps.getProxyUrl();
       const tokens = await this.deps.refreshToken(rt as string, proxyUrl);
+      const metadata = extractCodexTokenMetadata(tokens.access_token, tokens.id_token);
       const v = this.deps.validateToken(tokens.access_token);
-      if (!v.valid) {
+      if (!v.valid && !this.canAcceptRtExchangeToken(v.error, tokens.access_token)) {
         return {
           ok: false,
           error: `Refresh token exchange succeeded but token invalid: ${v.error}`,
@@ -201,6 +207,7 @@ export class AccountImportService {
         ok: true,
         token: tokens.access_token,
         rt: newRT,
+        metadata,
       };
     } catch (err) {
       return {
@@ -211,5 +218,19 @@ export class AccountImportService {
     } finally {
       this.refreshingRTs.delete(rt as string);
     }
+  }
+
+  private canAcceptRtExchangeToken(
+    validationError: string | undefined,
+    accessToken: string,
+  ): boolean {
+    // RT exchange succeeded and the returned token is fresh — accept it even
+    // without chatgpt_account_id.  OpenAI may omit the claim from refreshed
+    // access_tokens; the id_token (if returned with scope=openid) may carry
+    // it instead, but we should not block import when neither has it.
+    return (
+      validationError === "Token missing chatgpt_account_id claim" &&
+      !isTokenExpired(accessToken)
+    );
   }
 }

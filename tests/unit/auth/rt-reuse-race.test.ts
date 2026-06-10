@@ -49,6 +49,12 @@ vi.mock("@src/auth/jwt-utils.js", () => ({
     }
   },
   extractChatGptAccountId: () => "acct-test",
+  extractCodexTokenMetadata: () => ({
+    accountId: null,
+    userId: null,
+    email: null,
+    planType: null,
+  }),
   extractUserProfile: () => ({
     email: "test@test.com",
     chatgpt_plan_type: "plus",

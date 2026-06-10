@@ -5,7 +5,7 @@
 
 import { describe, it, expect, beforeEach } from "vitest";
 import { createMemoryPersistence } from "@helpers/account-pool-factory.js";
-import { createValidJwt } from "@helpers/jwt.js";
+import { createJwt, createValidJwt } from "@helpers/jwt.js";
 import { setConfigForTesting, resetConfigForTesting } from "@src/config.js";
 import { createMockConfig } from "@helpers/config.js";
 import { AccountPool } from "@src/auth/account-pool.js";
@@ -108,6 +108,85 @@ describe("AccountImportService", () => {
       expect(result.added).toBe(1);
       expect(result.failed).toBe(0);
       expect(pool.getAccounts()).toHaveLength(1);
+    });
+
+    it("accepts RT exchange access token when accountId is only present in id_token", async () => {
+      const pool = makePool();
+      const accessToken = createJwt({
+        exp: Math.floor(Date.now() / 1000) + 3600,
+        "https://api.openai.com/profile": {
+          email: "rt-user@example.com",
+        },
+      });
+      const idToken = createJwt({
+        "https://api.openai.com/auth": {
+          chatgpt_account_id: "acct-from-id-token",
+          chatgpt_user_id: "user-from-id-token",
+          chatgpt_plan_type: "plus",
+        },
+      });
+      const svc = new AccountImportService(
+        pool,
+        makeScheduler(),
+        makeDeps({
+          validateToken: () => ({
+            valid: false,
+            error: "Token missing chatgpt_account_id claim",
+          }),
+          refreshToken: async () => ({
+            access_token: accessToken,
+            id_token: idToken,
+            refresh_token: "new_rt",
+          }),
+        }),
+      );
+
+      const result = await svc.importMany([{ refreshToken: "old_rt" }]);
+
+      expect(result.failed).toBe(0);
+      expect(result.added).toBe(1);
+      expect(pool.getAccounts()[0]).toMatchObject({
+        accountId: "acct-from-id-token",
+        userId: "user-from-id-token",
+        email: "rt-user@example.com",
+        planType: "plus",
+      });
+    });
+
+    it("accepts RT exchange token even when neither access_token nor id_token has chatgpt_account_id", async () => {
+      const pool = makePool();
+      // access_token with no chatgpt_account_id — simulates OpenAI returning
+      // a token without the claim from the refresh endpoint
+      const accessToken = createJwt({
+        exp: Math.floor(Date.now() / 1000) + 3600,
+        "https://api.openai.com/profile": {
+          email: "no-acct@example.com",
+        },
+      });
+      const svc = new AccountImportService(
+        pool,
+        makeScheduler(),
+        makeDeps({
+          validateToken: () => ({
+            valid: false,
+            error: "Token missing chatgpt_account_id claim",
+          }),
+          refreshToken: async () => ({
+            access_token: accessToken,
+            // no id_token either
+            refresh_token: "new_rt",
+          }),
+        }),
+      );
+
+      const result = await svc.importMany([{ refreshToken: "old_rt" }]);
+
+      expect(result.failed).toBe(0);
+      expect(result.added).toBe(1);
+      expect(pool.getAccounts()[0]).toMatchObject({
+        email: "no-acct@example.com",
+        accountId: null,
+      });
     });
 
     it("prefers new refresh token from exchange over original", async () => {

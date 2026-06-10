@@ -11,6 +11,7 @@ import { createFsPersistence } from "./account-persistence.js";
 import { AccountRegistry } from "./account-registry.js";
 import { AccountLifecycle } from "./account-lifecycle.js";
 import type { AccountPersistence, PersistenceLoadHealth } from "./account-persistence.js";
+import type { CodexTokenMetadata } from "./jwt-utils.js";
 import type { RotationStrategyName } from "./rotation-strategy.js";
 import type {
   AccountEntry,
@@ -129,8 +130,12 @@ export class AccountPool {
 
   // ── CRUD ──────────────────────────────────────────────────────────
 
-  addAccount(token: string, refreshToken?: string | null): string {
-    return this.registry.addAccount(token, refreshToken);
+  addAccount(
+    token: string,
+    refreshToken?: string | null,
+    metadata?: Partial<CodexTokenMetadata>,
+  ): string {
+    return this.registry.addAccount(token, refreshToken, metadata);
   }
 
   removeAccount(id: string): boolean {

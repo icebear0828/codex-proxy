@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import {
   decodeJwtPayload,
   extractChatGptAccountId,
+  extractCodexTokenMetadata,
   extractUserProfile,
   isTokenExpired,
 } from "@src/auth/jwt-utils.js";
@@ -53,6 +54,32 @@ describe("extractChatGptAccountId", () => {
       },
     });
     expect(extractChatGptAccountId(token)).toBeNull();
+  });
+});
+
+describe("extractCodexTokenMetadata", () => {
+  it("falls back to id_token auth claims when access token lacks accountId", () => {
+    const accessToken = createJwt({
+      exp: Math.floor(Date.now() / 1000) + 3600,
+      "https://api.openai.com/profile": {
+        email: "from-access@example.com",
+      },
+    });
+    const idToken = createJwt({
+      email: "from-id@example.com",
+      "https://api.openai.com/auth": {
+        chatgpt_account_id: "acct-from-id",
+        chatgpt_plan_type: "plus",
+        chatgpt_user_id: "user-from-id",
+      },
+    });
+
+    expect(extractCodexTokenMetadata(accessToken, idToken)).toEqual({
+      accountId: "acct-from-id",
+      userId: "user-from-id",
+      email: "from-access@example.com",
+      planType: "plus",
+    });
   });
 });
 

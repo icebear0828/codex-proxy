@@ -36,6 +36,12 @@ const mockIsTokenExpired = vi.hoisted(() => vi.fn(() => false));
 vi.mock("@src/auth/jwt-utils.js", () => ({
   decodeJwtPayload: vi.fn(() => ({ exp: Math.floor(Date.now() / 1000) + 3600 })),
   extractChatGptAccountId: vi.fn((token: string) => `acct-${token.slice(0, 8)}`),
+  extractCodexTokenMetadata: vi.fn(() => ({
+    accountId: null,
+    userId: null,
+    email: null,
+    planType: null,
+  })),
   extractUserProfile: vi.fn((token: string) => ({
     email: `${token.slice(0, 4)}@test.com`,
     chatgpt_plan_type: "free",

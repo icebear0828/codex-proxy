@@ -190,6 +190,11 @@ export async function refreshAccessToken(
     grant_type: "refresh_token",
     client_id: config.auth.oauth_client_id,
     refresh_token: refreshToken,
+    // Explicitly request openid scope to ensure id_token is returned.
+    // Some OpenAI token responses omit chatgpt_account_id from the
+    // access_token but include it in the id_token — without this scope
+    // the server may skip the id_token entirely.
+    scope: "openid profile email offline_access",
   });
 
   const doRequest = (proxyUrl: string | null | undefined) =>

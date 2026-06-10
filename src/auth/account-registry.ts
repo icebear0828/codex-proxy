@@ -13,6 +13,7 @@ import { getDataDir } from "../paths.js";
 import { jitter } from "../utils/jitter.js";
 import {
   decodeJwtPayload,
+  type CodexTokenMetadata,
   extractChatGptAccountId,
   extractUserProfile,
   isTokenExpired,
@@ -88,10 +89,14 @@ export class AccountRegistry {
 
   // ── CRUD ──────────────────────────────────────────────────────────
 
-  addAccount(token: string, refreshToken?: string | null): string {
-    const accountId = extractChatGptAccountId(token);
+  addAccount(
+    token: string,
+    refreshToken?: string | null,
+    metadata?: Partial<CodexTokenMetadata>,
+  ): string {
+    const accountId = extractChatGptAccountId(token) ?? metadata?.accountId ?? null;
     const profile = extractUserProfile(token);
-    const userId = profile?.chatgpt_user_id ?? null;
+    const userId = profile?.chatgpt_user_id ?? metadata?.userId ?? null;
 
     for (const existing of this.accounts.values()) {
       if (accountId) {
@@ -101,7 +106,7 @@ export class AccountRegistry {
             existing.refreshToken = refreshToken;
           }
           existing.email = profile?.email ?? existing.email;
-          existing.planType = profile?.chatgpt_plan_type ?? existing.planType;
+          existing.planType = profile?.chatgpt_plan_type ?? metadata?.planType ?? existing.planType;
           existing.status = isTokenExpired(token) ? "expired" : "active";
           this.persistNow();
           return existing.id;
@@ -116,11 +121,11 @@ export class AccountRegistry {
       id,
       token,
       refreshToken: refreshToken ?? null,
-      email: profile?.email ?? null,
+      email: profile?.email ?? metadata?.email ?? null,
       accountId,
       userId,
       label: null,
-      planType: profile?.chatgpt_plan_type ?? null,
+      planType: profile?.chatgpt_plan_type ?? metadata?.planType ?? null,
       proxyApiKey: "codex-proxy-" + randomBytes(24).toString("hex"),
       status: isTokenExpired(token) ? "expired" : "active",
       usage: {
