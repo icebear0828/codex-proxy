@@ -177,6 +177,10 @@ export class AccountImportService {
       return { ok: true, token, rt };
     }
 
+    if (!rt) {
+      return { ok: false, error: "Refresh token is required", kind: "validation" };
+    }
+
     // Refresh-token-only path — check if this RT already belongs to an existing account
     const existing = this.pool.getAllEntries().find((a) => a.refreshToken === rt);
     if (existing) {
@@ -184,17 +188,18 @@ export class AccountImportService {
     }
 
     // Prevent concurrent refresh of the same RT (e.g. duplicate entries in import file)
-    if (this.refreshingRTs.has(rt as string)) {
+    if (this.refreshingRTs.has(rt)) {
       return { ok: false, error: "Duplicate RT in import batch (skipped to protect token)", kind: "refresh_failed" };
     }
-    this.refreshingRTs.add(rt as string);
+    this.refreshingRTs.add(rt);
 
     try {
       const proxyUrl = this.deps.getProxyUrl();
-      const tokens = await this.deps.refreshToken(rt as string, proxyUrl);
-      const metadata = extractCodexTokenMetadata(tokens.access_token, tokens.id_token);
-      const v = this.deps.validateToken(tokens.access_token);
-      if (!v.valid && !this.canAcceptRtExchangeToken(v.error, tokens.access_token)) {
+      const tokens = await this.deps.refreshToken(rt, proxyUrl);
+      const accessToken = tokens.access_token.trim();
+      const metadata = extractCodexTokenMetadata(accessToken, tokens.id_token);
+      const v = this.deps.validateToken(accessToken);
+      if (!v.valid && !this.canAcceptRtExchangeToken(v.error, accessToken)) {
         return {
           ok: false,
           error: `Refresh token exchange succeeded but token invalid: ${v.error}`,
@@ -205,7 +210,7 @@ export class AccountImportService {
       const newRT = tokens.refresh_token ?? null;
       return {
         ok: true,
-        token: tokens.access_token,
+        token: accessToken,
         rt: newRT,
         metadata,
       };
@@ -216,7 +221,7 @@ export class AccountImportService {
         kind: "refresh_failed",
       };
     } finally {
-      this.refreshingRTs.delete(rt as string);
+      this.refreshingRTs.delete(rt);
     }
   }
 

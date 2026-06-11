@@ -110,6 +110,32 @@ describe("AccountImportService", () => {
       expect(pool.getAccounts()).toHaveLength(1);
     });
 
+    it("accepts RT-exchanged token with no chatgpt_account_id claim", async () => {
+      const pool = makePool();
+      const jwtWithoutAccountId = createValidJwt({ accountId: undefined });
+      const svc = new AccountImportService(
+        pool,
+        makeScheduler(),
+        makeDeps({
+          validateToken: () => ({
+            valid: false,
+            error: "Token missing chatgpt_account_id claim",
+          }),
+          refreshToken: async () => ({
+            access_token: jwtWithoutAccountId,
+            refresh_token: "new_rt",
+          }),
+        }),
+      );
+
+      const result = await svc.importMany([{ refreshToken: "some_rt" }]);
+
+      expect(result.added).toBe(1);
+      expect(result.failed).toBe(0);
+      expect(result.errors).toHaveLength(0);
+      expect(pool.getAccounts()[0].accountId).toBeNull();
+    });
+
     it("accepts RT exchange access token when accountId is only present in id_token", async () => {
       const pool = makePool();
       const accessToken = createJwt({
@@ -225,6 +251,54 @@ describe("AccountImportService", () => {
 
       const entries = pool.getAllEntries();
       expect(entries[0].refreshToken).toBeNull();
+    });
+
+    it("updates null-accountId entry instead of duplicating after token refresh changes token", async () => {
+      const pool = makePool();
+      let refreshCount = 0;
+      const tokens = [
+        createValidJwt({
+          accountId: undefined,
+          userId: "same-user",
+          email: "same-user@example.com",
+          expInSeconds: 3600,
+        }),
+        createValidJwt({
+          accountId: undefined,
+          userId: "same-user",
+          email: "same-user@example.com",
+          expInSeconds: 7200,
+        }),
+      ];
+      const svc = new AccountImportService(
+        pool,
+        makeScheduler(),
+        makeDeps({
+          validateToken: () => ({
+            valid: false,
+            error: "Token missing chatgpt_account_id claim",
+          }),
+          refreshToken: async () => ({
+            access_token: tokens[refreshCount++],
+            refresh_token: `new_rt_${refreshCount}`,
+          }),
+        }),
+      );
+
+      const first = await svc.importMany([{ refreshToken: "old_rt_1" }]);
+      const second = await svc.importMany([{ refreshToken: "old_rt_2" }]);
+
+      expect(first.added).toBe(1);
+      expect(second.updated).toBe(1);
+      expect(second.added).toBe(0);
+      expect(pool.getAccounts()).toHaveLength(1);
+      expect(pool.getAllEntries()[0]).toMatchObject({
+        token: tokens[1],
+        refreshToken: "new_rt_2",
+        accountId: null,
+        userId: "same-user",
+        email: "same-user@example.com",
+      });
     });
 
     it("counts failed when refresh exchange throws", async () => {

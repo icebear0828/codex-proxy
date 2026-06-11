@@ -33,6 +33,17 @@ function safeEqual(a: string, b: string): boolean {
   return timingSafeEqual(bufA, bufB);
 }
 
+function sameAccountWithoutAccountId(
+  existing: AccountEntry,
+  userId: string | null,
+  email: string | null,
+): boolean {
+  if (existing.accountId !== null) return false;
+  if (userId && existing.userId === userId) return true;
+  if (email && existing.email === email) return true;
+  return false;
+}
+
 type ResettableQuotaWindow = {
   used_percent: number | null;
   reset_at: number | null;
@@ -97,6 +108,8 @@ export class AccountRegistry {
     const accountId = extractChatGptAccountId(token) ?? metadata?.accountId ?? null;
     const profile = extractUserProfile(token);
     const userId = profile?.chatgpt_user_id ?? metadata?.userId ?? null;
+    const email = profile?.email ?? metadata?.email ?? null;
+    const planType = profile?.chatgpt_plan_type ?? metadata?.planType ?? null;
 
     for (const existing of this.accounts.values()) {
       if (accountId) {
@@ -111,7 +124,16 @@ export class AccountRegistry {
           this.persistNow();
           return existing.id;
         }
-      } else if (existing.token === token) {
+      } else if (sameAccountWithoutAccountId(existing, userId, email) || existing.token === token) {
+        existing.token = token;
+        if (typeof refreshToken === "string" && refreshToken.length > 0) {
+          existing.refreshToken = refreshToken;
+        }
+        existing.email = email ?? existing.email;
+        existing.userId = userId ?? existing.userId;
+        existing.planType = planType ?? existing.planType;
+        existing.status = isTokenExpired(token) ? "expired" : "active";
+        this.persistNow();
         return existing.id;
       }
     }
@@ -121,11 +143,11 @@ export class AccountRegistry {
       id,
       token,
       refreshToken: refreshToken ?? null,
-      email: profile?.email ?? metadata?.email ?? null,
+      email,
       accountId,
       userId,
       label: null,
-      planType: profile?.chatgpt_plan_type ?? metadata?.planType ?? null,
+      planType,
       proxyApiKey: "codex-proxy-" + randomBytes(24).toString("hex"),
       status: isTokenExpired(token) ? "expired" : "active",
       usage: {

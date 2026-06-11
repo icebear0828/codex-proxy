@@ -43,10 +43,13 @@ export function createValidJwt(overrides: {
   expInSeconds?: number;
 } = {}): string {
   const exp = Math.floor(Date.now() / 1000) + (overrides.expInSeconds ?? 3600);
+  const accountId = Object.prototype.hasOwnProperty.call(overrides, "accountId")
+    ? overrides.accountId
+    : "acct-test-123";
   return createJwt({
     exp,
     "https://api.openai.com/auth": {
-      chatgpt_account_id: overrides.accountId ?? "acct-test-123",
+      ...(accountId !== undefined ? { chatgpt_account_id: accountId } : {}),
       chatgpt_plan_type: overrides.planType ?? "free",
       ...(overrides.userId !== undefined ? { chatgpt_user_id: overrides.userId } : {}),
     },
