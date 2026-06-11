@@ -469,6 +469,7 @@ async function openOneShotWs(
             return;
           }
           if (isEarlyMetadataWsEvent(type)) {
+            clearTimeout(openTimer);
             earlyMetadataChunks.push(encoder.encode(`event: ${type}\ndata: ${raw}\n\n`));
             return;
           }
