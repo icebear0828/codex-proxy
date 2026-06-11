@@ -257,6 +257,7 @@ describe("createWebSocketResponse — early-stream error rejection", () => {
     const ws = await waitForOpen();
 
     ws.emit("message", JSON.stringify({ type: "response.created", response: { id: "resp_1" } }));
+    ws.emit("message", JSON.stringify({ type: "response.output_text.delta", delta: "partial" }));
     const response = await promise;
     expect(response.status).toBe(200);
 
@@ -267,6 +268,7 @@ describe("createWebSocketResponse — early-stream error rejection", () => {
 
     const text = await readAll(response);
     expect(text).toContain("event: response.created");
+    expect(text).toContain("event: response.output_text.delta");
     expect(text).toContain("event: error");
     expect(text).toContain("usage_limit_reached");
   });
@@ -283,7 +285,7 @@ describe("createWebSocketResponse — early-stream error rejection", () => {
       throw new Error("expected rejection");
     } catch (err) {
       expect(err).toBeInstanceOf(Error);
-      expect((err as Error).message).toContain("WebSocket closed before any data");
+      expect((err as Error).message).toContain("WebSocket closed before terminal event");
       expect((err as Error).message).toContain("code=1006");
     }
   });

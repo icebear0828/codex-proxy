@@ -68,7 +68,13 @@ export function handleStreaming(options: HandleStreamingOptions): Response {
   const reasoningReplayCache = getReasoningReplayCache();
 
   return stream(c, async (s) => {
+    let clientAborted = false;
+    let streamFailed = true;
     s.onAbort(() => {
+      if (streamCompletedWithoutError || responseCompleted) {
+        return;
+      }
+      clientAborted = true;
       console.warn(`[stream-client-abort] rid=${requestId.slice(0, 8)} tag=${fmt.tag} model=${req.model}`);
       recordStreamCloseEvent({
         kind: "client-abort",
@@ -150,9 +156,12 @@ export function handleStreaming(options: HandleStreamingOptions): Response {
           abortSignal: abortController.signal,
         },
       });
+      streamFailed = false;
       streamCompletedWithoutError = true;
     } finally {
-      abortController.abort();
+      if (streamFailed && !clientAborted && !abortController.signal.aborted) {
+        abortController.abort();
+      }
       recordStreamAffinity();
       if (streamCompletedWithoutError) clearCfChallengeCooldown(capturedEntryId);
       if (usageInfo) {

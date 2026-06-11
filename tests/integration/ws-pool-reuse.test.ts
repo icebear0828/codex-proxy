@@ -125,6 +125,42 @@ describe("ws-pool integration: persistent connection reuse", () => {
     expect(pool.size()).toBe(1);
   });
 
+  it("retries a reused WS on a metadata-only close before exposing the stream", async () => {
+    const entryId = "entry-A";
+    const poolKey = `${entryId}:conv-1`;
+
+    const r1 = await createWebSocketResponse(
+      server.url, {}, baseRequest, undefined, null, undefined,
+      { pool, entryId, poolKey },
+    );
+    await drainResponse(r1);
+    expect(server.connectionCount()).toBe(1);
+    expect(pool.size()).toBe(1);
+
+    server.script([{ type: "response.created", data: { response: { id: "resp_metadata_only" } } }]);
+    const retrying = createWebSocketResponse(
+      server.url, {}, baseRequest, undefined, null, undefined,
+      { pool, entryId, poolKey },
+    );
+
+    await new Promise<void>((resolve) => setTimeout(resolve, 20));
+    server.script([
+      { type: "response.created", data: { response: { id: "resp_retry" } } },
+      { type: "response.completed", data: { response: { id: "resp_retry" } } },
+    ]);
+    server.closeAllSockets(1000, "metadata-only close");
+
+    const r2 = await retrying;
+    const text = await drainResponse(r2);
+    expect(text).toContain("event: response.completed");
+    expect(text).toContain("resp_retry");
+    expect(text).not.toContain("resp_metadata_only");
+    expect(server.connectionCount()).toBe(2);
+    // Stale reuse falls back to a one-shot connection; the old pooled socket
+    // has been evicted and the one-shot retry is not inserted into the pool.
+    expect(pool.size()).toBe(0);
+  });
+
   it("disabled pool falls back to one-shot connections (every turn opens a new socket)", async () => {
     const disabled = new WsConnectionPool({ enabled: false }, { startGc: false });
     try {

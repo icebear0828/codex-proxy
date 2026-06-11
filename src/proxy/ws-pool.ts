@@ -73,6 +73,7 @@ interface InFlightSession {
   onRateLimits: ((rl: ParsedRateLimit) => void) | undefined;
   earlyDecisionMade: boolean;
   sawTerminalEvent: boolean;
+  earlyMetadataChunks: Uint8Array[];
   /** Resolves the outer send() Promise with the SSE Response.
    *  Closes over the freshly-built ReadableStream so callers don't need to
    *  pass it back in. */
@@ -142,6 +143,10 @@ function classifyWsErrorEvent(msg: Record<string, unknown>): { status: number; c
 
 function isTerminalWsEvent(type: string): boolean {
   return type === "response.completed" || type === "response.failed" || type === "error";
+}
+
+function isEarlyMetadataWsEvent(type: string): boolean {
+  return type === "response.created" || type === "response.in_progress";
 }
 
 // ── PersistentWs ───────────────────────────────────────────────────
@@ -309,6 +314,7 @@ export class PersistentWs {
             onRateLimits: opts.onRateLimits,
             earlyDecisionMade: false,
             sawTerminalEvent: false,
+            earlyMetadataChunks: [],
             resolveResponse: () => resolve(this.buildResponse(stream)),
             reject: wrappedReject,
             abortListener: null,
@@ -385,6 +391,20 @@ export class PersistentWs {
     return new Response(stream, { status: 200, headers: responseHeaders });
   }
 
+  private enqueueSessionChunk(sess: InFlightSession, chunk: Uint8Array): void {
+    if (sess.streamClosed) return;
+    sess.controller.enqueue(chunk);
+  }
+
+  private resolveSessionResponse(sess: InFlightSession): void {
+    if (sess.earlyDecisionMade) return;
+    sess.earlyDecisionMade = true;
+    sess.resolveResponse();
+    for (const chunk of sess.earlyMetadataChunks.splice(0)) {
+      this.enqueueSessionChunk(sess, chunk);
+    }
+  }
+
   private handleMessage(data: Buffer | string): void {
     const sess = this.currentSession;
     if (!sess || sess.streamClosed) return;
@@ -399,8 +419,15 @@ export class PersistentWs {
       /* fall through to raw passthrough */
     }
 
+    // Internal rate-limit frames bypass the stream and don't flip the
+    // early-decision flag; they're observed via the per-session callback.
+    if (msg && type === "codex.rate_limits") {
+      const rl = parseRateLimitsEvent(msg);
+      if (rl) sess.onRateLimits?.(rl);
+      return;
+    }
+
     if (!sess.earlyDecisionMade) {
-      sess.earlyDecisionMade = true;
       if (msg) {
         const classified = classifyWsErrorEvent(msg);
         if (classified) {
@@ -414,29 +441,25 @@ export class PersistentWs {
           }
           return;
         }
+        if (isEarlyMetadataWsEvent(type)) {
+          sess.earlyMetadataChunks.push(this.encoder.encode(`event: ${type}\ndata: ${raw}\n\n`));
+          return;
+        }
       }
-      sess.resolveResponse();
+      this.resolveSessionResponse(sess);
       // Fall through to enqueue this first frame.
-    }
-
-    // Internal rate-limit frames bypass the stream and don't flip the
-    // early-decision flag; they're observed via the per-session callback.
-    if (msg && type === "codex.rate_limits" && sess.onRateLimits) {
-      const rl = parseRateLimitsEvent(msg);
-      if (rl) sess.onRateLimits(rl);
-      return;
     }
 
     if (msg) {
       const sse = `event: ${type}\ndata: ${raw}\n\n`;
-      sess.controller.enqueue(this.encoder.encode(sse));
+      this.enqueueSessionChunk(sess, this.encoder.encode(sse));
 
       if (isTerminalWsEvent(type)) {
         sess.sawTerminalEvent = true;
         queueMicrotask(() => this.releaseAfterTerminalFrame());
       }
     } else {
-      sess.controller.enqueue(this.encoder.encode(`data: ${raw}\n\n`));
+      this.enqueueSessionChunk(sess, this.encoder.encode(`data: ${raw}\n\n`));
     }
   }
 
@@ -479,7 +502,7 @@ export class PersistentWs {
     if (sess && !sess.earlyDecisionMade) {
       sess.earlyDecisionMade = true;
       sess.reject(new Error(
-        `WebSocket closed before any data: code=${code}` +
+        `WebSocket closed before terminal event: code=${code}` +
           (reasonStr ? ` reason=${reasonStr}` : ""),
       ));
     } else if (sess && !sess.streamClosed) {

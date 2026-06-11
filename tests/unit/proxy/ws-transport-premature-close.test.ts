@@ -87,7 +87,7 @@ describe("ws-transport close behavior", () => {
     expect(output).not.toContain("premature_close");
   });
 
-  it("errors stream when WS closes without terminal event", async () => {
+  it("rejects before returning a Response when WS closes after only metadata", async () => {
     vi.doMock("ws", () => ({
       default: createMockWsClass([
         { type: "response.created", response: { id: "resp_1" } },
@@ -96,13 +96,11 @@ describe("ws-transport close behavior", () => {
     }));
 
     const { createWebSocketResponse } = await import("@src/proxy/ws-transport.js");
-    const response = await createWebSocketResponse(
+    await expect(createWebSocketResponse(
       "wss://example.com/ws",
       { Authorization: "Bearer test" },
       { type: "response.create", model: "test", instructions: "", input: [] },
-    );
-
-    await expect(collectSSE(response)).rejects.toThrow(
+    )).rejects.toThrow(
       "WebSocket closed before terminal event",
     );
   });

@@ -117,7 +117,7 @@ describe("PersistentWs", () => {
     await expect(promise).rejects.not.toBeInstanceOf(WsReusedConnectionError);
   });
 
-  it("send resolves Response on first non-internal frame and streams subsequent events", async () => {
+  it("send resolves Response on first non-metadata frame and flushes early metadata", async () => {
     const { ws, persistent } = newPersistentWs();
     persistent.tryAcquire();
     const promise = persistent.send({
@@ -128,10 +128,10 @@ describe("PersistentWs", () => {
     });
     await nextTick();
     ws.pushMessage({ type: "response.created", id: "r1" });
+    ws.pushMessage({ type: "response.output_text.delta", delta: "hi" });
     const resp = await promise;
     expect(resp.status).toBe(200);
     expect(resp.headers.get("content-type")).toBe("text/event-stream");
-    ws.pushMessage({ type: "response.output_text.delta", delta: "hi" });
     ws.pushMessage({ type: "response.completed" });
     const text = await resp.text();
     expect(text).toContain("event: response.created");
@@ -139,7 +139,25 @@ describe("PersistentWs", () => {
     expect(text).toContain("event: response.completed");
   });
 
-  it("errors the response stream when the WS closes after first frame without terminal event", async () => {
+  it("send rejects before resolving when the WS closes after only metadata", async () => {
+    const { ws, persistent, onDead } = newPersistentWs();
+    persistent.tryAcquire();
+    const promise = persistent.send({
+      request: { type: "response.create", model: "m", instructions: "", input: [] },
+      signal: undefined,
+      onRateLimits: undefined,
+      reused: true,
+    });
+    await nextTick();
+    ws.pushMessage({ type: "response.created", response: { id: "resp_mid" } });
+    ws.pushClose(1000, "");
+
+    await expect(promise).rejects.toBeInstanceOf(WsReusedConnectionError);
+    expect(persistent.isAlive()).toBe(false);
+    expect(onDead).toHaveBeenCalled();
+  });
+
+  it("errors the response stream when the WS closes after a visible frame without terminal event", async () => {
     const { ws, persistent, onDead } = newPersistentWs();
     persistent.tryAcquire();
     const promise = persistent.send({
@@ -150,6 +168,7 @@ describe("PersistentWs", () => {
     });
     await nextTick();
     ws.pushMessage({ type: "response.created", response: { id: "resp_mid" } });
+    ws.pushMessage({ type: "response.output_text.delta", delta: "partial" });
     const resp = await promise;
     ws.pushClose(1006, "tcp rst");
 
@@ -195,8 +214,8 @@ describe("PersistentWs", () => {
     });
     expect(onRateLimits).toHaveBeenCalledTimes(1);
     ws.pushMessage({ type: "response.created" });
-    const resp = await promise;
     ws.pushMessage({ type: "response.completed" });
+    const resp = await promise;
     const text = await resp.text();
     expect(text).not.toContain("codex.rate_limits");
   });
@@ -290,6 +309,7 @@ describe("PersistentWs", () => {
     });
     await nextTick();
     ws.pushMessage({ type: "response.created" });
+    ws.pushMessage({ type: "response.output_text.delta", delta: "partial" });
     const resp = await promise;
     persistent.closeGracefully();
     expect(onDead).not.toHaveBeenCalled(); // still busy
@@ -334,6 +354,7 @@ describe("PersistentWs", () => {
     });
     await nextTick();
     ws.pushMessage({ type: "response.created" });
+    ws.pushMessage({ type: "response.completed" });
     const resp = await promise;
     expect(resp.headers.get("x-codex-primary-used-percent")).toBe("42");
   });

@@ -84,6 +84,15 @@ function isTerminalWsEvent(type: string): boolean {
   return type === "response.completed" || type === "response.failed" || type === "error";
 }
 
+function isEarlyMetadataWsEvent(type: string): boolean {
+  return type === "response.created" || type === "response.in_progress";
+}
+
+const WS_CONNECTING = 0;
+const WS_CLOSING = 2;
+const WS_CLOSED = 3;
+const WS_CLOSED_BEFORE_OPEN_MESSAGE = "WebSocket was closed before the connection was established";
+
 /** Cached ws module — loaded once on first use. */
 let _WS: typeof import("ws").default | undefined;
 
@@ -299,12 +308,20 @@ async function openOneShotWs(
   const wsOpts = await buildWsConstructorOpts(WS, headers, proxyUrl);
 
   return new Promise<Response>((resolve, reject) => {
-    const ws = new WS(wsUrl, wsOpts);
     const encoder = new TextEncoder();
+    if (signal?.aborted) {
+      reject(new Error("aborted"));
+      return;
+    }
+
+    const ws = new WS(wsUrl, wsOpts);
     let controller: ReadableStreamDefaultController<Uint8Array> | null = null;
     let streamClosed = false;
     let earlyDecisionMade = false;
     let sawTerminalEvent = false;
+    let abortRequested = false;
+    let expectedCloseBeforeOpen = false;
+    const earlyMetadataChunks: Uint8Array[] = [];
     let pingTimer: ReturnType<typeof setInterval> | undefined;
 
     // Open timeout: if the WS handshake never completes, reject after 20s.
@@ -312,7 +329,7 @@ async function openOneShotWs(
       if (!earlyDecisionMade) {
         earlyDecisionMade = true;
         cleanupTimers();
-        try { ws.close(1000, "open timeout"); } catch { /* already closing */ }
+        closeWs(1000, "open timeout", true);
         reject(new Error("WebSocket open timeout (20s)"));
       }
     }, 20_000);
@@ -325,8 +342,21 @@ async function openOneShotWs(
       }
     }
 
+    function cleanupAbortListener() {
+      signal?.removeEventListener("abort", onAbort);
+    }
+
+    function closeWs(code?: number, reason?: string, expectCloseBeforeOpen = false) {
+      if (expectCloseBeforeOpen && ws.readyState === WS_CONNECTING) {
+        expectedCloseBeforeOpen = true;
+      }
+      if (ws.readyState === WS_CLOSING || ws.readyState === WS_CLOSED) return;
+      try { ws.close(code, reason); } catch { /* already closing */ }
+    }
+
     function closeStream() {
       cleanupTimers();
+      cleanupAbortListener();
       if (!streamClosed && controller) {
         streamClosed = true;
         try { controller.close(); } catch { /* already closed */ }
@@ -335,16 +365,34 @@ async function openOneShotWs(
 
     function errorStream(err: Error) {
       cleanupTimers();
+      cleanupAbortListener();
       if (!streamClosed && controller) {
         streamClosed = true;
         try { controller.error(err); } catch { /* already closed */ }
       }
     }
 
+    function enqueueChunk(chunk: Uint8Array) {
+      if (!streamClosed && controller) {
+        controller.enqueue(chunk);
+      }
+    }
+
+    function resolveResponse() {
+      if (earlyDecisionMade) return;
+      earlyDecisionMade = true;
+      resolve(buildResponse());
+      for (const chunk of earlyMetadataChunks.splice(0)) {
+        enqueueChunk(chunk);
+      }
+    }
+
     // Abort signal handling
     const onAbort = () => {
+      abortRequested = true;
       cleanupTimers();
-      try { ws.close(1000, "aborted"); } catch { /* already closing */ }
+      cleanupAbortListener();
+      closeWs(1000, "aborted", true);
       if (!earlyDecisionMade) {
         earlyDecisionMade = true;
         reject(new Error("aborted"));
@@ -354,10 +402,6 @@ async function openOneShotWs(
     };
 
     if (signal) {
-      if (signal.aborted) {
-        onAbort();
-        return;
-      }
       signal.addEventListener("abort", onAbort, { once: true });
     }
 
@@ -415,40 +459,49 @@ async function openOneShotWs(
       }
 
       if (!earlyDecisionMade) {
-        earlyDecisionMade = true;
         if (msg) {
           const classified = classifyWsErrorEvent(msg);
           if (classified) {
             cleanupTimers();
+            earlyDecisionMade = true;
             reject(new CodexApiError(classified.status, JSON.stringify(msg)));
-            try { ws.close(1000, "early upstream error"); } catch { /* already closing */ }
+            closeWs(1000, "early upstream error", true);
+            return;
+          }
+          if (isEarlyMetadataWsEvent(type)) {
+            earlyMetadataChunks.push(encoder.encode(`event: ${type}\ndata: ${raw}\n\n`));
             return;
           }
         }
-        resolve(buildResponse());
+        resolveResponse();
       }
 
       if (msg) {
         const sse = `event: ${type}\ndata: ${raw}\n\n`;
-        controller!.enqueue(encoder.encode(sse));
+        enqueueChunk(encoder.encode(sse));
 
         if (isTerminalWsEvent(type)) {
           sawTerminalEvent = true;
           queueMicrotask(() => {
             closeStream();
-            ws.close(1000);
+            closeWs(1000);
           });
         }
       } else {
         const sse = `data: ${raw}\n\n`;
-        controller!.enqueue(encoder.encode(sse));
+        enqueueChunk(encoder.encode(sse));
       }
     });
 
     ws.on("error", (err: Error) => {
+      if (expectedCloseBeforeOpen && err.message === WS_CLOSED_BEFORE_OPEN_MESSAGE) {
+        cleanupTimers();
+        cleanupAbortListener();
+        return;
+      }
       console.error(`[WS-Error] ❌ WebSocket error for request:`, err.message);
       cleanupTimers();
-      signal?.removeEventListener("abort", onAbort);
+      cleanupAbortListener();
       if (!earlyDecisionMade) {
         earlyDecisionMade = true;
         reject(err);
@@ -461,11 +514,14 @@ async function openOneShotWs(
       const reasonStr = reason && reason.length ? reason.toString("utf-8") : "";
       console.log(`[WS-Close] 🔴 WebSocket closed. Code: ${code}, Reason: ${reasonStr}`);
       cleanupTimers();
-      signal?.removeEventListener("abort", onAbort);
+      cleanupAbortListener();
+      if (abortRequested) {
+        return;
+      }
       if (!earlyDecisionMade) {
         earlyDecisionMade = true;
         reject(new Error(
-          `WebSocket closed before any data: code=${code}` +
+          `WebSocket closed before terminal event: code=${code}` +
             (reasonStr ? ` reason=${reasonStr}` : ""),
         ));
         return;
