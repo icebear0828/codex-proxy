@@ -81,6 +81,7 @@ interface InFlightSession {
   abortListener: (() => void) | null;
   signal: AbortSignal | undefined;
   streamClosed: boolean;
+  request: WsCreateRequest;
 }
 
 /** Subset of the `ws` module's WebSocket interface that PersistentWs needs.
@@ -314,6 +315,7 @@ export class PersistentWs {
             abortListener: null,
             signal: opts.signal,
             streamClosed: false,
+            request: opts.request,
           };
 
           if (opts.signal) {
@@ -399,31 +401,37 @@ export class PersistentWs {
       /* fall through to raw passthrough */
     }
 
-    if (!sess.earlyDecisionMade) {
-      sess.earlyDecisionMade = true;
-      if (msg) {
-        const classified = classifyWsErrorEvent(msg);
-        if (classified) {
-          sess.reject(new CodexApiError(classified.status, JSON.stringify(msg)));
-          // Server connection-cap is a per-connection failure: evict so the
-          // next caller opens a fresh WS instead of hitting the same wall.
-          if (classified.code === "websocket_connection_limit_reached") {
-            this.markDead("server connection limit");
-          } else {
-            this.releaseAfterEarlyError();
-          }
-          return;
-        }
-      }
-      sess.resolveResponse();
-      // Fall through to enqueue this first frame.
+    const isImageGen = sess.request.model?.includes("image");
+    const isRateLimit = msg && type === "codex.rate_limits";
+
+    if (isRateLimit && sess.onRateLimits) {
+      const rl = parseRateLimitsEvent(msg!);
+      if (rl) sess.onRateLimits(rl);
     }
 
-    // Internal rate-limit frames bypass the stream and don't flip the
-    // early-decision flag; they're observed via the per-session callback.
-    if (msg && type === "codex.rate_limits" && sess.onRateLimits) {
-      const rl = parseRateLimitsEvent(msg);
-      if (rl) sess.onRateLimits(rl);
+    if (!sess.earlyDecisionMade) {
+      if (isRateLimit && !isImageGen) {
+        // Do not flip earlyDecisionMade on rate_limits for chat models,
+        // so we can still catch the upcoming `error` frame as an HTTP rejection.
+      } else {
+        sess.earlyDecisionMade = true;
+        if (msg && !isRateLimit) {
+          const classified = classifyWsErrorEvent(msg);
+          if (classified) {
+            sess.reject(new CodexApiError(classified.status, JSON.stringify(msg)));
+            if (classified.code === "websocket_connection_limit_reached") {
+              this.markDead("server connection limit");
+            } else {
+              this.releaseAfterEarlyError();
+            }
+            return;
+          }
+        }
+        sess.resolveResponse();
+      }
+    }
+
+    if (isRateLimit && sess.onRateLimits) {
       return;
     }
 

@@ -306,23 +306,56 @@ async function openOneShotWs(
     let earlyDecisionMade = false;
     let sawTerminalEvent = false;
     let pingTimer: ReturnType<typeof setInterval> | undefined;
+    let openTimer: ReturnType<typeof setTimeout> | undefined;
+    let ignoreClosedBeforeOpenError = false;
 
-    // Open timeout: if the WS handshake never completes, reject after 20s.
-    const openTimer = setTimeout(() => {
-      if (!earlyDecisionMade) {
-        earlyDecisionMade = true;
-        cleanupTimers();
-        try { ws.close(1000, "open timeout"); } catch { /* already closing */ }
-        reject(new Error("WebSocket open timeout (20s)"));
-      }
-    }, 20_000);
+    const stream = new ReadableStream<Uint8Array>({
+      start(c) {
+        controller = c;
+      },
+      cancel() {
+        ws.close(1000, "stream cancelled");
+      },
+    });
 
     function cleanupTimers() {
-      clearTimeout(openTimer);
+      if (openTimer) {
+        clearTimeout(openTimer);
+        openTimer = undefined;
+      }
       if (pingTimer) {
         clearInterval(pingTimer);
         pingTimer = undefined;
       }
+    }
+
+    function markLocalConnectingClose() {
+      if (ws.readyState === 0) {
+        ignoreClosedBeforeOpenError = true;
+      }
+    }
+
+    function onAbort() {
+      cleanupTimers();
+      const hadEarlyDecision = earlyDecisionMade;
+      if (!hadEarlyDecision) {
+        earlyDecisionMade = true;
+      }
+      markLocalConnectingClose();
+      try { ws.close(1000, "aborted"); } catch { /* already closing */ }
+      if (!hadEarlyDecision) {
+        reject(new Error("aborted"));
+      } else {
+        errorStream(new Error("aborted"));
+      }
+    }
+
+    if (signal) {
+      if (signal.aborted) {
+        onAbort();
+        return;
+      }
+      signal.addEventListener("abort", onAbort, { once: true });
     }
 
     function closeStream() {
@@ -341,35 +374,6 @@ async function openOneShotWs(
       }
     }
 
-    // Abort signal handling
-    const onAbort = () => {
-      cleanupTimers();
-      try { ws.close(1000, "aborted"); } catch { /* already closing */ }
-      if (!earlyDecisionMade) {
-        earlyDecisionMade = true;
-        reject(new Error("aborted"));
-      } else {
-        errorStream(new Error("aborted"));
-      }
-    };
-
-    if (signal) {
-      if (signal.aborted) {
-        onAbort();
-        return;
-      }
-      signal.addEventListener("abort", onAbort, { once: true });
-    }
-
-    const stream = new ReadableStream<Uint8Array>({
-      start(c) {
-        controller = c;
-      },
-      cancel() {
-        ws.close(1000, "stream cancelled");
-      },
-    });
-
     // Capture upgrade response headers (contains x-codex-* rate limit data)
     let upgradeHeaders: Record<string, string | string[]> = {};
     ws.on("upgrade", (response: { headers: Record<string, string | string[]> }) => {
@@ -385,9 +389,14 @@ async function openOneShotWs(
       return new Response(stream, { status: 200, headers: responseHeaders });
     }
 
+    // Setup all event listeners first
     ws.on("open", () => {
       console.log(`[WS-Open] 🟢 WebSocket successfully opened for request. wsUrl: ${wsUrl}`);
-      clearTimeout(openTimer);
+      ignoreClosedBeforeOpenError = false;
+      if (openTimer) {
+        clearTimeout(openTimer);
+        openTimer = undefined;
+      }
       ws.send(JSON.stringify(request));
       pingTimer = setInterval(() => {
         try { ws.ping(); } catch { /* ws already closed */ }
@@ -408,26 +417,36 @@ async function openOneShotWs(
         // Non-JSON message — handled below as raw data.
       }
 
-      if (msg && type === "codex.rate_limits") {
-        const rl = parseRateLimitsEvent(msg);
-        if (rl) onRateLimits?.(rl);
-        return;
+      const isImageGen = request.model?.includes("image");
+      const isRateLimit = msg && type === "codex.rate_limits";
+
+      if (isRateLimit && onRateLimits) {
+        const rl = parseRateLimitsEvent(msg!);
+        if (rl) onRateLimits(rl);
       }
 
       if (!earlyDecisionMade) {
-        earlyDecisionMade = true;
-        if (msg) {
-          const classified = classifyWsErrorEvent(msg);
-          if (classified) {
-            cleanupTimers();
-            reject(new CodexApiError(classified.status, JSON.stringify(msg)));
-            try { ws.close(1000, "early upstream error"); } catch { /* already closing */ }
-            return;
+        if (isRateLimit && !isImageGen) {
+          // Do not flip earlyDecisionMade on rate_limits for chat models,
+          // so we can still catch the upcoming `error` frame as an HTTP rejection.
+        } else {
+          earlyDecisionMade = true;
+          if (msg && !isRateLimit) {
+            const classified = classifyWsErrorEvent(msg);
+            if (classified) {
+              cleanupTimers();
+              reject(new CodexApiError(classified.status, JSON.stringify(msg)));
+              try { ws.close(1000, "early upstream error"); } catch { /* already closing */ }
+              return;
+            }
           }
+          resolve(buildResponse());
         }
-        resolve(buildResponse());
       }
 
+      if (isRateLimit && onRateLimits) {
+        return;
+      }
       if (msg) {
         const sse = `event: ${type}\ndata: ${raw}\n\n`;
         controller!.enqueue(encoder.encode(sse));
@@ -446,6 +465,12 @@ async function openOneShotWs(
     });
 
     ws.on("error", (err: Error) => {
+      if (
+        ignoreClosedBeforeOpenError &&
+        err.message === "WebSocket was closed before the connection was established"
+      ) {
+        return;
+      }
       console.error(`[WS-Error] ❌ WebSocket error for request:`, err.message);
       cleanupTimers();
       signal?.removeEventListener("abort", onAbort);
@@ -479,5 +504,16 @@ async function openOneShotWs(
       }
       closeStream();
     });
+
+    // Start timers and process signal
+    openTimer = setTimeout(() => {
+      if (!earlyDecisionMade) {
+        earlyDecisionMade = true;
+        cleanupTimers();
+        markLocalConnectingClose();
+        try { ws.close(1000, "open timeout"); } catch { /* already closing */ }
+        reject(new Error("WebSocket open timeout (20s)"));
+      }
+    }, 20_000);
   });
 }

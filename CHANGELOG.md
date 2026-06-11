@@ -42,6 +42,7 @@
 
 ### Fixed
 
+- 修复：修复 2.80 破坏的标准模型断流自动重试功能（当出现 `Previous response with id '...' not found` 或类似连接建立期的 HTTP 层拒登时，原本的底层 Socket 断流提前 resolve 导致其被降级为了普通的 stream frame 丢包，致使外层 `try-catch` 拦截失败并向上透传断流；修复为仅对 image 生成长连接做 rate_limits 保护）。（`src/proxy/ws-transport.ts`、`src/proxy/ws-pool.ts`）
 - 修复 promote soak 饿死：旧规则要求 dev HEAD 本身 ≥24h，活跃开发期每个新 commit 重置时钟导致 master 长期不晋升；新增 `select-promote-candidate.sh` 改为晋升「最新的、已泡满 24h 的 dev first-parent commit」（新鲜提交留在 dev 继续 soak、次日跟进），CI 门禁逐候选回退找绿；`force_skip_soak` 仍直接取 dev HEAD（`.github/scripts/select-promote-candidate.sh`、`.github/workflows/promote-dev-to-master.yml`、`tests/unit/ci/select-promote-candidate.test.ts`）
 - 修复 Docker 版本镜像被覆盖：`docker-publish.yml` 此前在 master 分支 push 时用 `max(package.json, 最新 stable tag)` 决定版本号，14:00 promote 后会用「晚于 tag 的代码」重打 `ghcr.io/...:vX.Y.Z` 镜像（镜像内容 ≠ git tag）；现在分支 push 只打 `latest` + `sha-<short>`，版本镜像仅由 `bump-electron.yml` dispatch 带 `tag` 输入、从 tag 源码构建（`.github/workflows/docker-publish.yml`、`.github/workflows/bump-electron.yml`）
 - 修复 release 空 body 窗口：`release.yml` notes 生成从最后一个 job 提前为第一个 job，此前 upload 步骤先 `gh release create --notes ""`、notes job 挂掉则 release 永久空 body（更新弹窗里用户看到空白）；stable release 创建时 `--latest=false`，全部平台 smoke 通过后才翻 `--latest`（构建窗口内 `/releases/latest` 始终指向上一个完整版本，auto-updater 不会撞到零资产 release）；构建全挂时自动删除零资产 release（保留 tag 可重试），防止 beta 渠道解析到空版本；顺带 release/build job Node 版本统一到 22（与 ci-quality 一致）（`.github/workflows/release.yml`）
