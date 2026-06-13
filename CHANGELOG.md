@@ -42,6 +42,8 @@
 
 ### Fixed
 
+- 修复 Dashboard Errors tab 的“全部标记已读”和“删除”操作被 Settings Bearer-token middleware 拦截成 401 的问题；`/admin/error-logs*` 统一交给 dashboard session auth，避免 cookie 登录会话被误判失效并跳回登录页。（`src/routes/admin/settings.ts`、`tests/integration/error-logs-dashboard-auth.test.ts`）
+- 修复 release notes 生成脚本在 LLM endpoint 不可达时可能被 60s 默认请求超时拖慢测试的问题；新增 `RELEASE_NOTES_REQUEST_TIMEOUT_MS` 仅用于覆盖该脚本请求超时，生产默认仍为 60s。（`.github/scripts/summarize-release-notes.mjs`、`tests/unit/ci/summarize-release-notes.test.ts`）
 - 修复并强化 WebSocket 消息流的生命周期管理：通过缓冲早期元数据帧（如 `response.created`），延迟解析 HTTP 响应，从而解决由于内部限流事件导致的提前解析和挂起问题，并在重构中排除了首字时间（TTFT）超过 20s 会引发超时的隐患。（#678，感谢 [@zyycn](https://github.com/zyycn)）
 - 修复 promote soak 饿死：旧规则要求 dev HEAD 本身 ≥24h，活跃开发期每个新 commit 重置时钟导致 master 长期不晋升；新增 `select-promote-candidate.sh` 改为晋升「最新的、已泡满 24h 的 dev first-parent commit」（新鲜提交留在 dev 继续 soak、次日跟进），CI 门禁逐候选回退找绿；`force_skip_soak` 仍直接取 dev HEAD（`.github/scripts/select-promote-candidate.sh`、`.github/workflows/promote-dev-to-master.yml`、`tests/unit/ci/select-promote-candidate.test.ts`）
 - 修复 Docker 版本镜像被覆盖：`docker-publish.yml` 此前在 master 分支 push 时用 `max(package.json, 最新 stable tag)` 决定版本号，14:00 promote 后会用「晚于 tag 的代码」重打 `ghcr.io/...:vX.Y.Z` 镜像（镜像内容 ≠ git tag）；现在分支 push 只打 `latest` + `sha-<short>`，版本镜像仅由 `bump-electron.yml` dispatch 带 `tag` 输入、从 tag 源码构建（`.github/workflows/docker-publish.yml`、`.github/workflows/bump-electron.yml`）

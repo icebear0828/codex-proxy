@@ -6,7 +6,13 @@ import { beforeAll, describe, expect, it } from "vitest";
 // Plain ESM script (no build step); vitest transforms it, tsc does not cover tests.
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore -- untyped .mjs CI script
-import { buildPrompt, generateNotes, parseHighlights, renderFallback } from "../../../.github/scripts/summarize-release-notes.mjs";
+import {
+  buildPrompt,
+  generateNotes,
+  parseHighlights,
+  renderFallback,
+  resolveRequestTimeoutMs,
+} from "../../../.github/scripts/summarize-release-notes.mjs";
 
 const ROOT = resolve(__dirname, "..", "..", "..");
 const SCRIPT = resolve(ROOT, ".github", "scripts", "summarize-release-notes.mjs");
@@ -116,6 +122,17 @@ describe("summarize-release-notes generateNotes", () => {
   });
 });
 
+describe("summarize-release-notes resolveRequestTimeoutMs", () => {
+  it("uses a positive integer override and falls back for invalid values", () => {
+    expect(resolveRequestTimeoutMs({ RELEASE_NOTES_REQUEST_TIMEOUT_MS: "250" })).toBe(250);
+    expect(resolveRequestTimeoutMs({ RELEASE_NOTES_REQUEST_TIMEOUT_MS: "0" })).toBe(60000);
+    expect(resolveRequestTimeoutMs({ RELEASE_NOTES_REQUEST_TIMEOUT_MS: "-1" })).toBe(60000);
+    expect(resolveRequestTimeoutMs({ RELEASE_NOTES_REQUEST_TIMEOUT_MS: "100.5" })).toBe(60000);
+    expect(resolveRequestTimeoutMs({ RELEASE_NOTES_REQUEST_TIMEOUT_MS: "nope" })).toBe(60000);
+    expect(resolveRequestTimeoutMs({})).toBe(60000);
+  });
+});
+
 describe("summarize-release-notes parseHighlights", () => {
   it("rejects multi-line and oversized highlight items (markdown injection guard)", () => {
     expect(
@@ -213,6 +230,7 @@ describe("summarize-release-notes.mjs CLI", () => {
         RELEASE_NOTES_BASE_URL: "http://release-notes-test.invalid/v1",
         RELEASE_NOTES_API_KEY: "k",
         RELEASE_NOTES_MODEL: "m",
+        RELEASE_NOTES_REQUEST_TIMEOUT_MS: "100",
       },
       timeout: 30000,
     });

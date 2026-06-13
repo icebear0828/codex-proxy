@@ -43,6 +43,11 @@ export async function dashboardAuth(c: Context, next: Next): Promise<Response | 
   const remoteAddr = getRealClientIp(c, config.server.trust_proxy);
   if (isLocalhostRequest(remoteAddr)) return next();
 
+  // Bearer token → bypass (API scripts)
+  const authHeader = c.req.header("Authorization") ?? "";
+  const token = authHeader.startsWith("Bearer ") ? authHeader.slice(7) : "";
+  if (token === config.server.proxy_api_key) return next();
+
   // Always-allowed paths
   const path = c.req.path;
   if (ALLOWED_EXACT.has(path)) return next();

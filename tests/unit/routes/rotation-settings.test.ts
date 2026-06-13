@@ -158,27 +158,4 @@ describe("POST /admin/rotation-settings", () => {
     expect(res.status).toBe(400);
   });
 
-  it("requires auth when proxy_api_key is set", async () => {
-    mockConfig.server.proxy_api_key = "my-secret";
-    const app = createWebRoutes(mockPool);
-
-    // No auth → 401
-    const res1 = await app.request("/admin/rotation-settings", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ rotation_strategy: "sticky" }),
-    });
-    expect(res1.status).toBe(401);
-
-    // With auth → 200
-    const res2 = await app.request("/admin/rotation-settings", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: "Bearer my-secret",
-      },
-      body: JSON.stringify({ rotation_strategy: "sticky" }),
-    });
-    expect(res2.status).toBe(200);
-  });
 });

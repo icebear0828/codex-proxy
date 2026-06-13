@@ -10,7 +10,7 @@ import fs from "fs";
 import { fileURLToPath } from "url";
 
 const CJK_RE = /[一-鿿]/;
-const REQUEST_TIMEOUT_MS = 60_000;
+const DEFAULT_REQUEST_TIMEOUT_MS = 60_000;
 const MAX_HIGHLIGHTS = 10;
 const CHANGELOG_CONTEXT_CHARS = 8000;
 
@@ -112,9 +112,17 @@ export function renderFallback(commitLines) {
   return sections.join("\n\n");
 }
 
-export async function callLLM({ baseUrl, apiKey, model, prompt, fetchImpl = fetch }) {
+export function resolveRequestTimeoutMs(env) {
+  const raw = env.RELEASE_NOTES_REQUEST_TIMEOUT_MS?.trim();
+  if (!raw) return DEFAULT_REQUEST_TIMEOUT_MS;
+  if (!/^\d+$/.test(raw)) return DEFAULT_REQUEST_TIMEOUT_MS;
+  const parsed = Number(raw);
+  return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : DEFAULT_REQUEST_TIMEOUT_MS;
+}
+
+export async function callLLM({ baseUrl, apiKey, model, prompt, fetchImpl = fetch, requestTimeoutMs = DEFAULT_REQUEST_TIMEOUT_MS }) {
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+  const timer = setTimeout(() => controller.abort(), requestTimeoutMs);
   try {
     const response = await fetchImpl(`${baseUrl.replace(/\/$/, "")}/chat/completions`, {
       method: "POST",
@@ -159,9 +167,10 @@ export async function generateNotes({ tag, input, env, fetchImpl = fetch, change
   const model = env.RELEASE_NOTES_MODEL?.trim();
   if (baseUrl && apiKey && model) {
     const prompt = buildPrompt(tag, commitLines, changelogExcerpt);
+    const requestTimeoutMs = resolveRequestTimeoutMs(env);
     for (let attempt = 0; attempt < 2; attempt++) {
       try {
-        const raw = await callLLM({ baseUrl, apiKey, model, prompt, fetchImpl });
+        const raw = await callLLM({ baseUrl, apiKey, model, prompt, fetchImpl, requestTimeoutMs });
         const highlights = parseHighlights(raw);
         if (highlights) return renderNotes(highlights, commitLines);
         console.error(`[release-notes] attempt ${attempt + 1}: LLM output failed validation`);
