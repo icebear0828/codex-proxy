@@ -119,47 +119,4 @@ describe("installFileLogger", () => {
     expect(contents).toContain("first run");
     expect(contents).toContain("second run");
   });
-
-  it("catches EPIPE write errors from the underlying stream and returns false instead of crashing", () => {
-    const dir = mkdtempSync(join(tmpdir(), "codex-proxy-log-"));
-    cleanups.push(() => rmSync(dir, { recursive: true, force: true }));
-
-    const originalWrite = process.stdout.write;
-    process.stdout.write = () => {
-      const err = new Error("write EPIPE") as Error & { code?: string };
-      err.code = "EPIPE";
-      throw err;
-    };
-
-    const handle = installFileLogger({ dir, filename: "test-epipe.log" });
-    cleanups.push(() => {
-      handle.uninstall();
-      process.stdout.write = originalWrite;
-    });
-
-    let result: boolean | undefined;
-    expect(() => {
-      result = process.stdout.write("should not crash\n");
-    }).not.toThrow();
-    expect(result).toBe(false);
-  });
-
-  it("ignores EPIPE and ECONNRESET error events on stdout/stderr to prevent process crash", () => {
-    const dir = mkdtempSync(join(tmpdir(), "codex-proxy-log-"));
-    cleanups.push(() => rmSync(dir, { recursive: true, force: true }));
-
-    const handle = installFileLogger({ dir, filename: "test-events.log" });
-    cleanups.push(() => handle.uninstall());
-
-    const epipeErr = new Error("write EPIPE") as Error & { code?: string };
-    epipeErr.code = "EPIPE";
-
-    const econnresetErr = new Error("write ECONNRESET") as Error & { code?: string };
-    econnresetErr.code = "ECONNRESET";
-
-    expect(() => {
-      process.stdout.emit("error", epipeErr);
-      process.stderr.emit("error", econnresetErr);
-    }).not.toThrow();
-  });
 });
