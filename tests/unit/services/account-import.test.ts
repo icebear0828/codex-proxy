@@ -117,10 +117,6 @@ describe("AccountImportService", () => {
         pool,
         makeScheduler(),
         makeDeps({
-          validateToken: () => ({
-            valid: false,
-            error: "Token missing chatgpt_account_id claim",
-          }),
           refreshToken: async () => ({
             access_token: jwtWithoutAccountId,
             refresh_token: "new_rt",
@@ -155,10 +151,6 @@ describe("AccountImportService", () => {
         pool,
         makeScheduler(),
         makeDeps({
-          validateToken: () => ({
-            valid: false,
-            error: "Token missing chatgpt_account_id claim",
-          }),
           refreshToken: async () => ({
             access_token: accessToken,
             id_token: idToken,
@@ -193,10 +185,6 @@ describe("AccountImportService", () => {
         pool,
         makeScheduler(),
         makeDeps({
-          validateToken: () => ({
-            valid: false,
-            error: "Token missing chatgpt_account_id claim",
-          }),
           refreshToken: async () => ({
             access_token: accessToken,
             // no id_token either
@@ -274,10 +262,6 @@ describe("AccountImportService", () => {
         pool,
         makeScheduler(),
         makeDeps({
-          validateToken: () => ({
-            valid: false,
-            error: "Token missing chatgpt_account_id claim",
-          }),
           refreshToken: async () => ({
             access_token: tokens[refreshCount++],
             refresh_token: `new_rt_${refreshCount}`,

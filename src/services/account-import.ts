@@ -6,6 +6,7 @@
 import type { AccountPool } from "../auth/account-pool.js";
 import type { AccountInfo } from "../auth/types.js";
 import {
+  decodeJwtPayload,
   extractChatGptAccountId,
   extractCodexTokenMetadata,
   isTokenExpired,
@@ -198,8 +199,11 @@ export class AccountImportService {
       const tokens = await this.deps.refreshToken(rt, proxyUrl);
       const accessToken = tokens.access_token.trim();
       const metadata = extractCodexTokenMetadata(accessToken, tokens.id_token);
-      const v = this.deps.validateToken(accessToken);
-      if (!v.valid && !this.canAcceptRtExchangeToken(v.error, accessToken)) {
+      // Bypass validateToken for RT exchange — the strict chatgpt_account_id check
+      // would reject tokens that OpenAI legitimately returns without that claim.
+      // Only verify the token is decodable and not expired.
+      const v = this.validateRtExchangeToken(accessToken);
+      if (!v.valid) {
         return {
           ok: false,
           error: `Refresh token exchange succeeded but token invalid: ${v.error}`,
@@ -225,17 +229,14 @@ export class AccountImportService {
     }
   }
 
-  private canAcceptRtExchangeToken(
-    validationError: string | undefined,
-    accessToken: string,
-  ): boolean {
-    // RT exchange succeeded and the returned token is fresh — accept it even
-    // without chatgpt_account_id.  OpenAI may omit the claim from refreshed
-    // access_tokens; the id_token (if returned with scope=openid) may carry
-    // it instead, but we should not block import when neither has it.
-    return (
-      validationError === "Token missing chatgpt_account_id claim" &&
-      !isTokenExpired(accessToken)
-    );
+  private validateRtExchangeToken(token: string): { valid: boolean; error?: string } {
+    const payload = decodeJwtPayload(token);
+    if (!payload) {
+      return { valid: false, error: "Invalid JWT format — could not decode payload" };
+    }
+    if (isTokenExpired(token)) {
+      return { valid: false, error: "Token is expired" };
+    }
+    return { valid: true };
   }
 }
