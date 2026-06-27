@@ -438,7 +438,7 @@ function KeyRow({ entry, onDelete, onToggle }: {
           isActive ? "bg-primary" : "bg-slate-300 dark:bg-slate-600"
         }`}
       >
-        <span class={`absolute top-0.5 w-3.5 h-3.5 rounded-full bg-white shadow transition-transform ${
+        <span class={`absolute left-0 top-0.5 w-3.5 h-3.5 rounded-full bg-white shadow transition-transform ${
           isActive ? "translate-x-[16px]" : "translate-x-0.5"
         }`} />
       </button>
