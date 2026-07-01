@@ -1,0 +1,19 @@
+# Copy to data-grok-claude/local.yaml (gitignored). Claude Code -> Grok LB :2477
+server:
+  host: 127.0.0.1
+  proxy_api_key: change-me-claude-grok-local
+model:
+  default: grok-composer-2.5-fast
+  aliases:
+    claude-sonnet-4-20250514: grok-composer-2.5-fast
+    claude-sonnet-4-6: grok-composer-2.5-fast
+    claude-sonnet-4-5: grok-composer-2.5-fast
+    claude-opus-4-20250514: grok-build
+    claude-opus-4-6: grok-build
+    claude-opus-4-7: grok-build
+    claude-opus-4-5: grok-build
+    claude-opus-4-1: grok-build
+    claude-haiku-4-20250514: grok-composer-2.5-fast
+    claude-haiku-4-5: grok-composer-2.5-fast
+    claude-3-5-sonnet-20241022: grok-composer-2.5-fast
+    claude-3-5-haiku-20241022: grok-composer-2.5-fast

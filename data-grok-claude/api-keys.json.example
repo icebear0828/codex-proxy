@@ -1,0 +1,30 @@
+{
+  "keys": [
+    {
+      "id": "grok2477composer01",
+      "provider": "custom",
+      "model": "grok-composer-2.5-fast",
+      "apiKey": "lb-local-placeholder",
+      "baseUrl": "http://127.0.0.1:2477/v1",
+      "label": "Grok LB pool 2477",
+      "capabilities": ["chat"],
+      "wire": "responses",
+      "status": "active",
+      "addedAt": "2026-06-25T00:00:00.000Z",
+      "lastUsedAt": null
+    },
+    {
+      "id": "grok2477build00001",
+      "provider": "custom",
+      "model": "grok-build",
+      "apiKey": "lb-local-placeholder",
+      "baseUrl": "http://127.0.0.1:2477/v1",
+      "label": "Grok LB pool 2477 (build)",
+      "capabilities": ["chat"],
+      "wire": "responses",
+      "status": "active",
+      "addedAt": "2026-06-25T00:00:00.000Z",
+      "lastUsedAt": null
+    }
+  ]
+}
