@@ -282,6 +282,7 @@ export async function handleProxyRequest(options: HandleProxyRequestOptions): Pr
           turnState: upstreamTurnState,
           usageHint: implicitResume.getUsageHint(),
           variantHash: sessionContext.variantHash,
+          implicitResumeActive: implicitResume.isActive(),
         });
       }
 

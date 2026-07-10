@@ -5,6 +5,7 @@ export interface ResponseMetadataCollector {
   responseFunctionCallIds: Set<string>;
   reasoningReplayItems: ReasoningReplayItem[];
   invalidReasoningReplay: boolean;
+  prematureClose: boolean;
   onResponseMetadata: (metadata: ResponseMetadata) => void;
 }
 
@@ -15,6 +16,7 @@ export function createResponseMetadataCollector(): ResponseMetadataCollector {
     responseFunctionCallIds,
     reasoningReplayItems,
     invalidReasoningReplay: false,
+    prematureClose: false,
     onResponseMetadata: (metadata) => {
       for (const callId of metadata.functionCallIds ?? []) {
         responseFunctionCallIds.add(callId);
@@ -22,6 +24,9 @@ export function createResponseMetadataCollector(): ResponseMetadataCollector {
       reasoningReplayItems.push(...(metadata.reasoningReplayItems ?? []));
       if (metadata.invalidReasoningReplay) {
         collector.invalidReasoningReplay = true;
+      }
+      if (metadata.prematureClose) {
+        collector.prematureClose = true;
       }
     },
   };

@@ -208,6 +208,7 @@ export async function* streamPassthrough(
           responseId,
           detail,
         });
+        onResponseMetadata?.({ prematureClose: true });
         yield buildPrematureCloseFailedEvent(responseId, detail);
         return;
       }
@@ -334,6 +335,7 @@ export async function* streamPassthrough(
       variantHash: streamContext?.variantHash,
       responseId,
     });
+    onResponseMetadata?.({ prematureClose: true });
     yield buildPrematureCloseFailedEvent(responseId);
   }
 }

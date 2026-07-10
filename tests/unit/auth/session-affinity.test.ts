@@ -203,6 +203,36 @@ describe("SessionAffinityMap", () => {
     expect(map.lookupConversationId("resp_abc")).toBeNull();
   });
 
+  // forgetConversation — 静默断流后整链失效
+  describe("forgetConversation", () => {
+    it("drops every entry of the conversation so lookup cannot fall back to an older dead id", () => {
+      map = new SessionAffinityMap();
+      map.record("resp_1", "entry_1", "conv_a");
+      map.record("resp_2", "entry_1", "conv_a");
+      map.record("resp_other", "entry_1", "conv_b");
+
+      expect(map.forgetConversation("conv_a")).toBe(2);
+      expect(map.lookupLatestResponseIdByConversationId("conv_a")).toBeNull();
+      // 其它会话不受影响
+      expect(map.lookupLatestResponseIdByConversationId("conv_b")).toBe("resp_other");
+    });
+
+    it("scopes to variantHash when provided (主对话失效不殃及 subagent 链)", () => {
+      map = new SessionAffinityMap();
+      map.record("resp_main", "entry_1", "conv_a", undefined, undefined, undefined, undefined, "vh_main");
+      map.record("resp_sub", "entry_1", "conv_a", undefined, undefined, undefined, undefined, "vh_sub");
+
+      expect(map.forgetConversation("conv_a", "vh_main")).toBe(1);
+      expect(map.lookupLatestResponseIdByConversationId("conv_a", undefined, "vh_main")).toBeNull();
+      expect(map.lookupLatestResponseIdByConversationId("conv_a", undefined, "vh_sub")).toBe("resp_sub");
+    });
+
+    it("returns 0 for unknown conversations", () => {
+      map = new SessionAffinityMap();
+      expect(map.forgetConversation("conv_missing")).toBe(0);
+    });
+  });
+
   // turnState tracking
   describe("turnState tracking", () => {
     it("lookupTurnState returns recorded turnState", () => {

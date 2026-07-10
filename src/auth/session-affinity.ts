@@ -136,6 +136,23 @@ export class SessionAffinityMap {
     this.map.delete(responseId);
   }
 
+  /** Drop every response recorded for a conversation, optionally scoped to a
+   *  variantHash. Called when a resumed stream dies silently before its
+   *  terminal event: once the pooled WS has rotated, every prev id in the
+   *  chain is not_found upstream, so forgetting only the latest entry would
+   *  just make the next lookup fall back to an equally dead older id.
+   *  Returns the number of entries dropped. */
+  forgetConversation(conversationId: string, variantHash?: string): number {
+    let dropped = 0;
+    for (const [responseId, entry] of this.map) {
+      if (entry.conversationId !== conversationId) continue;
+      if (variantHash !== undefined && entry.variantHash !== variantHash) continue;
+      this.map.delete(responseId);
+      dropped++;
+    }
+    return dropped;
+  }
+
   private getEntry(responseId: string): AffinityEntry | null {
     const entry = this.map.get(responseId);
     if (!entry) return null;

@@ -13,6 +13,7 @@ import { streamResponse } from "./response-processor.js";
 import { createResponseMetadataCollector } from "./response-metadata-collector.js";
 import { logProxyUsage } from "./proxy-usage-log.js";
 import { getReasoningReplayCache } from "../../proxy/reasoning-replay-cache.js";
+import { getWsPool } from "../../proxy/ws-pool.js";
 
 export interface HandleStreamingOptions {
   c: Context;
@@ -30,6 +31,13 @@ export interface HandleStreamingOptions {
   turnState?: string;
   usageHint?: UsageHint;
   variantHash: string;
+  /** Whether this attempt was sent with an implicit-resume
+   *  `previous_response_id`. Needed to break the silent-death retry loop:
+   *  if the upstream stream ends without a terminal event while resume was
+   *  active, the cached prev id chain is poisoned and must be dropped so the
+   *  client's retry performs a full-input replay instead of resending the
+   *  same dead delta. */
+  implicitResumeActive?: boolean;
 }
 
 export function handleStreaming(options: HandleStreamingOptions): Response {
@@ -49,6 +57,7 @@ export function handleStreaming(options: HandleStreamingOptions): Response {
     turnState,
     usageHint,
     variantHash,
+    implicitResumeActive = false,
   } = options;
 
   c.header("Content-Type", "text/event-stream");
@@ -163,6 +172,27 @@ export function handleStreaming(options: HandleStreamingOptions): Response {
         abortController.abort();
       }
       recordStreamAffinity();
+      if (
+        implicitResumeActive &&
+        metadataCollector.prematureClose &&
+        !responseCompleted &&
+        !clientAborted
+      ) {
+        // Silent upstream death on a resumed stream: the prev id chain for
+        // this conversation is poisoned (the backend that owned it is gone or
+        // refuses this model), and the pooled WS may keep rehashing to the
+        // same bad backend. Drop both so the client's automatic retry does a
+        // full-input replay over a fresh connection instead of looping.
+        const dropped = affinityMap.forgetConversation(conversationId, variantHash);
+        getWsPool().evictByEntryId(capturedEntryId);
+        console.warn(
+          `[implicit-resume-poison] rid=${requestId.slice(0, 8)} tag=${fmt.tag} model=${req.model}` +
+            ` premature close on resumed stream — dropped ${dropped} affinity entries` +
+            ` conv=${conversationId.slice(0, 8)} vh=${variantHash.slice(0, 12)}` +
+            ` and evicted pooled WS for entry=${capturedEntryId.slice(0, 8)};` +
+            ` next retry will replay full input on a fresh connection`,
+        );
+      }
       if (streamCompletedWithoutError) clearCfChallengeCooldown(capturedEntryId);
       if (usageInfo) {
         logProxyUsage({
