@@ -244,3 +244,66 @@ describe("getInlineFunctionCallIds / isSelfContainedReplay", () => {
     ])).toBe(false);
   });
 });
+
+describe("custom_tool_call (gpt-5.6 unified exec) support", () => {
+  it("getContinuationInputStartIndex 把 custom_tool_call 当作模型输出锚点（回归：锚点卡死导致上下文膨胀超窗）", async () => {
+    const { getContinuationInputStartIndex } = await import("@src/routes/shared/proxy-session-helpers.js");
+    const start = getContinuationInputStartIndex([
+      { role: "user", content: "hi" },
+      { role: "assistant", content: "ok" },
+      { type: "custom_tool_call", call_id: "c1", name: "exec", input: "{}" },
+      { type: "custom_tool_call_output", call_id: "c1", output: "{}" },
+      { type: "custom_tool_call", call_id: "c2", name: "exec", input: "{}" },
+      { type: "custom_tool_call_output", call_id: "c2", output: "{}" },
+    ]);
+    // 锚点应停在最后一个 custom_tool_call 之后，delta 只含它的 output
+    expect(start).toBe(5);
+  });
+
+  it("getContinuationInputStartIndex 对 function_call 行为不变", async () => {
+    const { getContinuationInputStartIndex } = await import("@src/routes/shared/proxy-session-helpers.js");
+    const start = getContinuationInputStartIndex([
+      { role: "user", content: "hi" },
+      { type: "function_call", call_id: "c1", name: "read", arguments: "{}" },
+      { type: "function_call_output", call_id: "c1", output: "{}" },
+    ]);
+    expect(start).toBe(2);
+  });
+
+  it("getContinuationInputStartIndex 不把 custom_tool_call_output（客户端输入）当锚点", async () => {
+    const { getContinuationInputStartIndex } = await import("@src/routes/shared/proxy-session-helpers.js");
+    const start = getContinuationInputStartIndex([
+      { role: "user", content: "hi" },
+      { type: "custom_tool_call_output", call_id: "c_prev", output: "{}" },
+    ]);
+    expect(start).toBe(0);
+  });
+
+  it("getFunctionCallOutputIds 同时收集 function_call_output 与 custom_tool_call_output", async () => {
+    const { getFunctionCallOutputIds } = await import("@src/routes/shared/proxy-session-helpers.js");
+    const ids = getFunctionCallOutputIds([
+      { role: "user", content: "hi" },
+      { type: "function_call_output", call_id: "c_fn", output: "{}" },
+      { type: "custom_tool_call_output", call_id: "c_custom", output: "{}" },
+    ]);
+    expect(ids).toEqual(["c_fn", "c_custom"]);
+  });
+
+  it("getInlineFunctionCallIds 同时收集 function_call 与 custom_tool_call 的 call_id", async () => {
+    const { getInlineFunctionCallIds } = await import("@src/routes/shared/proxy-session-helpers.js");
+    const ids = getInlineFunctionCallIds([
+      { type: "function_call", call_id: "c_fn", name: "read", arguments: "{}" },
+      { type: "custom_tool_call", call_id: "c_custom", name: "exec", input: "{}" },
+      { type: "custom_tool_call_output", call_id: "c_custom", output: "{}" },
+    ]);
+    expect(ids).toEqual(["c_fn", "c_custom"]);
+  });
+
+  it("isSelfContainedReplay 认可 custom_tool_call / custom_tool_call_output 配对", async () => {
+    const { isSelfContainedReplay } = await import("@src/routes/shared/proxy-session-helpers.js");
+    expect(isSelfContainedReplay([
+      { type: "custom_tool_call", call_id: "c1", name: "exec", input: "{}" },
+      { type: "custom_tool_call_output", call_id: "c1", output: "{}" },
+    ])).toBe(true);
+  });
+});

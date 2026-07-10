@@ -23,4 +23,19 @@ describe("createResponseMetadataCollector", () => {
     ]);
     expect(collector.invalidReasoningReplay).toBe(true);
   });
+
+  it("latches prematureClose and terminalFailure flags independently", () => {
+    const collector = createResponseMetadataCollector();
+    expect(collector.prematureClose).toBe(false);
+    expect(collector.terminalFailure).toBe(false);
+
+    collector.onResponseMetadata({ terminalFailure: true });
+    expect(collector.terminalFailure).toBe(true);
+    expect(collector.prematureClose).toBe(false);
+
+    collector.onResponseMetadata({ prematureClose: true });
+    collector.onResponseMetadata({});
+    expect(collector.prematureClose).toBe(true);
+    expect(collector.terminalFailure).toBe(true);
+  });
 });

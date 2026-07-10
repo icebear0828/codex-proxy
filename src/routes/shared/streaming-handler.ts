@@ -32,11 +32,12 @@ export interface HandleStreamingOptions {
   usageHint?: UsageHint;
   variantHash: string;
   /** Whether this attempt was sent with an implicit-resume
-   *  `previous_response_id`. Needed to break the silent-death retry loop:
-   *  if the upstream stream ends without a terminal event while resume was
-   *  active, the cached prev id chain is poisoned and must be dropped so the
-   *  client's retry performs a full-input replay instead of resending the
-   *  same dead delta. */
+   *  `previous_response_id`. Needed to break the dead-chain retry loop:
+   *  if the upstream stream ends without response.completed while resume was
+   *  active — silent close OR terminal error/response.failed frame — the
+   *  cached prev id chain is poisoned and must be dropped so the client's
+   *  retry performs a full-input replay instead of resending the same dead
+   *  delta. */
   implicitResumeActive?: boolean;
 }
 
@@ -172,22 +173,24 @@ export function handleStreaming(options: HandleStreamingOptions): Response {
         abortController.abort();
       }
       recordStreamAffinity();
-      if (
-        implicitResumeActive &&
-        metadataCollector.prematureClose &&
-        !responseCompleted &&
-        !clientAborted
-      ) {
-        // Silent upstream death on a resumed stream: the prev id chain for
-        // this conversation is poisoned (the backend that owned it is gone or
-        // refuses this model), and the pooled WS may keep rehashing to the
-        // same bad backend. Drop both so the client's automatic retry does a
-        // full-input replay over a fresh connection instead of looping.
+      if (implicitResumeActive && !responseCompleted && !clientAborted) {
+        // A resumed stream that ends without response.completed — whether via
+        // silent close, an upstream terminal error/response.failed frame, or a
+        // transport exception — leaves the prev id chain poisoned: the
+        // client's retry would resend the same delta against the same dead
+        // prev id and loop. The pooled WS may also keep rehashing to the same
+        // bad backend. Drop both so the retry does a full-input replay over a
+        // fresh connection instead.
+        const cause = metadataCollector.terminalFailure
+          ? "terminal failure frame"
+          : metadataCollector.prematureClose
+            ? "premature close"
+            : "stream ended without response.completed";
         const dropped = affinityMap.forgetConversation(conversationId, variantHash);
         getWsPool().evictByEntryId(capturedEntryId);
         console.warn(
           `[implicit-resume-poison] rid=${requestId.slice(0, 8)} tag=${fmt.tag} model=${req.model}` +
-            ` premature close on resumed stream — dropped ${dropped} affinity entries` +
+            ` ${cause} on resumed stream — dropped ${dropped} affinity entries` +
             ` conv=${conversationId.slice(0, 8)} vh=${variantHash.slice(0, 12)}` +
             ` and evicted pooled WS for entry=${capturedEntryId.slice(0, 8)};` +
             ` next retry will replay full input on a fresh connection`,

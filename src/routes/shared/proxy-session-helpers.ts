@@ -151,6 +151,21 @@ export function shouldReplayFullInputAfterImplicitResumeError(
   return implicitResumeActive && err instanceof PreviousResponseWebSocketError;
 }
 
+/** Typed input items that are model output. The implicit-resume continuation
+ *  delta starts after the LAST model-output item: everything that follows it
+ *  (tool outputs, new user messages) is client-provided and must be re-sent
+ *  alongside `previous_response_id`. This set must cover every tool-call item
+ *  type a model can emit — gpt-5.6's unified exec emits `custom_tool_call`
+ *  instead of `function_call`, and before it was listed here the anchor froze
+ *  at the last assistant message: every resumed request re-sent an
+ *  ever-growing input tail on top of a prev chain that already contained
+ *  those items, ballooning server-side context until the window overflowed
+ *  and the upstream fast-failed every retry. */
+const MODEL_OUTPUT_ITEM_TYPES = new Set(["function_call", "custom_tool_call", "local_shell_call"]);
+
+/** Client-provided tool result item types, paired with the call types above. */
+const TOOL_CALL_OUTPUT_ITEM_TYPES = new Set(["function_call_output", "custom_tool_call_output"]);
+
 export function getContinuationInputStartIndex(input: CodexResponsesRequest["input"]): number {
   let lastModelOutputIndex = -1;
   for (let i = 0; i < input.length; i++) {
@@ -159,7 +174,7 @@ export function getContinuationInputStartIndex(input: CodexResponsesRequest["inp
       if (item.role === "assistant") lastModelOutputIndex = i;
       continue;
     }
-    if (item.type === "function_call") {
+    if (MODEL_OUTPUT_ITEM_TYPES.has(item.type)) {
       lastModelOutputIndex = i;
     }
   }
@@ -167,24 +182,30 @@ export function getContinuationInputStartIndex(input: CodexResponsesRequest["inp
 }
 
 export function getFunctionCallOutputIds(input: CodexResponsesRequest["input"]): string[] {
-  return input
-    .filter((item): item is { type: "function_call_output"; call_id: string; output: string } =>
-      !("role" in item) && item.type === "function_call_output")
-    .map((item) => item.call_id);
+  const ids: string[] = [];
+  for (const item of input) {
+    if ("role" in item || !TOOL_CALL_OUTPUT_ITEM_TYPES.has(item.type)) continue;
+    const callId = (item as { call_id?: unknown }).call_id;
+    if (typeof callId === "string" && callId) ids.push(callId);
+  }
+  return ids;
 }
 
-/** Collect call_ids of `function_call` items inlined in the request input.
- *  Codex CLI emits these when doing a client-side full-history replay (e.g.
- *  after /compact or error recovery): the input carries the historical
- *  function_call entries paired with their function_call_output entries, so
- *  the proxy must not try to validate those outputs against session-affinity's
- *  stored ids — they reference function_calls that live in the input itself,
- *  not in any prior upstream response we tracked. */
+/** Collect call_ids of tool-call items (`function_call` / `custom_tool_call`)
+ *  inlined in the request input. Codex CLI emits these when doing a
+ *  client-side full-history replay (e.g. after /compact or error recovery):
+ *  the input carries the historical call entries paired with their output
+ *  entries, so the proxy must not try to validate those outputs against
+ *  session-affinity's stored ids — they reference calls that live in the
+ *  input itself, not in any prior upstream response we tracked. */
 export function getInlineFunctionCallIds(input: CodexResponsesRequest["input"]): string[] {
-  return input
-    .filter((item): item is { type: "function_call"; call_id: string; name: string; arguments: string } =>
-      !("role" in item) && item.type === "function_call" && typeof item.call_id === "string")
-    .map((item) => item.call_id);
+  const ids: string[] = [];
+  for (const item of input) {
+    if ("role" in item || !MODEL_OUTPUT_ITEM_TYPES.has(item.type)) continue;
+    const callId = (item as { call_id?: unknown }).call_id;
+    if (typeof callId === "string" && callId) ids.push(callId);
+  }
+  return ids;
 }
 
 /** True when every function_call_output in the input is paired with a

@@ -317,6 +317,57 @@ describe("streamPassthrough premature close handling", () => {
     ]);
   });
 
+  it("logs and flags upstream terminal failure frames (error / response.failed) instead of passing them silently", async () => {
+    const metadataCalls: Array<Record<string, unknown>> = [];
+    const api = createMockApi([
+      { event: "response.created", data: { response: { id: "resp_term_fail" } } },
+      {
+        event: "response.failed",
+        data: {
+          type: "response.failed",
+          response: {
+            id: "resp_term_fail",
+            status: "failed",
+            error: { code: "context_length_exceeded", message: "input exceeds context window" },
+          },
+        },
+      },
+    ]);
+
+    for await (const _chunk of streamPassthrough(
+      api as never,
+      new Response("ok"),
+      "test-model",
+      () => {},
+      () => {},
+      undefined,
+      {
+        requestId: "rid-term-fail",
+        tag: "Responses",
+        model: "gpt-5.6",
+        accountEntryId: "e-9",
+        variantHash: "vh-term",
+      },
+      undefined,
+      (metadata) => metadataCalls.push(metadata as Record<string, unknown>),
+    )) {
+      // Drain the generator.
+    }
+
+    expect(metadataCalls.some((m) => m.terminalFailure === true)).toBe(true);
+    expect(recordedCloseEvents).toHaveLength(1);
+    expect(recordedCloseEvents[0]).toMatchObject({
+      kind: "upstream-error",
+      requestId: "rid-term-fail",
+      tag: "Responses",
+      model: "gpt-5.6",
+      accountEntryId: "e-9",
+      variantHash: "vh-term",
+      responseId: "resp_term_fail",
+    });
+    expect(recordedCloseEvents[0].detail).toMatch(/context_length_exceeded/);
+  });
+
   it("propagates local callback errors instead of synthesizing response.failed", async () => {
     const api = createMockApi([
       { event: "response.created", data: { response: { id: "resp_callback" } } },

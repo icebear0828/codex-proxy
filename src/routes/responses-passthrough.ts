@@ -221,11 +221,33 @@ export async function* streamPassthrough(
       const raw = next.value;
       responseId = extractResponseIdFromEventData(raw.data) ?? responseId;
       if (isTerminalResponsesEvent(raw.event)) sawTerminal = true;
-      if (
-        (raw.event === "error" || raw.event === "response.failed") &&
-        containsInvalidEncryptedContentSignal(raw.data)
-      ) {
-        onResponseMetadata?.({ invalidReasoningReplay: true });
+      if (raw.event === "error" || raw.event === "response.failed") {
+        // Terminal failure frames used to pass through with zero trace: no log
+        // line, no Errors-tab entry, no metadata flag. When implicit resume was
+        // active that made a fast-failing upstream (e.g. context-window
+        // overflow on the prev id chain) look like a healthy stream, so the
+        // poisoned chain was never dropped and the client retried into the
+        // same failure indefinitely.
+        const err = extractCodexError(raw.data);
+        console.warn(
+          `[Responses] upstream terminal ${raw.event} responseId=${responseId ?? "unknown"}: ${err.code}: ${err.message}`,
+        );
+        recordStreamCloseEvent({
+          kind: "upstream-error",
+          tag: streamContext?.tag ?? "Responses",
+          requestId: streamContext?.requestId,
+          provider: streamContext?.provider,
+          path: streamContext?.path,
+          model: streamContext?.model ?? model,
+          accountEntryId: streamContext?.accountEntryId,
+          variantHash: streamContext?.variantHash,
+          responseId,
+          detail: `${raw.event}: ${err.code}: ${err.message}`,
+        });
+        onResponseMetadata?.({ terminalFailure: true });
+        if (containsInvalidEncryptedContentSignal(raw.data)) {
+          onResponseMetadata?.({ invalidReasoningReplay: true });
+        }
       }
 
       if (tupleTextBuffer !== null && raw.event === "response.output_text.delta") {
@@ -275,7 +297,10 @@ export async function* streamPassthrough(
 
       if (raw.event === "response.output_item.done") {
         const data = raw.data;
-        if (isRecord(data) && isRecord(data.item) && data.item.type === "function_call") {
+        if (
+          isRecord(data) && isRecord(data.item) &&
+          (data.item.type === "function_call" || data.item.type === "custom_tool_call")
+        ) {
           const callId = data.item.call_id;
           if (typeof callId === "string" && callId) streamFunctionCallIds.add(callId);
         }
@@ -378,7 +403,10 @@ export async function collectPassthrough(
       if (raw.event === "response.output_item.done" && isRecord(data.item)) {
         outputItems.push(data.item);
         appendReplayArtifacts(collectReplayItems, [data.item]);
-        if (data.item.type === "function_call" && typeof data.item.call_id === "string" && data.item.call_id) {
+        if (
+          (data.item.type === "function_call" || data.item.type === "custom_tool_call") &&
+          typeof data.item.call_id === "string" && data.item.call_id
+        ) {
           collectFunctionCallIds.add(data.item.call_id as string);
         }
       }

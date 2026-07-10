@@ -121,6 +121,8 @@ export type CodexInputItem =
   | { role: "developer"; content: string }
   | { type: "function_call"; id?: string; call_id: string; name: string; arguments: string }
   | { type: "function_call_output"; call_id: string; output: string }
+  | { type: "custom_tool_call"; id?: string; call_id: string; name: string; input: string; status?: string }
+  | { type: "custom_tool_call_output"; call_id: string; output: string }
   | CodexReasoningItem
   | CodexCompactionItem;
 
