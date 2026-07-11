@@ -403,6 +403,67 @@ describe("translateAnthropicToCodexRequest", () => {
     });
   });
 
+  describe("output_config effort", () => {
+    it.each(["low", "medium", "high", "xhigh", "max"])(
+      "forwards %s unchanged",
+      (effort) => {
+        const result = translateAnthropicToCodexRequest(
+          makeRequest({ output_config: { effort } }),
+        );
+
+        expect(result.reasoning).toEqual({ effort, summary: "auto" });
+      },
+    );
+
+    it.each(["ultra", "ultracode"])("maps %s to Codex xhigh", (effort) => {
+      const result = translateAnthropicToCodexRequest(
+        makeRequest({ output_config: { effort } }),
+      );
+
+      expect(result.reasoning).toEqual({ effort: "xhigh", summary: "auto" });
+    });
+
+    it("takes priority over thinking budget and model suffix", () => {
+      const result = translateAnthropicToCodexRequest(
+        makeRequest({
+          model: "gpt-5.4-high",
+          thinking: { type: "enabled", budget_tokens: 15000 },
+          output_config: { effort: "ultra" },
+        }),
+      );
+
+      expect(result.reasoning?.effort).toBe("xhigh");
+    });
+
+    it.each(["low", "medium", "high", "xhigh", "max"])(
+      "overrides the configured default with %s",
+      (effort) => {
+        const result = translateAnthropicToCodexRequest(
+          makeRequest({ output_config: { effort } }),
+          {
+            default_reasoning_effort: effort === "high" ? "low" : "high",
+            default_service_tier: null,
+            inject_desktop_context: false,
+            suppress_desktop_directives: false,
+          },
+        );
+
+        expect(result.reasoning?.effort).toBe(effort);
+      },
+    );
+
+    it("keeps xhigh unchanged when user content mentions ultracode", () => {
+      const result = translateAnthropicToCodexRequest(
+        makeRequest({
+          messages: [{ role: "user", content: "let me try ultracode mode" }],
+          output_config: { effort: "xhigh" },
+        }),
+      );
+
+      expect(result.reasoning?.effort).toBe("xhigh");
+    });
+  });
+
   // ── Thinking → reasoning effort ──────────────────────────────────────
 
   describe("thinking to reasoning effort", () => {

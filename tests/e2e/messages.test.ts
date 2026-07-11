@@ -232,6 +232,41 @@ describe("E2E: POST /v1/messages", () => {
     expect(typeof usage.output_tokens).toBe("number");
   });
 
+  it.each([
+    ["low", "low"],
+    ["medium", "medium"],
+    ["high", "high"],
+    ["xhigh", "xhigh"],
+    ["max", "max"],
+    ["ultra", "xhigh"],
+    ["ultracode", "xhigh"],
+  ])(
+    "maps output_config effort %s to Codex effort %s",
+    async (effort, expectedEffort) => {
+      const res = await messagesRequest(defaultBody({
+        model: "gpt-5.6-sol",
+        output_config: { effort },
+      }));
+      expect(res.status).toBe(200);
+
+      const transportBody = getLastTransportBody();
+      if (!transportBody) {
+        throw new Error("Expected upstream transport body to be captured");
+      }
+
+      const upstreamRequest = JSON.parse(transportBody) as {
+        reasoning?: { effort?: string; summary?: string };
+      };
+      expect(upstreamRequest.reasoning).toEqual({
+        effort: expectedEffort,
+        summary: "auto",
+      });
+
+      const body = await res.json() as { content?: Array<{ type?: string }> };
+      expect(body.content?.some((block) => block.type === "thinking")).toBe(false);
+    },
+  );
+
   it("maps Claude Code session id to an account-scoped upstream prompt_cache_key", async () => {
     const res = await ctx.app.request("/v1/messages", {
       method: "POST",
