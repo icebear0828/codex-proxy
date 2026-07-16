@@ -190,6 +190,9 @@ export async function refreshAccessToken(
     grant_type: "refresh_token",
     client_id: config.auth.oauth_client_id,
     refresh_token: refreshToken,
+    // Ask Auth0/OpenAI to keep returning id_token metadata. Some legitimate
+    // refreshed access tokens omit chatgpt_account_id while id_token carries it.
+    scope: "openid profile email offline_access",
   });
 
   const doRequest = (proxyUrl: string | null | undefined) =>

@@ -9,6 +9,9 @@ interface JwtClaims {
     chatgpt_account_id?: string;
     chatgpt_plan_type?: string;
     chatgpt_user_id?: string;
+    user_id?: string;
+    poid?: string;
+    organizations?: Array<{ id?: string; is_default?: boolean }>;
   };
   "https://api.openai.com/profile"?: {
     email?: string;

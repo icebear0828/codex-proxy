@@ -60,6 +60,10 @@ export interface AccountEntry {
   refreshToken: string | null;
   email: string | null;
   accountId: string | null;
+  /** OpenAI organization identity. Never send this as ChatGPT-Account-Id. */
+  organizationId?: string | null;
+  /** Auditable source of the workspace account ID. */
+  accountIdSource?: "access_token" | "id_token" | "upstream_discovery" | null;
   /** Per-user unique ID (chatgpt_user_id). Team members share accountId but have distinct userId. */
   userId: string | null;
   /** User-editable label for disambiguation (e.g. "Team Alpha", "Personal"). */
@@ -81,6 +85,8 @@ export interface AccountInfo {
   id: string;
   email: string | null;
   accountId: string | null;
+  organizationId?: string | null;
+  accountIdSource?: "access_token" | "id_token" | "upstream_discovery" | null;
   userId: string | null;
   label: string | null;
   planType: string | null;

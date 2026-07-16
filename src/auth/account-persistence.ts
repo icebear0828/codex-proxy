@@ -561,7 +561,9 @@ function normalizeAccountEntries(rawEntries: unknown[]): {
       needsPersist = true;
     }
 
-    // Backfill missing fields from JWT
+    // Backfill legacy fields using the stable JWT helper contract. Portable
+    // organization metadata is injected by AccountImportService and persisted
+    // in entry_json; old entries simply normalize it to null.
     if (!entry.planType || !entry.email || !entry.accountId || !entry.userId) {
       const profile = extractUserProfile(entry.token);
       const accountId = extractChatGptAccountId(entry.token);
@@ -588,6 +590,14 @@ function normalizeAccountEntries(rawEntries: unknown[]): {
     }
     if (entry.accountId === undefined) {
       entry.accountId = null;
+      needsPersist = true;
+    }
+    if (entry.organizationId === undefined) {
+      entry.organizationId = null;
+      needsPersist = true;
+    }
+    if (entry.accountIdSource === undefined) {
+      entry.accountIdSource = null;
       needsPersist = true;
     }
     // Backfill userId for entries missing it (pre-v1.0.68)
@@ -683,6 +693,8 @@ function migrateFromLegacy(): AccountEntry[] {
       refreshToken: null,
       email: data.userInfo?.email ?? null,
       accountId: accountId,
+      organizationId: null,
+      accountIdSource: accountId ? "access_token" : null,
       userId: extractUserProfile(data.token)?.chatgpt_user_id ?? null,
       label: null,
       planType: data.userInfo?.planType ?? null,

@@ -18,8 +18,10 @@ import { clearWarnings, getActiveWarnings, getWarningsLastUpdated } from "../aut
 import { probeAccount, batchHealthCheck } from "../auth/health-check.js";
 import { AccountImportService } from "../services/account-import.js";
 import type { ImportEntry } from "../services/account-import.js";
+import { discoverCodexAccountIdentity } from "../services/account-identity-resolver.js";
 import { AccountQueryService } from "../services/account-query.js";
 import { AccountMutationService } from "../services/account-mutation.js";
+import { getProxyUrl as getRuntimeProxyUrl } from "../tls/proxy.js";
 import {
   buildAccountExportPayload,
   parseAccountExportFormat,
@@ -40,7 +42,15 @@ export function createAccountRoutes(pool: AccountPool, scheduler: RefreshSchedul
   const importSvc = new AccountImportService(pool, scheduler, {
     validateToken: validateManualToken,
     refreshToken: refreshAccessToken,
-    getProxyUrl: () => getConfig().tls?.proxy_url ?? null,
+    // Use the process-level resolved proxy (configured or auto-detected), not
+    // only config.tls.proxy_url. Passing null would force direct transport and
+    // bypass the Clash proxy selected during startup.
+    getProxyUrl: getRuntimeProxyUrl,
+    discoverIdentity: (token, metadata, options) =>
+      discoverCodexAccountIdentity(token, metadata, {
+        proxyUrl: options.proxyUrl,
+        accountIdHint: options.accountIdHint,
+      }),
     // Warmup disabled: sending GET /codex/usage immediately after RT exchange
     // triggers OpenAI risk detection and causes account deactivation.
     warmup: undefined,

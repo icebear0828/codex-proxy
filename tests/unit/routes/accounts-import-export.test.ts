@@ -57,6 +57,11 @@ vi.mock("@src/auth/oauth-pkce.js", () => ({
   refreshAccessToken: vi.fn(),
 }));
 
+const mockRuntimeProxyUrl = vi.hoisted(() => vi.fn(() => "http://127.0.0.1:7897"));
+vi.mock("@src/tls/proxy.js", () => ({
+  getProxyUrl: mockRuntimeProxyUrl,
+}));
+
 import { Hono } from "hono";
 import { AccountPool } from "@src/auth/account-pool.js";
 import { createAccountRoutes } from "@src/routes/accounts.js";
@@ -402,6 +407,11 @@ describe("account import/export", () => {
     expect(res.status).toBe(200);
     const data = await res.json() as { success: boolean };
     expect(data.success).toBe(true);
+
+    expect(refreshAccessToken).toHaveBeenCalledWith(
+      "rt_test_only_import",
+      "http://127.0.0.1:7897",
+    );
 
     // getUsage must NOT be called for RT-only imports — it triggers OpenAI risk detection
     expect(getUsageSpy).not.toHaveBeenCalled();

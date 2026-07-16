@@ -5,6 +5,7 @@ import {
   extractUserProfile,
   isTokenExpired,
 } from "@src/auth/jwt-utils.js";
+import { extractCodexTokenMetadata } from "@src/auth/token-metadata.js";
 import { createJwt, createValidJwt, createExpiredJwt } from "@helpers/jwt.js";
 
 describe("decodeJwtPayload", () => {
@@ -53,6 +54,51 @@ describe("extractChatGptAccountId", () => {
       },
     });
     expect(extractChatGptAccountId(token)).toBeNull();
+  });
+});
+
+describe("extractCodexTokenMetadata", () => {
+  it("keeps organization identity separate for accountId-less access tokens", () => {
+    const token = createJwt({
+      exp: Math.floor(Date.now() / 1000) + 3600,
+      "https://api.openai.com/auth": {
+        poid: "org-portable-123",
+        user_id: "user-portable-123",
+      },
+      "https://api.openai.com/profile": {
+        email: "portable@example.com",
+      },
+    });
+
+    expect(extractCodexTokenMetadata(token, null, { planType: "plus" })).toEqual({
+      accountId: null,
+      organizationId: "org-portable-123",
+      userId: "user-portable-123",
+      email: "portable@example.com",
+      planType: "plus",
+      accountIdSource: null,
+    });
+  });
+
+  it("uses id_token account claims without treating organization ID as account ID", () => {
+    const accessToken = createJwt({
+      exp: Math.floor(Date.now() / 1000) + 3600,
+      "https://api.openai.com/profile": { email: "access@example.com" },
+    });
+    const idToken = createJwt({
+      "https://api.openai.com/auth": {
+        chatgpt_account_id: "workspace-from-id",
+        user_id: "user-from-id",
+        organizations: [{ id: "org-from-id", is_default: true }],
+      },
+    });
+
+    expect(extractCodexTokenMetadata(accessToken, idToken)).toMatchObject({
+      accountId: "workspace-from-id",
+      organizationId: "org-from-id",
+      userId: "user-from-id",
+      accountIdSource: "id_token",
+    });
   });
 });
 
