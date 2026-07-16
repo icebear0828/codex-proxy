@@ -126,9 +126,102 @@ function identityEndpoint(baseUrl: string): string {
   return `${base}/accounts/check/v4-2023-04-27?timezone_offset_min=${timezoneOffset}`;
 }
 
+function usageEndpoint(baseUrl: string): string {
+  const base = baseUrl.replace(/\/+$/, "");
+  return `${base}/wham/usage`;
+}
+
+function headersForAccount(
+  token: string,
+  accountId: string | null,
+  transport: TlsTransport,
+  supplied?: Record<string, string>,
+): Record<string, string> {
+  const headers = supplied
+    ? { ...supplied }
+    : buildHeaders(token, accountId);
+
+  // Test-supplied/base headers may contain a stale account header. Identity
+  // discovery must start without one and add only an upstream-confirmed value.
+  for (const key of Object.keys(headers)) {
+    if (key.toLowerCase() === "chatgpt-account-id") delete headers[key];
+  }
+  if (accountId) headers["ChatGPT-Account-Id"] = accountId;
+  headers.Accept = "application/json";
+  if (!transport.isImpersonate()) headers["Accept-Encoding"] = "gzip, deflate";
+  return headers;
+}
+
+async function getJson(
+  transport: TlsTransport,
+  url: string,
+  headers: Record<string, string>,
+  proxyUrl: string | null | undefined,
+  label: string,
+): Promise<unknown> {
+  let result: Awaited<ReturnType<TlsTransport["get"]>> | null = null;
+  let lastNetworkError: unknown;
+  // These are read-only identity GETs. Retry one transport exception so a
+  // transient TLS close/reset does not turn a valid import into a hard failure.
+  for (let attempt = 0; attempt < 2; attempt++) {
+    try {
+      result = await transport.get(url, headers, 20, proxyUrl);
+      break;
+    } catch (err) {
+      lastNetworkError = err;
+    }
+  }
+  if (!result) {
+    const detail = lastNetworkError instanceof Error
+      ? lastNetworkError.message
+      : String(lastNetworkError);
+    throw new Error(`${label} request failed: ${detail}`);
+  }
+  if (result.status < 200 || result.status >= 300) {
+    // Never include the upstream body: auth endpoints may echo sensitive data.
+    throw new Error(`${label} returned HTTP ${result.status}`);
+  }
+  try {
+    return JSON.parse(result.body) as unknown;
+  } catch {
+    throw new Error(`${label} returned invalid JSON`);
+  }
+}
+
+/** Parse the account ID returned by the authenticated quota endpoint. */
+export function parseUsageIdentityResponse(
+  payload: unknown,
+  current: CodexTokenMetadata,
+  expectedAccountId?: string | null,
+): CodexTokenMetadata | null {
+  const root = toRecord(payload);
+  if (!root) return null;
+  const accountId = safeAccountId(
+    root.account_id ?? root.accountId ?? root.chatgpt_account_id ?? root.workspace_id,
+  );
+  if (!accountId) return null;
+
+  const expected = safeAccountId(expectedAccountId);
+  if (expected && accountId !== expected) return null;
+
+  return {
+    accountId,
+    organizationId: current.organizationId,
+    userId: stringValue(root.user_id) ?? stringValue(root.chatgpt_user_id) ?? current.userId,
+    email: stringValue(root.email) ?? current.email,
+    planType: stringValue(root.plan_type) ?? current.planType,
+    accountIdSource: "upstream_discovery",
+  };
+}
+
 /**
- * Resolve the real ChatGPT workspace account ID without consuming a refresh
- * token. This follows the same account-check path used by Cockpit Tools.
+ * Resolve a ChatGPT account ID without consuming a refresh token.
+ *
+ * Preferred path: /accounts/check returns the workspace list.
+ * Safe fallback: some valid access-token-only accounts receive HTTP 403 from
+ * /accounts/check but /wham/usage works without an account header. In that
+ * case, accept only the account_id returned by upstream and verify it with a
+ * second quota request carrying ChatGPT-Account-Id.
  */
 export async function discoverCodexAccountIdentity(
   token: string,
@@ -137,35 +230,65 @@ export async function discoverCodexAccountIdentity(
 ): Promise<CodexTokenMetadata> {
   const transport = options.transport ?? getTransport();
   const baseUrl = options.baseUrl ?? getConfig().api.base_url;
-  const headers = options.headers
-    ? { ...options.headers }
-    : buildHeaders(token, null);
-  headers.Accept = "application/json";
-  if (!transport.isImpersonate()) headers["Accept-Encoding"] = "gzip, deflate";
-
-  const result = await transport.get(
-    identityEndpoint(baseUrl),
-    headers,
-    20,
-    options.proxyUrl,
+  const anonymousHeaders = headersForAccount(
+    token,
+    null,
+    transport,
+    options.headers,
   );
-  if (result.status < 200 || result.status >= 300) {
-    throw new Error(`Account identity endpoint returned HTTP ${result.status}`);
-  }
-
-  let payload: unknown;
+  let accountCheckError: string;
   try {
-    payload = JSON.parse(result.body) as unknown;
-  } catch {
-    throw new Error("Account identity endpoint returned invalid JSON");
+    const payload = await getJson(
+      transport,
+      identityEndpoint(baseUrl),
+      anonymousHeaders,
+      options.proxyUrl,
+      "Account identity endpoint",
+    );
+    const resolved = parseAccountIdentityResponse(
+      payload,
+      current,
+      options.accountIdHint,
+    );
+    if (!resolved?.accountId) {
+      throw new Error("Account identity endpoint returned no matching workspace");
+    }
+    return resolved;
+  } catch (err) {
+    accountCheckError = err instanceof Error ? err.message : String(err);
   }
-  const resolved = parseAccountIdentityResponse(
-    payload,
-    current,
-    options.accountIdHint,
-  );
-  if (!resolved?.accountId) {
-    throw new Error("Account identity endpoint returned no matching workspace");
+
+  try {
+    const initialUsage = await getJson(
+      transport,
+      usageEndpoint(baseUrl),
+      anonymousHeaders,
+      options.proxyUrl,
+      "Account usage discovery endpoint",
+    );
+    const discovered = parseUsageIdentityResponse(initialUsage, current);
+    if (!discovered?.accountId) {
+      throw new Error("Account usage discovery endpoint returned no account ID");
+    }
+
+    const verifiedUsage = await getJson(
+      transport,
+      usageEndpoint(baseUrl),
+      headersForAccount(token, discovered.accountId, transport, options.headers),
+      options.proxyUrl,
+      "Account usage verification endpoint",
+    );
+    const verified = parseUsageIdentityResponse(
+      verifiedUsage,
+      discovered,
+      discovered.accountId,
+    );
+    if (!verified?.accountId) {
+      throw new Error("Account usage verification returned a different account ID");
+    }
+    return verified;
+  } catch (err) {
+    const usageError = err instanceof Error ? err.message : String(err);
+    throw new Error(`${accountCheckError}; usage fallback failed: ${usageError}`);
   }
-  return resolved;
 }
