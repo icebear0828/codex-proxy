@@ -36,7 +36,7 @@ describe("ConfigSchema", () => {
     expect(result.auth.refresh_concurrency).toBe(2);
     expect(result.auth.max_concurrent_per_account).toBe(3);
     expect(result.auth.request_interval_ms).toBe(50);
-    expect(result.model.default).toBe("gpt-5.4");
+    expect(result.model.default).toBe("gpt-5.6-sol");
     expect(result.model.default_reasoning_effort).toBeNull();
     expect(result.model.aliases).toEqual({});
     expect(result.model.custom_models).toEqual([]);

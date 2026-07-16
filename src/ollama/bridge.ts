@@ -53,6 +53,11 @@ class OllamaBridgeError extends Error {
 }
 
 const CONTEXT_WINDOW_OVERRIDES = new Map<string, number>([
+  // GPT-5.6 family (GA 2026-07-09) — 1 M token context window
+  ["gpt-5.6-sol", 1050000],
+  ["gpt-5.6-terra", 1050000],
+  ["gpt-5.6-luna", 1050000],
+  ["gpt-5.6", 1050000],
   ["gpt-5.5", 400000],
   ["gpt-5.4", 400000],
   ["gpt-5.4-pro", 400000],
@@ -110,6 +115,7 @@ function responseHeaders(init: HeadersInit, request?: Request): Headers {
 
 function inferFamily(modelId: string): string {
   const normalized = modelId.toLowerCase();
+  if (normalized.startsWith("gpt-5.6")) return "gpt-5.6";
   if (normalized.startsWith("gpt-5.5")) return "gpt-5.5";
   if (normalized.startsWith("gpt-5.4")) return "gpt-5.4";
   if (normalized.startsWith("gpt-5.3")) return "gpt-5.3";

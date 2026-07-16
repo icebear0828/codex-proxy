@@ -79,7 +79,7 @@ export const ConfigSchema = z.object({
     chromium_version: z.string().default("136"),
   }),
   model: z.object({
-    default: z.string().default("gpt-5.4"),
+    default: z.string().default("gpt-5.6-sol"),
     default_reasoning_effort: z.string().nullable().default(null),
     default_service_tier: z.string().nullable().default(null),
     aliases: z.record(z.string(), z.string()).default({}),
