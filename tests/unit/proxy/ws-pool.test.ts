@@ -220,6 +220,22 @@ describe("PersistentWs", () => {
     expect(text).not.toContain("codex.rate_limits");
   });
 
+  it("response metadata stays internal and preserves early error classification", async () => {
+    const { ws, persistent } = newPersistentWs();
+    persistent.tryAcquire();
+    const promise = persistent.send({
+      request: { type: "response.create", model: "m", instructions: "", input: [] },
+      signal: undefined,
+      onRateLimits: undefined,
+      reused: true,
+    });
+    await nextTick();
+    ws.pushMessage({ type: "codex.response.metadata", response_id: "resp_internal" });
+    ws.pushMessage({ type: "error", error: { code: "usage_limit_reached", message: "limit" } });
+
+    await expect(promise).rejects.toMatchObject({ status: 429 });
+  });
+
   it("classified early error rejects with CodexApiError without resolving stream", async () => {
     const { ws, persistent } = newPersistentWs();
     persistent.tryAcquire();

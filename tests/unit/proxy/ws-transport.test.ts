@@ -57,7 +57,12 @@ vi.mock("@src/tls/proxy.js", () => ({
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
-import { createWebSocketResponse, type WsCreateRequest } from "@src/proxy/ws-transport.js";
+import {
+  createWebSocketResponse,
+  type WsCreateRequest,
+  type WsPoolContext,
+} from "@src/proxy/ws-transport.js";
+import { CodexApiError } from "@src/proxy/codex-types.js";
 
 interface MockWs extends EventEmitter {
   url: string;
@@ -255,6 +260,37 @@ describe("createWebSocketResponse", () => {
     await expect(
       createWebSocketResponse("wss://test/ws", {}, BASE_REQUEST, controller.signal),
     ).rejects.toThrow("aborted");
+  });
+
+  it("does not retry a pooled request error as a factory failure", async () => {
+    const requestError = new CodexApiError(429, "rate limited");
+    const onDecision = vi.fn();
+    const poolCtx = {
+      entryId: "entry-A",
+      poolKey: "entry-A:conv-1",
+      onDecision,
+      pool: {
+        acquire: vi.fn().mockResolvedValue({
+          ws: { id: "ws-1", send: vi.fn().mockRejectedValue(requestError) },
+          reused: false,
+        }),
+      },
+    } as unknown as WsPoolContext;
+
+    await expect(
+      createWebSocketResponse(
+        "wss://test/ws",
+        {},
+        BASE_REQUEST,
+        undefined,
+        undefined,
+        undefined,
+        poolCtx,
+      ),
+    ).rejects.toBe(requestError);
+    expect(wsInstances).toHaveLength(0);
+    expect(onDecision).toHaveBeenCalledTimes(1);
+    expect(onDecision).toHaveBeenCalledWith({ kind: "new", wsId: "ws-1" });
   });
 
   it("rejects before returning a Response when WS closes after only metadata", async () => {

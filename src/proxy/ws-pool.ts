@@ -149,6 +149,10 @@ function isEarlyMetadataWsEvent(type: string): boolean {
   return type === "response.created" || type === "response.in_progress";
 }
 
+function isInternalWsEvent(type: string): boolean {
+  return type === "codex.rate_limits" || type === "codex.response.metadata";
+}
+
 // ── PersistentWs ───────────────────────────────────────────────────
 
 export interface PersistentWsHooks {
@@ -419,11 +423,11 @@ export class PersistentWs {
       /* fall through to raw passthrough */
     }
 
-    // Internal rate-limit frames bypass the stream and don't flip the
-    // early-decision flag; they're observed via the per-session callback.
-    if (msg && type === "codex.rate_limits") {
-      const rl = parseRateLimitsEvent(msg);
-      if (rl) sess.onRateLimits?.(rl);
+    if (msg && isInternalWsEvent(type)) {
+      if (type === "codex.rate_limits") {
+        const rl = parseRateLimitsEvent(msg);
+        if (rl) sess.onRateLimits?.(rl);
+      }
       return;
     }
 

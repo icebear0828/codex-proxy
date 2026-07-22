@@ -249,6 +249,23 @@ describe("createWebSocketResponse — early-stream error rejection", () => {
     expect(onRateLimits).toHaveBeenCalledTimes(1);
   });
 
+  it("treats codex.response.metadata as internal before an early error", async () => {
+    const promise = createWebSocketResponse("wss://test/ws", {}, BASE_REQUEST);
+    promise.catch(() => { /* asserted below */ });
+    const ws = await waitForOpen();
+
+    ws.emit("message", JSON.stringify({
+      type: "codex.response.metadata",
+      response_id: "resp_internal",
+    }));
+    ws.emit("message", JSON.stringify({
+      type: "error",
+      error: { code: "usage_limit_reached", message: "Limit reached" },
+    }));
+
+    await expect(promise).rejects.toMatchObject({ status: 429 });
+  });
+
   it("passes through error events that arrive after a real frame", async () => {
     // Once a real frame has been streamed, switching accounts is no longer
     // safe — the client has already started receiving bytes. Errors arriving

@@ -88,6 +88,10 @@ function isEarlyMetadataWsEvent(type: string): boolean {
   return type === "response.created" || type === "response.in_progress";
 }
 
+function isInternalWsEvent(type: string): boolean {
+  return type === "codex.rate_limits" || type === "codex.response.metadata";
+}
+
 const WS_CONNECTING = 0;
 const WS_CLOSING = 2;
 const WS_CLOSED = 3;
@@ -250,8 +254,9 @@ export async function createWebSocketResponse(
   poolCtx?: WsPoolContext,
 ): Promise<Response> {
   if (poolCtx) {
+    let acquired: Awaited<ReturnType<WsConnectionPool["acquire"]>>;
     try {
-      const acquired = await poolCtx.pool.acquire(
+      acquired = await poolCtx.pool.acquire(
         poolCtx.entryId,
         poolCtx.poolKey,
         (deps) =>
@@ -264,25 +269,6 @@ export async function createWebSocketResponse(
             hooks: deps.hooks,
           }),
       );
-      if ("ws" in acquired) {
-        poolCtx.onDecision?.({
-          kind: acquired.reused ? "reuse" : "new",
-          wsId: acquired.ws.id,
-        });
-        try {
-          return await acquired.ws.send({ request, signal, onRateLimits, reused: acquired.reused });
-        } catch (err) {
-          if (err instanceof WsReusedConnectionError) {
-            // Stale-reuse: open a fresh one-shot WS for this single request.
-            // The pool's onDead hook has already evicted the dead entry.
-            poolCtx.onDecision?.({ kind: "retry-after-stale-reuse", wsId: acquired.ws.id });
-            return openOneShotWs(wsUrl, headers, request, signal, proxyUrl, onRateLimits);
-          }
-          throw err;
-        }
-      }
-      // Bypass (busy / cap / dead / no_key / disabled) → fall through to one-shot.
-      poolCtx.onDecision?.({ kind: "bypass", reason: acquired.bypass });
     } catch (err) {
       // Pool itself failed (e.g. factory could not connect). Don't punish the
       // caller — fall back to the legacy one-shot path. The error is still
@@ -290,7 +276,29 @@ export async function createWebSocketResponse(
       const msg = err instanceof Error ? err.message : String(err);
       console.warn(`[ws-pool] acquire failed, using one-shot fallback: ${msg}`);
       poolCtx.onDecision?.({ kind: "bypass", reason: "factory_error" });
+      return openOneShotWs(wsUrl, headers, request, signal, proxyUrl, onRateLimits);
     }
+
+    if ("ws" in acquired) {
+      poolCtx.onDecision?.({
+        kind: acquired.reused ? "reuse" : "new",
+        wsId: acquired.ws.id,
+      });
+      try {
+        return await acquired.ws.send({ request, signal, onRateLimits, reused: acquired.reused });
+      } catch (err) {
+        if (err instanceof WsReusedConnectionError) {
+          // Stale-reuse: open a fresh one-shot WS for this single request.
+          // The pool's onDead hook has already evicted the dead entry.
+          poolCtx.onDecision?.({ kind: "retry-after-stale-reuse", wsId: acquired.ws.id });
+          return openOneShotWs(wsUrl, headers, request, signal, proxyUrl, onRateLimits);
+        }
+        throw err;
+      }
+    }
+
+    // Bypass (busy / cap / dead / no_key / disabled) → fall through to one-shot.
+    poolCtx.onDecision?.({ kind: "bypass", reason: acquired.bypass });
   }
 
   return openOneShotWs(wsUrl, headers, request, signal, proxyUrl, onRateLimits);
@@ -452,9 +460,11 @@ async function openOneShotWs(
         // Non-JSON message — handled below as raw data.
       }
 
-      if (msg && type === "codex.rate_limits") {
-        const rl = parseRateLimitsEvent(msg);
-        if (rl) onRateLimits?.(rl);
+      if (msg && isInternalWsEvent(type)) {
+        if (type === "codex.rate_limits") {
+          const rl = parseRateLimitsEvent(msg);
+          if (rl) onRateLimits?.(rl);
+        }
         return;
       }
 
