@@ -105,9 +105,13 @@ describe("Ollama bridge routes", () => {
     expect(body.models[0].digest).toMatch(/^[a-f0-9]{64}$/);
   });
 
-  it.each(["gpt-5.5", "gpt-5.4-mini"])(
-    "returns 400k context metadata for %s and can suppress vision capability",
-    async (model) => {
+  it.each([
+    ["gpt-5.6-sol", "gpt-5.6", 1050000],
+    ["gpt-5.5", "gpt-5.5", 400000],
+    ["gpt-5.4-mini", "gpt-5.4", 400000],
+  ])(
+    "returns context metadata for %s and can suppress vision capability",
+    async (model, architecture, contextLength) => {
       fetchMock.mockResolvedValueOnce(json({
         id: model,
         displayName: model,
@@ -130,15 +134,15 @@ describe("Ollama bridge routes", () => {
       );
       const body = await res.json() as Record<string, unknown>;
       expect(body.capabilities).toEqual(["completion", "tools", "thinking"]);
-      expect(body.parameters).toBe("num_ctx 400000\nreasoning medium");
-      const architecture = model.startsWith("gpt-5.4") ? "gpt-5.4" : model;
+      expect(body.parameters).toBe(`num_ctx ${contextLength}\nreasoning medium`);
       expect(body.model_info).toMatchObject({
-        [`${architecture}.context_length`]: 400000,
-        context_length: 400000,
+        [`${architecture}.context_length`]: contextLength,
+        context_length: contextLength,
         upstream_id: model,
         input_modalities: ["text", "image"],
       });
-    });
+    },
+  );
 
   it("converts non-streaming Ollama chat requests and responses", async () => {
     fetchMock.mockResolvedValueOnce(json({

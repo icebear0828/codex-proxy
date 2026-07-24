@@ -9,7 +9,7 @@ client:
   arch: arm64
   chromium_version: "146"
 model:
-  default: gpt-5.4
+  default: gpt-5.6-sol
   default_reasoning_effort: null
   default_service_tier: null
   aliases: {}

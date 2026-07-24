@@ -103,7 +103,7 @@ After logging in, open the dashboard at `http://localhost:8080` and find your AP
 curl http://localhost:8080/v1/chat/completions \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer your-api-key" \
-  -d '{"model":"gpt-5.4","messages":[{"role":"user","content":"Hello!"}],"stream":true}'
+  -d '{"model":"gpt-5.6-sol","messages":[{"role":"user","content":"Hello!"}],"stream":true}'
 ```
 
 If you see streaming AI text, the setup is working. If you get 401, double-check the API Key.
@@ -187,8 +187,11 @@ If you see streaming AI text, the setup is working. If you get 401, double-check
 
 | Model ID | Reasoning | Current context | Max context | Max output | Output | Description |
 |----------|-----------|-----------------|-------------|------------|--------|-------------|
-| `gpt-5.5` | low / medium / high / xhigh | 272,000 | 272,000 | 128,000 | text | Frontier model for complex coding, research, and real-world work |
-| `gpt-5.4` | low / medium / high / xhigh | 272,000 | 1,000,000 | 128,000 | text | Strong model for everyday coding (default) |
+| `gpt-5.6-sol` | low / medium / high / xhigh | 1,050,000 | 1,050,000 | 128,000 | text | GPT-5.6 flagship for complex reasoning & coding (default; `gpt-5.6` is an alias) |
+| `gpt-5.6-terra` | low / medium / high / xhigh | 1,050,000 | 1,050,000 | 128,000 | text | GPT-5.6 balanced intelligence and cost |
+| `gpt-5.6-luna` | low / medium / high / xhigh | 1,050,000 | 1,050,000 | 128,000 | text | GPT-5.6 cost-efficient / high-throughput |
+| `gpt-5.5` | low / medium / high / xhigh | 272,000 | 272,000 | 128,000 | text | Complex coding, research, and real-world work |
+| `gpt-5.4` | low / medium / high / xhigh | 272,000 | 1,000,000 | 128,000 | text | Strong model for everyday coding |
 | `gpt-5.4-mini` | low / medium / high / xhigh | 400,000 | — | 128,000 | text | GPT-5.4 lightweight model |
 | `gpt-5.3-codex` | low / medium / high / xhigh | 400,000 | — | 128,000 | text | GPT-5.3 coding-optimized model |
 | `gpt-5.2` | low / medium / high / xhigh | 400,000 | — | 128,000 | text | Professional work & long-running agents |
@@ -198,7 +201,7 @@ If you see streaming AI text, the setup is working. If you get 401, double-check
 | `gpt-oss-20b` | low / medium / high | 131,072 | — | — | text | Open-source 20B model |
 | `gpt-image-2` | — | — | — | — | image | Image-generation tool backend, invoked via `image_generation` |
 
-> **Suffixes**: Append `-fast` to any chat model for Fast mode, `-high`/`-low` for reasoning effort. E.g. `gpt-5.4-fast`, `gpt-5.4-high-fast`. The image model (`gpt-image-2`) does not take suffixes.
+> **Suffixes**: Append `-fast` to any chat model for Fast mode, `-high`/`-low` for reasoning effort. E.g. `gpt-5.6-sol-fast`, `gpt-5.6-sol-high-fast`. The image model (`gpt-image-2`) does not take suffixes.
 >
 > **Plan Routing**: Accounts on different plans auto-route to the models returned for that account by the Codex backend. Do not treat old Plus-only notes as fixed model access rules. Models are dynamically fetched and auto-synced; if a model appears in the Dashboard or `/v1/models/catalog`, it can be used as the request `model`.
 >
@@ -217,7 +220,7 @@ curl -N http://localhost:8080/v1/responses \
   -H "Authorization: Bearer $PROXY_API_KEY" \
   -H "Content-Type: application/json" \
   -d '{
-    "model": "gpt-5.5",
+    "model": "gpt-5.6-sol",
     "stream": true,
     "input": [{"role":"user","content":"Draw a red circle on white background."}],
     "tools": [{"type":"image_generation","size":"3840x2160"}]
@@ -234,20 +237,20 @@ In the stream, the `image_generation_call` item's `result` field is a base64-enc
 
 ## 🔗 Client Setup
 
-> Get your API Key from the dashboard (`http://localhost:8080`). Use a concrete model ID (default `gpt-5.4`) or any [model ID](#-available-models) as the model name.
+> Get your API Key from the dashboard (`http://localhost:8080`). Use a concrete model ID (default `gpt-5.6-sol`) or any [model ID](#-available-models) as the model name.
 
 ### Claude Code (CLI)
 
 ```bash
 export ANTHROPIC_BASE_URL=http://localhost:8080
 export ANTHROPIC_API_KEY=your-api-key
-# Switch model: export ANTHROPIC_MODEL=gpt-5.4 / gpt-5.4-fast / gpt-5.4-mini ...
+# Switch model: export ANTHROPIC_MODEL=gpt-5.6-sol / gpt-5.6-terra / gpt-5.6-luna / gpt-5.6-sol-fast ...
 claude
 ```
 
 > Copy env vars from the **Anthropic SDK Setup** card in the dashboard (includes Opus / Sonnet / Haiku tier model config).
 >
-> Recommended models: Opus → `gpt-5.5`, Sonnet → `gpt-5.4`, Haiku → `gpt-5.3-codex`.
+> Recommended models: Opus → `gpt-5.6-sol`, Sonnet → `gpt-5.6-terra`, Haiku → `gpt-5.6-luna`.
 
 ### Codex CLI
 
@@ -263,7 +266,7 @@ wire_api = "responses"
 Authorization = "Bearer your-api-key"
 
 [profiles.default]
-model = "gpt-5.4"
+model = "gpt-5.6-sol"
 model_provider = "proxy_codex"
 ```
 
@@ -299,9 +302,9 @@ Built-in Claude-shaped model names map to Codex models. Put custom mappings in `
 ```yaml
 model:
   aliases:
-    claude-opus-4-7: gpt-5.5
-    claude-sonnet-4-6: gpt-5.4
-    claude-haiku-4-5: gpt-5.3-codex
+    claude-opus-4-7: gpt-5.6-sol
+    claude-sonnet-4-6: gpt-5.6-terra
+    claude-haiku-4-5: gpt-5.6-luna
     my-openai: openai:gpt-4o
     my-deepseek: deepseek-chat
 ```
@@ -329,7 +332,7 @@ wire_api = "responses"
 Authorization = "Bearer your-api-key"
 
 [profiles.default]
-model = "gpt-5.4"
+model = "gpt-5.6-sol"
 model_provider = "proxy_codex"
 ```
 
@@ -349,14 +352,14 @@ Open Claude extension settings → **API Configuration**:
 1. Settings → Models → OpenAI API
 2. **Base URL**: `http://localhost:8080/v1`
 3. **API Key**: your API key
-4. Add model `gpt-5.4`
+4. Add model `gpt-5.6-sol`
 
 ### Windsurf
 
 1. Settings → AI Provider → **OpenAI Compatible**
 2. **API Base URL**: `http://localhost:8080/v1`
 3. **API Key**: your API key
-4. **Model**: `gpt-5.4`
+4. **Model**: `gpt-5.6-sol`
 
 ### Cline (VSCode Extension)
 
@@ -364,7 +367,7 @@ Open Claude extension settings → **API Configuration**:
 2. **API Provider**: OpenAI Compatible
 3. **Base URL**: `http://localhost:8080/v1`
 4. **API Key**: your API key
-5. **Model ID**: `gpt-5.4`
+5. **Model ID**: `gpt-5.6-sol`
 
 ### Continue (VSCode Extension)
 
@@ -374,7 +377,7 @@ Open Claude extension settings → **API Configuration**:
   "models": [{
     "title": "Codex",
     "provider": "openai",
-    "model": "gpt-5.4",
+    "model": "gpt-5.6-sol",
     "apiBase": "http://localhost:8080/v1",
     "apiKey": "your-api-key"
   }]
@@ -386,7 +389,7 @@ Open Claude extension settings → **API Configuration**:
 ```bash
 aider --openai-api-base http://localhost:8080/v1 \
       --openai-api-key your-api-key \
-      --model openai/gpt-5.4
+      --model openai/gpt-5.6-sol
 ```
 
 ### Cherry Studio
@@ -395,7 +398,7 @@ aider --openai-api-base http://localhost:8080/v1 \
 2. **Type**: OpenAI
 3. **API URL**: `http://localhost:8080/v1`
 4. **API Key**: your API key
-5. Add model `gpt-5.4`
+5. Add model `gpt-5.6-sol`
 
 ### Ollama-Compatible Clients
 
@@ -405,14 +408,14 @@ Enable it in Dashboard → Settings → **Ollama Bridge**, then use the default 
 |---------|-------|
 | Base URL | `http://localhost:11434` |
 | API Key | Not required; the bridge uses the Codex Proxy key internally |
-| Model | `gpt-5.4` (or any model ID) |
+| Model | `gpt-5.6-sol` (or any model ID) |
 
 ```bash
 curl http://localhost:11434/api/tags
 
 curl http://localhost:11434/api/chat \
   -H "Content-Type: application/json" \
-  -d '{"model":"gpt-5.4","messages":[{"role":"user","content":"Hello!"}],"stream":true}'
+  -d '{"model":"gpt-5.6-sol","messages":[{"role":"user","content":"Hello!"}],"stream":true}'
 ```
 
 > The Ollama API has no authentication. The bridge listens on `127.0.0.1` by default; do not expose it to the public internet or untrusted LANs.
@@ -423,7 +426,7 @@ curl http://localhost:11434/api/chat \
 |---------|-------|
 | Base URL | `http://localhost:8080/v1` |
 | API Key | from dashboard |
-| Model | `gpt-5.4` (or any model ID) |
+| Model | `gpt-5.6-sol` (or any model ID) |
 
 <details>
 <summary>SDK examples (Python / Node.js)</summary>
@@ -433,7 +436,7 @@ curl http://localhost:11434/api/chat \
 from openai import OpenAI
 client = OpenAI(base_url="http://localhost:8080/v1", api_key="your-api-key")
 for chunk in client.chat.completions.create(
-    model="gpt-5.4", messages=[{"role": "user", "content": "Hello!"}], stream=True
+    model="gpt-5.6-sol", messages=[{"role": "user", "content": "Hello!"}], stream=True
 ):
     print(chunk.choices[0].delta.content or "", end="")
 ```
@@ -443,7 +446,7 @@ for chunk in client.chat.completions.create(
 import OpenAI from "openai";
 const client = new OpenAI({ baseURL: "http://localhost:8080/v1", apiKey: "your-api-key" });
 const stream = await client.chat.completions.create({
-  model: "gpt-5.4", messages: [{ role: "user", content: "Hello!" }], stream: true,
+  model: "gpt-5.6-sol", messages: [{ role: "user", content: "Hello!" }], stream: true,
 });
 for await (const chunk of stream) {
   process.stdout.write(chunk.choices[0]?.delta?.content || "");
@@ -494,8 +497,8 @@ You can also manage aliases in Dashboard → Settings → **Model Aliases**. Sav
 ```yaml
 model:
   aliases:
-    claude-opus-4-7: gpt-5.5
-    sonnet-local: gpt-5.4
+    claude-opus-4-7: gpt-5.6-sol
+    sonnet-local: gpt-5.6-terra
     openai-fast: openai:gpt-4o
     deepseek-local: deepseek-chat
 
