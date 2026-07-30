@@ -119,6 +119,12 @@ interface NormalizedModelWithMeta extends CodexModelInfo {
 
 const SERVICE_TIER_SUFFIXES = new Set(["fast", "flex"]);
 const EFFORT_SUFFIXES = new Set(["none", "minimal", "low", "medium", "high", "xhigh"]);
+/** ChatGPT UI selectors that are not valid Codex model IDs. */
+const CHATGPT_ONLY_MODEL_IDS = new Set(["auto"]);
+
+function isAdmittedBackendModel(model: Pick<CodexModelInfo, "id">): boolean {
+  return !CHATGPT_ONLY_MODEL_IDS.has(model.id);
+}
 
 export function stripKnownModelSuffixes(input: string): {
   modelName: string;
@@ -194,14 +200,16 @@ export class ModelStore {
         const planSnapshots = cached.planSnapshots ?? null;
         if (planSnapshots) {
           for (const [planType, models] of Object.entries(planSnapshots)) {
-            const backendModels = models.map((m) => ({ ...m, source: "backend" as const }));
+            const backendModels = models
+              .filter(isAdmittedBackendModel)
+              .map((m) => ({ ...m, source: "backend" as const }));
             this.planModelSnapshots.set(planType, backendModels);
             this.planModelMap.set(planType, new Set(backendModels.map((m) => m.id)));
           }
           this.rebuildCatalogFromPlanSnapshots();
           console.log(`[ModelStore] Loaded ${this.catalog.length} cached backend models from data/models-cache.yaml`);
         } else {
-          const cachedModels = cached.models ?? [];
+          const cachedModels = (cached.models ?? []).filter(isAdmittedBackendModel);
           this.catalog = cachedModels.map((m) => ({ ...m, source: "backend" as const }));
           if (this.catalog.length > 0) {
             this.planModelSnapshots.set("cache", this.catalog.map((m) => ({ ...m })));
@@ -229,7 +237,9 @@ export class ModelStore {
   }
 
   applyBackendModelsForPlan(planType: string, backendModels: BackendModelEntry[]): void {
-    const models = backendModels.map((raw) => stripNormalizeMetadata(normalizeBackendModel(raw)));
+    const models = backendModels
+      .map((raw) => stripNormalizeMetadata(normalizeBackendModel(raw)))
+      .filter(isAdmittedBackendModel);
     const admittedIds = new Set(models.map((model) => model.id));
 
     this.planModelSnapshots.delete(planType);
