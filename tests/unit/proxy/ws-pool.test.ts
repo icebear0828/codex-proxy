@@ -480,8 +480,11 @@ describe("PersistentWs", () => {
       expect(ws.pingCount).toBe(1);
     });
 
-    it("skips ping while a request is in-flight (active stream keeps the LB alive)", async () => {
-      const { ws, persistent } = newPersistentWs({ pingIntervalMs: 1_000 });
+    it("continues pinging while a request is in-flight", async () => {
+      const { ws, persistent } = newPersistentWs({
+        pingIntervalMs: 1_000,
+        livenessTimeoutMs: 0,
+      });
       persistent.tryAcquire();
       void persistent.send({
         request: { type: "response.create", model: "m", instructions: "", input: [] },
@@ -491,7 +494,7 @@ describe("PersistentWs", () => {
       });
       await vi.advanceTimersByTimeAsync(0); // let send() start
       vi.advanceTimersByTime(3_500);
-      expect(ws.pingCount).toBe(0); // busy → no pings while streaming
+      expect(ws.pingCount).toBe(3);
     });
   });
 

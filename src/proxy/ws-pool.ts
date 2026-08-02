@@ -259,9 +259,10 @@ export class PersistentWs {
   }
 
   private sendKeepalivePing(): void {
-    // Skip when busy: the active stream's data frames already keep the LB /
-    // NAT idle timers fresh, so a ping would be redundant bandwidth.
-    if (this.dead || this.busy || this.ws.readyState !== WS_OPEN) return;
+    // Keep pinging during in-flight requests too. Reasoning-heavy responses may
+    // stay silent for 60-120s; without control frames, NAT/LB paths can drop an
+    // otherwise healthy pooled connection with close code 1006.
+    if (this.dead || this.ws.readyState !== WS_OPEN) return;
     // Liveness check: if the peer hasn't produced ANY signal (pong or message)
     // for too long, the connection is silently broken (middlebox dropped it
     // without sending FIN/RST). Evicting now beats eating a real-request cache
