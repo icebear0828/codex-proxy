@@ -23,6 +23,7 @@ import {
   containsInvalidEncryptedContentSignal,
   getReasoningReplayCache,
 } from "../../proxy/reasoning-replay-cache.js";
+import { forwardCodexRateLimitHeaders } from "./codex-rate-limit-response-headers.js";
 
 
 const MAX_EMPTY_RETRIES = 2;
@@ -131,6 +132,11 @@ export async function handleNonStreaming(options: HandleNonStreamingOptions): Pr
         expectsImageGen: req.expectsImageGen,
         released,
       });
+      forwardCodexRateLimitHeaders(
+        c,
+        currentRawResponse.headers,
+        accountPool.getEntry(currentEntryId)?.cachedQuota,
+      );
       return c.json(result.response);
     } catch (collectErr) {
       if (conversationId && variantHash && containsInvalidEncryptedContentSignal(collectErr)) {

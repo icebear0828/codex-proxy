@@ -12,11 +12,17 @@ import {
   resetReasoningReplayCacheForTests,
 } from "@src/proxy/reasoning-replay-cache.js";
 
-function createMockAccountPool(): { pool: AccountPool; release: ReturnType<typeof vi.fn> } {
+function createMockAccountPool(): {
+  pool: AccountPool;
+  release: ReturnType<typeof vi.fn>;
+  getEntry: ReturnType<typeof vi.fn>;
+} {
   const release = vi.fn();
+  const getEntry = vi.fn();
   return {
-    pool: { release } as unknown as AccountPool,
+    pool: { release, getEntry } as unknown as AccountPool,
     release,
+    getEntry,
   };
 }
 
