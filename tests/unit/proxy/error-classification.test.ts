@@ -6,6 +6,7 @@ import {
   isCfChallengeError,
   isCfPathBlockError,
   isQuotaExhaustedError,
+  isServerOverloadedError,
   isTokenInvalidError,
   isModelNotSupportedError,
   isUnansweredFunctionCallError,
@@ -59,6 +60,18 @@ describe("isQuotaExhaustedError", () => {
   it("returns false for non-CodexApiError", () => {
     expect(isQuotaExhaustedError(new Error("402"))).toBe(false);
     expect(isQuotaExhaustedError(null)).toBe(false);
+  });
+});
+
+describe("isServerOverloadedError", () => {
+  it("accepts only a structured server_is_overloaded 503", () => {
+    expect(isServerOverloadedError(new CodexApiError(503, JSON.stringify({
+      error: { code: "server_is_overloaded" },
+    })))).toBe(true);
+    expect(isServerOverloadedError(new CodexApiError(503, "database unavailable"))).toBe(false);
+    expect(isServerOverloadedError(new CodexApiError(502, JSON.stringify({
+      error: { code: "server_is_overloaded" },
+    })))).toBe(false);
   });
 });
 

@@ -52,6 +52,18 @@ export function isQuotaExhaustedError(err: unknown): boolean {
   return err.status === 402;
 }
 
+/** Check if a 503 is the upstream capacity error that is safe to retry. */
+export function isServerOverloadedError(err: unknown): boolean {
+  if (!isCodexLike(err) || err.status !== 503) return false;
+  try {
+    const parsed = JSON.parse(err.body) as Record<string, unknown>;
+    const error = parsed.error as Record<string, unknown> | undefined;
+    return error?.code === "server_is_overloaded";
+  } catch {
+    return false;
+  }
+}
+
 /** Check if a 403 body is a Cloudflare challenge rather than an account ban. */
 export function isCfChallengeError(err: unknown): boolean {
   if (!isCodexLike(err)) return false;
