@@ -65,6 +65,8 @@ const ROTATABLE_ERROR_CODES: Readonly<Record<string, number>> = {
   // 400 — stale previous_response_id (account doesn't recognise it; let
   // proxy-handler strip the ID and retry on the same account)
   previous_response_not_found: 400,
+  // 503 — transient upstream capacity error
+  server_is_overloaded: 503,
 };
 
 function classifyWsErrorEvent(msg: Record<string, unknown>): { status: number } | null {

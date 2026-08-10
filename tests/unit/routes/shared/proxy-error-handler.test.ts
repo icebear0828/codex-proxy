@@ -140,6 +140,32 @@ describe("handleCodexApiError", () => {
     });
   });
 
+  describe("503 server overloaded", () => {
+    it("retries on another account without mutating account health or quota", () => {
+      const err = new CodexApiError(503, JSON.stringify({
+        error: { code: "server_is_overloaded", message: "The server is overloaded" },
+      }));
+
+      const result = handleCodexApiError(err, pool as never, entryId, model, tag, false);
+
+      expect(result.action).toBe("retry");
+      expect(result.status).toBe(503);
+      expect(result.releaseBeforeRetry).toBe(true);
+      expect(pool.markStatus).not.toHaveBeenCalled();
+      expect(pool.applyRateLimit429).not.toHaveBeenCalled();
+    });
+
+    it("does not retry an unrelated generic 503", () => {
+      const result = handleCodexApiError(
+        new CodexApiError(503, "database unavailable"),
+        pool as never, entryId, model, tag, false,
+      );
+
+      expect(result.action).toBe("respond");
+      expect(result.status).toBe(503);
+    });
+  });
+
   // ── 403 ban ──
 
   describe("403 ban", () => {

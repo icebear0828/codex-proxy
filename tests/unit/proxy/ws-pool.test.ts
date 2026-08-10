@@ -309,6 +309,77 @@ describe("PersistentWs", () => {
     expect((err as CodexApiError).status).toBe(429);
   });
 
+  it("classifies server_is_overloaded as a transient 503 without evicting the pooled WS", async () => {
+    const { ws, persistent, onDead } = newPersistentWs();
+    persistent.tryAcquire();
+    const promise = persistent.send({
+      request: { type: "response.create", model: "m", instructions: "", input: [] },
+      signal: undefined,
+      onRateLimits: undefined,
+      reused: true,
+    });
+    await nextTick();
+    ws.pushMessage({
+      type: "error",
+      error: { code: "server_is_overloaded", message: "The server is overloaded" },
+    });
+    const err = await promise.then(() => null, (e: unknown) => e);
+    expect(err).toBeInstanceOf(CodexApiError);
+    expect((err as CodexApiError).status).toBe(503);
+    expect(persistent.isAlive()).toBe(true);
+    expect(onDead).not.toHaveBeenCalled();
+  });
+
+  it("does not retry server_is_overloaded after partial output has been committed", async () => {
+    const { ws, persistent, onDead } = newPersistentWs();
+    persistent.tryAcquire();
+    const promise = persistent.send({
+      request: { type: "response.create", model: "m", instructions: "", input: [] },
+      signal: undefined,
+      onRateLimits: undefined,
+      reused: true,
+    });
+    await nextTick();
+    ws.pushMessage({ type: "response.created", response: { id: "resp_1" } });
+    ws.pushMessage({ type: "response.output_text.delta", delta: "partial" });
+    const response = await promise;
+    ws.pushMessage({
+      type: "error",
+      error: { code: "server_is_overloaded", message: "The server is overloaded" },
+    });
+
+    expect(response.status).toBe(200);
+    const text = await response.text();
+    expect(text).toContain("event: response.output_text.delta");
+    expect(text).toContain("partial");
+    expect(text).toContain("event: error");
+    expect(text).toContain("server_is_overloaded");
+    expect(persistent.isAlive()).toBe(true);
+    expect(onDead).not.toHaveBeenCalled();
+  });
+
+  it("accepts an abnormal close after response.completed as a completed stream", async () => {
+    const { ws, persistent, onDead } = newPersistentWs();
+    persistent.tryAcquire();
+    const promise = persistent.send({
+      request: { type: "response.create", model: "m", instructions: "", input: [] },
+      signal: undefined,
+      onRateLimits: undefined,
+      reused: false,
+    });
+    await nextTick();
+    ws.pushMessage({ type: "response.created", response: { id: "resp_1" } });
+    ws.pushMessage({ type: "response.output_text.delta", delta: "done" });
+    const response = await promise;
+    ws.pushMessage({ type: "response.completed", response: { id: "resp_1" } });
+    ws.pushClose(1006, "tcp rst after terminal frame");
+
+    const text = await response.text();
+    expect(text).toContain("event: response.completed");
+    expect(text).toContain("resp_1");
+    expect(onDead).toHaveBeenCalledOnce();
+  });
+
   it("websocket_connection_limit_reached early error evicts the WS", async () => {
     const { ws, persistent, onDead } = newPersistentWs();
     persistent.tryAcquire();
