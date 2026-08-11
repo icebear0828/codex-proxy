@@ -517,4 +517,38 @@ describe("account import/export", () => {
 
     pool2.destroy();
   });
+
+  it("POST /auth/accounts/import with refreshToken succeeds even if token lacks accountId", async () => {
+    const { extractChatGptAccountId } = await import("@src/auth/jwt-utils.js");
+    const originalImpl = extractChatGptAccountId;
+    (extractChatGptAccountId as ReturnType<typeof vi.fn>).mockImplementation((token: string) => {
+      if (token === "tokenNoAccountId12345") return null;
+      return `acct-${token.slice(0, 8)}`;
+    });
+
+    const { refreshAccessToken } = await import("@src/auth/oauth-pkce.js");
+    (refreshAccessToken as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+      access_token: "tokenNoAccountId12345",
+      refresh_token: "rt_returned_by_exchange",
+    });
+
+    const res = await app.request("/auth/accounts/import", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        accounts: [{ refreshToken: "rt_lacks_account_id" }],
+      }),
+    });
+
+    expect(res.status).toBe(200);
+    const data = await res.json() as { added: number; failed: number };
+    expect(data.added).toBe(1);
+    expect(data.failed).toBe(0);
+
+    const entry = pool.getAllEntries()[0];
+    expect(entry.token).toBe("tokenNoAccountId12345");
+    expect(entry.accountId).toBeNull();
+
+    (extractChatGptAccountId as ReturnType<typeof vi.fn>).mockImplementation(originalImpl);
+  });
 });

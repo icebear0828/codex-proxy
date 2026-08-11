@@ -190,6 +190,7 @@ export async function refreshAccessToken(
     grant_type: "refresh_token",
     client_id: config.auth.oauth_client_id,
     refresh_token: refreshToken,
+    scope: "openid profile email offline_access",
   });
 
   const doRequest = (proxyUrl: string | null | undefined) =>

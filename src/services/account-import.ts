@@ -5,7 +5,7 @@
 
 import type { AccountPool } from "../auth/account-pool.js";
 import type { AccountInfo } from "../auth/types.js";
-import { extractChatGptAccountId } from "../auth/jwt-utils.js";
+import { decodeJwtPayload, extractChatGptAccountId, isTokenExpired } from "../auth/jwt-utils.js";
 
 export interface ImportEntry {
   token?: string;
@@ -189,7 +189,7 @@ export class AccountImportService {
     try {
       const proxyUrl = this.deps.getProxyUrl();
       const tokens = await this.deps.refreshToken(rt as string, proxyUrl);
-      const v = this.deps.validateToken(tokens.access_token);
+      const v = this.canAcceptRtExchangeToken(tokens.access_token);
       if (!v.valid) {
         return {
           ok: false,
@@ -213,5 +213,24 @@ export class AccountImportService {
     } finally {
       this.refreshingRTs.delete(rt as string);
     }
+  }
+
+  /** Validate an RT-exchanged token without requiring metadata.accountId to be non-empty. */
+  private canAcceptRtExchangeToken(token: string): { valid: boolean; error?: string } {
+    if (!token || typeof token !== "string") {
+      return { valid: false, error: "Token is empty" };
+    }
+    const trimmed = token.trim();
+    const payload = decodeJwtPayload(trimmed);
+    if (!payload) {
+      return {
+        valid: false,
+        error: "Invalid JWT format — could not decode payload",
+      };
+    }
+    if (isTokenExpired(trimmed)) {
+      return { valid: false, error: "Token is expired" };
+    }
+    return { valid: true };
   }
 }

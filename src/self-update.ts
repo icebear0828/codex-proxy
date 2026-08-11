@@ -125,31 +125,40 @@ export function getProxyInfo(): ProxyInfo {
   let version: string | null = null;
   let commit: string | null = null;
 
-  // Collect version from both sources, pick the higher one
-  let tagVersion: string | null = null;
-  let pkgVersion: string | null = null;
-
-  try {
-    const tag = execFileSync("git", ["describe", "--tags", "--abbrev=0", "HEAD"], {
-      cwd: process.cwd(),
-      encoding: "utf-8",
-      timeout: 5000,
-    }).trim();
-    if (tag) tagVersion = tag.startsWith("v") ? tag.slice(1) : tag;
-  } catch { /* no reachable tag */ }
-
-  try {
-    const pkg = JSON.parse(readFileSync(resolve(getRootDir(), "package.json"), "utf-8")) as { version?: string };
-    const v = pkg.version;
-    if (v && v !== "1.0.0") pkgVersion = v;
-  } catch { /* ignore */ }
-
-  // Pick whichever is higher (tag on electron branch may be unreachable from master)
-  if (tagVersion && pkgVersion) {
-    version = pkgVersion.localeCompare(tagVersion, undefined, { numeric: true }) > 0
-      ? pkgVersion : tagVersion;
+  // 1. Build-time injected version (e.g. Docker --build-arg PROXY_VERSION=x.y.z)
+  //    This is the most reliable source in containerised environments that lack .git.
+  const envVersion = process.env.PROXY_VERSION?.trim();
+  // "unknown" is the Dockerfile ARG default when --build-arg PROXY_VERSION is omitted;
+  // treat it as absent so we fall back to git-tag / package.json.
+  if (envVersion && envVersion !== "unknown") {
+    version = envVersion;
   } else {
-    version = tagVersion ?? pkgVersion;
+    // 2. Collect version from both sources, pick the higher one
+    let tagVersion: string | null = null;
+    let pkgVersion: string | null = null;
+
+    try {
+      const tag = execFileSync("git", ["describe", "--tags", "--abbrev=0", "HEAD"], {
+        cwd: process.cwd(),
+        encoding: "utf-8",
+        timeout: 5000,
+      }).trim();
+      if (tag) tagVersion = tag.startsWith("v") ? tag.slice(1) : tag;
+    } catch { /* no reachable tag */ }
+
+    try {
+      const pkg = JSON.parse(readFileSync(resolve(getRootDir(), "package.json"), "utf-8")) as { version?: string };
+      const v = pkg.version;
+      if (v && v !== "1.0.0") pkgVersion = v;
+    } catch { /* ignore */ }
+
+    // Pick whichever is higher (tag on electron branch may be unreachable from master)
+    if (tagVersion && pkgVersion) {
+      version = pkgVersion.localeCompare(tagVersion, undefined, { numeric: true }) > 0
+        ? pkgVersion : tagVersion;
+    } else {
+      version = tagVersion ?? pkgVersion;
+    }
   }
 
   try {

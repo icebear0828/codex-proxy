@@ -32,7 +32,9 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Build Docker image
-        run: docker build -t codex-proxy:smoke .
+        run: |
+          PKG_VER=$(node -p "require('./package.json').version")
+          docker build -t codex-proxy:smoke --build-arg PROXY_VERSION="$PKG_VER" .
 
       - name: Start container
         run: |
@@ -72,6 +74,17 @@ jobs:
           # 200 (no key set) or 401 (key set) are both acceptable
           if [ "$STATUS" != "200" ] && [ "$STATUS" != "401" ]; then
             echo "::error::Unexpected status $STATUS from /v1/models"
+            exit 1
+          fi
+
+      - name: Verify PROXY_VERSION is injected
+        run: |
+          PKG_VER=$(node -p "require('./package.json').version")
+          CONTAINER_VER=$(docker run --rm codex-proxy:smoke \
+            node -e "const m=require('./dist/self-update.js'); process.stdout.write(m.getProxyInfo().version ?? '')")
+          echo "Expected: $PKG_VER  Got: $CONTAINER_VER"
+          if [ "$CONTAINER_VER" != "$PKG_VER" ]; then
+            echo "::error::PROXY_VERSION mismatch: expected $PKG_VER, got $CONTAINER_VER"
             exit 1
           fi
 

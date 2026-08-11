@@ -29,6 +29,11 @@ FROM node:20-slim
 # ports and Docker health checks can reach the service.
 ENV CODEX_PROXY_HOST=0.0.0.0
 
+# Proxy version injected at build time via --build-arg PROXY_VERSION=x.y.z
+# Falls back to package.json at runtime if not set.
+ARG PROXY_VERSION=unknown
+ENV PROXY_VERSION=${PROXY_VERSION}
+
 # curl: needed by full-update.ts
 # unzip: needed by full-update.ts to extract Codex.app
 # gosu: needed by entrypoint to drop from root to node user

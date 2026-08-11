@@ -98,6 +98,54 @@ describe("self-update", () => {
       const { getProxyInfo } = await importFresh();
       expect(getProxyInfo().commit).toBeNull();
     });
+
+    it("prefers PROXY_VERSION env over package.json and git tag", async () => {
+      process.env.PROXY_VERSION = "9.9.9";
+      try {
+        _readFileSync.mockReturnValue(JSON.stringify({ version: "1.2.3" }));
+        _execFileSync.mockReturnValue("v2.0.80\n");
+        const { getProxyInfo } = await importFresh();
+        expect(getProxyInfo().version).toBe("9.9.9");
+      } finally {
+        delete process.env.PROXY_VERSION;
+      }
+    });
+
+    it("falls back to git/package.json when PROXY_VERSION env is empty", async () => {
+      process.env.PROXY_VERSION = "";
+      try {
+        _readFileSync.mockReturnValue(JSON.stringify({ version: "2.0.80" }));
+        _execFileSync.mockReturnValue("");
+        const { getProxyInfo } = await importFresh();
+        expect(getProxyInfo().version).toBe("2.0.80");
+      } finally {
+        delete process.env.PROXY_VERSION;
+      }
+    });
+
+    it("falls back to git/package.json when PROXY_VERSION is 'unknown' (Dockerfile ARG default)", async () => {
+      process.env.PROXY_VERSION = "unknown";
+      try {
+        _readFileSync.mockReturnValue(JSON.stringify({ version: "2.0.80" }));
+        _execFileSync.mockReturnValue("");
+        const { getProxyInfo } = await importFresh();
+        expect(getProxyInfo().version).toBe("2.0.80");
+      } finally {
+        delete process.env.PROXY_VERSION;
+      }
+    });
+
+    it("accepts PROXY_VERSION=1.0.0 as a valid explicit version", async () => {
+      process.env.PROXY_VERSION = "1.0.0";
+      try {
+        _readFileSync.mockReturnValue(JSON.stringify({ version: "2.0.80" }));
+        _execFileSync.mockReturnValue("v2.0.80\n");
+        const { getProxyInfo } = await importFresh();
+        expect(getProxyInfo().version).toBe("1.0.0");
+      } finally {
+        delete process.env.PROXY_VERSION;
+      }
+    });
   });
 
   // ── canSelfUpdate ─────────────────────────────────────────────────
