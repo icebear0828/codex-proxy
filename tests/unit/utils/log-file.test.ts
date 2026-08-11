@@ -103,6 +103,76 @@ describe("installFileLogger", () => {
     expect(typeof result).toBe("boolean");
   });
 
+  it.each(["EPIPE", "ECONNRESET"] as const)(
+    "suppresses synchronous %s errors from the underlying stream",
+    (code) => {
+      const dir = mkdtempSync(join(tmpdir(), "codex-proxy-log-"));
+      cleanups.push(() => rmSync(dir, { recursive: true, force: true }));
+
+      const originalWrite = process.stdout.write;
+      const error = Object.assign(new Error(code), { code });
+      process.stdout.write = (() => {
+        throw error;
+      }) as typeof process.stdout.write;
+      cleanups.push(() => {
+        process.stdout.write = originalWrite;
+      });
+
+      const handle = installFileLogger({ dir, filename: "test.log" });
+      cleanups.push(() => handle.uninstall());
+
+      expect(() => process.stdout.write("broken pipe\n")).not.toThrow();
+      expect(process.stdout.write("broken pipe\n")).toBe(false);
+    },
+  );
+
+  it("rethrows non-ignorable synchronous stream errors", () => {
+    const dir = mkdtempSync(join(tmpdir(), "codex-proxy-log-"));
+    cleanups.push(() => rmSync(dir, { recursive: true, force: true }));
+
+    const originalWrite = process.stdout.write;
+    const error = Object.assign(new Error("invalid argument"), { code: "EINVAL" });
+    process.stdout.write = (() => {
+      throw error;
+    }) as typeof process.stdout.write;
+    cleanups.push(() => {
+      process.stdout.write = originalWrite;
+    });
+
+    const handle = installFileLogger({ dir, filename: "test.log" });
+    cleanups.push(() => handle.uninstall());
+
+    expect(() => process.stdout.write("invalid\n")).toThrow(error);
+  });
+
+  it("suppresses ignorable stream error events", () => {
+    const dir = mkdtempSync(join(tmpdir(), "codex-proxy-log-"));
+    cleanups.push(() => rmSync(dir, { recursive: true, force: true }));
+
+    const handle = installFileLogger({ dir, filename: "test.log" });
+    cleanups.push(() => handle.uninstall());
+
+    for (const code of ["EPIPE", "ECONNRESET"] as const) {
+      const error = Object.assign(new Error(code), { code });
+      expect(() => process.stdout.emit("error", error)).not.toThrow();
+    }
+  });
+
+  it("rethrows non-ignorable stream error events and removes handlers on uninstall", () => {
+    const dir = mkdtempSync(join(tmpdir(), "codex-proxy-log-"));
+    cleanups.push(() => rmSync(dir, { recursive: true, force: true }));
+
+    const before = process.stdout.listenerCount("error");
+    const handle = installFileLogger({ dir, filename: "test.log" });
+    expect(process.stdout.listenerCount("error")).toBe(before + 1);
+
+    const error = Object.assign(new Error("invalid argument"), { code: "EINVAL" });
+    expect(() => process.stdout.emit("error", error)).toThrow(error);
+
+    handle.uninstall();
+    expect(process.stdout.listenerCount("error")).toBe(before);
+  });
+
   it("appends to an existing file instead of truncating", () => {
     const dir = mkdtempSync(join(tmpdir(), "codex-proxy-log-"));
     cleanups.push(() => rmSync(dir, { recursive: true, force: true }));

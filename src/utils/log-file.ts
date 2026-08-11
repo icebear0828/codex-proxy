@@ -32,14 +32,9 @@ export function installFileLogger(opts: InstallFileLoggerOptions): FileLoggerHan
   process.stdout.write = wrap(originalStdout, process.stdout, fd);
   process.stderr.write = wrap(originalStderr, process.stderr, fd);
 
-  const errorHandler = (err: unknown): void => {
-    if (err && typeof err === "object" && "code" in err) {
-      const code = (err as { code?: unknown }).code;
-      if (code === "EPIPE" || code === "ECONNRESET") {
-        return;
-      }
-    }
-    throw err;
+  const errorHandler = (error: unknown): void => {
+    if (isIgnorableStreamError(error)) return;
+    throw error;
   };
 
   process.stdout.on("error", errorHandler);
@@ -77,11 +72,21 @@ function wrap(original: WriteFn, stream: NodeJS.WriteStream, fd: number): WriteF
     }
     try {
       return (original as (...a: unknown[]) => boolean).apply(stream, args);
-    } catch {
-      return false;
+    } catch (error) {
+      if (isIgnorableStreamError(error)) return false;
+      throw error;
     }
   };
   return wrapped as WriteFn;
+}
+
+function isIgnorableStreamError(error: unknown): boolean {
+  if (error === null || typeof error !== "object" || !("code" in error)) {
+    return false;
+  }
+
+  const code = (error as { code?: unknown }).code;
+  return code === "EPIPE" || code === "ECONNRESET";
 }
 
 function toBuffer(chunk: unknown, encoding: BufferEncoding | undefined): Buffer {
