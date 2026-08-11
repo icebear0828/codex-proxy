@@ -164,6 +164,7 @@ export async function handleProxyRequest(options: HandleProxyRequestOptions): Pr
   let codexApi = buildCodexApi(acquired.token, acquired.accountId, cookieJar, entryId, proxyPool);
   const triedEntryIds: string[] = [entryId];
   let modelRetried = false;
+  let earlyServerErrorRetried = false;
   let stripAndRetryDone = false;
   const reasoningReplayCache = getReasoningReplayCache();
   const reasoningReplayItems = sessionContext.implicitPrevRespId
@@ -407,6 +408,7 @@ export async function handleProxyRequest(options: HandleProxyRequestOptions): Pr
         case "error_handler_decides": {
           const decision = handleCodexApiError(
             err as CodexApiError, accountPool, entryId, req.codexRequest.model, fmt.tag, modelRetried, cookieJar,
+            earlyServerErrorRetried,
           );
 
           const errorRetryTransition = applyProxyErrorRetryTransition({
@@ -425,10 +427,14 @@ export async function handleProxyRequest(options: HandleProxyRequestOptions): Pr
               status: errorRetryTransition.status,
               message: errorRetryTransition.message,
               ...(errorRetryTransition.useFormat429 ? { useFormat429: true } : {}),
+              ...(errorRetryTransition.errorBody !== undefined ? { errorBody: errorRetryTransition.errorBody } : {}),
             });
           }
 
           modelRetried = errorRetryTransition.modelRetried;
+          if (decision.action === "retry" && decision.markEarlyServerErrorRetried) {
+            earlyServerErrorRetried = true;
+          }
           entryId = errorRetryTransition.entryId;
           triedEntryIds.push(errorRetryTransition.entryId);
           codexApi = errorRetryTransition.api;

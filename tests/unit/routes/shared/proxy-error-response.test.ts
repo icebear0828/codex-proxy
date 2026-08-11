@@ -97,4 +97,44 @@ describe("proxy error response helpers", () => {
     expect(await res.json()).toEqual({ error: "no_account" });
     expect(fmt.formatNoAccount).toHaveBeenCalledOnce();
   });
+
+  it("passes through a structured upstream error body for non-streaming responses", async () => {
+    const app = new Hono();
+    const fmt = createMockFormatAdapter();
+    const body = JSON.stringify({ error: { code: "server_error", message: "internal" } });
+    app.get("/upstream-error", (c) => respondWithProxyError({
+      c,
+      req: createRequest(false),
+      fmt,
+      status: 500,
+      message: "internal",
+      errorBody: body,
+    }));
+
+    const res = await app.request("/upstream-error");
+    expect(res.status).toBe(500);
+    expect(res.headers.get("content-type")).toContain("application/json");
+    expect(await res.text()).toBe(body);
+    expect(fmt.formatError).not.toHaveBeenCalled();
+  });
+
+  it("passes through a terminal upstream error body before a streaming response is committed", async () => {
+    const app = new Hono();
+    const fmt = createMockFormatAdapter();
+    const body = JSON.stringify({ error: { code: "server_error", message: "internal" } });
+    app.get("/stream-upstream-error", (c) => respondWithProxyError({
+      c,
+      req: createRequest(true),
+      fmt,
+      status: 500,
+      message: "internal",
+      errorBody: body,
+    }));
+
+    const res = await app.request("/stream-upstream-error");
+    expect(res.status).toBe(500);
+    expect(res.headers.get("content-type")).toContain("application/json");
+    expect(await res.text()).toBe(body);
+    expect(fmt.formatStreamError).not.toHaveBeenCalled();
+  });
 });

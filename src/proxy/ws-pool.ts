@@ -125,6 +125,7 @@ const ROTATABLE_ERROR_CODES: Readonly<Record<string, number>> = {
   previous_response_not_found: 400,
   websocket_connection_limit_reached: 503,
   server_is_overloaded: 503,
+  server_error: 500,
 };
 
 function classifyWsErrorEvent(msg: Record<string, unknown>): { status: number; code: string } | null {

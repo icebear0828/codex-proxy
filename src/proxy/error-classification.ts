@@ -64,6 +64,18 @@ export function isServerOverloadedError(err: unknown): boolean {
   }
 }
 
+/** Check if a 500 is the transient upstream server error emitted before output. */
+export function isEarlyServerError(err: unknown): boolean {
+  if (!isCodexLike(err) || err.status !== 500) return false;
+  try {
+    const parsed = JSON.parse(err.body) as Record<string, unknown>;
+    const error = parsed.error as Record<string, unknown> | undefined;
+    return error?.code === "server_error";
+  } catch {
+    return false;
+  }
+}
+
 /** Check if a 403 body is a Cloudflare challenge rather than an account ban. */
 export function isCfChallengeError(err: unknown): boolean {
   if (!isCodexLike(err)) return false;

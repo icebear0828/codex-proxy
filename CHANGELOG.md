@@ -42,6 +42,8 @@
 
 ### Fixed
 
+- Retry early upstream `server_error` responses once on a different account before streaming; forward the real upstream error body only after retry exhaustion while preserving already-started streams.
+
 - 修复上游 WebSocket 首帧 `server_is_overloaded` 被当作普通 SSE 错误透传、最终表现为 `stream disconnected before completion` 的问题：现在在 HTTP 响应提交前映射为 503，进入账号切换/有限重试；已产生输出后不重放请求，且 `response.completed` 后的异常关闭不再误报未完成流。（`src/proxy/error-classification.ts`、`src/proxy/ws-pool.ts`、`src/proxy/ws-transport.ts`、`src/routes/shared/proxy-error-handler.ts`、`src/translation/codex-api-error-from-event.ts`）
 
 - 修复 Dashboard Errors tab 的“全部标记已读”和“删除”操作被 Settings Bearer-token middleware 拦截成 401 的问题；`/admin/error-logs*` 统一交给 dashboard session auth，避免 cookie 登录会话被误判失效并跳回登录页。（`src/routes/admin/settings.ts`、`tests/integration/error-logs-dashboard-auth.test.ts`）

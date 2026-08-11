@@ -166,6 +166,41 @@ describe("handleCodexApiError", () => {
     });
   });
 
+  describe("500 early server_error", () => {
+    const body = JSON.stringify({
+      error: { code: "server_error", message: "The server had an internal error" },
+    });
+
+    it("retries once without changing account health or quota", () => {
+      const result = handleCodexApiError(
+        new CodexApiError(500, body), pool as never, entryId, model, tag, false,
+      );
+      expect(result).toEqual({
+        action: "retry",
+        releaseBeforeRetry: true,
+        markEarlyServerErrorRetried: true,
+        status: 500,
+        message: expect.stringContaining("server had an internal error"),
+      });
+      expect(pool.markStatus).not.toHaveBeenCalled();
+      expect(pool.applyRateLimit429).not.toHaveBeenCalled();
+    });
+
+    it("returns the original structured body after the one retry is used", () => {
+      const result = handleCodexApiError(
+        new CodexApiError(500, body), pool as never, entryId, model, tag, false, undefined, true,
+      );
+      expect(result).toEqual({
+        action: "respond",
+        status: 500,
+        message: expect.stringContaining("server had an internal error"),
+        errorBody: body,
+      });
+      expect(pool.markStatus).not.toHaveBeenCalled();
+      expect(pool.applyRateLimit429).not.toHaveBeenCalled();
+    });
+  });
+
   // ── 403 ban ──
 
   describe("403 ban", () => {
@@ -251,14 +286,15 @@ describe("handleCodexApiError", () => {
       expect(result.status).toBe(502);
     });
 
-    it("includes errorBody from upstream in respond action", () => {
-      const upstreamBody = JSON.stringify({ error: { message: "invalid param", type: "invalid_request_error" } });
-      const err = new CodexApiError(422, upstreamBody);
+    it("lets generic errors use the route formatter", () => {
+      const err = new CodexApiError(422, JSON.stringify({
+        error: { message: "invalid param", type: "invalid_request_error" },
+      }));
 
       const result = handleCodexApiError(err, pool as never, entryId, model, tag, false);
 
       expect(result.action).toBe("respond");
-      expect(result.errorBody).toBe(upstreamBody);
+      expect(result).not.toHaveProperty("errorBody");
     });
   });
 

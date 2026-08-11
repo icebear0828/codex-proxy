@@ -27,6 +27,7 @@ export interface RespondWithProxyErrorOptions {
   status: number;
   message: string;
   useFormat429?: boolean;
+  errorBody?: string;
 }
 
 export function buildAccountExhaustionDetail(summary: AccountPoolSummary, message: string): string {
@@ -58,7 +59,14 @@ export function respondWithNoAccount(options: RespondWithNoAccountOptions): Resp
 }
 
 export function respondWithProxyError(options: RespondWithProxyErrorOptions): Response {
-  const { c, req, fmt, status, message, useFormat429 = false } = options;
+  const { c, req, fmt, status, message, useFormat429 = false, errorBody } = options;
+  if (errorBody !== undefined) {
+    c.status(status as StatusCode);
+    return new Response(errorBody, {
+      status,
+      headers: { "content-type": "application/json" },
+    });
+  }
   if (canReturnStreamError(req, fmt)) {
     return streamErrorResponse(c, fmt, status, message);
   }
