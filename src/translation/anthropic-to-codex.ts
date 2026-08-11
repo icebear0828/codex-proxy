@@ -44,6 +44,11 @@ function mapThinkingToEffort(
   return budgetToEffort(thinking.budget_tokens);
 }
 
+function normalizeCodexEffort(effort: string | null | undefined): string | undefined {
+  if (!effort) return undefined;
+  return effort === "ultra" || effort === "ultracode" ? "xhigh" : effort;
+}
+
 /**
  * Extract text-only content from Anthropic blocks.
  */
@@ -191,7 +196,7 @@ function contentToInputItems(
  *   - system (top-level) → instructions field
  *   - messages → input array
  *   - model → resolved model ID
- *   - thinking → reasoning.effort
+ *   - output_config.effort / thinking → reasoning.effort
  */
 export function translateAnthropicToCodexRequest(
   req: AnthropicMessagesRequest,
@@ -267,12 +272,14 @@ export function translateAnthropicToCodexRequest(
     request.tool_choice = codexToolChoice;
   }
 
-  // Reasoning effort: thinking config > suffix > config default
+  // Reasoning effort: explicit output config > thinking config > suffix > config default.
   const thinkingEffort = mapThinkingToEffort(req.thinking);
-  const effort =
+  const anthropicEffort =
+    req.output_config?.effort ??
     thinkingEffort ??
     parsed.reasoningEffort ??
     cfg.default_reasoning_effort;
+  const effort = normalizeCodexEffort(anthropicEffort);
   if (effort) {
     request.reasoning = { effort, summary: "auto" };
   }

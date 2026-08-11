@@ -56,6 +56,12 @@ export function summarizeRequestForLog(route: string, body: unknown, meta: Recor
       summary.stream = typeof body.stream === "boolean" ? body.stream : undefined;
       summary.max_tokens = typeof body.max_tokens === "number" ? body.max_tokens : undefined;
       summary.thinking = isRecord(body.thinking) ? body.thinking.type : undefined;
+      summary.thinking_budget_tokens = isRecord(body.thinking) && typeof body.thinking.budget_tokens === "number"
+        ? body.thinking.budget_tokens
+        : undefined;
+      summary.output_config_effort = isRecord(body.output_config) && typeof body.output_config.effort === "string"
+        ? body.output_config.effort
+        : undefined;
       summary.tools = toCount(body.tools);
       summary.headers = isRecord(meta.headers) ? summarizeHeaders(meta.headers) : undefined;
     }
