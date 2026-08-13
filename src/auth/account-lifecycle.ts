@@ -158,6 +158,7 @@ export class AccountLifecycle {
       input_tokens?: number;
       output_tokens?: number;
       cached_tokens?: number;
+      estimated_cost_usd?: number;
       image_input_tokens?: number;
       image_output_tokens?: number;
       image_request_attempted?: boolean;

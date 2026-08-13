@@ -21,6 +21,7 @@ import { staggerIfNeeded } from "./shared/proxy-stagger.js";
 import { withRetry } from "../utils/retry.js";
 import { PASSTHROUGH_FORMAT } from "./responses-passthrough.js";
 import { isRecord } from "../translation/shared-utils.js";
+import { annotateUsageCost } from "./shared/proxy-handler-utils.js";
 
 // ── Helpers ───────────────────────────────────────────────────────
 
@@ -149,11 +150,11 @@ export async function handleCompact(
       );
 
       clearCfChallengeCooldown(entryId);
-      releaseAccount(accountPool, entryId, compactImageFailedUsage, released);
+      releaseAccount(accountPool, entryId, annotateUsageCost(modelId, compactImageFailedUsage), released);
       return c.json(result);
     } catch (err) {
       if (!(err instanceof CodexApiError)) {
-        releaseAccount(accountPool, entryId, compactImageFailedUsage, released);
+        releaseAccount(accountPool, entryId, annotateUsageCost(modelId, compactImageFailedUsage), released);
         throw err;
       }
 
@@ -162,13 +163,13 @@ export async function handleCompact(
       );
 
       if (decision.action === "respond") {
-        releaseAccount(accountPool, entryId, compactImageFailedUsage, released);
+        releaseAccount(accountPool, entryId, annotateUsageCost(modelId, compactImageFailedUsage), released);
         c.status(decision.status as StatusCode);
         return c.json(formatResponsesError(decision.status, decision.message));
       }
 
       if (decision.releaseBeforeRetry) {
-        releaseAccount(accountPool, entryId, compactImageFailedUsage, released);
+        releaseAccount(accountPool, entryId, annotateUsageCost(modelId, compactImageFailedUsage), released);
       }
 
       const retry = acquireAccount(accountPool, modelId, triedEntryIds, TAG);
@@ -197,7 +198,7 @@ export async function handleCompact(
     }
   }
 
-  releaseAccount(accountPool, entryId, compactImageFailedUsage, released);
+  releaseAccount(accountPool, entryId, annotateUsageCost(modelId, compactImageFailedUsage), released);
   c.status(502);
   return c.json(formatResponsesError(502, "Compact failed after maximum retry attempts"));
 }

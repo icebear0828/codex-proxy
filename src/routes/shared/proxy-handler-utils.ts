@@ -2,6 +2,34 @@ import { CodexApi } from "../../proxy/codex-api.js";
 import type { CookieJar } from "../../proxy/cookie-jar.js";
 import type { ProxyPool } from "../../proxy/proxy-pool.js";
 import type { UsageInfo } from "../../translation/codex-event-extractor.js";
+import { calculateUsageCostUsd, loadPricingCatalog, resolveModelPricing } from "../../auth/usage-pricing.js";
+
+let pricingCatalog: ReturnType<typeof loadPricingCatalog> | null = null;
+
+function getPricingCatalog(): ReturnType<typeof loadPricingCatalog> {
+  pricingCatalog ??= loadPricingCatalog();
+  return pricingCatalog;
+}
+
+/** Attach the model and local official-price estimate before account release. */
+export function annotateUsageCost(model: string | undefined, usage: UsageInfo | undefined): UsageInfo | undefined {
+  if (!usage) return undefined;
+  if (!model) return usage;
+  let estimatedCost = 0;
+  try {
+    const catalog = getPricingCatalog();
+    if (!resolveModelPricing(model, catalog)) return usage;
+    estimatedCost = calculateUsageCostUsd(model, usage, catalog);
+  } catch (err) {
+    // Test fixtures and minimal deployments may not ship the optional catalog.
+    // Preserve the legacy release payload until pricing data is available.
+    if (err instanceof Error && !err.message.includes("ENOENT")) {
+      console.warn(`[UsagePricing] Failed to calculate cost for model ${model}:`, err.message);
+    }
+    return usage;
+  }
+  return { ...usage, model, estimated_cost_usd: estimatedCost };
+}
 
 /** Strip CodexApiError's "Codex API error (NNN): " prefix so log warns that
  *  already include status= don't duplicate it inside the message body. */

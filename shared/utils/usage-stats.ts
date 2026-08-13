@@ -14,6 +14,7 @@ export interface UsageWindowTotals {
   image_output_tokens: number;
   image_request_count: number;
   image_request_failed_count: number;
+  estimated_cost_usd: number;
   request_count: number;
 }
 
@@ -55,6 +56,7 @@ export function sumUsageWindow(points: ReadonlyArray<UsageDataPoint>): UsageWind
     image_output_tokens: 0,
     image_request_count: 0,
     image_request_failed_count: 0,
+    estimated_cost_usd: 0,
     request_count: 0,
   };
 
@@ -66,6 +68,7 @@ export function sumUsageWindow(points: ReadonlyArray<UsageDataPoint>): UsageWind
     totals.image_output_tokens += p.image_output_tokens;
     totals.image_request_count += p.image_request_count;
     totals.image_request_failed_count += p.image_request_failed_count;
+    totals.estimated_cost_usd += p.estimated_cost_usd ?? 0;
     totals.request_count += p.request_count;
   }
 

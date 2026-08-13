@@ -129,6 +129,7 @@ export async function handleNonStreaming(options: HandleNonStreamingOptions): Pr
         entryId: currentEntryId,
         usage: result.usage,
         expectsImageGen: req.expectsImageGen,
+        model: req.model,
         released,
       });
       return c.json(result.response);

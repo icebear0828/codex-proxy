@@ -8,7 +8,7 @@ import { recordStreamCloseEvent } from "../../logs/stream-close-event.js";
 import type { UsageInfo } from "../../translation/codex-event-extractor.js";
 import { releaseAccount } from "./account-acquisition.js";
 import type { FormatAdapter, ProxyRequest, UsageHint } from "./proxy-handler-types.js";
-import { annotateImageGenOutcome } from "./proxy-handler-utils.js";
+import { annotateImageGenOutcome, annotateUsageCost } from "./proxy-handler-utils.js";
 import { streamResponse } from "./response-processor.js";
 import { createResponseMetadataCollector } from "./response-metadata-collector.js";
 import { logProxyUsage } from "./proxy-usage-log.js";
@@ -210,7 +210,7 @@ export function handleStreaming(options: HandleStreamingOptions): Response {
           includeReasoningInHighInputWarning: true,
         });
       }
-      releaseAccount(accountPool, capturedEntryId, annotateImageGenOutcome(usageInfo, req.expectsImageGen), released);
+      releaseAccount(accountPool, capturedEntryId, annotateUsageCost(req.model, annotateImageGenOutcome(usageInfo, req.expectsImageGen)), released);
     }
   });
 }

@@ -16,6 +16,10 @@ export interface UsageInfo {
   input_tokens: number;
   output_tokens: number;
   cached_tokens?: number;
+  /** Requested model used to calculate the local API-price estimate. */
+  model?: string;
+  /** Estimated USD cost using config/model-pricing.yaml. */
+  estimated_cost_usd?: number;
   reasoning_tokens?: number;
   /** Tokens billed by the image_generation tool (gpt-image-2). Separate from host-model usage. */
   image_input_tokens?: number;
