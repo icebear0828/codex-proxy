@@ -1,7 +1,7 @@
 import { useState } from "preact/hooks";
 import { useT } from "../../../shared/i18n/context";
-import { useUsageSummary, useUsageHistory, useUsageQuota, type Granularity, type UsageHistoryRange } from "../../../shared/hooks/use-usage-stats";
-import { formatCredits, formatResetTime, formatUsd } from "../../../shared/utils/format";
+import { useUsageSummary, useUsageHistory, type Granularity, type UsageHistoryRange } from "../../../shared/hooks/use-usage-stats";
+import { formatUsd } from "../../../shared/utils/format";
 import { UsageChart, formatNumber, formatHitRate, sumUsageWindow, sumWindow } from "../components/UsageChart";
 import type { TranslationKey } from "../../../shared/i18n/translations";
 
@@ -22,7 +22,7 @@ const rangeOptions: Array<{ hours: UsageHistoryRange; label: TranslationKey }> =
   { hours: "all", label: "allHistory" },
 ];
 
-function UsageContent({ t, summary, summaryLoading, granularity, setGranularity, hours, setHours, dataPoints, historyLoading, officialQuota, officialQuotaLoading, officialQuotaError, refreshOfficialQuota }: {
+function UsageContent({ t, summary, summaryLoading, granularity, setGranularity, hours, setHours, dataPoints, historyLoading }: {
   t: (key: TranslationKey) => string;
   summary: ReturnType<typeof useUsageSummary>["summary"];
   summaryLoading: boolean;
@@ -32,10 +32,6 @@ function UsageContent({ t, summary, summaryLoading, granularity, setGranularity,
   setHours: (h: UsageHistoryRange) => void;
   dataPoints: ReturnType<typeof useUsageHistory>["dataPoints"];
   historyLoading: boolean;
-  officialQuota: ReturnType<typeof useUsageQuota>["data"];
-  officialQuotaLoading: boolean;
-  officialQuotaError: string | null;
-  refreshOfficialQuota: () => Promise<void>;
 }) {
   const rangeWindow = sumWindow(dataPoints);
   const usageWindow = sumUsageWindow(dataPoints);
@@ -48,16 +44,8 @@ function UsageContent({ t, summary, summaryLoading, granularity, setGranularity,
 
   return (
     <>
-      <OfficialQuotaSection
-        t={t}
-        data={officialQuota}
-        loading={officialQuotaLoading}
-        error={officialQuotaError}
-        onRefresh={refreshOfficialQuota}
-      />
-
       {/* Summary cards */}
-      <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-9 gap-3 mb-6">
+      <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-8 gap-3 mb-6">
         <SummaryCard
           label={t("totalInputTokens")}
           value={historyLoading ? "—" : formatNumber(usageWindow.input_tokens)}
@@ -185,9 +173,8 @@ export function UsageStats({ embedded }: { embedded?: boolean } = {}) {
   const [granularity, setGranularity] = useState<Granularity>("hourly");
   const [hours, setHours] = useState<UsageHistoryRange>(24);
   const { dataPoints, loading: historyLoading } = useUsageHistory(granularity, hours);
-  const { data: officialQuota, loading: officialQuotaLoading, error: officialQuotaError, refresh: refreshOfficialQuota } = useUsageQuota();
 
-  const contentProps = { t, summary, summaryLoading, granularity, setGranularity, hours, setHours, dataPoints, historyLoading, officialQuota, officialQuotaLoading, officialQuotaError, refreshOfficialQuota };
+  const contentProps = { t, summary, summaryLoading, granularity, setGranularity, hours, setHours, dataPoints, historyLoading };
 
   if (embedded) {
     return (
@@ -228,47 +215,4 @@ function SummaryCard({ label, value, hint }: { label: string; value: string; hin
       {hint && <div class="mt-1 text-[11px] text-slate-400 dark:text-text-dim truncate">{hint}</div>}
     </div>
   );
-}
-
-function OfficialQuotaSection({ t, data, loading, error, onRefresh }: {
-  t: (key: TranslationKey) => string;
-  data: ReturnType<typeof useUsageQuota>["data"];
-  loading: boolean;
-  error: string | null;
-  onRefresh: () => Promise<void>;
-}) {
-  return (
-    <section aria-labelledby="official-quota-heading" class="mb-6">
-      <div class="flex items-center justify-between mb-3">
-        <h2 id="official-quota-heading" class="text-base font-semibold text-slate-800 dark:text-text-main">{t("officialQuota")}</h2>
-        <button type="button" onClick={() => void onRefresh()} class="px-3 py-1 text-xs font-medium rounded-full border border-gray-200 dark:border-border-dark text-slate-600 dark:text-text-dim hover:border-primary/50">{t("refresh")}</button>
-      </div>
-      {loading ? <div role="status" class="text-sm text-slate-400 dark:text-text-dim">Loading...</div>
-        : error ? <div role="alert" class="text-sm text-red-600 dark:text-red-400">{error}</div>
-        : !data || data.accounts.length === 0 ? <div class="text-sm text-slate-400 dark:text-text-dim">{t("noQuotaData")}</div>
-        : <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">{data.accounts.map((item) => (
-          <div key={item.account.id} class="bg-white dark:bg-card-dark rounded-xl border border-gray-200 dark:border-border-dark p-4">
-            <div class="flex items-start justify-between gap-2 mb-3">
-              <div class="min-w-0"><div class="font-medium text-slate-800 dark:text-text-main truncate">{item.account.label || item.account.email || item.account.id}</div>{item.account.label && item.account.email ? <div class="text-xs text-slate-400 dark:text-text-dim truncate">{item.account.email}</div> : null}</div>
-              <span class="text-xs text-slate-400 dark:text-text-dim">{item.account.plan_type || "—"}</span>
-            </div>
-            {item.error ? <div role="alert" class="text-sm text-red-600 dark:text-red-400">{item.error}</div>
-              : item.quota ? <div class="grid grid-cols-3 gap-2">
-                <QuotaValue label={t("primaryRemaining")} value={formatRemaining(item.quota.rate_limit?.remaining_percent)} resetAt={item.quota.rate_limit?.reset_at} />
-                <QuotaValue label={t("weeklyRemaining")} value={formatRemaining(item.quota.secondary_rate_limit?.remaining_percent)} resetAt={item.quota.secondary_rate_limit?.reset_at} />
-                <QuotaValue label={t("creditsBalance")} value={item.quota.credits?.unlimited ? t("creditsUnlimited") : formatCredits(item.quota.credits?.balance ?? 0)} />
-              </div>
-              : <div class="text-sm text-slate-400 dark:text-text-dim">{t("noQuotaData")}</div>}
-          </div>
-        ))}</div>}
-    </section>
-  );
-}
-
-function formatRemaining(value: number | null | undefined): string {
-  return typeof value === "number" && Number.isFinite(value) ? `${Math.round(value)}%` : "—";
-}
-
-function QuotaValue({ label, value, resetAt }: { label: string; value: string; resetAt?: number | null }) {
-  return <div><div class="text-[11px] text-slate-500 dark:text-text-dim">{label}</div><div class="text-lg font-semibold text-slate-800 dark:text-text-main">{value}</div>{resetAt ? <div class="text-[10px] text-slate-400 dark:text-text-dim">{formatResetTime(resetAt, false)}</div> : null}</div>;
 }

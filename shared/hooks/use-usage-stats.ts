@@ -3,7 +3,6 @@
  */
 
 import { useState, useEffect, useCallback } from "preact/hooks";
-import type { AccountQuota } from "../types";
 
 export interface UsageSummary {
   total_input_tokens: number;
@@ -39,23 +38,6 @@ export interface UsageDataPoint {
 
 export type Granularity = "raw" | "five_min" | "hourly" | "daily";
 export type UsageHistoryRange = number | "all";
-
-export interface OfficialQuotaAccount {
-  id: string;
-  email: string | null;
-  label: string | null;
-  plan_type: string | null;
-}
-
-export interface OfficialQuotaResult {
-  account: OfficialQuotaAccount;
-  quota: AccountQuota | null;
-  error: string | null;
-}
-
-export interface OfficialQuotaResponse {
-  accounts: OfficialQuotaResult[];
-}
 
 /** 15 s fetch hard timeout — stops the dashboard from showing "—" forever
  *  when an extension, service worker, or upstream stall blackholes the
@@ -111,38 +93,4 @@ export function useUsageHistory(granularity: Granularity, hours: UsageHistoryRan
   }, [load, refreshIntervalMs]);
 
   return { dataPoints, loading };
-}
-
-export function useUsageQuota(refreshIntervalMs = 30_000) {
-  const [data, setData] = useState<OfficialQuotaResponse | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-
-  const refresh = useCallback(async () => {
-    try {
-      const resp = await fetch("/admin/usage-stats/quota", {
-        signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
-      });
-      if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-      const body: unknown = await resp.json();
-      if (!body || typeof body !== "object" || !Array.isArray((body as { accounts?: unknown }).accounts)) {
-        throw new Error("Invalid quota response");
-      }
-      setData(body as OfficialQuotaResponse);
-      setError(null);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Unable to fetch quota");
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    setLoading(true);
-    void refresh();
-    const id = setInterval(() => void refresh(), refreshIntervalMs);
-    return () => clearInterval(id);
-  }, [refresh, refreshIntervalMs]);
-
-  return { data, loading, error, refresh };
 }
