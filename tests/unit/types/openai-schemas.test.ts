@@ -84,7 +84,7 @@ describe("ChatCompletionRequestSchema", () => {
     }
   });
 
-  it("normalizes named custom tools as function-compatible tools", () => {
+  it("preserves Cursor custom tools and their grammar format", () => {
     const result = ChatCompletionRequestSchema.safeParse({
       model: "gpt-5.4",
       messages: [{ role: "user", content: "Apply a patch" }],
@@ -92,18 +92,69 @@ describe("ChatCompletionRequestSchema", () => {
         type: "custom",
         name: "apply_patch",
         description: "Apply a repository patch",
+        format: {
+          type: "grammar",
+          syntax: "lark",
+          definition: "start: begin_patch hunk end_patch",
+        },
       }],
     });
 
     expect(result.success).toBe(true);
     if (result.success) {
       expect(result.data.tools?.[0]).toEqual({
-        type: "function",
-        function: {
-          name: "apply_patch",
-          description: "Apply a repository patch",
+        type: "custom",
+        name: "apply_patch",
+        description: "Apply a repository patch",
+        format: {
+          type: "grammar",
+          syntax: "lark",
+          definition: "start: begin_patch hunk end_patch",
         },
       });
+    }
+  });
+
+  it("normalizes custom tool calls and outputs from Responses-style input", () => {
+    const result = ChatCompletionRequestSchema.safeParse({
+      model: "gpt-5.4",
+      input: [
+        {
+          type: "custom_tool_call",
+          call_id: "call_patch",
+          name: "ApplyPatch",
+          input: "*** Begin Patch\n*** End Patch",
+        },
+        {
+          type: "custom_tool_call_output",
+          call_id: "call_patch",
+          output: "Done",
+        },
+      ],
+    });
+
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.messages).toEqual([
+        {
+          role: "assistant",
+          content: null,
+          tool_calls: [{
+            id: "call_patch",
+            type: "custom",
+            custom: {
+              name: "ApplyPatch",
+              input: "*** Begin Patch\n*** End Patch",
+            },
+          }],
+        },
+        {
+          role: "tool",
+          content: "Done",
+          tool_call_id: "call_patch",
+          tool_call_type: "custom",
+        },
+      ]);
     }
   });
 

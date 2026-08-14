@@ -84,6 +84,21 @@ function responsesContentToText(content: unknown): string {
     .join("\n");
 }
 
+function normalizeToolCall(toolCall: unknown): unknown {
+  if (!isRecord(toolCall) || toolCall.type !== "custom" || isRecord(toolCall.custom)) {
+    return toolCall;
+  }
+
+  const name = optionalString(toolCall.name);
+  const input = optionalString(toolCall.input);
+  if (!name || input === undefined) return toolCall;
+
+  return {
+    ...toolCall,
+    custom: { name, input },
+  };
+}
+
 function normalizeResponsesInputItem(item: unknown): unknown[] {
   if (typeof item === "string") {
     return [{ role: "user", content: item }];
@@ -119,6 +134,32 @@ function normalizeResponsesInputItem(item: unknown): unknown[] {
     }];
   }
 
+  if (item.type === "custom_tool_call") {
+    const name = optionalString(item.name);
+    const input = optionalString(item.input);
+    if (!name || input === undefined) return [];
+    const callId = optionalString(item.call_id) ?? optionalString(item.id) ?? `ctc_${name}`;
+    return [{
+      role: "assistant",
+      content: null,
+      tool_calls: [{
+        id: callId,
+        type: "custom",
+        custom: { name, input },
+      }],
+    }];
+  }
+
+  if (item.type === "custom_tool_call_output") {
+    const callId = optionalString(item.call_id) ?? optionalString(item.id) ?? "unknown";
+    return [{
+      role: "tool",
+      content: responsesContentToText(item.output ?? item.content),
+      tool_call_id: callId,
+      tool_call_type: "custom",
+    }];
+  }
+
   if (item.type === "message" || isChatRole(item.role)) {
     const role = isChatRole(item.role) ? item.role : "user";
     const message: Record<string, unknown> = {
@@ -127,7 +168,9 @@ function normalizeResponsesInputItem(item: unknown): unknown[] {
     };
     if (typeof item.name === "string") message.name = item.name;
     if (typeof item.tool_call_id === "string") message.tool_call_id = item.tool_call_id;
-    if (Array.isArray(item.tool_calls)) message.tool_calls = item.tool_calls;
+    if (Array.isArray(item.tool_calls)) {
+      message.tool_calls = item.tool_calls.map(normalizeToolCall);
+    }
     if (isRecord(item.function_call)) message.function_call = item.function_call;
     return [message];
   }
@@ -156,8 +199,21 @@ function normalizeFlatTool(tool: unknown): unknown {
   if (!isRecord(tool)) return tool;
 
   const type = tool.type;
+  if (type === "custom") {
+    const nestedCustom = optionalRecord(tool.custom);
+    const name = optionalString(tool.name) ?? optionalString(nestedCustom?.name);
+    if (!name) return tool;
+
+    const normalized: Record<string, unknown> = { type: "custom", name };
+    const description = optionalString(tool.description) ?? optionalString(nestedCustom?.description);
+    const format = optionalRecord(tool.format) ?? optionalRecord(nestedCustom?.format);
+    if (description !== undefined) normalized.description = description;
+    if (format !== undefined) normalized.format = format;
+    return normalized;
+  }
+
   const existingFunction = optionalRecord(tool.function);
-  if (type !== "function" && type !== "custom") return tool;
+  if (type !== "function") return tool;
   if (existingFunction) return tool;
 
   const name = optionalString(tool.name);
@@ -179,7 +235,12 @@ function normalizeFlatTool(tool: unknown): unknown {
 
 function normalizeToolChoice(choice: unknown): unknown {
   if (!isRecord(choice)) return choice;
-  if ((choice.type === "function" || choice.type === "custom") && !isRecord(choice.function)) {
+  if (choice.type === "custom") {
+    const nestedCustom = optionalRecord(choice.custom);
+    const name = optionalString(choice.name) ?? optionalString(nestedCustom?.name);
+    if (name) return { type: "custom", name };
+  }
+  if (choice.type === "function" && !isRecord(choice.function)) {
     const name = optionalString(choice.name);
     if (name) return { type: "function", function: { name } };
   }
@@ -200,6 +261,16 @@ function normalizeChatCompletionRequestInput(value: unknown): unknown {
     if (messages.length > 0) {
       normalized.messages = messages;
     }
+  }
+
+  if (Array.isArray(normalized.messages)) {
+    normalized.messages = normalized.messages.map((message) => {
+      if (!isRecord(message) || !Array.isArray(message.tool_calls)) return message;
+      return {
+        ...message,
+        tool_calls: message.tool_calls.map(normalizeToolCall),
+      };
+    });
   }
 
   const reasoning = optionalRecord(value.reasoning);
@@ -228,15 +299,27 @@ export const ChatMessageSchema = z.object({
   content: z.union([z.string(), z.array(ContentPartSchema)]).nullable().optional(),
   name: z.string().optional(),
   // New format: tool_calls (array, on assistant messages)
-  tool_calls: z.array(z.object({
-    id: z.string(),
-    type: z.literal("function"),
-    function: z.object({
-      name: z.string(),
-      arguments: z.string(),
+  tool_calls: z.array(z.union([
+    z.object({
+      id: z.string(),
+      type: z.literal("function"),
+      function: z.object({
+        name: z.string(),
+        arguments: z.string(),
+      }),
     }),
-  })).optional(),
+    z.object({
+      id: z.string(),
+      type: z.literal("custom"),
+      custom: z.object({
+        name: z.string(),
+        input: z.string(),
+      }),
+    }),
+  ])).optional(),
   tool_call_id: z.string().optional(),
+  /** Internal marker retained when a Responses-style custom tool output is normalized. */
+  tool_call_type: z.enum(["function", "custom"]).optional(),
   // Legacy format: function_call (single object, on assistant messages)
   function_call: z.object({
     name: z.string(),
@@ -274,6 +357,12 @@ const ChatCompletionRequestObjectSchema = z.object({
       }),
     }),
     z.object({
+      type: z.literal("custom"),
+      name: z.string(),
+      description: z.string().optional(),
+      format: z.record(z.unknown()).optional(),
+    }),
+    z.object({
       type: z.enum(["web_search", "web_search_preview"]),
       search_context_size: z.enum(["low", "medium", "high"]).optional(),
       user_location: z.record(z.unknown()).optional(),
@@ -285,6 +374,7 @@ const ChatCompletionRequestObjectSchema = z.object({
   tool_choice: z.union([
     z.enum(["none", "auto", "required"]),
     z.object({ type: z.literal("function"), function: z.object({ name: z.string() }) }),
+    z.object({ type: z.literal("custom"), name: z.string() }),
     z.object({ type: z.enum(["web_search", "web_search_preview"]) }).passthrough(),
   ]).optional(),
   parallel_tool_calls: z.boolean().optional(),
@@ -320,14 +410,23 @@ export type ChatCompletionRequest = z.infer<typeof ChatCompletionRequestSchema>;
 
 // --- Response (non-streaming) ---
 
-export interface ChatCompletionToolCall {
-  id: string;
-  type: "function";
-  function: {
-    name: string;
-    arguments: string;
+export type ChatCompletionToolCall =
+  | {
+    id: string;
+    type: "function";
+    function: {
+      name: string;
+      arguments: string;
+    };
+  }
+  | {
+    id: string;
+    type: "custom";
+    custom: {
+      name: string;
+      input: string;
+    };
   };
-}
 
 export interface ChatCompletionChoice {
   index: number;
@@ -366,10 +465,14 @@ export interface ChatCompletionResponse {
 export interface ChatCompletionChunkToolCall {
   index: number;
   id?: string;
-  type?: "function";
+  type?: "function" | "custom";
   function?: {
     name?: string;
     arguments?: string;
+  };
+  custom?: {
+    name?: string;
+    input?: string;
   };
 }
 

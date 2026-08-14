@@ -28,7 +28,10 @@ import type { UpstreamRouter } from "../proxy/upstream-router.js";
 import { summarizeRequestForLog } from "../logs/request-summary.js";
 import { apiKeyAuth } from "../middleware/api-key-auth.js";
 
-function makeOpenAIFormat(wantReasoning: boolean): FormatAdapter {
+function makeOpenAIFormat(
+  wantReasoning: boolean,
+  customToolCallsAsFunctions = false,
+): FormatAdapter {
   return {
     tag: "Chat",
     noAccountStatus: 503,
@@ -58,10 +61,24 @@ function makeOpenAIFormat(wantReasoning: boolean): FormatAdapter {
       },
     }),
     streamTranslator: ({ api, response, model, onUsage, onResponseId, onResponseCompleted, tupleSchema }) =>
-      streamCodexToOpenAI(api, response, model, onUsage, onResponseId, wantReasoning, tupleSchema, onResponseCompleted),
+      streamCodexToOpenAI(
+        api,
+        response,
+        model,
+        onUsage,
+        onResponseId,
+        wantReasoning,
+        tupleSchema,
+        onResponseCompleted,
+        customToolCallsAsFunctions,
+      ),
     collectTranslator: ({ api, response, model, tupleSchema }) =>
-      collectCodexResponse(api, response, model, wantReasoning, tupleSchema),
+      collectCodexResponse(api, response, model, wantReasoning, tupleSchema, customToolCallsAsFunctions),
   };
+}
+
+function isCursorClient(c: Context): boolean {
+  return /^cursor\//i.test(c.req.header("user-agent") ?? "");
 }
 
 function formatModelNotFound(model: string) {
@@ -113,7 +130,7 @@ export function createChatRoutes(
       && codexRequest.tools.some((t): t is Record<string, unknown> => isRecord(t) && t.type === "image_generation");
     // Check after translation so suffix-parsed and config-default effort are included.
     const wantReasoning = !!codexRequest.reasoning?.effort;
-    const fmt = makeOpenAIFormat(wantReasoning);
+    const fmt = makeOpenAIFormat(wantReasoning, isCursorClient(c));
     const displayModel = buildDisplayModelName(parseModelName(req.model));
     const proxyReq: ProxyRequest = {
       codexRequest,
