@@ -9,6 +9,7 @@ import { OpenAIUpstream } from "./openai-upstream.js";
 import { ResponsesUpstream } from "./responses-upstream.js";
 import { AnthropicUpstream } from "./anthropic-upstream.js";
 import { GeminiUpstream } from "./gemini-upstream.js";
+import { CodexResponsesUpstream } from "./codex-responses-upstream.js";
 
 /**
  * OpenAI-family providers default to Chat Completions; an entry may opt into the
@@ -25,6 +26,8 @@ function createOpenAIFamilyAdapter(
 
 function createCustomAdapter(entry: ApiKeyEntry): UpstreamAdapter {
   switch (entry.wire) {
+    case "codex-responses":
+      return new CodexResponsesUpstream(entry.apiKey, entry.baseUrl, entry.id);
     case "responses":
       return new ResponsesUpstream("custom", entry.apiKey, entry.baseUrl);
     case "anthropic":

@@ -20,6 +20,12 @@ import { createWebSocketResponse, type WsCreateRequest, type WsPoolContext } fro
 import type { ParsedRateLimit } from "./rate-limit-headers.js";
 import { getInstallationId } from "./installation-id.js";
 import { normalizeOpenAISubagent, OPENAI_SUBAGENT_HEADER } from "./openai-subagent.js";
+import {
+  X_CODEX_WINDOW_ID_HEADER,
+  applyCodexContextHeaders,
+  buildCodexClientMetadata,
+  firstCodexRequestString,
+} from "./codex-request-context.js";
 
 export type { WsPoolContext };
 import { parseSSEBlock, parseSSEStream } from "./codex-sse.js";
@@ -28,12 +34,6 @@ import { fetchModels, probeEndpoint as probeEndpointFn } from "./codex-models.js
 import type { CookieJar } from "./cookie-jar.js";
 import type { BackendModelEntry } from "../models/model-store.js";
 import type { CodexFingerprintMode } from "../auth/types.js";
-
-const X_CODEX_TURN_METADATA_HEADER = "x-codex-turn-metadata";
-const X_CODEX_BETA_FEATURES_HEADER = "x-codex-beta-features";
-const X_RESPONSESAPI_INCLUDE_TIMING_METRICS_HEADER = "x-responsesapi-include-timing-metrics";
-const X_CODEX_PARENT_THREAD_ID_HEADER = "x-codex-parent-thread-id";
-const X_CODEX_WINDOW_ID_HEADER = "x-codex-window-id";
 
 function normalizeServiceTierForUpstream(serviceTier: string | null | undefined): string | undefined {
   if (!serviceTier) return undefined;
@@ -125,7 +125,7 @@ export class CodexApi {
     const conversationId = clientConversationId
       ? this.buildAccountScopedIdentity("conversation", clientConversationId)
       : null;
-    const clientWindowId = this.firstRequestString(request, X_CODEX_WINDOW_ID_HEADER);
+    const clientWindowId = firstCodexRequestString(request, X_CODEX_WINDOW_ID_HEADER);
     return {
       conversationId,
       sessionId: this.codexFingerprintMode === "session"
@@ -159,57 +159,6 @@ export class CodexApi {
       .digest("hex")
       .slice(0, 32);
     return `${kind === "conversation" ? "cp" : "cw"}_${digest}`;
-  }
-
-  private firstRequestString(request: CodexResponsesRequest, key: string): string | null {
-    const direct =
-      key === X_CODEX_TURN_METADATA_HEADER
-        ? request.turnMetadata
-        : key === X_CODEX_BETA_FEATURES_HEADER
-          ? request.betaFeatures
-          : key === X_RESPONSESAPI_INCLUDE_TIMING_METRICS_HEADER
-            ? request.includeTimingMetrics
-            : key === X_CODEX_PARENT_THREAD_ID_HEADER
-              ? request.parentThreadId
-              : key === X_CODEX_WINDOW_ID_HEADER
-                ? request.codexWindowId
-                : undefined;
-    if (typeof direct === "string" && direct.trim()) return direct.trim();
-    const metadata = request.client_metadata?.[key];
-    if (typeof metadata === "string" && metadata.trim()) return metadata.trim();
-    return null;
-  }
-
-  private applyCodexContextHeaders(headers: Record<string, string>, request: CodexResponsesRequest): void {
-    if (request.turnState) headers["x-codex-turn-state"] = request.turnState;
-    const turnMetadata = this.firstRequestString(request, X_CODEX_TURN_METADATA_HEADER);
-    if (turnMetadata) headers[X_CODEX_TURN_METADATA_HEADER] = turnMetadata;
-    const betaFeatures = this.firstRequestString(request, X_CODEX_BETA_FEATURES_HEADER);
-    if (betaFeatures) headers[X_CODEX_BETA_FEATURES_HEADER] = betaFeatures;
-    const timingMetrics = this.firstRequestString(request, X_RESPONSESAPI_INCLUDE_TIMING_METRICS_HEADER);
-    if (timingMetrics) headers[X_RESPONSESAPI_INCLUDE_TIMING_METRICS_HEADER] = timingMetrics;
-    if (request.version?.trim()) headers["Version"] = request.version.trim();
-    const parentThreadId = this.firstRequestString(request, X_CODEX_PARENT_THREAD_ID_HEADER);
-    if (parentThreadId) headers[X_CODEX_PARENT_THREAD_ID_HEADER] = parentThreadId;
-  }
-
-  private buildCodexClientMetadata(
-    request: CodexResponsesRequest,
-    installationId: string,
-    sessionId: string | null,
-    windowId: string | null,
-  ): Record<string, string> {
-    const metadata: Record<string, string> = {
-      ...(request.client_metadata ?? {}),
-      "x-codex-installation-id": installationId,
-      ...(sessionId ? { session_id: sessionId } : {}),
-      ...(windowId ? { [X_CODEX_WINDOW_ID_HEADER]: windowId } : {}),
-    };
-    const turnMetadata = this.firstRequestString(request, X_CODEX_TURN_METADATA_HEADER);
-    if (turnMetadata) metadata[X_CODEX_TURN_METADATA_HEADER] = turnMetadata;
-    const parentThreadId = this.firstRequestString(request, X_CODEX_PARENT_THREAD_ID_HEADER);
-    if (parentThreadId) metadata[X_CODEX_PARENT_THREAD_ID_HEADER] = parentThreadId;
-    return metadata;
   }
 
   setToken(token: string): void {
@@ -356,7 +305,7 @@ export class CodexApi {
     }
     if (identity.sessionId) headers["session_id"] = identity.sessionId;
     if (identity.windowId) headers["x-codex-window-id"] = identity.windowId;
-    this.applyCodexContextHeaders(headers, request);
+    applyCodexContextHeaders(headers, request);
     const openAiSubagent = normalizeOpenAISubagent(request.client_metadata?.[OPENAI_SUBAGENT_HEADER]);
     if (openAiSubagent) headers[OPENAI_SUBAGENT_HEADER] = openAiSubagent;
 
@@ -380,7 +329,7 @@ export class CodexApi {
     if (serviceTier) wsRequest.service_tier = serviceTier;
     if (identity.conversationId) wsRequest.prompt_cache_key = identity.conversationId;
     if (request.include?.length) wsRequest.include = request.include;
-    wsRequest.client_metadata = this.buildCodexClientMetadata(
+    wsRequest.client_metadata = buildCodexClientMetadata(
       request,
       installationId,
       identity.sessionId,
@@ -418,7 +367,7 @@ export class CodexApi {
     }
     if (identity.sessionId) headers["session_id"] = identity.sessionId;
     if (identity.windowId) headers["x-codex-window-id"] = identity.windowId;
-    this.applyCodexContextHeaders(headers, request);
+    applyCodexContextHeaders(headers, request);
     const openAiSubagent = normalizeOpenAISubagent(request.client_metadata?.[OPENAI_SUBAGENT_HEADER]);
     if (openAiSubagent) headers[OPENAI_SUBAGENT_HEADER] = openAiSubagent;
 
@@ -440,7 +389,7 @@ export class CodexApi {
       ...bodyFields,
       ...(upstreamServiceTier ? { service_tier: upstreamServiceTier } : {}),
       ...(identity.conversationId ? { prompt_cache_key: identity.conversationId } : {}),
-      client_metadata: this.buildCodexClientMetadata(
+      client_metadata: buildCodexClientMetadata(
         request,
         installationId,
         identity.sessionId,

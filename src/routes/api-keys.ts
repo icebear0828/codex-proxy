@@ -6,7 +6,10 @@
 import { Hono } from "hono";
 import type { Context } from "hono";
 import { z } from "zod";
-import { API_KEY_CAPABILITIES, API_KEY_WIRES } from "../auth/api-key-pool.js";
+import {
+  API_KEY_CAPABILITIES,
+  API_KEY_WIRES,
+} from "../auth/api-key-pool.js";
 import type { ApiKeyEntry, ApiKeyPool } from "../auth/api-key-pool.js";
 import { ApiKeyModelCache, ProviderModelFetchError } from "../auth/api-key-model-cache.js";
 

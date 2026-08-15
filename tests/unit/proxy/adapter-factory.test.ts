@@ -13,6 +13,7 @@ import { OpenAIUpstream } from "@src/proxy/openai-upstream.js";
 import { ResponsesUpstream } from "@src/proxy/responses-upstream.js";
 import { AnthropicUpstream } from "@src/proxy/anthropic-upstream.js";
 import { GeminiUpstream } from "@src/proxy/gemini-upstream.js";
+import { CodexResponsesUpstream } from "@src/proxy/codex-responses-upstream.js";
 import type { ApiKeyEntry, ApiKeyProvider, ApiKeyWire } from "@src/auth/api-key-pool.js";
 import type { CodexResponsesRequest } from "@src/proxy/codex-types.js";
 
@@ -67,6 +68,17 @@ describe("createAdapterForEntry — wire routing", () => {
   it("custom can use Anthropic and Gemini native wires", () => {
     expect(createAdapterForEntry(entry("custom", "anthropic"))).toBeInstanceOf(AnthropicUpstream);
     expect(createAdapterForEntry(entry("custom", "gemini"))).toBeInstanceOf(GeminiUpstream);
+  });
+
+  it("custom with wire=codex-responses adds official Codex client context", () => {
+    const adapter = createAdapterForEntry(entry(
+      "custom",
+      "codex-responses",
+      "https://provider.example.com/v1/",
+    ));
+    expect(adapter).toBeInstanceOf(CodexResponsesUpstream);
+    expect(adapter.tag).toBe("codex-responses");
+    expect((adapter as CodexResponsesUpstream).baseUrl).toBe("https://provider.example.com/v1");
   });
 
   it("built-in anthropic/gemini ignore wire and use their native adapters with custom baseUrl", () => {

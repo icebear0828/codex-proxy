@@ -343,6 +343,28 @@ describe("api key routes", () => {
     expect(pool.getAll().map((entry) => entry.wire)).toEqual(["anthropic", "gemini"]);
   });
 
+  it("stores the custom Codex Responses wire value", async () => {
+    const res = await app.request("/auth/api-keys", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        provider: "custom",
+        models: ["gpt-5.6-sol"],
+        apiKey: "vendor-key",
+        baseUrl: "https://provider.example.com/v1",
+        wire: "codex-responses",
+      }),
+    });
+
+    expect(res.status).toBe(200);
+    expect(pool.getAll()[0]).toMatchObject({
+      provider: "custom",
+      model: "gpt-5.6-sol",
+      baseUrl: "https://provider.example.com/v1",
+      wire: "codex-responses",
+    });
+  });
+
   it("imports keys by expanding each entry's models", async () => {
     const res = await app.request("/auth/api-keys/import", {
       method: "POST",

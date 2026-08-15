@@ -29,10 +29,11 @@ export type ApiKeyCapability = typeof API_KEY_CAPABILITIES[number];
  * Upstream wire protocol for runtime API-key providers.
  * "chat" → OpenAI-compatible POST /chat/completions.
  * "responses" → OpenAI-compatible POST /responses.
+ * "codex-responses" → Codex-context POST /responses with Bearer API key.
  * "anthropic" → Anthropic Messages API POST /messages.
  * "gemini" → Gemini streamGenerateContent API.
  */
-export const API_KEY_WIRES = ["chat", "responses", "anthropic", "gemini"] as const;
+export const API_KEY_WIRES = ["chat", "responses", "codex-responses", "anthropic", "gemini"] as const;
 export type ApiKeyWire = typeof API_KEY_WIRES[number];
 
 export interface ApiKeyEntry {
@@ -304,7 +305,11 @@ function normalizeCapabilities(value: unknown): ApiKeyCapability[] {
 }
 
 function isApiKeyWire(value: unknown): value is ApiKeyWire {
-  return value === "chat" || value === "responses" || value === "anthropic" || value === "gemini";
+  return value === "chat"
+    || value === "responses"
+    || value === "codex-responses"
+    || value === "anthropic"
+    || value === "gemini";
 }
 
 function normalizeWire(value: unknown): ApiKeyWire {

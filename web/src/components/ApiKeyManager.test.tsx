@@ -215,8 +215,38 @@ describe("AddKeyForm", () => {
     expect(screen.queryByRole("option", { name: /Gemini generateContent/i })).toBeNull();
 
     fireEvent.change(providerSelect, { target: { value: "custom" } });
+    expect(screen.getByRole("option", { name: /Codex Responses \(client context\)/i })).toBeTruthy();
     expect(screen.getByRole("option", { name: /Anthropic Messages/i })).toBeTruthy();
     expect(screen.getByRole("option", { name: /Gemini generateContent/i })).toBeTruthy();
+  });
+
+  it("submits custom Codex Responses wire", async () => {
+    const onAdd = createOnAdd();
+    const fetchProviderModels = createFetchProviderModels();
+
+    render(
+      <AddKeyForm
+        onAdd={onAdd}
+        catalog={defaultCatalog}
+        fetchProviderModels={fetchProviderModels}
+      />,
+    );
+
+    fireEvent.change(screen.getByRole("combobox"), { target: { value: "custom" } });
+    fireEvent.change(screen.getByDisplayValue("Chat Completions (OpenAI-compatible)"), { target: { value: "codex-responses" } });
+    fireEvent.input(screen.getByPlaceholderText("sk-..."), { target: { value: "vendor-key" } });
+    fireEvent.input(screen.getByPlaceholderText("https://api.example.com/v1"), { target: { value: "https://provider.example.com/v1" } });
+    fireEvent.input(screen.getByPlaceholderText("manual-model-1, manual-model-2"), { target: { value: "gpt-5.6-sol" } });
+    fireEvent.click(screen.getByText("Add Key"));
+
+    await waitFor(() => expect(onAdd).toHaveBeenCalledTimes(1));
+    expect(onAdd.mock.calls[0][0]).toMatchObject({
+      provider: "custom",
+      apiKey: "vendor-key",
+      baseUrl: "https://provider.example.com/v1",
+      wire: "codex-responses",
+      models: ["gpt-5.6-sol"],
+    });
   });
 
   it("submits custom Anthropic wire", async () => {

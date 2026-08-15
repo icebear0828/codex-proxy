@@ -659,6 +659,8 @@ On first startup, if `data/local.yaml` is missing, Codex Proxy creates it with `
 
 **Third-Party API Keys**
 
+For API-key upstreams that require official Codex client context on a standard Responses API, choose the `Custom` provider and `Codex Responses (client context)` protocol in the Dashboard. Set Base URL to the API v1 root (for example, `https://provider.example.com/v1`), not the full `/responses` endpoint. This protocol uses HTTP SSE and sends Codex headers, installation/session/thread/window IDs, and client metadata. It currently handles Chat/Responses requests, not Embeddings. If the provider does not expose a compatible `/models` endpoint, enter the model name manually in the Dashboard.
+
 | Endpoint | Method | Description |
 |----------|--------|-------------|
 | `/auth/api-keys/catalog` | GET | Built-in providers and suggested model catalog |

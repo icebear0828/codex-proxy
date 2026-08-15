@@ -796,6 +796,8 @@ curl -N http://localhost:8080/official-agent/threads/{threadId}/turns \
 
 **第三方 API Keys**
 
+对于在标准 Responses API 上要求 Codex 官方客户端上下文的 API-key 上游，请在 Dashboard 中选择 `Custom` Provider 和 `Codex Responses (client context)` 协议。Base URL 应填写 API v1 根地址（例如 `https://provider.example.com/v1`，不要填写完整的 `/responses` 地址）。该协议使用 HTTP SSE，并发送 Codex headers、installation/session/thread/window ID 与 client metadata；当前用于 Chat/Responses 请求，不支持 Embeddings。若供应商没有提供兼容的 `/models` 接口，可在 Dashboard 中手动填写模型名。
+
 | 端点 | 方法 | 说明 |
 |------|------|------|
 | `/auth/api-keys/catalog` | GET | 内置 Provider 与推荐模型目录 |

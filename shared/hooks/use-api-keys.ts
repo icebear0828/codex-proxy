@@ -3,7 +3,7 @@ import { useState, useEffect, useCallback } from "preact/hooks";
 export type ApiKeyProvider = "anthropic" | "openai" | "gemini" | "openrouter" | "custom";
 export type ApiKeyCapability = "chat" | "embeddings";
 /** Upstream wire protocol used by runtime API-key entries. */
-export type ApiKeyWire = "chat" | "responses" | "anthropic" | "gemini";
+export type ApiKeyWire = "chat" | "responses" | "codex-responses" | "anthropic" | "gemini";
 
 export interface ApiKeyEntry {
   id: string;

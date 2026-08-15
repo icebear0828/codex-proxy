@@ -289,6 +289,8 @@ describe("ApiKeyPool", () => {
     expect(pool.add({ provider: "anthropic", model: "claude", apiKey: "k", wire: "chat" }).wire).toBe("anthropic");
     expect(pool.add({ provider: "gemini", model: "gemini", apiKey: "k", wire: "chat" }).wire).toBe("gemini");
     expect(pool.add({ provider: "custom", model: "m", apiKey: "k", baseUrl: "https://x.dev/v1", wire: "responses" }).wire).toBe("responses");
+    expect(pool.add({ provider: "custom", model: "codex-model", apiKey: "k", baseUrl: "https://x.dev/v1", wire: "codex-responses" }).wire).toBe("codex-responses");
+    expect(pool.add({ provider: "openai", model: "gpt", apiKey: "k", wire: "codex-responses" }).wire).toBe("chat");
   });
 
   it("migrates legacy persisted entries without a wire field to chat", () => {
@@ -312,4 +314,5 @@ describe("ApiKeyPool", () => {
     const pool2 = new ApiKeyPool(persistence);
     expect(pool2.getAll()[0].wire).toBe("chat");
   });
+
 });

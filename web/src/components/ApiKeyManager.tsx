@@ -17,6 +17,11 @@ const WIRE_OPTIONS: Array<{ value: ApiKeyWire; label: string; description: strin
     description: "POST /responses；仅当上游支持原生 Responses API 时使用。",
   },
   {
+    value: "codex-responses",
+    label: "Codex Responses (client context)",
+    description: "POST /responses；使用 API Key，并发送 Codex 官方客户端 context headers 与 client metadata。Base URL 应包含 /v1。",
+  },
+  {
     value: "anthropic",
     label: "Anthropic Messages",
     description: "POST /messages；用于 Anthropic-compatible 自定义上游。",
