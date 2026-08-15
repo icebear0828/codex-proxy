@@ -298,7 +298,14 @@ export async function retryNonStreamingEmptyResponse(
     };
   }
 
-  const nextApi = buildCodexApi(acquired.token, acquired.accountId, cookieJar, acquired.entryId, proxyPool);
+  const nextApi = buildCodexApi(
+    acquired.token,
+    acquired.accountId,
+    cookieJar,
+    acquired.entryId,
+    proxyPool,
+    acquired.codexFingerprintMode ?? "off",
+  );
   setActiveAccount?.(acquired.entryId, nextApi);
 
   const retryStartMs = nowMs();

@@ -224,6 +224,40 @@ describe("SQLite account persistence", () => {
     });
   });
 
+  it("defaults missing and invalid fingerprint modes to off while preserving explicit session opt-in", async () => {
+    const missingMode = makeEntry("fingerprint-missing");
+    const invalidMode = {
+      ...makeEntry("fingerprint-invalid"),
+      codexFingerprintMode: "full",
+    } as Record<string, unknown>;
+    const sessionMode = {
+      ...makeEntry("fingerprint-session"),
+      codexFingerprintMode: "session",
+    };
+    writeFileSync(
+      accountsJsonPath(),
+      JSON.stringify({ accounts: [missingMode, invalidMode, sessionMode] }, null, 2),
+      "utf-8",
+    );
+
+    const { createFsPersistence } = await freshModule();
+    const firstLoad = createFsPersistence().load();
+
+    expect(firstLoad.entries.map((entry) => entry.codexFingerprintMode)).toEqual([
+      "off",
+      "off",
+      "session",
+    ]);
+
+    rmSync(accountsJsonPath());
+    const sqliteReload = createFsPersistence().load();
+    expect(sqliteReload.entries.map((entry) => entry.codexFingerprintMode)).toEqual([
+      "off",
+      "off",
+      "session",
+    ]);
+  });
+
   it("reads refresh tokens from SQLite before a stale JSON mirror", async () => {
     const entry = makeEntry("rt-source", "rt-json-original");
     writeAccountsJson([entry]);

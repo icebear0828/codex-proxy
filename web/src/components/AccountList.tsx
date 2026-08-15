@@ -22,6 +22,7 @@ interface AccountListProps {
   onImport?: (file: File) => Promise<{ success: boolean; added: number; updated: number; failed: number; errors: string[] }>;
   onToggleStatus?: (id: string, currentStatus: string) => Promise<string | null>;
   onUpdateLabel?: (id: string, label: string | null) => Promise<string | null>;
+  onUpdateCodexFingerprintMode?: (id: string, mode: "off" | "session") => Promise<string | null>;
 }
 
 const PAGE_SIZE = 10;
@@ -35,7 +36,7 @@ function getBrowserStorage(): Storage | null {
   }
 }
 
-export function AccountList({ accounts, loading, onDelete, onRefresh, refreshing, lastUpdated, proxies, onProxyChange, onExport, onImport, onToggleStatus, onUpdateLabel }: AccountListProps) {
+export function AccountList({ accounts, loading, onDelete, onRefresh, refreshing, lastUpdated, proxies, onProxyChange, onExport, onImport, onToggleStatus, onUpdateLabel, onUpdateCodexFingerprintMode }: AccountListProps) {
   const t = useT();
   const { lang } = useI18n();
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
@@ -397,7 +398,7 @@ export function AccountList({ accounts, loading, onDelete, onRefresh, refreshing
                 console.warn(`[AccountList] Failed to refresh quota for account ${id}: ${resp.status}`);
               }
               onRefresh();
-            }} onToggleStatus={onToggleStatus} onUpdateLabel={onUpdateLabel} />
+            }} onToggleStatus={onToggleStatus} onUpdateLabel={onUpdateLabel} onUpdateCodexFingerprintMode={onUpdateCodexFingerprintMode} />
           ))
         )}
       </div>

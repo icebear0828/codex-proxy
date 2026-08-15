@@ -308,6 +308,27 @@ export function useAccounts() {
     }
   }, [patchLocal]);
 
+  const updateCodexFingerprintMode = useCallback(async (
+    id: string,
+    mode: "off" | "session",
+  ): Promise<string | null> => {
+    try {
+      const resp = await fetch(`/auth/accounts/${encodeURIComponent(id)}/codex-fingerprint`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ mode }),
+      });
+      if (!resp.ok) {
+        const data = await resp.json();
+        return data.error || "Failed to update Codex fingerprint mode";
+      }
+      patchLocal(id, { codexFingerprintMode: mode });
+      return null;
+    } catch (err) {
+      return "networkError" + (err instanceof Error ? err.message : "");
+    }
+  }, [patchLocal]);
+
   return {
     list,
     loading,
@@ -330,5 +351,6 @@ export function useAccounts() {
     batchSetStatus,
     toggleStatus,
     updateLabel,
+    updateCodexFingerprintMode,
   };
 }

@@ -17,6 +17,7 @@ import type {
   AccountEntry,
   AccountInfo,
   AcquiredAccount,
+  CodexFingerprintMode,
   CodexQuota,
 } from "./types.js";
 
@@ -173,6 +174,12 @@ export class AccountPool {
 
   setLabel(entryId: string, label: string | null): boolean {
     return this.registry.setLabel(entryId, label);
+  }
+
+  setCodexFingerprintMode(entryId: string, mode: CodexFingerprintMode): boolean {
+    const changed = this.registry.setCodexFingerprintMode(entryId, mode);
+    if (changed) this.evictWsPool(entryId);
+    return changed;
   }
 
   // ── Status mutations (coordinate registry + lifecycle lock clear) ─

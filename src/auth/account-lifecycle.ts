@@ -148,6 +148,7 @@ export class AccountLifecycle {
       entryId: selected.id,
       token: selected.token,
       accountId: selected.accountId,
+      codexFingerprintMode: selected.codexFingerprintMode === "session" ? "session" : "off",
       prevSlotMs,
     };
   }

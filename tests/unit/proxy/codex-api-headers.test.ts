@@ -85,9 +85,22 @@ describe("codex-api headers", () => {
   });
 
   // Lazy import to let mocks register first
-  async function createApi(entryId = "e1", accountId = "acct-1") {
+  async function createApi(
+    entryId = "e1",
+    accountId = "acct-1",
+    fingerprintMode: "off" | "session" = "off",
+  ) {
     const { CodexApi } = await import("@src/proxy/codex-api.js");
-    return new CodexApi("test-token", accountId, null, entryId, null, "https://test.example", transport);
+    return new CodexApi(
+      "test-token",
+      accountId,
+      null,
+      entryId,
+      null,
+      "https://test.example",
+      transport,
+      { codexFingerprintMode: fingerprintMode },
+    );
   }
 
   describe("HTTP SSE path", () => {
@@ -193,6 +206,37 @@ describe("codex-api headers", () => {
       await otherAccountApi.createResponse(makeRequest({ prompt_cache_key: "thread-123" }));
       expect(transport.lastHeaders!["x-client-request-id"]).toMatch(/^cp_[0-9a-f]{32}$/);
       expect(transport.lastHeaders!["x-client-request-id"]).not.toBe(firstIdentity);
+    });
+
+    it("converges only session_id when the account explicitly opts in", async () => {
+      const api = await createApi("e1", "acct-1", "session");
+      const turnMetadata = JSON.stringify({ session_id: "client-session", sandbox: "seatbelt" });
+      await api.createResponse(makeRequest({ prompt_cache_key: "thread-a", turnMetadata }));
+
+      const firstHeaders = { ...transport.lastHeaders! };
+      const firstBody = JSON.parse(transport.lastBody!) as {
+        prompt_cache_key: string;
+        client_metadata: Record<string, string>;
+      };
+      await api.createResponse(makeRequest({ prompt_cache_key: "thread-b" }));
+      const secondBody = JSON.parse(transport.lastBody!) as {
+        prompt_cache_key: string;
+        client_metadata: Record<string, string>;
+      };
+
+      expect(firstHeaders.session_id).toMatch(/^cs_[0-9a-f]{32}$/);
+      expect(transport.lastHeaders!.session_id).toBe(firstHeaders.session_id);
+      expect(firstHeaders["x-client-request-id"]).not.toBe(transport.lastHeaders!["x-client-request-id"]);
+      expect(firstBody.prompt_cache_key).not.toBe(secondBody.prompt_cache_key);
+      expect(firstBody.client_metadata.session_id).toBe(firstHeaders.session_id);
+      expect(secondBody.client_metadata.session_id).toBe(firstHeaders.session_id);
+      expect(firstHeaders["x-codex-installation-id"]).toBe("11111111-2222-3333-4444-555555555555");
+      expect(firstHeaders["x-codex-turn-metadata"]).toBe(turnMetadata);
+
+      const otherAccountApi = await createApi("e2", "acct-2", "session");
+      await otherAccountApi.createResponse(makeRequest({ prompt_cache_key: "thread-c" }));
+      expect(transport.lastHeaders!.session_id).toMatch(/^cs_[0-9a-f]{32}$/);
+      expect(transport.lastHeaders!.session_id).not.toBe(firstHeaders.session_id);
     });
 
     it("maps explicit Codex window ids before upstream forwarding", async () => {
@@ -364,6 +408,36 @@ describe("codex-api headers", () => {
       const otherHeaders = mockCreateWebSocketResponse.mock.calls[2][1] as Record<string, string>;
       expect(otherHeaders["x-client-request-id"]).toMatch(/^cp_[0-9a-f]{32}$/);
       expect(otherHeaders["x-client-request-id"]).not.toBe(firstIdentity);
+    });
+
+    it("uses one opt-in session_id across WebSocket conversations without merging cache keys", async () => {
+      mockCreateWebSocketResponse.mockResolvedValue(
+        new Response("data: {}\n\n", {
+          headers: { "content-type": "text/event-stream" },
+        }),
+      );
+      const api = await createApi("e1", "acct-1", "session");
+
+      await api.createResponse(makeRequest({ useWebSocket: true, prompt_cache_key: "thread-a" }));
+      await api.createResponse(makeRequest({ useWebSocket: true, prompt_cache_key: "thread-b" }));
+
+      const firstHeaders = mockCreateWebSocketResponse.mock.calls[0][1] as Record<string, string>;
+      const secondHeaders = mockCreateWebSocketResponse.mock.calls[1][1] as Record<string, string>;
+      const firstRequest = mockCreateWebSocketResponse.mock.calls[0][2] as {
+        prompt_cache_key?: string;
+        client_metadata?: Record<string, string>;
+      };
+      const secondRequest = mockCreateWebSocketResponse.mock.calls[1][2] as {
+        prompt_cache_key?: string;
+        client_metadata?: Record<string, string>;
+      };
+
+      expect(firstHeaders.session_id).toMatch(/^cs_[0-9a-f]{32}$/);
+      expect(secondHeaders.session_id).toBe(firstHeaders.session_id);
+      expect(firstHeaders["x-client-request-id"]).not.toBe(secondHeaders["x-client-request-id"]);
+      expect(firstRequest.prompt_cache_key).not.toBe(secondRequest.prompt_cache_key);
+      expect(firstRequest.client_metadata?.session_id).toBe(firstHeaders.session_id);
+      expect(secondRequest.client_metadata?.session_id).toBe(firstHeaders.session_id);
     });
 
     it("maps explicit Codex window ids on WebSocket requests", async () => {

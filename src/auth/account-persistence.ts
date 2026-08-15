@@ -632,6 +632,12 @@ function normalizeAccountEntries(rawEntries: unknown[]): {
       entry.label = null;
       needsPersist = true;
     }
+    // Fingerprint convergence is always explicit opt-in. Missing or invalid
+    // persisted values must remain off to avoid silently changing identity.
+    if (entry.codexFingerprintMode !== "session" && entry.codexFingerprintMode !== "off") {
+      entry.codexFingerprintMode = "off";
+      needsPersist = true;
+    }
     // Backfill cachedQuota fields
     if (entry.cachedQuota === undefined) {
       entry.cachedQuota = null;
@@ -685,6 +691,7 @@ function migrateFromLegacy(): AccountEntry[] {
       accountId: accountId,
       userId: extractUserProfile(data.token)?.chatgpt_user_id ?? null,
       label: null,
+      codexFingerprintMode: "off",
       planType: data.userInfo?.planType ?? null,
       proxyApiKey: data.proxyApiKey ?? "codex-proxy-" + randomBytes(24).toString("hex"),
       status: isTokenExpired(data.token) ? "expired" : "active",

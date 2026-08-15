@@ -10,6 +10,8 @@ export type AccountStatus =
   | "disabled"
   | "banned";
 
+export type CodexFingerprintMode = "off" | "session";
+
 export interface AccountUsage {
   request_count: number;
   input_tokens: number;
@@ -64,6 +66,8 @@ export interface AccountEntry {
   userId: string | null;
   /** User-editable label for disambiguation (e.g. "Team Alpha", "Personal"). */
   label: string | null;
+  /** Account-scoped Codex session convergence. Explicit opt-in; legacy/missing values are off. */
+  codexFingerprintMode?: CodexFingerprintMode;
   planType: string | null;
   proxyApiKey: string;
   status: AccountStatus;
@@ -83,6 +87,7 @@ export interface AccountInfo {
   accountId: string | null;
   userId: string | null;
   label: string | null;
+  codexFingerprintMode: CodexFingerprintMode;
   planType: string | null;
   status: AccountStatus;
   usage: AccountUsage;
@@ -152,6 +157,7 @@ export interface AcquiredAccount {
   entryId: string;
   token: string;
   accountId: string | null;
+  codexFingerprintMode?: CodexFingerprintMode;
   /** Timestamp of the previous slot on this account (null = first request). */
   prevSlotMs: number | null;
 }

@@ -18,6 +18,7 @@ import type { AccountPersistence } from "./account-persistence.js";
 import type {
   AccountEntry,
   AccountInfo,
+  CodexFingerprintMode,
   CodexQuota,
 } from "./types.js";
 import { hasReachedCachedQuota } from "./quota-skip.js";
@@ -133,6 +134,7 @@ export class AccountRegistry {
       accountId,
       userId,
       label: null,
+      codexFingerprintMode: "off",
       planType: profile?.chatgpt_plan_type ?? null,
       proxyApiKey: "codex-proxy-" + randomBytes(24).toString("hex"),
       status: isTokenExpired(token) ? "expired" : "active",
@@ -199,6 +201,14 @@ export class AccountRegistry {
     const entry = this.accounts.get(entryId);
     if (!entry) return false;
     entry.label = label;
+    this.schedulePersist();
+    return true;
+  }
+
+  setCodexFingerprintMode(entryId: string, mode: CodexFingerprintMode): boolean {
+    const entry = this.accounts.get(entryId);
+    if (!entry) return false;
+    entry.codexFingerprintMode = mode;
     this.schedulePersist();
     return true;
   }
@@ -592,6 +602,7 @@ export class AccountRegistry {
       accountId: entry.accountId,
       userId: entry.userId,
       label: entry.label,
+      codexFingerprintMode: entry.codexFingerprintMode === "session" ? "session" : "off",
       planType: entry.planType,
       status: entry.status,
       usage: { ...entry.usage },

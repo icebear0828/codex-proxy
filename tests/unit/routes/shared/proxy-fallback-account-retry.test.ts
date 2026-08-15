@@ -1,5 +1,6 @@
 import type { AccountPool } from "@src/auth/account-pool.js";
 import type { AcquiredAccount } from "@src/auth/types.js";
+import type { CodexApi } from "@src/proxy/codex-api.js";
 import type { ProxyPool } from "@src/proxy/proxy-pool.js";
 import {
   prepareProxyFallbackAccountRetry,
@@ -8,6 +9,17 @@ import {
 import type { ErrorAction } from "@src/routes/shared/proxy-error-handler.js";
 import type { AccountPoolSummary } from "@src/routes/shared/proxy-error-response.js";
 import { describe, expect, it, vi } from "vitest";
+
+vi.mock("@src/routes/shared/proxy-handler-utils.js", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@src/routes/shared/proxy-handler-utils.js")>();
+  return {
+    ...actual,
+    buildCodexApi: vi.fn(),
+  };
+});
+
+const proxyHandlerUtils = await import("@src/routes/shared/proxy-handler-utils.js");
+const buildCodexApiMock = vi.mocked(proxyHandlerUtils.buildCodexApi);
 
 type RetryDecision = Extract<ErrorAction, { action: "retry" }>;
 
@@ -39,6 +51,7 @@ function acquired(overrides: Partial<AcquiredAccount> = {}): AcquiredAccount {
     entryId: "entry-2",
     token: "token-2",
     accountId: "account-2",
+    codexFingerprintMode: "off",
     prevSlotMs: 123,
     ...overrides,
   };
@@ -64,10 +77,12 @@ function mockProxyPool(): ProxyPool {
 
 describe("prepareProxyFallbackAccountRetry", () => {
   it("acquires a retry account, builds its API, and preserves prev slot timing", () => {
-    const nextAccount = acquired();
+    const nextAccount = acquired({ codexFingerprintMode: "session" });
     const accountPool = mockPool({ available: true, acquiredAccount: nextAccount });
     const proxyPool = mockProxyPool();
     const log = vi.fn();
+    const api = {} as CodexApi;
+    buildCodexApiMock.mockReturnValue(api);
 
     const result = prepareProxyFallbackAccountRetry({
       accountPool,
@@ -84,14 +99,21 @@ describe("prepareProxyFallbackAccountRetry", () => {
     const retry = result as Extract<ProxyFallbackAccountRetryResult, { action: "retry" }>;
     expect(retry.entryId).toBe("entry-2");
     expect(retry.prevSlotMs).toBe(123);
-    expect(retry.api).toBeDefined();
+    expect(retry.api).toBe(api);
     expect(accountPool.hasAvailableAccounts).toHaveBeenCalledWith(["entry-1"]);
     expect(accountPool.acquire).toHaveBeenCalledWith({
       model: "gpt-5.4",
       excludeIds: ["entry-1"],
       preferredEntryId: undefined,
     });
-    expect(proxyPool.resolveProxyUrl).toHaveBeenCalledWith("entry-2");
+    expect(buildCodexApiMock).toHaveBeenCalledWith(
+      "token-2",
+      "account-2",
+      undefined,
+      "entry-2",
+      proxyPool,
+      "session",
+    );
     expect(log).toHaveBeenCalledWith("[Test] Fallback \u2192 account entry-2");
   });
 

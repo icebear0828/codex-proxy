@@ -161,7 +161,14 @@ export async function handleProxyRequest(options: HandleProxyRequestOptions): Pr
       tag: fmt.tag,
     });
   }
-  let codexApi = buildCodexApi(acquired.token, acquired.accountId, cookieJar, entryId, proxyPool);
+  let codexApi = buildCodexApi(
+    acquired.token,
+    acquired.accountId,
+    cookieJar,
+    entryId,
+    proxyPool,
+    acquired.codexFingerprintMode ?? "off",
+  );
   const triedEntryIds: string[] = [entryId];
   let modelRetried = false;
   let stripAndRetryDone = false;
