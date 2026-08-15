@@ -102,28 +102,13 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           CANDIDATES: ${{ steps.soak.outputs.candidates }}
         run: |
-          # Exclude this workflow's own checks (promote-dev) and bump workflows from the gate.
-          # (?i) makes the regex case-insensitive so we catch "promote"/"Promote", "bump-beta"/etc.
+          # Gate on the latest CI - Quality gate run for this SHA. Do not scan
+          # commit check-runs: release retries and historical failures may
+          # share the same SHA and would permanently poison promotion.
           PICKED=""
           while read -r SHA; do
             [ -z "$SHA" ] && continue
-            # `|| STATUS=api-error`: a transient gh/API failure must skip the
-            # candidate (like missing-checks), not abort the job — an abort
-            # here would fire the ff-failure issue/webhook with a wrong cause.
-            STATUS=$(gh api "repos/${{ github.repository }}/commits/${SHA}/check-runs" \
-              --jq '
-                [.check_runs[]
-                 | select(.name | test("(?i)promote|bump") | not)
-                ] as $relevant
-                | if ($relevant | length) == 0
-                  then "missing-checks"
-                  else
-                    if all($relevant[]; .conclusion == "success" or .conclusion == "skipped")
-                    then "green"
-                    else "not-green"
-                    end
-                  end
-              ') || STATUS="api-error"
+            STATUS=$(bash .github/scripts/check-promote-ci.sh "$SHA" "${{ github.repository }}")
             echo "$SHA → $STATUS"
             if [ "$STATUS" = "green" ]; then
               PICKED="$SHA"
