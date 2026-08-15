@@ -173,11 +173,13 @@ export class CodexApi {
   private buildCodexClientMetadata(
     request: CodexResponsesRequest,
     installationId: string,
+    conversationId: string | null,
     windowId: string | null,
   ): Record<string, string> {
     const metadata: Record<string, string> = {
       ...(request.client_metadata ?? {}),
       "x-codex-installation-id": installationId,
+      ...(conversationId ? { session_id: conversationId } : {}),
       ...(windowId ? { [X_CODEX_WINDOW_ID_HEADER]: windowId } : {}),
     };
     const turnMetadata = this.firstRequestString(request, X_CODEX_TURN_METADATA_HEADER);
@@ -355,7 +357,12 @@ export class CodexApi {
     if (serviceTier) wsRequest.service_tier = serviceTier;
     if (identity.conversationId) wsRequest.prompt_cache_key = identity.conversationId;
     if (request.include?.length) wsRequest.include = request.include;
-    wsRequest.client_metadata = this.buildCodexClientMetadata(request, installationId, identity.windowId);
+    wsRequest.client_metadata = this.buildCodexClientMetadata(
+      request,
+      installationId,
+      identity.conversationId,
+      identity.windowId,
+    );
 
     return createWebSocketResponse(wsUrl, headers, wsRequest, signal, this.proxyUrl, onRateLimits, poolCtx);
   }
@@ -409,7 +416,12 @@ export class CodexApi {
       ...bodyFields,
       ...(upstreamServiceTier ? { service_tier: upstreamServiceTier } : {}),
       ...(identity.conversationId ? { prompt_cache_key: identity.conversationId } : {}),
-      client_metadata: this.buildCodexClientMetadata(request, installationId, identity.windowId),
+      client_metadata: this.buildCodexClientMetadata(
+        request,
+        installationId,
+        identity.conversationId,
+        identity.windowId,
+      ),
     };
     const body = JSON.stringify(bodyWithMetadata);
 

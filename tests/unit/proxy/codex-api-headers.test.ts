@@ -183,6 +183,7 @@ describe("codex-api headers", () => {
         client_metadata: Record<string, string>;
       };
       expect(firstBody.prompt_cache_key).toBe(firstIdentity);
+      expect(firstBody.client_metadata["session_id"]).toBe(firstIdentity);
       expect(firstBody.client_metadata["x-codex-window-id"]).toBe(`${firstIdentity}:0`);
 
       await api.createResponse(makeRequest({ prompt_cache_key: "thread-123" }));
