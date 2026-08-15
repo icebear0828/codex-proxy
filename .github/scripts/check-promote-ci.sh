@@ -8,14 +8,15 @@ REPO="${2:?repository is required}"
 # and scheduled jobs may all reuse the same SHA. Promotion must be gated by
 # the current quality workflow only; an old release failure must not poison a
 # commit after a later release retry succeeded.
-if ! RUNS_JSON=$(gh api "repos/${REPO}/actions/runs?head_sha=${SHA}&per_page=100"); then
+if ! RUNS_JSON=$(gh api --paginate --slurp "repos/${REPO}/actions/runs?head_sha=${SHA}&per_page=100"); then
   printf '%s\n' "api-error"
   exit 0
 fi
 
 QUALITY_PATH=".github/workflows/ci-quality.yml"
 LATEST_CONCLUSION=$(jq -r --arg path "$QUALITY_PATH" --arg sha "$SHA" '
-  [.workflow_runs[]
+  [ (if type == "array" then .[] else . end)
+   | .workflow_runs[]?
    | select(.path == $path and .head_sha == $sha)
    | {conclusion, status, created_at}
   ]
