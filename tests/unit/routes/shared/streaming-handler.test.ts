@@ -85,7 +85,7 @@ describe("handleStreaming", () => {
       req: createStreamingRequest(),
       fmt,
       api: {} as unknown as CodexApi,
-      response: new Response(""),
+      response: new Response("", { headers: { "x-codex-turn-state": "turn-stream" } }),
       entryId: "entry-stream",
       abortController,
       released: new Set<string>(),
@@ -101,6 +101,7 @@ describe("handleStreaming", () => {
     const text = await res.text();
 
     expect(res.headers.get("Content-Type")).toContain("text/event-stream");
+    expect(res.headers.get("x-codex-turn-state")).toBeNull();
     expect(text).toContain("event: response.completed");
     expect(abortController.signal.aborted).toBe(false);
     expect(release).toHaveBeenCalledTimes(1);
@@ -155,6 +156,33 @@ describe("handleStreaming", () => {
       accountEntryId: "entry-stream",
       variantHash: "variant-stream",
     });
+  });
+
+  it("relays turn state for the native Responses format", async () => {
+    const { pool } = createMockAccountPool();
+    const affinityMap = new SessionAffinityMap();
+    affinityMaps.push(affinityMap);
+    const abortController = new AbortController();
+    const app = new Hono();
+    app.get("/stream", (c) => handleStreaming({
+      c,
+      accountPool: pool,
+      req: createStreamingRequest(),
+      fmt: createMockFormatAdapter({ tag: "Responses" }),
+      api: {} as unknown as CodexApi,
+      response: new Response("", { headers: { "x-codex-turn-state": "turn-native" } }),
+      entryId: "entry-stream",
+      abortController,
+      released: new Set<string>(),
+      requestId: "request-stream-native",
+      affinityMap,
+      conversationId: "conversation-stream-native",
+      turnState: "turn-native",
+      variantHash: "variant-stream-native",
+    }));
+
+    const response = await app.request("/stream");
+    expect(response.headers.get("x-codex-turn-state")).toBe("turn-native");
   });
 
   it("aborts upstream when stream processing fails", async () => {

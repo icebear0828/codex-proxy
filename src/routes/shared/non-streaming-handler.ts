@@ -23,6 +23,7 @@ import {
   containsInvalidEncryptedContentSignal,
   getReasoningReplayCache,
 } from "../../proxy/reasoning-replay-cache.js";
+import { relayCodexTurnState } from "./codex-turn-state.js";
 
 
 const MAX_EMPTY_RETRIES = 2;
@@ -131,6 +132,7 @@ export async function handleNonStreaming(options: HandleNonStreamingOptions): Pr
         expectsImageGen: req.expectsImageGen,
         released,
       });
+      relayCodexTurnState(c, currentRawResponse, fmt.tag);
       return c.json(result.response);
     } catch (collectErr) {
       if (conversationId && variantHash && containsInvalidEncryptedContentSignal(collectErr)) {
