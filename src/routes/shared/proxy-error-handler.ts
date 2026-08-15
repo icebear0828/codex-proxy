@@ -12,6 +12,7 @@ import {
   isCfChallengeError,
   isCfPathBlockError,
   isQuotaExhaustedError,
+  isServerOverloadedError,
   isTokenInvalidError,
   isModelNotSupportedError,
 } from "../../proxy/error-classification.js";
@@ -107,6 +108,20 @@ export function handleCodexApiError(
       `[${tag}] Account ${entryId} (${email}) | 402 quota exhausted, trying different account...`,
     );
     return { action: "retry", status: 402, message: err.message };
+  }
+
+  // 503 server capacity — transient upstream condition. Retry on another
+  // account when available, but do not mutate account health or quota state.
+  if (isServerOverloadedError(err)) {
+    console.warn(
+      `[${tag}] Account ${entryId} (${email}) | 503 server overloaded, trying different account...`,
+    );
+    return {
+      action: "retry",
+      releaseBeforeRetry: true,
+      status: 503,
+      message: err.message,
+    };
   }
 
   // 4. Cloudflare challenge (403 HTML/challenge response) — cooldown, not ban.
