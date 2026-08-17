@@ -417,6 +417,7 @@ export class AccountRegistry {
       input_tokens?: number;
       output_tokens?: number;
       cached_tokens?: number;
+      estimated_cost_usd?: number;
       image_input_tokens?: number;
       image_output_tokens?: number;
       /** True when the request declared `tools: [{type: "image_generation"}]`.
@@ -437,6 +438,7 @@ export class AccountRegistry {
       entry.usage.input_tokens += usage.input_tokens ?? 0;
       entry.usage.output_tokens += usage.output_tokens ?? 0;
       entry.usage.cached_tokens = (entry.usage.cached_tokens ?? 0) + (usage.cached_tokens ?? 0);
+      entry.usage.estimated_cost_usd = (entry.usage.estimated_cost_usd ?? 0) + (usage.estimated_cost_usd ?? 0);
       entry.usage.image_input_tokens = (entry.usage.image_input_tokens ?? 0) + (usage.image_input_tokens ?? 0);
       entry.usage.image_output_tokens = (entry.usage.image_output_tokens ?? 0) + (usage.image_output_tokens ?? 0);
       if (usage.image_request_attempted) {
@@ -452,6 +454,7 @@ export class AccountRegistry {
       entry.usage.window_input_tokens = (entry.usage.window_input_tokens ?? 0) + (usage.input_tokens ?? 0);
       entry.usage.window_output_tokens = (entry.usage.window_output_tokens ?? 0) + (usage.output_tokens ?? 0);
       entry.usage.window_cached_tokens = (entry.usage.window_cached_tokens ?? 0) + (usage.cached_tokens ?? 0);
+      entry.usage.window_estimated_cost_usd = (entry.usage.window_estimated_cost_usd ?? 0) + (usage.estimated_cost_usd ?? 0);
       entry.usage.window_image_input_tokens = (entry.usage.window_image_input_tokens ?? 0) + (usage.image_input_tokens ?? 0);
       entry.usage.window_image_output_tokens = (entry.usage.window_image_output_tokens ?? 0) + (usage.image_output_tokens ?? 0);
       if (usage.image_request_attempted) {
@@ -509,6 +512,11 @@ export class AccountRegistry {
         entry.usage.window_input_tokens = 0;
         entry.usage.window_output_tokens = 0;
         entry.usage.window_cached_tokens = 0;
+        entry.usage.window_estimated_cost_usd = 0;
+        entry.usage.window_image_input_tokens = 0;
+        entry.usage.window_image_output_tokens = 0;
+        entry.usage.window_image_request_count = 0;
+        entry.usage.window_image_request_failed_count = 0;
         entry.usage.window_counters_reset_at = new Date().toISOString();
       }
     }
@@ -527,6 +535,7 @@ export class AccountRegistry {
       input_tokens: 0,
       output_tokens: 0,
       cached_tokens: 0,
+      estimated_cost_usd: 0,
       empty_response_count: 0,
       last_used: null,
       window_reset_at: entry.usage.window_reset_at ?? null,
@@ -534,6 +543,7 @@ export class AccountRegistry {
       window_input_tokens: 0,
       window_output_tokens: 0,
       window_cached_tokens: 0,
+      window_estimated_cost_usd: 0,
       window_counters_reset_at: new Date().toISOString(),
       limit_window_seconds: entry.usage.limit_window_seconds ?? null,
     };
@@ -555,6 +565,12 @@ export class AccountRegistry {
       entry.usage.window_request_count = 0;
       entry.usage.window_input_tokens = 0;
       entry.usage.window_output_tokens = 0;
+      entry.usage.window_cached_tokens = 0;
+      entry.usage.window_estimated_cost_usd = 0;
+      entry.usage.window_image_input_tokens = 0;
+      entry.usage.window_image_output_tokens = 0;
+      entry.usage.window_image_request_count = 0;
+      entry.usage.window_image_request_failed_count = 0;
       entry.usage.window_counters_reset_at = now.toISOString();
       const windowSec = entry.usage.limit_window_seconds;
       if (windowSec && windowSec > 0) {

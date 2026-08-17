@@ -221,6 +221,24 @@ describe("AccountPool", () => {
       expect(accounts[0].usage.window_cached_tokens).toBe(200);
     });
 
+    it("accumulates estimated_cost_usd across releases and clears on resetUsage", () => {
+      pool.addAccount("token-aaa");
+
+      const a1 = pool.acquire()!;
+      pool.release(a1.entryId, { input_tokens: 100, output_tokens: 50, estimated_cost_usd: 0.12 });
+      const a2 = pool.acquire()!;
+      pool.release(a2.entryId, { input_tokens: 200, output_tokens: 100, estimated_cost_usd: 0.08 });
+
+      let accounts = pool.getAccounts();
+      expect(accounts[0].usage.estimated_cost_usd).toBeCloseTo(0.2);
+      expect(accounts[0].usage.window_estimated_cost_usd).toBeCloseTo(0.2);
+
+      pool.resetUsage(accounts[0].id);
+      accounts = pool.getAccounts();
+      expect(accounts[0].usage.estimated_cost_usd).toBe(0);
+      expect(accounts[0].usage.window_estimated_cost_usd).toBe(0);
+    });
+
     it("counts image_request_count on attempted+succeeded release", () => {
       pool.addAccount("token-aaa");
       const a = pool.acquire()!;
