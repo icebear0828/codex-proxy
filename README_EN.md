@@ -224,7 +224,9 @@ curl -N http://localhost:8080/v1/responses \
   }'
 ```
 
-Tunable fields: `size` (1024×1024 / 1024×1536 / 1536×1024 / 2048×2048 / 2048×3072 / 3072×2048 / 3840×2160 (4K UHD) / `auto`; longest edge ≤ 3840 px, pixel budget ≈ 8 MP), `output_format` (`png` / `jpeg` / `webp`), `output_compression` (jpeg / webp only), `background` (`auto` / `opaque`), `moderation` (`auto` / `low`), `partial_images` (0–3). Upstream forces `model = gpt-image-2` and rejects `n`, `input_image`, `mask`, `input_fidelity`, `style`, `response_format`. See [API.md](./API.md#image_generation-tool) for the full matrix.
+Tunable fields: `size` (can request 1024×1024 / 1024×1536 / 1536×1024 / 2048×2048 / 2048×3072 / 3072×2048 / 3840×2160 / `auto`), `output_format` (`png` / `jpeg` / `webp`), `output_compression` (jpeg / webp only), `background` (`auto` / `opaque`), `moderation` (`auto` / `low`), `partial_images` (0–3). Only 1 image per call (`n` is fixed to 1); the `model` field is always rewritten upstream to the image tool's actual model (currently echoed as `gpt-image-2-codex`). See [API.md](./API.md#image_generation-tool).
+
+> **`size` is not a strict pixel-dimension guarantee.** The proxy preserves and sends the client-specified value, but upstream currently normalizes requests like `2048x2048`, `2K`, and `4K` to `size: "auto"` and determines the actual output dimensions dynamically. In real requests tested on 2026-08-10, a `size: "2048x2048"` tool configuration echoed back as `auto`, and both `image_generation_call.size` and the decoded PNG pixels were `1254x1254`. Therefore, you cannot rely on this field for native, exact 2K/4K outputs; refer to the result item's `size` or the decoded image dimensions. If your workload strictly requires exact `2048x2048` files, apply post-processing such as interpolation or AI upscaling after generation.
 
 In the stream, the `image_generation_call` item's `result` field is a base64-encoded image; `revised_prompt` contains the final prompt used by the model.
 
