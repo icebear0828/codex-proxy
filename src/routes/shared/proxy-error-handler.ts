@@ -33,7 +33,7 @@ export function toErrorStatus(status: number): StatusCode {
 }
 
 export type ErrorAction =
-  | { action: "respond"; status: number; message: string; errorBody?: string }
+  | { action: "respond"; status: number; message: string }
   | {
       action: "retry";
       releaseBeforeRetry?: boolean;
@@ -103,7 +103,7 @@ export function handleCodexApiError(
         message: err.message,
       };
     }
-    return { action: "respond", status: 500, message: err.message, errorBody: err.body };
+    return { action: "respond", status: 500, message: err.message };
   }
 
   // 2. Rate-limited — write into cachedQuota.rate_limit (single source of

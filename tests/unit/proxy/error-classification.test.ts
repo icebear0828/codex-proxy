@@ -69,6 +69,9 @@ describe("isServerOverloadedError", () => {
     expect(isServerOverloadedError(new CodexApiError(503, JSON.stringify({
       error: { code: "server_is_overloaded" },
     })))).toBe(true);
+    expect(isServerOverloadedError(new CodexApiError(503, JSON.stringify({
+      error: { type: "server_is_overloaded" },
+    })))).toBe(true);
     expect(isServerOverloadedError(new CodexApiError(503, "database unavailable"))).toBe(false);
     expect(isServerOverloadedError(new CodexApiError(502, JSON.stringify({
       error: { code: "server_is_overloaded" },
@@ -80,6 +83,9 @@ describe("isEarlyServerError", () => {
   it("accepts only structured server_error 500 responses", () => {
     expect(isEarlyServerError(new CodexApiError(500, JSON.stringify({
       error: { code: "server_error", message: "internal" },
+    })))).toBe(true);
+    expect(isEarlyServerError(new CodexApiError(500, JSON.stringify({
+      error: { type: "server_error", message: "internal" },
     })))).toBe(true);
     expect(isEarlyServerError(new CodexApiError(500, "internal"))).toBe(false);
     expect(isEarlyServerError(new CodexApiError(503, JSON.stringify({

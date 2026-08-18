@@ -98,43 +98,44 @@ describe("proxy error response helpers", () => {
     expect(fmt.formatNoAccount).toHaveBeenCalledOnce();
   });
 
-  it("passes through a structured upstream error body for non-streaming responses", async () => {
+  it("formats non-streaming 500 proxy errors with the route formatter", async () => {
     const app = new Hono();
     const fmt = createMockFormatAdapter();
-    const body = JSON.stringify({ error: { code: "server_error", message: "internal" } });
-    app.get("/upstream-error", (c) => respondWithProxyError({
+    app.get("/server-error", (c) => respondWithProxyError({
       c,
       req: createRequest(false),
       fmt,
       status: 500,
-      message: "internal",
-      errorBody: body,
+      message: "internal error",
     }));
 
-    const res = await app.request("/upstream-error");
+    const res = await app.request("/server-error");
     expect(res.status).toBe(500);
-    expect(res.headers.get("content-type")).toContain("application/json");
-    expect(await res.text()).toBe(body);
-    expect(fmt.formatError).not.toHaveBeenCalled();
+    expect(await res.json()).toEqual({
+      error: "api_error",
+      status: 500,
+      message: "internal error",
+    });
+    expect(fmt.formatError).toHaveBeenCalledWith(500, "internal error");
   });
 
-  it("passes through a terminal upstream error body before a streaming response is committed", async () => {
+  it("formats streaming 500 proxy errors as SSE when the adapter supports stream errors", async () => {
     const app = new Hono();
     const fmt = createMockFormatAdapter();
-    const body = JSON.stringify({ error: { code: "server_error", message: "internal" } });
-    app.get("/stream-upstream-error", (c) => respondWithProxyError({
+    app.get("/stream-server-error", (c) => respondWithProxyError({
       c,
       req: createRequest(true),
       fmt,
       status: 500,
-      message: "internal",
-      errorBody: body,
+      message: "internal error",
     }));
 
-    const res = await app.request("/stream-upstream-error");
-    expect(res.status).toBe(500);
-    expect(res.headers.get("content-type")).toContain("application/json");
-    expect(await res.text()).toBe(body);
-    expect(fmt.formatStreamError).not.toHaveBeenCalled();
+    const res = await app.request("/stream-server-error");
+    expect(res.status).toBe(200);
+    expect(res.headers.get("content-type")).toContain("text/event-stream");
+    const text = await res.text();
+    expect(text).toContain("event: response.failed");
+    expect(text).toContain("internal error");
+    expect(fmt.formatStreamError).toHaveBeenCalledWith(500, "internal error");
   });
 });

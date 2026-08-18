@@ -186,7 +186,7 @@ describe("handleCodexApiError", () => {
       expect(pool.applyRateLimit429).not.toHaveBeenCalled();
     });
 
-    it("returns the original structured body after the one retry is used", () => {
+    it("returns respond action without mutating account state after the one retry is used", () => {
       const result = handleCodexApiError(
         new CodexApiError(500, body), pool as never, entryId, model, tag, false, undefined, true,
       );
@@ -194,8 +194,8 @@ describe("handleCodexApiError", () => {
         action: "respond",
         status: 500,
         message: expect.stringContaining("server had an internal error"),
-        errorBody: body,
       });
+      expect(result).not.toHaveProperty("errorBody");
       expect(pool.markStatus).not.toHaveBeenCalled();
       expect(pool.applyRateLimit429).not.toHaveBeenCalled();
     });

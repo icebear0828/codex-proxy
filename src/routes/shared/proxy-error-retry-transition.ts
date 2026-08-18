@@ -12,7 +12,6 @@ export type ProxyErrorRetryTransitionResult =
       action: "respond";
       status: number;
       message: string;
-      errorBody?: string;
       useFormat429?: true;
       modelRetried: boolean;
     }
@@ -63,7 +62,6 @@ export function applyProxyErrorRetryTransition(
       action: "respond",
       status: decision.status,
       message: decision.message,
-      ...(decision.errorBody !== undefined ? { errorBody: decision.errorBody } : {}),
       modelRetried,
     };
   }

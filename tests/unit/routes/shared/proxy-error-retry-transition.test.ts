@@ -96,29 +96,6 @@ describe("applyProxyErrorRetryTransition", () => {
     expect(accountPool.acquire).not.toHaveBeenCalled();
   });
 
-  it("carries a terminal upstream error body without altering it", () => {
-    const accountPool = mockPool();
-    const body = JSON.stringify({ error: { code: "server_error", message: "internal" } });
-    const result = applyProxyErrorRetryTransition({
-      accountPool,
-      entryId: "entry-1",
-      model: "gpt-5.4",
-      triedEntryIds: ["entry-1"],
-      tag: "Test",
-      decision: respondDecision({ status: 500, message: "internal", errorBody: body }),
-      released: new Set<string>(),
-      restoreImplicitResumeRequest: vi.fn(),
-      modelRetried: false,
-    });
-
-    expect(result).toEqual({
-      action: "respond",
-      status: 500,
-      message: "internal",
-      errorBody: body,
-      modelRetried: false,
-    });
-  });
 
   it("releases model-not-supported accounts before acquiring a fallback and marks the model retried", () => {
     const accountPool = mockPool({ acquiredAccount: acquired({ entryId: "entry-2" }) });

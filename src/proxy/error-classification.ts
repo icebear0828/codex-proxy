@@ -58,7 +58,8 @@ export function isServerOverloadedError(err: unknown): boolean {
   try {
     const parsed = JSON.parse(err.body) as Record<string, unknown>;
     const error = parsed.error as Record<string, unknown> | undefined;
-    return error?.code === "server_is_overloaded";
+    const code = (error?.code ?? error?.type) as string | undefined;
+    return code === "server_is_overloaded";
   } catch {
     return false;
   }
@@ -70,7 +71,8 @@ export function isEarlyServerError(err: unknown): boolean {
   try {
     const parsed = JSON.parse(err.body) as Record<string, unknown>;
     const error = parsed.error as Record<string, unknown> | undefined;
-    return error?.code === "server_error";
+    const code = (error?.code ?? error?.type) as string | undefined;
+    return code === "server_error";
   } catch {
     return false;
   }

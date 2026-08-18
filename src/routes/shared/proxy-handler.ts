@@ -427,7 +427,6 @@ export async function handleProxyRequest(options: HandleProxyRequestOptions): Pr
               status: errorRetryTransition.status,
               message: errorRetryTransition.message,
               ...(errorRetryTransition.useFormat429 ? { useFormat429: true } : {}),
-              ...(errorRetryTransition.errorBody !== undefined ? { errorBody: errorRetryTransition.errorBody } : {}),
             });
           }
 
