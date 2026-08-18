@@ -84,6 +84,8 @@ export interface UsageCostInput {
   image_output_tokens?: number;
 }
 
+const DEFAULT_IMAGE_MODEL = "gpt-image-2";
+
 export function calculateUsageCostUsd(
   model: string,
   usage: UsageCostInput,
@@ -100,11 +102,15 @@ export function calculateUsageCostUsd(
     output * pricing.output_usd_per_million
   ) / 1_000_000;
 
-  if (pricing.image_input_usd_per_million !== undefined) {
-    cost += nonNegative(usage.image_input_tokens ?? 0) * pricing.image_input_usd_per_million / 1_000_000;
+  const imagePricing = pricing.image_input_usd_per_million !== undefined || pricing.image_output_usd_per_million !== undefined
+    ? pricing
+    : catalog[DEFAULT_IMAGE_MODEL];
+
+  if (imagePricing?.image_input_usd_per_million !== undefined) {
+    cost += nonNegative(usage.image_input_tokens ?? 0) * imagePricing.image_input_usd_per_million / 1_000_000;
   }
-  if (pricing.image_output_usd_per_million !== undefined) {
-    cost += nonNegative(usage.image_output_tokens ?? 0) * pricing.image_output_usd_per_million / 1_000_000;
+  if (imagePricing?.image_output_usd_per_million !== undefined) {
+    cost += nonNegative(usage.image_output_tokens ?? 0) * imagePricing.image_output_usd_per_million / 1_000_000;
   }
   return cost;
 }
