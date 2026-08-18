@@ -99,7 +99,8 @@ Google Gemini 兼容接口。
 
 **静默改写 / 明确拒绝的字段**：
 
-- `model` — 不管传啥，上游强制改回 `gpt-image-2`。
+- `model` — 不管传啥，上游强制改回 `gpt-image-2`（响应回显为 `gpt-image-2-codex`）。
+- `size` — 客户端请求的 `2048x2048`、`2K`、`4K` 等尺寸会被上游回显/归一化为 `auto`，实际输出分辨率由服务端自行决定（例如实测 `1254x1254`）。
 - `quality` — 传任何值都被 echo 为 `auto`，用户值不生效。
 - `n` — `unknown_parameter`；一次只能出一张图。
 - `input_image`、`mask`、`input_fidelity`、`style`、`response_format` — 全部拒绝。

@@ -244,7 +244,6 @@ describe("createWebSocketResponse — early-stream error rejection", () => {
     expect(text).toContain("event: error");
     expect(text).toContain("server_error");
   });
-
   it("resolves normally when first frame is an error with an unmapped code", async () => {
     // Genuine model errors (e.g. invalid request, model_not_supported_in_plan)
     // must NOT trigger rotation — they keep the SSE pass-through behavior so

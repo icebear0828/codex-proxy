@@ -253,7 +253,9 @@ curl -N http://localhost:8080/v1/responses \
   }'
 ```
 
-常用参数：`size`（1024×1024 / 1024×1536 / 1536×1024 / 2048×2048 / 2048×3072 / 3072×2048 / 3840×2160（4K UHD）/ `auto`，最长边 ≤ 3840 px，像素预算约 8 MP）、`output_format`（`png` / `jpeg` / `webp`）、`output_compression`（jpeg / webp 可调）、`background`（`auto` / `opaque`）、`moderation`（`auto` / `low`）、`partial_images`（0–3）。一次只能出 1 张图（`n` 固定为 1）；`model` 字段不管传什么都会被上游改写回 `gpt-image-2`。详见 [API.md](./API.md#image_generation-tool)。
+常用参数：`size`（可请求 1024×1024 / 1024×1536 / 1536×1024 / 2048×2048 / 2048×3072 / 3072×2048 / 3840×2160 / `auto`）、`output_format`（`png` / `jpeg` / `webp`）、`output_compression`（jpeg / webp 可调）、`background`（`auto` / `opaque`）、`moderation`（`auto` / `low`）、`partial_images`（0–3）。一次只能出 1 张图（`n` 固定为 1）；`model` 字段不管传什么都会被上游改写为图像工具的实际模型（当前响应回显为 `gpt-image-2-codex`）。详见 [API.md](./API.md#image_generation-tool)。
+
+> **`size` 不是固定像素保证。** Proxy 会保留并发送客户端填写的值，但当前上游会把 `2048x2048`、`2K`、`4K` 等请求归一化为 `size: "auto"`，再自行决定实际尺寸。2026-08-10 的真实请求中，`size: "2048x2048"` 的工具配置回显为 `auto`，最终 `image_generation_call.size` 和 PNG 像素均为 `1254x1254`。因此不能依靠该字段获得原生、精确的 2K/4K 输出；请以结果 item 的 `size` 或解码后图片像素为准。若业务必须拿到精确 `2048x2048` 文件，需要在生成后使用插值或 AI 超分辨率进行后处理。
 
 事件流里 `image_generation_call` item 的 `result` 字段即 base64 编码的图像；`revised_prompt` 是上游改写后的最终提示词。
 

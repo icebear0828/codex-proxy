@@ -96,7 +96,6 @@ describe("isEarlyServerError", () => {
     })))).toBe(false);
   });
 });
-
 describe("isBanError", () => {
   it("returns true for non-CF 403", () => {
     const err = new CodexApiError(403, '{"detail": "Your account has been flagged"}');

@@ -200,7 +200,6 @@ describe("handleCodexApiError", () => {
       expect(pool.applyRateLimit429).not.toHaveBeenCalled();
     });
   });
-
   // ── 403 ban ──
 
   describe("403 ban", () => {
