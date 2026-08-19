@@ -27,6 +27,8 @@ export interface ClientKeyEntry {
   max_concurrency: number | null;
   /** Whitelist of model IDs, or null/empty for all models allowed */
   allowed_models: string[] | null;
+  /** Default hosted tools to auto-inject (null means inherit global config, [] means none) */
+  default_tools: string[] | null;
   /** Total requests served */
   request_count: number;
   /** ISO timestamp of last usage */
@@ -49,6 +51,7 @@ export interface ClientKeyPublicSummary {
   used_tokens: number;
   max_concurrency: number | null;
   allowed_models: string[] | null;
+  default_tools: string[] | null;
   request_count: number;
   last_used_at: string | null;
   created_at: string;
@@ -63,6 +66,7 @@ export interface CreateClientKeyInput {
   max_tokens?: number | null;
   max_concurrency?: number | null;
   allowed_models?: string[] | null;
+  default_tools?: string[] | null;
 }
 
 export interface UpdateClientKeyInput {
@@ -72,6 +76,7 @@ export interface UpdateClientKeyInput {
   max_tokens?: number | null;
   max_concurrency?: number | null;
   allowed_models?: string[] | null;
+  default_tools?: string[] | null;
   status?: ClientKeyStatus;
 }
 

@@ -82,6 +82,7 @@ export const ConfigSchema = z.object({
     default: z.string().default("gpt-5.6-sol"),
     default_reasoning_effort: z.string().nullable().default(null),
     default_service_tier: z.string().nullable().default(null),
+    default_tools: z.array(z.string().trim().min(1)).default([]),
     aliases: z.record(z.string(), z.string()).default({}),
     custom_models: z.array(CustomModelSchema).default([]),
     inject_desktop_context: z.boolean().default(false),

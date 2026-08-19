@@ -16,6 +16,7 @@ interface ClientKeyRow {
   used_tokens: number;
   max_concurrency: number | null;
   allowed_models: string | null;
+  default_tools: string | null;
   request_count: number;
   last_used_at: string | null;
   created_at: string;
@@ -60,6 +61,7 @@ export class ClientKeyPersistence {
         used_tokens INTEGER NOT NULL DEFAULT 0,
         max_concurrency INTEGER,
         allowed_models TEXT,
+        default_tools TEXT,
         request_count INTEGER NOT NULL DEFAULT 0,
         last_used_at TEXT,
         created_at TEXT NOT NULL,
@@ -68,6 +70,12 @@ export class ClientKeyPersistence {
       CREATE INDEX IF NOT EXISTS idx_client_keys_key ON client_keys(key);
       CREATE INDEX IF NOT EXISTS idx_client_keys_status ON client_keys(status);
     `);
+
+    try {
+      db.exec("ALTER TABLE client_keys ADD COLUMN default_tools TEXT");
+    } catch {
+      // Column already exists
+    }
 
     this.db = db;
     return db;
@@ -107,11 +115,11 @@ export class ClientKeyPersistence {
     const insertStmt = db.prepare(`
       INSERT INTO client_keys (
         id, name, key, status, expires_at, max_budget_usd, used_cost_usd,
-        max_tokens, used_tokens, max_concurrency, allowed_models,
+        max_tokens, used_tokens, max_concurrency, allowed_models, default_tools,
         request_count, last_used_at, created_at, updated_at
       ) VALUES (
         @id, @name, @key, @status, @expires_at, @max_budget_usd, @used_cost_usd,
-        @max_tokens, @used_tokens, @max_concurrency, @allowed_models,
+        @max_tokens, @used_tokens, @max_concurrency, @allowed_models, @default_tools,
         @request_count, @last_used_at, @created_at, @updated_at
       )
     `);
@@ -143,6 +151,7 @@ export class ClientKeyPersistence {
       used_tokens: row.used_tokens,
       max_concurrency: row.max_concurrency,
       allowed_models: row.allowed_models ? (JSON.parse(row.allowed_models) as string[]) : null,
+      default_tools: row.default_tools ? (JSON.parse(row.default_tools) as string[]) : null,
       request_count: row.request_count,
       last_used_at: row.last_used_at,
       created_at: row.created_at,
@@ -163,6 +172,7 @@ export class ClientKeyPersistence {
       used_tokens: entry.used_tokens,
       max_concurrency: entry.max_concurrency,
       allowed_models: entry.allowed_models ? JSON.stringify(entry.allowed_models) : null,
+      default_tools: entry.default_tools ? JSON.stringify(entry.default_tools) : null,
       request_count: entry.request_count,
       last_used_at: entry.last_used_at,
       created_at: entry.created_at,

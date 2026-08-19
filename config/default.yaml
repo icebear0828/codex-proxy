@@ -12,6 +12,7 @@ model:
   default: gpt-5.4
   default_reasoning_effort: null
   default_service_tier: null
+  default_tools: []
   aliases: {}
   custom_models: []
   inject_desktop_context: false

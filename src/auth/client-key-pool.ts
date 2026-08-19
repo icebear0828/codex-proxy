@@ -66,6 +66,7 @@ export class ClientKeyPool {
       used_tokens: k.used_tokens,
       max_concurrency: k.max_concurrency,
       allowed_models: k.allowed_models,
+      default_tools: k.default_tools,
       request_count: k.request_count,
       last_used_at: k.last_used_at,
       created_at: k.created_at,
@@ -108,6 +109,7 @@ export class ClientKeyPool {
       used_tokens: 0,
       max_concurrency: input.max_concurrency ?? null,
       allowed_models: input.allowed_models && input.allowed_models.length > 0 ? input.allowed_models : null,
+      default_tools: input.default_tools !== undefined ? input.default_tools : null,
       request_count: 0,
       last_used_at: null,
       created_at: now,
@@ -145,6 +147,7 @@ export class ClientKeyPool {
       max_tokens: input.max_tokens !== undefined ? input.max_tokens : existing.max_tokens,
       max_concurrency: input.max_concurrency !== undefined ? input.max_concurrency : existing.max_concurrency,
       allowed_models: input.allowed_models !== undefined ? input.allowed_models : existing.allowed_models,
+      default_tools: input.default_tools !== undefined ? input.default_tools : existing.default_tools,
       updated_at: now,
     };
 

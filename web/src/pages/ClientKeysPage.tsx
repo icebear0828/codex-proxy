@@ -42,6 +42,7 @@ export const ClientKeysPage: FunctionalComponent<ClientKeysPageProps> = ({
   const [formMaxTokens, setFormMaxTokens] = useState("");
   const [formMaxConcurrency, setFormMaxConcurrency] = useState("");
   const [formAllowedModels, setFormAllowedModels] = useState("");
+  const [formDefaultTools, setFormDefaultTools] = useState("");
   const [formStatus, setFormStatus] = useState<"active" | "disabled">("active");
   const [formError, setFormError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -54,6 +55,7 @@ export const ClientKeysPage: FunctionalComponent<ClientKeysPageProps> = ({
     setFormMaxTokens("");
     setFormMaxConcurrency("");
     setFormAllowedModels("");
+    setFormDefaultTools("");
     setFormStatus("active");
     setFormError(null);
     setCreatedSecretKey(null);
@@ -69,6 +71,7 @@ export const ClientKeysPage: FunctionalComponent<ClientKeysPageProps> = ({
     setFormMaxTokens(key.max_tokens != null ? String(key.max_tokens) : "");
     setFormMaxConcurrency(key.max_concurrency != null ? String(key.max_concurrency) : "");
     setFormAllowedModels(key.allowed_models ? key.allowed_models.join(", ") : "");
+    setFormDefaultTools(key.default_tools ? key.default_tools.join(", ") : "");
     setFormStatus(key.status);
     setFormError(null);
   };
@@ -117,6 +120,12 @@ export const ClientKeysPage: FunctionalComponent<ClientKeysPageProps> = ({
     }
     if (formAllowedModels.trim()) {
       input.allowed_models = formAllowedModels
+        .split(",")
+        .map((m) => m.trim())
+        .filter(Boolean);
+    }
+    if (formDefaultTools.trim()) {
+      input.default_tools = formDefaultTools
         .split(",")
         .map((m) => m.trim())
         .filter(Boolean);
@@ -192,6 +201,15 @@ export const ClientKeysPage: FunctionalComponent<ClientKeysPageProps> = ({
         .filter(Boolean);
     } else {
       input.allowed_models = null;
+    }
+
+    if (formDefaultTools.trim()) {
+      input.default_tools = formDefaultTools
+        .split(",")
+        .map((m) => m.trim())
+        .filter(Boolean);
+    } else {
+      input.default_tools = null;
     }
 
     try {
@@ -308,6 +326,11 @@ export const ClientKeysPage: FunctionalComponent<ClientKeysPageProps> = ({
                         {k.allowed_models && k.allowed_models.length > 0 && (
                           <div class="text-[10px] text-text-sub mt-0.5">
                             {k.allowed_models.join(", ")}
+                          </div>
+                        )}
+                        {k.default_tools && k.default_tools.length > 0 && (
+                          <div class="text-[10px] text-primary dark:text-primary-light mt-0.5">
+                            Tools: {k.default_tools.join(", ")}
                           </div>
                         )}
                       </td>
@@ -548,6 +571,19 @@ export const ClientKeysPage: FunctionalComponent<ClientKeysPageProps> = ({
                   />
                 </div>
 
+                <div>
+                  <label class="block text-xs font-semibold text-text-sub mb-1">
+                    {t("clientKeyDefaultTools")} ({t("clientKeyDefaultToolsHint")})
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="web_search, image_generation"
+                    value={formDefaultTools}
+                    onInput={(e) => setFormDefaultTools((e.currentTarget as HTMLInputElement).value)}
+                    class="w-full px-3 py-2 bg-bg-light dark:bg-bg-dark border border-border-light dark:border-border-dark rounded-lg text-xs"
+                  />
+                </div>
+
                 <div class="flex justify-end gap-2 pt-3">
                   <button
                     type="button"
@@ -653,13 +689,26 @@ export const ClientKeysPage: FunctionalComponent<ClientKeysPageProps> = ({
 
               <div>
                 <label class="block text-xs font-semibold text-text-sub mb-1">
-                  {t("clientKeyAllowedModels")}
+                  {t("clientKeyAllowedModels")} ({t("clientKeyAllowedModelsHint")})
                 </label>
                 <input
                   type="text"
                   placeholder="gpt-5.4, gpt-5.3-codex"
                   value={formAllowedModels}
                   onInput={(e) => setFormAllowedModels((e.currentTarget as HTMLInputElement).value)}
+                  class="w-full px-3 py-2 bg-bg-light dark:bg-bg-dark border border-border-light dark:border-border-dark rounded-lg text-xs"
+                />
+              </div>
+
+              <div>
+                <label class="block text-xs font-semibold text-text-sub mb-1">
+                  {t("clientKeyDefaultTools")} ({t("clientKeyDefaultToolsHint")})
+                </label>
+                <input
+                  type="text"
+                  placeholder="web_search, image_generation"
+                  value={formDefaultTools}
+                  onInput={(e) => setFormDefaultTools((e.currentTarget as HTMLInputElement).value)}
                   class="w-full px-3 py-2 bg-bg-light dark:bg-bg-dark border border-border-light dark:border-border-dark rounded-lg text-xs"
                 />
               </div>

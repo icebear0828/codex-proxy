@@ -24,6 +24,7 @@ const CreateClientKeySchema = z.object({
   max_tokens: z.number().int().positive().nullable().optional(),
   max_concurrency: z.number().int().positive().nullable().optional(),
   allowed_models: z.array(z.string()).nullable().optional(),
+  default_tools: z.array(z.string()).nullable().optional(),
 });
 
 const UpdateClientKeySchema = z.object({
@@ -33,6 +34,7 @@ const UpdateClientKeySchema = z.object({
   max_tokens: z.number().int().positive().nullable().optional(),
   max_concurrency: z.number().int().positive().nullable().optional(),
   allowed_models: z.array(z.string()).nullable().optional(),
+  default_tools: z.array(z.string()).nullable().optional(),
   status: z.enum(["active", "disabled"]).optional(),
 });
 

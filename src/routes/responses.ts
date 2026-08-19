@@ -34,6 +34,7 @@ import {
 } from "../proxy/openai-subagent.js";
 import { PASSTHROUGH_FORMAT } from "./responses-passthrough.js";
 import { handleCompact } from "./responses-compact.js";
+import { resolveDefaultTools, mergeDefaultTools } from "./shared/default-tools.js";
 
 // Re-export for downstream consumers
 export { extractResponseUsage, extractImageGenUsage, streamPassthrough, collectPassthrough } from "./responses-passthrough.js";
@@ -214,8 +215,12 @@ export function createResponsesRoutes(
       codexRequest.service_tier = serviceTier;
     }
 
-    if (Array.isArray(body.tools) && body.tools.length > 0) {
-      codexRequest.tools = body.tools;
+    const defaultTools = resolveDefaultTools(c, { allowUnauthenticated });
+    if (defaultTools.length > 0 || (Array.isArray(body.tools) && body.tools.length > 0)) {
+      const merged = mergeDefaultTools(Array.isArray(body.tools) ? (body.tools as Record<string, unknown>[]) : undefined, defaultTools);
+      if (merged.length > 0) {
+        codexRequest.tools = merged;
+      }
     }
     if (body.tool_choice !== undefined) {
       codexRequest.tool_choice = body.tool_choice as CodexResponsesRequest["tool_choice"];

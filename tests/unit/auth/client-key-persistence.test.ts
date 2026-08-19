@@ -36,6 +36,7 @@ describe("ClientKeyPersistence", () => {
     used_tokens: 15000,
     max_concurrency: 2,
     allowed_models: ["gpt-5.4", "gpt-5.3-codex"],
+    default_tools: null,
     request_count: 5,
     last_used_at: "2026-08-15T12:00:00.000Z",
     created_at: "2026-08-15T00:00:00.000Z",

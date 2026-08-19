@@ -29,6 +29,7 @@ import { summarizeRequestForLog } from "../logs/request-summary.js";
 import { apiKeyAuth } from "../middleware/api-key-auth.js";
 import type { ClientKeyPool } from "../auth/client-key-pool.js";
 import { validateClientKeyModel } from "./shared/proxy-handler-utils.js";
+import { resolveDefaultTools, mergeDefaultTools } from "./shared/default-tools.js";
 
 function makeOpenAIFormat(wantReasoning: boolean): FormatAdapter {
   return {
@@ -122,6 +123,13 @@ export function createChatRoutes(
     if (routeMatch.kind === "not-found") {
       c.status(404);
       return c.json(formatModelNotFound(req.model));
+    }
+
+    const defaultTools = resolveDefaultTools(c, {
+      allowUnauthenticated: routeMatch.kind === "api-key" || routeMatch.kind === "adapter",
+    });
+    if (defaultTools.length > 0) {
+      req.tools = mergeDefaultTools(req.tools, defaultTools);
     }
 
     const { codexRequest, tupleSchema } = translateToCodexRequest(req);

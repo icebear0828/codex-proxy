@@ -31,6 +31,7 @@ import type { UpstreamRouter } from "../proxy/upstream-router.js";
 import type { ClientKeyPool } from "../auth/client-key-pool.js";
 import { validateClientKeyModel } from "./shared/proxy-handler-utils.js";
 import { extractProxyApiKey } from "../utils/extract-api-key.js";
+import { resolveDefaultTools, mergeDefaultTools } from "./shared/default-tools.js";
 
 function makeError(
   code: number,
@@ -144,10 +145,14 @@ export function createGeminiRoutes(
       );
     }
 
+    const defaultTools = resolveDefaultTools(c, { allowUnauthenticated });
     const { codexRequest, tupleSchema } = translateGeminiToCodexRequest(
       parsed.data,
       geminiModel,
     );
+    if (defaultTools.length > 0) {
+      codexRequest.tools = mergeDefaultTools(codexRequest.tools, defaultTools);
+    }
 
     console.log(
       `[Gemini] Model: ${geminiModel} → ${codexRequest.model}`,
