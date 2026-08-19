@@ -19,7 +19,7 @@ import { createChatRoutes } from "../../../src/routes/chat.js";
 import { AccountPool } from "../../../src/auth/account-pool.js";
 import { ClientKeyPool } from "../../../src/auth/client-key-pool.js";
 import { loadConfig } from "../../../src/config.js";
-import { loadStaticModels } from "../../../src/models/model-store.js";
+import { loadStaticModels, applyBackendModels } from "../../../src/models/model-store.js";
 
 describe("Chat completions default_tools injection", () => {
   let accountPool: AccountPool;
@@ -29,6 +29,7 @@ describe("Chat completions default_tools injection", () => {
     const config = loadConfig();
     config.server.proxy_api_key = "master-key-123";
     loadStaticModels();
+    applyBackendModels([{ slug: "gpt-5.4", name: "GPT 5.4" }]);
     accountPool = new AccountPool();
     vi.spyOn(accountPool, "isAuthenticated").mockReturnValue(true);
     vi.spyOn(accountPool, "getPoolSummary").mockReturnValue({

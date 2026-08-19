@@ -17,7 +17,7 @@ vi.mock("../../src/routes/shared/proxy-handler.js", () => ({
 
 import { Hono } from "hono";
 import { loadConfig } from "../../src/config.js";
-import { loadStaticModels } from "../../src/models/model-store.js";
+import { loadStaticModels, applyBackendModels } from "../../src/models/model-store.js";
 import { ClientKeyPool } from "../../src/auth/client-key-pool.js";
 import { ClientKeyPersistence } from "../../src/auth/client-key-persistence.js";
 import { createClientKeyAdminRoutes } from "../../src/routes/admin/client-keys.js";
@@ -36,8 +36,10 @@ describe("Default Tools E2E Workflow (≥ 3 Successful Consecutive Calls)", () =
   const MASTER_KEY = "master-secret-for-default-tools-e2e";
 
   beforeAll(() => {
-    loadConfig();
+    const config = loadConfig();
+    config.server.proxy_api_key = MASTER_KEY;
     loadStaticModels();
+    applyBackendModels([{ slug: "gpt-5.4", name: "GPT 5.4" }, { slug: "gemini-2.5-pro", name: "Gemini 2.5 Pro" }]);
     tempDir = mkdtempSync(join(tmpdir(), "default-tools-e2e-"));
     const persistence = new ClientKeyPersistence(
       join(tempDir, "client-keys.sqlite"),

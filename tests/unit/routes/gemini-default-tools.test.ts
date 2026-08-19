@@ -19,7 +19,7 @@ import { createGeminiRoutes } from "../../../src/routes/gemini.js";
 import { AccountPool } from "../../../src/auth/account-pool.js";
 import { ClientKeyPool } from "../../../src/auth/client-key-pool.js";
 import { loadConfig } from "../../../src/config.js";
-import { loadStaticModels } from "../../../src/models/model-store.js";
+import { loadStaticModels, applyBackendModels } from "../../../src/models/model-store.js";
 
 describe("Gemini default_tools injection", () => {
   let accountPool: AccountPool;
@@ -29,6 +29,7 @@ describe("Gemini default_tools injection", () => {
     const config = loadConfig();
     config.server.proxy_api_key = "master-key-123";
     loadStaticModels();
+    applyBackendModels([{ slug: "gemini-2.5-pro", name: "Gemini 2.5 Pro" }]);
     accountPool = new AccountPool();
     vi.spyOn(accountPool, "isAuthenticated").mockReturnValue(true);
 
