@@ -1,5 +1,13 @@
-import { describe, it, expect, beforeEach, vi } from "vitest";
+import { describe, it, expect, beforeEach, afterAll, vi } from "vitest";
+import { rmSync } from "fs";
 import type { ProxyRequest } from "../../../src/routes/shared/proxy-handler-types.js";
+
+const testDataDir = `/tmp/codex-proxy-gemini-default-tools-${process.pid}`;
+
+vi.mock("../../../src/paths.js", async (importOriginal) => {
+  const original = await importOriginal<typeof import("../../../src/paths.js")>();
+  return { ...original, getDataDir: () => testDataDir };
+});
 
 const mockState = vi.hoisted(() => ({
   capturedReq: null as ProxyRequest | null,
@@ -24,6 +32,11 @@ import { loadStaticModels, applyBackendModels } from "../../../src/models/model-
 describe("Gemini default_tools injection", () => {
   let accountPool: AccountPool;
   let clientKeyPool: ClientKeyPool;
+
+  afterAll(async () => {
+    await new Promise((resolve) => setTimeout(resolve, 25));
+    rmSync(testDataDir, { recursive: true, force: true });
+  });
 
   beforeEach(() => {
     const config = loadConfig();
@@ -56,6 +69,26 @@ describe("Gemini default_tools injection", () => {
     expect(res.status).toBe(200);
     expect(mockState.capturedReq).toBeTruthy();
     expect(mockState.capturedReq?.codexRequest.tools).toEqual([{ type: "web_search" }]);
+  });
+
+  it("marks globally injected image_generation as an image request", async () => {
+    const config = loadConfig();
+    config.model.default_tools = ["image_generation"];
+
+    const app = createGeminiRoutes(accountPool, undefined, undefined, undefined, clientKeyPool);
+    const res = await app.request("/v1beta/models/gemini-2.5-pro:generateContent", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        authorization: "Bearer master-key-123",
+      },
+      body: JSON.stringify({
+        contents: [{ role: "user", parts: [{ text: "Generate an image" }] }],
+      }),
+    });
+
+    expect(res.status).toBe(200);
+    expect(mockState.capturedReq?.expectsImageGen).toBe(true);
   });
 
   it("skips tool injection when X-Codex-Default-Tools: off header is sent", async () => {

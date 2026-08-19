@@ -76,6 +76,16 @@ describe("default-tools resolution and merging", () => {
       const existing2 = [{ type: "web_search" }];
       expect(mergeDefaultTools(existing2, ["web_search_20250305"])).toEqual([{ type: "web_search" }]);
     });
+
+    it("deduplicates non-search hosted tools (e.g. image_generation, custom_tool)", () => {
+      const existing = [{ type: "image_generation" }];
+      const merged = mergeDefaultTools(existing, ["image_generation"]);
+      expect(merged).toEqual([{ type: "image_generation" }]);
+
+      const existingCustom = [{ type: "calculator" }];
+      const mergedCustom = mergeDefaultTools(existingCustom, ["calculator"]);
+      expect(mergedCustom).toEqual([{ type: "calculator" }]);
+    });
   });
 
   describe("resolveDefaultTools", () => {

@@ -32,6 +32,7 @@ import type { ClientKeyPool } from "../auth/client-key-pool.js";
 import { validateClientKeyModel } from "./shared/proxy-handler-utils.js";
 import { extractProxyApiKey } from "../utils/extract-api-key.js";
 import { resolveDefaultTools, mergeDefaultTools } from "./shared/default-tools.js";
+import { isRecord } from "../translation/shared-utils.js";
 
 function makeError(
   code: number,
@@ -168,7 +169,8 @@ export function createGeminiRoutes(
       isStreaming,
       clientConversationId: c.req.header("x-conversation-id") || c.req.header("x-session-id"),
       tupleSchema,
-      expectsImageGen: false,
+      expectsImageGen: Array.isArray(codexRequest.tools)
+        && codexRequest.tools.some((tool) => isRecord(tool) && tool.type === "image_generation"),
     };
 
     if (routeMatch?.kind === "api-key" || routeMatch?.kind === "adapter") {

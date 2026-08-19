@@ -6,6 +6,7 @@ import { isRecord } from "../../translation/shared-utils.js";
 export interface ResolveDefaultToolsOptions {
   allowUnauthenticated?: boolean;
   globalDefaultTools?: string[];
+  fallbackDefaultTools?: string[];
 }
 
 export function normalizeHostedTool(toolName: string): { type: string } {
@@ -49,11 +50,16 @@ export function resolveDefaultTools(
 
   // 4. Global configuration
   if (options.globalDefaultTools !== undefined) {
-    return options.globalDefaultTools;
+    return options.globalDefaultTools.length > 0
+      ? options.globalDefaultTools
+      : (options.fallbackDefaultTools ?? []);
   }
   try {
     const config = getConfig();
-    return config.model.default_tools ?? [];
+    const configured = config.model.default_tools ?? [];
+    return configured.length > 0
+      ? configured
+      : (options.fallbackDefaultTools ?? []);
   } catch {
     return [];
   }
@@ -77,6 +83,7 @@ export function mergeDefaultTools<T = Record<string, unknown>>(
     const alreadyExists = result.some((tool) => {
       if (!isRecord(tool)) return false;
       const type = tool.type;
+      if (type === trimmed) return true;
       if (typeof type !== "string") return false;
       const isSearchVariant = (s: string) =>
         s === "web_search" || s === "web_search_preview" || s === "web_search_20250305";

@@ -229,8 +229,8 @@ export function createResponsesRoutes(
       codexRequest.parallel_tool_calls = body.parallel_tool_calls;
     }
 
-    const expectsImageGen = Array.isArray(body.tools)
-      && body.tools.some((t): t is Record<string, unknown> => isRecord(t) && t.type === "image_generation");
+    const expectsImageGen = Array.isArray(codexRequest.tools)
+      && codexRequest.tools.some((tool) => isRecord(tool) && tool.type === "image_generation");
 
     // Text format (JSON mode / structured outputs)
     let tupleSchema: Record<string, unknown> | null = null;

@@ -74,6 +74,29 @@ export async function* streamCodexToGemini(
       continue;
     }
 
+    if (evt.imageGenerationDone) {
+      hasContent = true;
+      const imageChunk: GeminiGenerateContentResponse = {
+        candidates: [
+          {
+            content: {
+              parts: [{
+                inlineData: {
+                  mimeType: "image/png",
+                  data: evt.imageGenerationDone.result,
+                },
+              }],
+              role: "model",
+            },
+            index: 0,
+          },
+        ],
+        modelVersion: model,
+      };
+      yield `data: ${JSON.stringify(imageChunk)}\n\n`;
+      continue;
+    }
+
     switch (evt.typed.type) {
       case "response.output_text.delta": {
         if (evt.textDelta) {
@@ -193,6 +216,7 @@ export async function collectCodexToGeminiResponse(
   let cachedTokens: number | undefined;
   let responseId: string | null = null;
   const functionCallParts: GeminiPart[] = [];
+  const imageParts: GeminiPart[] = [];
 
   for await (const evt of iterateCodexEvents(codexApi, rawResponse)) {
     if (evt.responseId) responseId = evt.responseId;
@@ -214,6 +238,14 @@ export async function collectCodexToGeminiResponse(
         functionCall: { name: evt.functionCallDone.name, args },
       });
     }
+    if (evt.imageGenerationDone) {
+      imageParts.push({
+        inlineData: {
+          mimeType: "image/png",
+          data: evt.imageGenerationDone.result,
+        },
+      });
+    }
   }
 
   const usage: UsageInfo = {
@@ -230,7 +262,7 @@ export async function collectCodexToGeminiResponse(
   };
 
   // Detect empty response (HTTP 200 but no content)
-  if (!fullText && functionCallParts.length === 0 && outputTokens === 0) {
+  if (!fullText && functionCallParts.length === 0 && imageParts.length === 0 && outputTokens === 0) {
     throw new EmptyResponseError(responseId, { input_tokens: inputTokens, output_tokens: outputTokens });
   }
 
@@ -248,6 +280,7 @@ export async function collectCodexToGeminiResponse(
     parts.push({ text: fullText });
   }
   parts.push(...functionCallParts);
+  parts.push(...imageParts);
   if (parts.length === 0) {
     parts.push({ text: "" });
   }

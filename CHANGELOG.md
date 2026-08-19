@@ -43,6 +43,7 @@
 
 ### Fixed
 
+- 修复默认 hosted tools 的协议兼容：按工具 `type` 通用判重，保留 Anthropic Messages 在全局默认列表为空时的 Web Search fallback，基于最终注入后的工具统计图片请求，并将默认 `image_generation` 结果分别转换为 Anthropic `tool_use` 与 Gemini `inlineData`；新增路由、翻译、集成测试及真实上游 Web Search / 图片生成连续 3 次验证。（`src/routes/shared/default-tools.ts`、`src/routes/{chat,gemini,messages,responses}.ts`、`src/translation/codex-to-{anthropic,gemini}.ts`、`tests/{unit,integration,real}`）
 - Retry early upstream `server_error` responses once on a different account before streaming, while preserving already-started streams and formatting errors according to client protocol.
 - 修复 `promote-dev-to-master` 将同一 commit 上历史 Electron release 失败记录误当作当前 CI 失败的问题：晋升门禁现在只读取该 commit 最新的 `ci-quality.yml` 结果，并支持分页读取 workflow runs，避免一次临时发布下载错误在成功重试后永久阻塞 `dev → master`，并补充回归测试（`.github/scripts/check-promote-ci.sh`、`.github/workflows/promote-dev-to-master.yml`、`tests/unit/ci/promote-ci-gate.test.ts`）
 

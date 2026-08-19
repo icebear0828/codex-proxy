@@ -1,5 +1,13 @@
-import { describe, it, expect, beforeEach, vi } from "vitest";
+import { describe, it, expect, beforeEach, afterAll, vi } from "vitest";
+import { rmSync } from "fs";
 import type { ProxyRequest } from "../../../src/routes/shared/proxy-handler-types.js";
+
+const testDataDir = `/tmp/codex-proxy-chat-default-tools-${process.pid}`;
+
+vi.mock("../../../src/paths.js", async (importOriginal) => {
+  const original = await importOriginal<typeof import("../../../src/paths.js")>();
+  return { ...original, getDataDir: () => testDataDir };
+});
 
 const mockState = vi.hoisted(() => ({
   capturedReq: null as ProxyRequest | null,
@@ -24,6 +32,11 @@ import { loadStaticModels, applyBackendModels } from "../../../src/models/model-
 describe("Chat completions default_tools injection", () => {
   let accountPool: AccountPool;
   let clientKeyPool: ClientKeyPool;
+
+  afterAll(async () => {
+    await new Promise((resolve) => setTimeout(resolve, 25));
+    rmSync(testDataDir, { recursive: true, force: true });
+  });
 
   beforeEach(() => {
     const config = loadConfig();

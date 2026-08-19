@@ -291,6 +291,36 @@ export async function* streamCodexToAnthropic(
       continue;
     }
 
+    if (evt.imageGenerationDone) {
+      hasToolCalls = true;
+      hasContent = true;
+      publishFunctionCallId(evt.imageGenerationDone.id);
+      yield* closeThinkingIfOpen();
+      yield* closeTextIfOpen();
+
+      const blockIndex = contentIndex++;
+      yield formatSSE("content_block_start", {
+        type: "content_block_start",
+        index: blockIndex,
+        content_block: {
+          type: "tool_use",
+          id: evt.imageGenerationDone.id,
+          name: "image_generation",
+          input: {
+            result: evt.imageGenerationDone.result,
+            ...(evt.imageGenerationDone.revised_prompt !== undefined
+              ? { revised_prompt: evt.imageGenerationDone.revised_prompt }
+              : {}),
+          },
+        },
+      });
+      yield formatSSE("content_block_stop", {
+        type: "content_block_stop",
+        index: blockIndex,
+      });
+      continue;
+    }
+
     switch (evt.typed.type) {
       case "response.output_text.delta": {
         if (evt.textDelta) {
@@ -412,6 +442,20 @@ export async function collectCodexToAnthropicResponse(
         id: evt.functionCallDone.callId,
         name: evt.functionCallDone.name,
         input: parsedInput,
+      });
+    }
+    if (evt.imageGenerationDone) {
+      functionCallIds.add(evt.imageGenerationDone.id);
+      toolUseBlocks.push({
+        type: "tool_use",
+        id: evt.imageGenerationDone.id,
+        name: "image_generation",
+        input: {
+          result: evt.imageGenerationDone.result,
+          ...(evt.imageGenerationDone.revised_prompt !== undefined
+            ? { revised_prompt: evt.imageGenerationDone.revised_prompt }
+            : {}),
+        },
       });
     }
   }

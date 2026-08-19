@@ -128,11 +128,11 @@ export function createChatRoutes(
     const defaultTools = resolveDefaultTools(c, {
       allowUnauthenticated: routeMatch.kind === "api-key" || routeMatch.kind === "adapter",
     });
-    if (defaultTools.length > 0) {
-      req.tools = mergeDefaultTools(req.tools, defaultTools);
-    }
 
     const { codexRequest, tupleSchema } = translateToCodexRequest(req);
+    if (defaultTools.length > 0) {
+      codexRequest.tools = mergeDefaultTools(codexRequest.tools, defaultTools);
+    }
     const expectsImageGen = Array.isArray(codexRequest.tools)
       && codexRequest.tools.some((t): t is Record<string, unknown> => isRecord(t) && t.type === "image_generation");
     // Check after translation so suffix-parsed and config-default effort are included.

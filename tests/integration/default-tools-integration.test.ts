@@ -1,6 +1,13 @@
 import { describe, it, expect, beforeAll, afterAll, vi } from "vitest";
 import type { ProxyRequest } from "../../src/routes/shared/proxy-handler-types.js";
 
+const integrationDataDir = `/tmp/codex-proxy-default-tools-integration-${process.pid}`;
+
+vi.mock("../../src/paths.js", async (importOriginal) => {
+  const original = await importOriginal<typeof import("../../src/paths.js")>();
+  return { ...original, getDataDir: () => integrationDataDir };
+});
+
 const mockState = vi.hoisted(() => ({
   lastCapturedReq: null as ProxyRequest | null,
 }));
@@ -30,7 +37,7 @@ import { mkdtempSync, rmSync } from "fs";
 import { join } from "path";
 import { tmpdir } from "os";
 
-describe("Default Tools E2E Workflow (≥ 3 Successful Consecutive Calls)", () => {
+describe("Default Tools Integration Workflow", () => {
   let tempDir: string;
   let pool: ClientKeyPool;
   let app: Hono;
@@ -41,7 +48,7 @@ describe("Default Tools E2E Workflow (≥ 3 Successful Consecutive Calls)", () =
     config.server.proxy_api_key = MASTER_KEY;
     loadStaticModels();
     applyBackendModels([{ slug: "gpt-5.4", name: "GPT 5.4" }, { slug: "gemini-2.5-pro", name: "Gemini 2.5 Pro" }]);
-    tempDir = mkdtempSync(join(tmpdir(), "default-tools-e2e-"));
+    tempDir = mkdtempSync(join(tmpdir(), "default-tools-integration-"));
     const persistence = new ClientKeyPersistence(
       join(tempDir, "client-keys.sqlite"),
       join(tempDir, "client-keys.json"),
@@ -66,9 +73,11 @@ describe("Default Tools E2E Workflow (≥ 3 Successful Consecutive Calls)", () =
     app.route("/", createMessagesRoutes(accountPool, undefined, undefined, undefined, pool));
   });
 
-  afterAll(() => {
+  afterAll(async () => {
     try {
+      await new Promise((resolve) => setTimeout(resolve, 25));
       rmSync(tempDir, { recursive: true, force: true });
+      rmSync(integrationDataDir, { recursive: true, force: true });
     } catch {
       // cleanup
     }
@@ -123,7 +132,7 @@ describe("Default Tools E2E Workflow (≥ 3 Successful Consecutive Calls)", () =
       });
       expect(res.status).toBe(200);
       expect(mockState.lastCapturedReq?.codexRequest.tools).toEqual([{ type: "web_search" }]);
-      console.log(`[E2E] Iteration ${i} /v1/chat/completions (Global default_tools) -> SUCCESS (Injected: web_search)`);
+      console.log(`[Integration] Iteration ${i} /v1/chat/completions (Global default_tools) -> SUCCESS (Injected: web_search)`);
     }
 
     // 3. ≥ 3 Consecutive calls with per-key override (image_generation)
@@ -142,7 +151,7 @@ describe("Default Tools E2E Workflow (≥ 3 Successful Consecutive Calls)", () =
       });
       expect(res.status).toBe(200);
       expect(mockState.lastCapturedReq?.codexRequest.tools).toEqual([{ type: "image_generation" }]);
-      console.log(`[E2E] Iteration ${i} /v1/chat/completions (Client Key image_generation) -> SUCCESS`);
+      console.log(`[Integration] Iteration ${i} /v1/chat/completions (Client Key image_generation) -> SUCCESS`);
     }
 
     // 4. ≥ 3 Consecutive calls with per-key disabled (default_tools = [])
@@ -161,7 +170,7 @@ describe("Default Tools E2E Workflow (≥ 3 Successful Consecutive Calls)", () =
       });
       expect(res.status).toBe(200);
       expect(mockState.lastCapturedReq?.codexRequest.tools).toEqual([]);
-      console.log(`[E2E] Iteration ${i} /v1/chat/completions (Client Key disabled tools) -> SUCCESS`);
+      console.log(`[Integration] Iteration ${i} /v1/chat/completions (Client Key disabled tools) -> SUCCESS`);
     }
 
     // 5. ≥ 3 Consecutive calls with header opt-out (X-Codex-Default-Tools: off)
@@ -181,7 +190,7 @@ describe("Default Tools E2E Workflow (≥ 3 Successful Consecutive Calls)", () =
       });
       expect(res.status).toBe(200);
       expect(mockState.lastCapturedReq?.codexRequest.tools).toEqual([]);
-      console.log(`[E2E] Iteration ${i} /v1/chat/completions (Header opt-out) -> SUCCESS`);
+      console.log(`[Integration] Iteration ${i} /v1/chat/completions (Header opt-out) -> SUCCESS`);
     }
 
     // 6. ≥ 3 Consecutive calls with Anthropic endpoint (/v1/messages) respecting client key disabled tools
@@ -202,7 +211,7 @@ describe("Default Tools E2E Workflow (≥ 3 Successful Consecutive Calls)", () =
       });
       expect(res.status).toBe(200);
       expect(mockState.lastCapturedReq?.codexRequest.tools).toEqual([]);
-      console.log(`[E2E] Iteration ${i} /v1/messages (Client Key disabled tools) -> SUCCESS`);
+      console.log(`[Integration] Iteration ${i} /v1/messages (Client Key disabled tools) -> SUCCESS`);
     }
 
     // 7. ≥ 3 Consecutive calls with Anthropic endpoint (/v1/messages) preserving specific variant (e.g. web_search_preview)
@@ -224,7 +233,7 @@ describe("Default Tools E2E Workflow (≥ 3 Successful Consecutive Calls)", () =
       });
       expect(res.status).toBe(200);
       expect(mockState.lastCapturedReq?.codexRequest.tools).toEqual([{ type: "web_search_preview" }]);
-      console.log(`[E2E] Iteration ${i} /v1/messages (web_search_preview preserved) -> SUCCESS`);
+      console.log(`[Integration] Iteration ${i} /v1/messages (web_search_preview preserved) -> SUCCESS`);
     }
   });
 });

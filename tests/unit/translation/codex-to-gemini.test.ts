@@ -11,6 +11,7 @@ import {
   emptyStream,
   multiToolCallStream,
   usageStream,
+  imageGenerationStream,
 } from "@fixtures/sse-streams.js";
 
 let mockEvents: ExtractedEvent[] = [];
@@ -74,6 +75,21 @@ describe("streamCodexToGemini", () => {
   it("throws CodexApiError on upstream error events", async () => {
     await expect(collectStreamOutput(errorStream()))
       .rejects.toMatchObject({ status: 429 });
+  });
+
+  it("emits generated images as Gemini inlineData parts", async () => {
+    const chunks = await collectStreamOutput(imageGenerationStream());
+    const imageChunk = chunks
+      .filter((chunk) => chunk.startsWith("data: "))
+      .map((chunk) => JSON.parse(chunk.slice(6)) as {
+        candidates?: Array<{ content?: { parts?: Array<{ inlineData?: { mimeType: string; data: string } }> } }>;
+      })
+      .find((chunk) => chunk.candidates?.[0]?.content?.parts?.some((part) => part.inlineData));
+
+    expect(imageChunk?.candidates?.[0]?.content?.parts?.[0]?.inlineData).toEqual({
+      mimeType: "image/png",
+      data: "iVBORw0KGgoAAAANSUhEUg==",
+    });
   });
 
   it("injects error text for empty response", async () => {
@@ -145,6 +161,18 @@ describe("streamCodexToGemini — additional details", () => {
   it("throws CodexApiError with status for error events", async () => {
     await expect(collectStreamOutput(errorStream()))
       .rejects.toMatchObject({ status: 429 });
+  });
+
+  it("collects generated images as Gemini inlineData parts", async () => {
+    mockEvents = imageGenerationStream();
+    const { response } = await collectCodexToGeminiResponse(
+      fakeCodexApi, fakeResponse, "gpt-5.4",
+    );
+
+    expect(response.candidates[0].content.parts[0].inlineData).toEqual({
+      mimeType: "image/png",
+      data: "iVBORw0KGgoAAAANSUhEUg==",
+    });
   });
 });
 
