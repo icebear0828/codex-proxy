@@ -67,6 +67,15 @@ describe("default-tools resolution and merging", () => {
       const merged = mergeDefaultTools(existing, ["web_search"]);
       expect(merged).toEqual([{ type: "web_search_preview" }]);
     });
+
+    it("deduplicates web_search_20250305 against web_search and web_search_preview symmetrically", () => {
+      const existing1 = [{ type: "web_search_20250305" }];
+      expect(mergeDefaultTools(existing1, ["web_search"])).toEqual([{ type: "web_search_20250305" }]);
+      expect(mergeDefaultTools(existing1, ["web_search_preview"])).toEqual([{ type: "web_search_20250305" }]);
+
+      const existing2 = [{ type: "web_search" }];
+      expect(mergeDefaultTools(existing2, ["web_search_20250305"])).toEqual([{ type: "web_search" }]);
+    });
   });
 
   describe("resolveDefaultTools", () => {

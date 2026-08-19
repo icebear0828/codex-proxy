@@ -24,6 +24,7 @@ import { createClientKeyAdminRoutes } from "../../src/routes/admin/client-keys.j
 import { createChatRoutes } from "../../src/routes/chat.js";
 import { createResponsesRoutes } from "../../src/routes/responses.js";
 import { createGeminiRoutes } from "../../src/routes/gemini.js";
+import { createMessagesRoutes } from "../../src/routes/messages.js";
 import { AccountPool } from "../../src/auth/account-pool.js";
 import { mkdtempSync, rmSync } from "fs";
 import { join } from "path";
@@ -62,6 +63,7 @@ describe("Default Tools E2E Workflow (≥ 3 Successful Consecutive Calls)", () =
     app.route("/", createChatRoutes(accountPool, undefined, undefined, undefined, pool));
     app.route("/", createResponsesRoutes(accountPool, undefined, undefined, undefined, pool));
     app.route("/", createGeminiRoutes(accountPool, undefined, undefined, undefined, pool));
+    app.route("/", createMessagesRoutes(accountPool, undefined, undefined, undefined, pool));
   });
 
   afterAll(() => {
@@ -180,6 +182,49 @@ describe("Default Tools E2E Workflow (≥ 3 Successful Consecutive Calls)", () =
       expect(res.status).toBe(200);
       expect(mockState.lastCapturedReq?.codexRequest.tools).toEqual([]);
       console.log(`[E2E] Iteration ${i} /v1/chat/completions (Header opt-out) -> SUCCESS`);
+    }
+
+    // 6. ≥ 3 Consecutive calls with Anthropic endpoint (/v1/messages) respecting client key disabled tools
+    for (let i = 1; i <= 3; i++) {
+      mockState.lastCapturedReq = null;
+      const res = await app.request("/v1/messages", {
+        method: "POST",
+        headers: {
+          "x-api-key": keyWithNoTools,
+          "anthropic-version": "2023-06-01",
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          model: "gpt-5.4",
+          messages: [{ role: "user", content: `Anthropic disabled tools iteration ${i}` }],
+          max_tokens: 1024,
+        }),
+      });
+      expect(res.status).toBe(200);
+      expect(mockState.lastCapturedReq?.codexRequest.tools).toEqual([]);
+      console.log(`[E2E] Iteration ${i} /v1/messages (Client Key disabled tools) -> SUCCESS`);
+    }
+
+    // 7. ≥ 3 Consecutive calls with Anthropic endpoint (/v1/messages) preserving specific variant (e.g. web_search_preview)
+    config.model.default_tools = ["web_search_preview"];
+    for (let i = 1; i <= 3; i++) {
+      mockState.lastCapturedReq = null;
+      const res = await app.request("/v1/messages", {
+        method: "POST",
+        headers: {
+          "x-api-key": MASTER_KEY,
+          "anthropic-version": "2023-06-01",
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          model: "gpt-5.4",
+          messages: [{ role: "user", content: `Anthropic custom search iteration ${i}` }],
+          max_tokens: 1024,
+        }),
+      });
+      expect(res.status).toBe(200);
+      expect(mockState.lastCapturedReq?.codexRequest.tools).toEqual([{ type: "web_search_preview" }]);
+      console.log(`[E2E] Iteration ${i} /v1/messages (web_search_preview preserved) -> SUCCESS`);
     }
   });
 });

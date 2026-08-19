@@ -195,24 +195,16 @@ export function createMessagesRoutes(
     );
 
     const defaultTools = resolveDefaultTools(c, { allowUnauthenticated });
-    const optOut = defaultTools.length === 0 && (
-      (c.req.header("x-codex-default-tools") ?? "").toLowerCase() === "off" ||
-      (c.req.header("x-codex-default-tools") ?? "").toLowerCase() === "false" ||
-      (c.req.header("x-codex-no-default-tools") ?? "") === "1"
-    );
 
     const codexRequest = translateAnthropicToCodexRequest(req, undefined, {
-      injectHostedWebSearch: !allowUnauthenticated && !optOut,
+      injectHostedWebSearch: false,
       mapClaudeCodeWebSearch: !allowUnauthenticated && clientConversationId !== null,
     });
     if (!allowUnauthenticated) {
       codexRequest.useWebSocket = true;
     }
     if (defaultTools.length > 0) {
-      const extraTools = defaultTools.filter((t) => t !== "web_search");
-      if (extraTools.length > 0) {
-        codexRequest.tools = mergeDefaultTools(codexRequest.tools, extraTools);
-      }
+      codexRequest.tools = mergeDefaultTools(codexRequest.tools, defaultTools);
     }
     // Check after translation so suffix-parsed and config-default effort are included.
     const wantThinking = !!codexRequest.reasoning?.effort;

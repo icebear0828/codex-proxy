@@ -78,11 +78,9 @@ export function mergeDefaultTools<T = Record<string, unknown>>(
       if (!isRecord(tool)) return false;
       const type = tool.type;
       if (typeof type !== "string") return false;
-      if (type === trimmed) return true;
-      if (
-        (trimmed === "web_search" || trimmed === "web_search_preview") &&
-        (type === "web_search" || type === "web_search_preview" || type === "web_search_20250305")
-      ) {
+      const isSearchVariant = (s: string) =>
+        s === "web_search" || s === "web_search_preview" || s === "web_search_20250305";
+      if (isSearchVariant(trimmed) && isSearchVariant(type)) {
         return true;
       }
       return false;

@@ -71,7 +71,13 @@ export const ClientKeysPage: FunctionalComponent<ClientKeysPageProps> = ({
     setFormMaxTokens(key.max_tokens != null ? String(key.max_tokens) : "");
     setFormMaxConcurrency(key.max_concurrency != null ? String(key.max_concurrency) : "");
     setFormAllowedModels(key.allowed_models ? key.allowed_models.join(", ") : "");
-    setFormDefaultTools(key.default_tools ? key.default_tools.join(", ") : "");
+    setFormDefaultTools(
+      key.default_tools === null
+        ? ""
+        : key.default_tools.length === 0
+          ? "none"
+          : key.default_tools.join(", ")
+    );
     setFormStatus(key.status);
     setFormError(null);
   };
@@ -125,10 +131,15 @@ export const ClientKeysPage: FunctionalComponent<ClientKeysPageProps> = ({
         .filter(Boolean);
     }
     if (formDefaultTools.trim()) {
-      input.default_tools = formDefaultTools
-        .split(",")
-        .map((m) => m.trim())
-        .filter(Boolean);
+      const val = formDefaultTools.trim().toLowerCase();
+      if (val === "none" || val === "off" || val === "[]") {
+        input.default_tools = [];
+      } else {
+        input.default_tools = formDefaultTools
+          .split(",")
+          .map((m) => m.trim())
+          .filter(Boolean);
+      }
     }
 
     try {
@@ -204,10 +215,15 @@ export const ClientKeysPage: FunctionalComponent<ClientKeysPageProps> = ({
     }
 
     if (formDefaultTools.trim()) {
-      input.default_tools = formDefaultTools
-        .split(",")
-        .map((m) => m.trim())
-        .filter(Boolean);
+      const val = formDefaultTools.trim().toLowerCase();
+      if (val === "none" || val === "off" || val === "[]") {
+        input.default_tools = [];
+      } else {
+        input.default_tools = formDefaultTools
+          .split(",")
+          .map((m) => m.trim())
+          .filter(Boolean);
+      }
     } else {
       input.default_tools = null;
     }
@@ -328,9 +344,15 @@ export const ClientKeysPage: FunctionalComponent<ClientKeysPageProps> = ({
                             {k.allowed_models.join(", ")}
                           </div>
                         )}
-                        {k.default_tools && k.default_tools.length > 0 && (
-                          <div class="text-[10px] text-primary dark:text-primary-light mt-0.5">
-                            Tools: {k.default_tools.join(", ")}
+                        {k.default_tools != null && (
+                          <div class="text-[10px] text-text-sub mt-0.5">
+                            {k.default_tools.length > 0 ? (
+                              <span class="text-primary dark:text-primary-light">
+                                Tools: {k.default_tools.join(", ")}
+                              </span>
+                            ) : (
+                              <span>Tools: disabled</span>
+                            )}
                           </div>
                         )}
                       </td>
