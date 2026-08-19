@@ -900,7 +900,7 @@ Codex Proxy 主要由个人维护，但一路上收到了很多社区帮助。�
 
 ## ⭐ Star History
 
-[![Star History Chart](https://api.star-history.com/svg?repos=icebear0828/codex-proxy&type=Date)](https://star-history.com/#icebear0828/codex-proxy&Date)
+[![Star History Chart](https://star-history.dera.page/svg?repos=icebear0828/codex-proxy&type=Date)](https://star-history.dera.page/#icebear0828/codex-proxy&Date)
 
 ## 📄 许可协议
 
