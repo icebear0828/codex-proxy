@@ -26,7 +26,8 @@ describe("Gemini default_tools injection", () => {
   let clientKeyPool: ClientKeyPool;
 
   beforeEach(() => {
-    loadConfig();
+    const config = loadConfig();
+    config.server.proxy_api_key = "master-key-123";
     loadStaticModels();
     accountPool = new AccountPool();
     vi.spyOn(accountPool, "isAuthenticated").mockReturnValue(true);
