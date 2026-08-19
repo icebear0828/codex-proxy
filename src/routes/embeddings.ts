@@ -13,6 +13,8 @@ import type { ApiKeyEntry, ApiKeyPool } from "../auth/api-key-pool.js";
 import { getConfig } from "../config.js";
 import { apiKeyAuth } from "../middleware/api-key-auth.js";
 import { withFetchDispatcher } from "../proxy/fetch-dispatcher.js";
+import type { ClientKeyPool } from "../auth/client-key-pool.js";
+import { validateClientKeyModel, recordClientKeyUsage } from "./shared/proxy-handler-utils.js";
 
 const EmbeddingInputSchema = z.union([
   z.string(),
@@ -96,15 +98,25 @@ function copyResponseHeaders(upstream: Response): Headers {
   return headers;
 }
 
-export function createEmbeddingsRoutes(accountPool: AccountPool, apiKeyPool: ApiKeyPool): Hono {
+export function createEmbeddingsRoutes(
+  accountPool: AccountPool,
+  apiKeyPool: ApiKeyPool,
+  clientKeyPool?: ClientKeyPool,
+): Hono {
   const app = new Hono();
 
-  app.post("/v1/embeddings", apiKeyAuth(accountPool), async (c) => {
+  app.post("/v1/embeddings", apiKeyAuth(accountPool, clientKeyPool), async (c) => {
     const body = await c.req.json();
     const parsed = EmbeddingsRequestSchema.safeParse(body);
     if (!parsed.success) {
       c.status(400);
       return c.json(openAIError(`Invalid request: ${parsed.error.message}`, "invalid_request"));
+    }
+
+    const modelCheck = validateClientKeyModel(c, parsed.data.model);
+    if (!modelCheck.allowed) {
+      c.status(403);
+      return c.json(openAIError(modelCheck.message || "Model not allowed", "model_not_allowed", "model"));
     }
 
     const resolved = resolveEmbeddingEntry(apiKeyPool, parsed.data.model);
@@ -133,7 +145,22 @@ export function createEmbeddingsRoutes(accountPool: AccountPool, apiKeyPool: Api
       signal: c.req.raw.signal,
     }));
 
-    return new Response(await upstream.text(), {
+    const text = await upstream.text();
+    if (upstream.ok) {
+      try {
+        const parsedJson = JSON.parse(text) as { usage?: { prompt_tokens?: number } };
+        if (parsedJson.usage?.prompt_tokens) {
+          recordClientKeyUsage(c, parsed.data.model, {
+            input_tokens: parsedJson.usage.prompt_tokens,
+            output_tokens: 0,
+          });
+        }
+      } catch {
+        // ignore parse error
+      }
+    }
+
+    return new Response(text, {
       status: upstream.status,
       headers: copyResponseHeaders(upstream),
     });

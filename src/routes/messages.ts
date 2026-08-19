@@ -28,6 +28,8 @@ import { handleDirectRequest } from "./shared/direct-request-handler.js";
 import type { FormatAdapter } from "./shared/proxy-handler-types.js";
 import { extractAnthropicClientConversationId } from "./shared/anthropic-session-id.js";
 import type { UpstreamRouter } from "../proxy/upstream-router.js";
+import type { ClientKeyPool } from "../auth/client-key-pool.js";
+import { validateClientKeyModel } from "./shared/proxy-handler-utils.js";
 import { summarizeRequestForLog } from "../logs/request-summary.js";
 
 function makeError(
@@ -132,10 +134,11 @@ export function createMessagesRoutes(
   cookieJar?: CookieJar,
   proxyPool?: ProxyPool,
   upstreamRouter?: UpstreamRouter,
+  clientKeyPool?: ClientKeyPool,
 ): Hono {
   const app = new Hono();
 
-  app.post("/v1/messages/count_tokens", apiKeyAuth(accountPool), async (c) => {
+  app.post("/v1/messages/count_tokens", apiKeyAuth(accountPool, clientKeyPool), async (c) => {
     const body = await c.req.json();
 
     const parsed = AnthropicCountTokensRequestSchema.safeParse(body);
@@ -146,10 +149,17 @@ export function createMessagesRoutes(
       );
     }
 
+    // Warning 7: Validate model whitelist on /v1/messages/count_tokens
+    const modelCheck = validateClientKeyModel(c, parsed.data.model);
+    if (!modelCheck.allowed) {
+      c.status(403);
+      return c.json(makeError("permission_error", modelCheck.message || "Model not allowed"));
+    }
+
     return c.json({ input_tokens: estimateCountTokens(parsed.data) });
   });
 
-  app.post("/v1/messages", apiKeyAuth(accountPool), async (c) => {
+  app.post("/v1/messages", apiKeyAuth(accountPool, clientKeyPool), async (c) => {
     // Parse request
     const body = await c.req.json();
     const parsed = AnthropicMessagesRequestSchema.safeParse(body);
@@ -160,6 +170,12 @@ export function createMessagesRoutes(
       );
     }
     const req = parsed.data;
+
+    const modelCheck = validateClientKeyModel(c, req.model);
+    if (!modelCheck.allowed) {
+      c.status(403);
+      return c.json(makeError("permission_error", modelCheck.message || "Model not allowed"));
+    }
 
     const routeMatch = upstreamRouter?.resolveMatch(req.model);
     const allowUnauthenticated = routeMatch?.kind === "api-key" || routeMatch?.kind === "adapter";

@@ -67,3 +67,53 @@ export function buildCodexApi(
   const proxyUrl = proxyPool?.resolveProxyUrl(entryId);
   return new CodexApi(token, accountId, cookieJar, entryId, proxyUrl);
 }
+
+export function validateClientKeyModel(
+  c: import("hono").Context,
+  model: string,
+): { allowed: boolean; message?: string } {
+  const role = c.get("authRole");
+  if (role !== "client_key") {
+    return { allowed: true };
+  }
+
+  const clientKey = c.get("clientKey") as import("../../auth/client-key-types.js").ClientKeyEntry | undefined;
+  if (!clientKey || !clientKey.allowed_models || clientKey.allowed_models.length === 0) {
+    return { allowed: true };
+  }
+
+  if (clientKey.allowed_models.includes(model)) {
+    return { allowed: true };
+  }
+
+  return {
+    allowed: false,
+    message: `Model '${model}' is not in the allowed model list for this client key`,
+  };
+}
+
+export function recordClientKeyUsage(
+  c: import("hono").Context,
+  model: string,
+  usage?: Partial<UsageInfo>,
+  costUsd?: number,
+): void {
+  const role = c.get("authRole");
+  if (role !== "client_key") return;
+
+  const clientKey = c.get("clientKey") as import("../../auth/client-key-types.js").ClientKeyEntry | undefined;
+  const pool = c.get("clientKeyPool") as import("../../auth/client-key-pool.js").ClientKeyPool | undefined;
+  if (!clientKey || !pool) return;
+
+  pool.recordUsage(
+    clientKey.id,
+    model,
+    {
+      input_tokens: usage?.input_tokens ?? 0,
+      output_tokens: usage?.output_tokens ?? 0,
+      cached_tokens: usage?.cached_tokens ?? 0,
+    },
+    costUsd,
+  );
+}
+

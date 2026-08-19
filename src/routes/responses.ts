@@ -24,6 +24,8 @@ import { parseModelName, resolveModelId, buildDisplayModelName } from "../models
 import { handleProxyRequest } from "./shared/proxy-handler.js";
 import { handleDirectRequest } from "./shared/direct-request-handler.js";
 import type { UpstreamRouter } from "../proxy/upstream-router.js";
+import type { ClientKeyPool } from "../auth/client-key-pool.js";
+import { validateClientKeyModel, recordClientKeyUsage } from "./shared/proxy-handler-utils.js";
 import {
   extractOpenAISubagentFromMetadata,
   normalizeOpenAISubagent,
@@ -96,6 +98,7 @@ export function createResponsesRoutes(
   cookieJar?: CookieJar,
   proxyPool?: ProxyPool,
   upstreamRouter?: UpstreamRouter,
+  clientKeyPool?: ClientKeyPool,
 ): Hono {
   const app = new Hono();
   // Register errorHandler locally so that when testing this router in isolation (e.g. unit tests),
@@ -109,6 +112,21 @@ export function createResponsesRoutes(
     if (body instanceof Response) return body;
 
     const rawModel = typeof body.model === "string" ? body.model : "codex";
+
+    const modelCheck = validateClientKeyModel(c, rawModel);
+    if (!modelCheck.allowed) {
+      c.status(403);
+      return c.json({
+        type: "error",
+        error: {
+          type: "invalid_request_error",
+          code: "model_not_allowed",
+          message: modelCheck.message,
+          param: "model",
+        },
+      });
+    }
+
     const routeMatch = upstreamRouter?.resolveMatch(rawModel);
     const allowUnauthenticated = routeMatch?.kind === "api-key" || routeMatch?.kind === "adapter";
     const authErr = checkAuth(c, accountPool, allowUnauthenticated);
@@ -275,6 +293,21 @@ export function createResponsesRoutes(
     if (body instanceof Response) return body;
 
     const rawModel = typeof body.model === "string" ? body.model : "codex";
+
+    const modelCheck = validateClientKeyModel(c, rawModel);
+    if (!modelCheck.allowed) {
+      c.status(403);
+      return c.json({
+        type: "error",
+        error: {
+          type: "invalid_request_error",
+          code: "model_not_allowed",
+          message: modelCheck.message,
+          param: "model",
+        },
+      });
+    }
+
     const routeMatch = upstreamRouter?.resolveMatch(rawModel);
     const allowUnauthenticated = routeMatch?.kind === "api-key" || routeMatch?.kind === "adapter";
     const authErr = checkAuth(c, accountPool, allowUnauthenticated);
@@ -294,14 +327,18 @@ export function createResponsesRoutes(
       }),
     });
 
-    return handleCompact(c, accountPool, cookieJar, proxyPool, body, upstreamRouter);
+    const res = await handleCompact(c, accountPool, cookieJar, proxyPool, body, upstreamRouter);
+    if (res.ok) {
+      recordClientKeyUsage(c, rawModel, { input_tokens: 100, output_tokens: 100 });
+    }
+    return res;
   };
 
-  app.post("/v1/responses", apiKeyAuth(accountPool), responsesHandler);
-  app.post("/v1/responses/review", apiKeyAuth(accountPool), responsesHandler);
-  app.post("/responses", apiKeyAuth(accountPool), responsesHandler);
-  app.post("/responses/review", apiKeyAuth(accountPool), responsesHandler);
-  app.post("/v1/responses/compact", apiKeyAuth(accountPool), compactHandler);
+  app.post("/v1/responses", apiKeyAuth(accountPool, clientKeyPool), responsesHandler);
+  app.post("/v1/responses/review", apiKeyAuth(accountPool, clientKeyPool), responsesHandler);
+  app.post("/responses", apiKeyAuth(accountPool, clientKeyPool), responsesHandler);
+  app.post("/responses/review", apiKeyAuth(accountPool, clientKeyPool), responsesHandler);
+  app.post("/v1/responses/compact", apiKeyAuth(accountPool, clientKeyPool), compactHandler);
 
   return app;
 }

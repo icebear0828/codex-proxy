@@ -1,0 +1,103 @@
+import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import { mkdtempSync, rmSync, writeFileSync, existsSync } from "fs";
+import { join } from "path";
+import { tmpdir } from "os";
+import { ClientKeyPersistence } from "../../../src/auth/client-key-persistence.js";
+import type { ClientKeyEntry } from "../../../src/auth/client-key-types.js";
+
+describe("ClientKeyPersistence", () => {
+  let tempDir: string;
+  let sqlitePath: string;
+  let jsonPath: string;
+
+  beforeEach(() => {
+    tempDir = mkdtempSync(join(tmpdir(), "client-key-persistence-test-"));
+    sqlitePath = join(tempDir, "client-keys.sqlite");
+    jsonPath = join(tempDir, "client-keys.json");
+  });
+
+  afterEach(() => {
+    try {
+      rmSync(tempDir, { recursive: true, force: true });
+    } catch {
+      // ignore cleanup errors
+    }
+  });
+
+  const sampleKey: ClientKeyEntry = {
+    id: "ck_test123",
+    name: "Test Client",
+    key: "sk-proxy-test1234567890abcdef",
+    status: "active",
+    expires_at: "2026-12-31T23:59:59.000Z",
+    max_budget_usd: 10.0,
+    used_cost_usd: 1.5,
+    max_tokens: 100000,
+    used_tokens: 15000,
+    max_concurrency: 2,
+    allowed_models: ["gpt-5.4", "gpt-5.3-codex"],
+    request_count: 5,
+    last_used_at: "2026-08-15T12:00:00.000Z",
+    created_at: "2026-08-15T00:00:00.000Z",
+    updated_at: "2026-08-15T12:00:00.000Z",
+  };
+
+  it("initializes empty database and saves/loads keys", () => {
+    const persistence = new ClientKeyPersistence(sqlitePath, jsonPath);
+    const initial = persistence.load();
+    expect(initial).toEqual([]);
+
+    persistence.save([sampleKey]);
+
+    const loaded = persistence.load();
+    expect(loaded).toHaveLength(1);
+    expect(loaded[0]).toEqual(sampleKey);
+    expect(existsSync(sqlitePath)).toBe(true);
+    expect(existsSync(jsonPath)).toBe(true);
+  });
+
+  it("updates existing key and removes deleted keys", () => {
+    const persistence = new ClientKeyPersistence(sqlitePath, jsonPath);
+    persistence.save([sampleKey]);
+
+    const updatedKey: ClientKeyEntry = {
+      ...sampleKey,
+      used_cost_usd: 3.0,
+      used_tokens: 30000,
+      request_count: 10,
+    };
+    persistence.save([updatedKey]);
+
+    const loaded = persistence.load();
+    expect(loaded).toHaveLength(1);
+    expect(loaded[0].used_cost_usd).toBe(3.0);
+    expect(loaded[0].request_count).toBe(10);
+
+    persistence.save([]);
+    expect(persistence.load()).toHaveLength(0);
+  });
+
+  it("recovers from json when sqlite is corrupted", () => {
+    const persistence1 = new ClientKeyPersistence(sqlitePath, jsonPath);
+    persistence1.save([sampleKey]);
+
+    // Corrupt SQLite file with garbage
+    writeFileSync(sqlitePath, "CORRUPT SQLITE NOT A DB HEADER");
+
+    const persistence2 = new ClientKeyPersistence(sqlitePath, jsonPath);
+    const loaded = persistence2.load();
+    expect(loaded).toHaveLength(1);
+    expect(loaded[0].id).toBe(sampleKey.id);
+  });
+
+  it("throws error on save failure without swallowing exception", () => {
+    // A regular file as a parent directory will fail mkdir/open
+    const blockingFile = join(tempDir, "file_blocking_dir");
+    writeFileSync(blockingFile, "block");
+    const invalidSqlite = join(blockingFile, "sub", "test.sqlite");
+    const invalidJson = join(blockingFile, "sub", "test.json");
+
+    const persistence = new ClientKeyPersistence(invalidSqlite, invalidJson);
+    expect(() => persistence.save([sampleKey])).toThrow();
+  });
+});

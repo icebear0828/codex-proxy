@@ -23,6 +23,7 @@ import {
   containsInvalidEncryptedContentSignal,
   getReasoningReplayCache,
 } from "../../proxy/reasoning-replay-cache.js";
+import { recordClientKeyUsage } from "./proxy-handler-utils.js";
 
 
 const MAX_EMPTY_RETRIES = 2;
@@ -124,6 +125,7 @@ export async function handleNonStreaming(options: HandleNonStreamingOptions): Pr
       if (result.usage) {
         logNonStreamingUsage({ tag: fmt.tag, entryId: currentEntryId, requestId, usage: result.usage });
       }
+      recordClientKeyUsage(c, req.model, result.usage);
       releaseNonStreamingSuccessAccount({
         accountPool,
         entryId: currentEntryId,

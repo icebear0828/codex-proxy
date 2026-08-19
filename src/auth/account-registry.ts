@@ -5,7 +5,7 @@
  * Does NOT own acquire locks (that's AccountLifecycle's concern).
  */
 
-import { randomBytes, timingSafeEqual } from "crypto";
+import { randomBytes } from "crypto";
 import { getConfig } from "../config.js";
 import { jitter } from "../utils/jitter.js";
 import {
@@ -23,12 +23,7 @@ import type {
 import { hasReachedCachedQuota } from "./quota-skip.js";
 import { isCfChallengeCooldownActive } from "./cf-challenge-cooldown.js";
 
-function safeEqual(a: string, b: string): boolean {
-  const bufA = Buffer.from(a);
-  const bufB = Buffer.from(b);
-  if (bufA.length !== bufB.length) return false;
-  return timingSafeEqual(bufA, bufB);
-}
+import { safeEqual } from "./safe-equal.js";
 
 type ResettableQuotaWindow = {
   used_percent: number | null;

@@ -43,6 +43,7 @@ import { OpenAIUpstream } from "./proxy/openai-upstream.js";
 import { AnthropicUpstream } from "./proxy/anthropic-upstream.js";
 import { GeminiUpstream } from "./proxy/gemini-upstream.js";
 import { ApiKeyPool } from "./auth/api-key-pool.js";
+import { ClientKeyPool } from "./auth/client-key-pool.js";
 import { createApiKeyRoutes } from "./routes/api-keys.js";
 import { ApiKeyModelCache } from "./auth/api-key-model-cache.js";
 import { createEmbeddingsRoutes } from "./routes/embeddings.js";
@@ -165,22 +166,30 @@ export async function startServer(options?: StartOptions): Promise<ServerHandle>
   const upstreamRouter = createRuntimeUpstreamRouter(adapters, cfg.model_routing, apiKeyPool);
   if (hasApiKeys) console.log(`[Init] API key pool: ${apiKeyPool.getAll().length} key(s) loaded`);
 
+  // Initialize Client Key pool for distribution
+  const clientKeyPool = new ClientKeyPool(
+    undefined,
+    () => getConfig().server.proxy_api_key ?? accountPool.getProxyApiKey() ?? null,
+  );
+  const hasClientKeys = clientKeyPool.getAll().length > 0;
+  if (hasClientKeys) console.log(`[Init] Client key pool: ${clientKeyPool.getAll().length} key(s) loaded`);
+
   // Create a single model cache instance shared across all routes.
   const apiKeyModelCache = new ApiKeyModelCache();
 
   // Mount routes
   const authRoutes = createAuthRoutes(accountPool, refreshScheduler);
   const accountRoutes = createAccountRoutes(accountPool, refreshScheduler, cookieJar, proxyPool);
-  const chatRoutes = createChatRoutes(accountPool, cookieJar, proxyPool, upstreamRouter);
-  const messagesRoutes = createMessagesRoutes(accountPool, cookieJar, proxyPool, upstreamRouter);
-  const geminiRoutes = createGeminiRoutes(accountPool, cookieJar, proxyPool, upstreamRouter);
-  const responsesRoutes = createResponsesRoutes(accountPool, cookieJar, proxyPool, upstreamRouter);
+  const chatRoutes = createChatRoutes(accountPool, cookieJar, proxyPool, upstreamRouter, clientKeyPool);
+  const messagesRoutes = createMessagesRoutes(accountPool, cookieJar, proxyPool, upstreamRouter, clientKeyPool);
+  const geminiRoutes = createGeminiRoutes(accountPool, cookieJar, proxyPool, upstreamRouter, clientKeyPool);
+  const responsesRoutes = createResponsesRoutes(accountPool, cookieJar, proxyPool, upstreamRouter, clientKeyPool);
   const apiKeyRoutes = createApiKeyRoutes(apiKeyPool, apiKeyModelCache);
-  const embeddingsRoutes = createEmbeddingsRoutes(accountPool, apiKeyPool);
+  const embeddingsRoutes = createEmbeddingsRoutes(accountPool, apiKeyPool, clientKeyPool);
   const proxyRoutes = createProxyRoutes(proxyPool, accountPool);
   const usageStats = new UsageStatsStore();
   usageStats.recoverBaseline(accountPool);
-  const webRoutes = createWebRoutes(accountPool, usageStats);
+  const webRoutes = createWebRoutes(accountPool, usageStats, clientKeyPool);
 
   app.route("/", createDashboardAuthRoutes());
   app.route("/", authRoutes);
@@ -193,7 +202,7 @@ export async function startServer(options?: StartOptions): Promise<ServerHandle>
   app.route("/", responsesRoutes);
   app.route("/", createOfficialAgentRoutes());
   app.route("/", proxyRoutes);
-  app.route("/", createModelRoutes(apiKeyPool));
+  app.route("/", createModelRoutes(apiKeyPool, clientKeyPool));
   app.route("/", webRoutes);
 
   // Start server

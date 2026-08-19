@@ -28,6 +28,9 @@ import {
 import { handleDirectRequest } from "./shared/direct-request-handler.js";
 import type { FormatAdapter, ProxyRequest } from "./shared/proxy-handler-types.js";
 import type { UpstreamRouter } from "../proxy/upstream-router.js";
+import type { ClientKeyPool } from "../auth/client-key-pool.js";
+import { validateClientKeyModel } from "./shared/proxy-handler-utils.js";
+import { extractProxyApiKey } from "../utils/extract-api-key.js";
 
 function makeError(
   code: number,
@@ -81,18 +84,19 @@ export function createGeminiRoutes(
   cookieJar?: CookieJar,
   proxyPool?: ProxyPool,
   upstreamRouter?: UpstreamRouter,
+  clientKeyPool?: ClientKeyPool,
 ): Hono {
   const app = new Hono();
 
   // Handle both generateContent and streamGenerateContent
-  app.post("/v1beta/models/:modelAction", apiKeyAuth(accountPool), async (c) => {
+  app.post("/v1beta/models/:modelAction", apiKeyAuth(accountPool, clientKeyPool), async (c) => {
     const modelActionParam = c.req.param("modelAction");
-    const parsed = parseModelAction(modelActionParam);
+    const parsedAction = parseModelAction(modelActionParam);
 
     if (
-      !parsed ||
-      (parsed.action !== "generateContent" &&
-        parsed.action !== "streamGenerateContent")
+      !parsedAction ||
+      (parsedAction.action !== "generateContent" &&
+        parsedAction.action !== "streamGenerateContent")
     ) {
       c.status(400);
       return c.json(
@@ -103,21 +107,13 @@ export function createGeminiRoutes(
       );
     }
 
-    const { model: geminiModel, action } = parsed;
-    const isStreaming =
-      action === "streamGenerateContent" ||
-      c.req.query("alt") === "sse";
+    const { model: geminiModel, action } = parsedAction;
 
-    // Parse request
-    const body = await c.req.json();
-    const validationResult = GeminiGenerateContentRequestSchema.safeParse(body);
-    if (!validationResult.success) {
-      c.status(400);
-      return c.json(
-        makeError(400, `Invalid request: ${validationResult.error.message}`),
-      );
+    const modelCheck = validateClientKeyModel(c, geminiModel);
+    if (!modelCheck.allowed) {
+      c.status(403);
+      return c.json(makeError(403, "PERMISSION_DENIED", modelCheck.message || "Model not allowed"));
     }
-    const req = validationResult.data;
 
     const routeMatch = upstreamRouter?.resolveMatch(geminiModel);
     const allowUnauthenticated = routeMatch?.kind === "api-key" || routeMatch?.kind === "adapter";
@@ -126,14 +122,30 @@ export function createGeminiRoutes(
     if (!allowUnauthenticated && !accountPool.isAuthenticated()) {
       c.status(401);
       return c.json(
-        makeError(401, "Not authenticated. Please login first at /"),
+        makeError(
+          401,
+          "Not authenticated. Please login first at /",
+          "UNAUTHENTICATED",
+        ),
       );
     }
 
-
+    // Parse body
+    const rawBody = await c.req.json();
+    const parsed = GeminiGenerateContentRequestSchema.safeParse(rawBody);
+    if (!parsed.success) {
+      c.status(400);
+      return c.json(
+        makeError(
+          400,
+          `Invalid request: ${parsed.error.message}`,
+          "INVALID_ARGUMENT",
+        ),
+      );
+    }
 
     const { codexRequest, tupleSchema } = translateGeminiToCodexRequest(
-      req,
+      parsed.data,
       geminiModel,
     );
 
@@ -141,12 +153,17 @@ export function createGeminiRoutes(
       `[Gemini] Model: ${geminiModel} → ${codexRequest.model}`,
     );
 
+    const isStreaming =
+      action === "streamGenerateContent" ||
+      c.req.query("alt") === "sse";
+
     const proxyReq: ProxyRequest = {
       codexRequest,
       model: geminiModel,
       isStreaming,
       clientConversationId: c.req.header("x-conversation-id") || c.req.header("x-session-id"),
       tupleSchema,
+      expectsImageGen: false,
     };
 
     if (routeMatch?.kind === "api-key" || routeMatch?.kind === "adapter") {
@@ -163,8 +180,16 @@ export function createGeminiRoutes(
   });
 
   // List available models (Gemini format)
-  app.get("/v1beta/models", apiKeyAuth(accountPool), (c) => {
-    const catalog = getModelCatalog();
+  app.get("/v1beta/models", apiKeyAuth(accountPool, clientKeyPool), (c) => {
+    let catalog = getModelCatalog();
+    const token = extractProxyApiKey(c);
+    if (token && clientKeyPool) {
+      const clientKey = clientKeyPool.getByKey(token);
+      if (clientKey?.allowed_models && clientKey.allowed_models.length > 0) {
+        catalog = catalog.filter((m) => clientKey.allowed_models!.includes(m.id));
+      }
+    }
+
     const models = catalog.map((m) => ({
       name: `models/${m.id}`,
       displayName: m.displayName,

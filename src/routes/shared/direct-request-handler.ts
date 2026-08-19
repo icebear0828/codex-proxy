@@ -15,6 +15,7 @@ import { streamResponse } from "./response-processor.js";
 import { toErrorStatus } from "./proxy-error-handler.js";
 import type { HandleDirectRequestOptions } from "./proxy-handler-types.js";
 import { canReturnStreamError, streamErrorResponse } from "./stream-error-response.js";
+import { recordClientKeyUsage } from "./proxy-handler-utils.js";
 
 export async function handleDirectRequest(options: HandleDirectRequestOptions): Promise<Response> {
   const { c, upstream, req, fmt } = options;
@@ -112,7 +113,9 @@ export async function handleDirectRequest(options: HandleDirectRequestOptions): 
         response: rawResponse,
         model: req.model,
         adapter: fmt,
-        onUsage: () => {},
+        onUsage: (u) => {
+          recordClientKeyUsage(c, req.model, u);
+        },
         tupleSchema: req.tupleSchema,
         onResponseId: () => {},
         diagnostics: {
@@ -133,6 +136,7 @@ export async function handleDirectRequest(options: HandleDirectRequestOptions): 
       model: req.model,
       tupleSchema: req.tupleSchema,
     });
+    recordClientKeyUsage(c, req.model, result.usage);
     return c.json(result.response);
   } catch (err) {
     abortController.abort();

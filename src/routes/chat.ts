@@ -27,6 +27,8 @@ import type { FormatAdapter, ProxyRequest } from "./shared/proxy-handler-types.j
 import type { UpstreamRouter } from "../proxy/upstream-router.js";
 import { summarizeRequestForLog } from "../logs/request-summary.js";
 import { apiKeyAuth } from "../middleware/api-key-auth.js";
+import type { ClientKeyPool } from "../auth/client-key-pool.js";
+import { validateClientKeyModel } from "./shared/proxy-handler-utils.js";
 
 function makeOpenAIFormat(wantReasoning: boolean): FormatAdapter {
   return {
@@ -80,10 +82,11 @@ export function createChatRoutes(
   cookieJar?: CookieJar,
   proxyPool?: ProxyPool,
   upstreamRouter?: UpstreamRouter,
+  clientKeyPool?: ClientKeyPool,
 ): Hono {
   const app = new Hono();
 
-  app.post("/v1/chat/completions", apiKeyAuth(accountPool), async (c) => {
+  app.post("/v1/chat/completions", apiKeyAuth(accountPool, clientKeyPool), async (c) => {
     // Parse request
     const body = await c.req.json();
     const parsed = ChatCompletionRequestSchema.safeParse(body);
@@ -99,6 +102,19 @@ export function createChatRoutes(
       });
     }
     const req = parsed.data;
+
+    const modelCheck = validateClientKeyModel(c, req.model);
+    if (!modelCheck.allowed) {
+      c.status(403);
+      return c.json({
+        error: {
+          message: modelCheck.message,
+          type: "invalid_request_error",
+          param: "model",
+          code: "model_not_allowed",
+        },
+      });
+    }
     const routeMatch = upstreamRouter?.resolveMatch(req.model) ?? (isRecognizedModelName(req.model)
       ? { kind: "codex" as const }
       : { kind: "not-found" as const });
