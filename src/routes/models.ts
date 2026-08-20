@@ -110,6 +110,8 @@ export function createModelRoutes(apiKeyPool?: ApiKeyPool, clientKeyPool?: Clien
   // Must be before :modelId to avoid being matched as a model ID
   app.get("/v1/models/catalog", (c) => {
     let catalog = getModelCatalog();
+    const config = getConfig();
+    const configDefault = config.model?.default;
     const allowed = getClientKeyAllowedModels(c);
     if (allowed) {
       catalog = catalog.filter((m) => allowed.includes(m.id));
@@ -120,6 +122,7 @@ export function createModelRoutes(apiKeyPool?: ApiKeyPool, clientKeyPool?: Clien
     return c.json(
       catalog.map((m) => ({
         ...m,
+        isDefault: configDefault ? m.id === configDefault : m.isDefault,
         outputModalities: m.outputModalities ?? ["text"],
       })),
     );

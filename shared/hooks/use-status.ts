@@ -93,11 +93,14 @@ export function useStatus(accountCount: number) {
 
     async function loadStatus() {
       try {
-        const resp = await fetch("/auth/status");
-        const data = await resp.json();
-        if (!data.authenticated) return;
         setBaseUrl(`${window.location.origin}/v1`);
-        setApiKey(data.proxy_api_key || "any-string");
+        const resp = await fetch("/auth/status");
+        if (resp.ok) {
+          const data = await resp.json();
+          setApiKey(data.proxy_api_key || "any-string");
+        } else {
+          setApiKey("any-string");
+        }
         await fetchModels(true);
 
         // Refresh model list every 60s to pick up dynamic backend changes
