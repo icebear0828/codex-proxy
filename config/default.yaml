@@ -32,6 +32,7 @@ server:
   port: 8080
   proxy_api_key: null
   trust_proxy: false
+  cors_allow_null_origin: false
 logs:
   enabled: false
   capacity: 2000

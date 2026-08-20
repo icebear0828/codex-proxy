@@ -203,6 +203,13 @@ export function applyEnvOverrides(
       .map((h: string) => h.trim())
       .filter((h: string) => h.length > 0);
   }
+  const corsAllowNullOriginEnv = process.env.CORS_ALLOW_NULL_ORIGIN?.trim().toLowerCase();
+  const localHasServerCorsAllowNullOrigin = localServerCors !== undefined && "cors_allow_null_origin" in localServerCors;
+  if (corsAllowNullOriginEnv !== undefined && !localHasServerCorsAllowNullOrigin) {
+    if (!raw.server) raw.server = {};
+    (raw.server as Record<string, unknown>).cors_allow_null_origin =
+      corsAllowNullOriginEnv === "true" || corsAllowNullOriginEnv === "1";
+  }
   const serverHostEnv = process.env.CODEX_PROXY_HOST?.trim();
   const localServerHost = localOverrides?.server as Record<string, unknown> | undefined;
   const localHasServerHost = localServerHost !== undefined && "host" in localServerHost;

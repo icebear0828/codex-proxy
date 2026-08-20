@@ -329,6 +329,7 @@ describe("applyEnvOverrides", () => {
     savedEnv.OLLAMA_BRIDGE_PORT = process.env.OLLAMA_BRIDGE_PORT;
     savedEnv.OLLAMA_BRIDGE_VERSION = process.env.OLLAMA_BRIDGE_VERSION;
     savedEnv.OLLAMA_BRIDGE_DISABLE_VISION = process.env.OLLAMA_BRIDGE_DISABLE_VISION;
+    savedEnv.CORS_ALLOW_NULL_ORIGIN = process.env.CORS_ALLOW_NULL_ORIGIN;
     // Clear
     delete process.env.CODEX_JWT_TOKEN;
     delete process.env.CODEX_PLATFORM;
@@ -342,6 +343,7 @@ describe("applyEnvOverrides", () => {
     delete process.env.OLLAMA_BRIDGE_PORT;
     delete process.env.OLLAMA_BRIDGE_VERSION;
     delete process.env.OLLAMA_BRIDGE_DISABLE_VISION;
+    delete process.env.CORS_ALLOW_NULL_ORIGIN;
   });
 
   afterEach(() => {
@@ -456,4 +458,29 @@ describe("applyEnvOverrides", () => {
       disable_vision: false,
     });
   });
+
+  it("applies CORS_ALLOW_NULL_ORIGIN when not overridden by local.yaml", () => {
+    process.env.CORS_ALLOW_NULL_ORIGIN = "true";
+    const raw = { auth: {}, server: {} } as Record<string, unknown>;
+    applyEnvOverrides(raw, null);
+    expect((raw.server as Record<string, unknown>).cors_allow_null_origin).toBe(true);
+
+    process.env.CORS_ALLOW_NULL_ORIGIN = "1";
+    const raw2 = { auth: {}, server: {} } as Record<string, unknown>;
+    applyEnvOverrides(raw2, null);
+    expect((raw2.server as Record<string, unknown>).cors_allow_null_origin).toBe(true);
+
+    process.env.CORS_ALLOW_NULL_ORIGIN = "false";
+    const raw3 = { auth: {}, server: { cors_allow_null_origin: true } } as Record<string, unknown>;
+    applyEnvOverrides(raw3, null);
+    expect((raw3.server as Record<string, unknown>).cors_allow_null_origin).toBe(false);
+  });
+
+  it("does not override explicit local.yaml cors_allow_null_origin with env", () => {
+    process.env.CORS_ALLOW_NULL_ORIGIN = "true";
+    const raw = { auth: {}, server: { cors_allow_null_origin: false } } as Record<string, unknown>;
+    applyEnvOverrides(raw, { server: { cors_allow_null_origin: false } });
+    expect((raw.server as Record<string, unknown>).cors_allow_null_origin).toBe(false);
+  });
 });
+

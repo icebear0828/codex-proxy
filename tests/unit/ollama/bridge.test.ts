@@ -11,12 +11,13 @@ function json(body: unknown, status = 200, headers: HeadersInit = {}): Response 
   });
 }
 
-function createApp(disableVision = false) {
+function createApp(disableVision = false, corsAllowNullOrigin = false) {
   return createOllamaBridgeApp({
     upstreamBaseUrl: "http://upstream.test",
     proxyApiKey: "proxy-secret",
     version: "0.18.3-test",
     disableVision,
+    corsAllowNullOrigin,
   });
 }
 
@@ -72,6 +73,40 @@ describe("Ollama bridge routes", () => {
     });
     expect(externalPreflight.status).toBe(403);
     expect(externalPreflight.headers.get("access-control-allow-origin")).toBeNull();
+  });
+
+  it("handles Origin: null according to corsAllowNullOrigin option", async () => {
+    const defaultApp = createApp(false, false);
+
+    const defaultPreflight = await defaultApp.request("/api/chat", {
+      method: "OPTIONS",
+      headers: { Origin: "null" },
+    });
+    expect(defaultPreflight.status).toBe(403);
+    expect(defaultPreflight.headers.get("access-control-allow-origin")).toBeNull();
+
+    const defaultRes = await defaultApp.request("/api/version", {
+      headers: { Origin: "null" },
+    });
+    expect(defaultRes.status).toBe(200);
+    expect(defaultRes.headers.get("access-control-allow-origin")).toBeNull();
+
+    const allowedApp = createApp(false, true);
+
+    const allowedPreflight = await allowedApp.request("/api/chat", {
+      method: "OPTIONS",
+      headers: { Origin: "null" },
+    });
+    expect(allowedPreflight.status).toBe(204);
+    expect(allowedPreflight.headers.get("access-control-allow-origin")).toBe("null");
+    expect(allowedPreflight.headers.get("vary")).toBe("Origin");
+
+    const allowedRes = await allowedApp.request("/api/version", {
+      headers: { Origin: "null" },
+    });
+    expect(allowedRes.status).toBe(200);
+    expect(allowedRes.headers.get("access-control-allow-origin")).toBe("null");
+    expect(allowedRes.headers.get("vary")).toBe("Origin");
   });
 
   it("maps the model catalog to Ollama tags", async () => {

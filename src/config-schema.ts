@@ -120,6 +120,7 @@ export const ConfigSchema = z.object({
     }, {
       message: "Invalid hostname format. Use bare hostnames like 'example.com' or '192.168.1.1'",
     })).default([]),
+    cors_allow_null_origin: z.boolean().default(false),
   }),
   logs: z.object({
     enabled: z.boolean().default(false),
