@@ -195,7 +195,7 @@ describe("LogsPage", () => {
     renderLogsPage();
 
     const timeHeader = screen.getByText("Time");
-    expect(hasAncestorClass(timeHeader, "overflow-x-auto")).toBe(true);
+    expect(hasAncestorClass(timeHeader, "w-full")).toBe(true);
 
     const detailsHeader = screen.getByText("Details");
     const detailsPanel = detailsHeader.closest(".w-full.lg\\:w-\\[420px\\]") ?? detailsHeader.parentElement?.parentElement?.parentElement;

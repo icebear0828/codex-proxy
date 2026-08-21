@@ -245,86 +245,85 @@ export function LogsPage({ embedded = false }: { embedded?: boolean }) {
         {/* Log List Table */}
         <div class="flex-1 min-w-0">
           <div class="border border-slate-200 dark:border-border-dark rounded-lg overflow-hidden bg-white dark:bg-bg-dark shadow-sm">
-            <div class="overflow-x-auto">
-              <div class="min-w-[760px]">
-                <div class="grid grid-cols-12 text-xs text-slate-500 font-medium px-3 py-2.5 bg-slate-50 dark:bg-bg-dark border-b border-slate-200 dark:border-border-dark">
-                  <div class="col-span-2">{t("logsTime")}</div>
-                  <div class="col-span-1">{t("logsStatus")}</div>
-                  <div class="col-span-1">{t("logsDirection")}</div>
-                  <div class="col-span-3">{t("logsPath")} / {t("logsModel")}</div>
-                  <div class="col-span-1">{t("logsTtft")}</div>
-                  <div class="col-span-1">{t("logsSpeed")}</div>
-                  <div class="col-span-1">{t("logsCost")}</div>
-                  <div class="col-span-2 text-right">{t("logsLatency")}</div>
-                </div>
+            <div class="w-full">
+              <div class="flex items-center text-xs text-slate-500 font-medium px-3 py-2.5 bg-slate-50 dark:bg-bg-dark border-b border-slate-200 dark:border-border-dark gap-2">
+                <div class="w-[68px] shrink-0">{t("logsTime")}</div>
+                <div class="w-[38px] shrink-0 text-center">{t("logsStatus")}</div>
+                <div class="w-[42px] shrink-0 text-center">{t("logsDirection")}</div>
+                <div class="flex-1 min-w-0">{t("logsPath")} / {t("logsModel")}</div>
+                <div class="w-[58px] shrink-0 text-right">{t("logsTtft")}</div>
+                <div class="w-[62px] shrink-0 text-right">{t("logsSpeed")}</div>
+                <div class="w-[54px] shrink-0 text-right">{t("logsCost")}</div>
+                <div class="w-[52px] shrink-0 text-right">{t("logsLatency")}</div>
+              </div>
 
-                {logs.loading && (
-                  <div class="p-6 text-center text-xs text-slate-500">{t("logsLoading")}</div>
-                )}
-                {!logs.loading && list.length === 0 && (
-                  <div class="p-6 text-center text-xs text-slate-500">{t("logsEmpty")}</div>
-                )}
+              {logs.loading && (
+                <div class="p-6 text-center text-xs text-slate-500">{t("logsLoading")}</div>
+              )}
+              {!logs.loading && list.length === 0 && (
+                <div class="p-6 text-center text-xs text-slate-500">{t("logsEmpty")}</div>
+              )}
 
-                <div class="max-h-[520px] overflow-y-auto divide-y divide-slate-100 dark:divide-border-dark">
-                  {list.map((row) => {
-                    const statusClass =
-                      row.status === 200
-                        ? "bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800"
-                        : row.status != null && row.status >= 400 && row.status < 500
-                          ? "bg-amber-50 text-amber-700 dark:bg-amber-950/40 dark:text-amber-400 border border-amber-200 dark:border-amber-800"
-                          : row.status != null && row.status >= 500
-                            ? "bg-rose-50 text-rose-700 dark:bg-rose-950/40 dark:text-rose-400 border border-rose-200 dark:border-rose-800"
-                            : "bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400";
+              <div class="max-h-[520px] overflow-y-auto divide-y divide-slate-100 dark:divide-border-dark">
+                {list.map((row) => {
+                  const statusClass =
+                    row.status === 200
+                      ? "bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800"
+                      : row.status != null && row.status >= 400 && row.status < 500
+                        ? "bg-amber-50 text-amber-700 dark:bg-amber-950/40 dark:text-amber-400 border border-amber-200 dark:border-amber-800"
+                        : row.status != null && row.status >= 500
+                          ? "bg-rose-50 text-rose-700 dark:bg-rose-950/40 dark:text-rose-400 border border-rose-200 dark:border-rose-800"
+                          : "bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400";
 
-                    return (
-                      <button
-                        key={row.id}
-                        class={`w-full text-left grid grid-cols-12 px-3 py-2.5 text-xs transition-colors items-center hover:bg-slate-50 dark:hover:bg-border-dark/50 ${
-                          logs.selected?.id === row.id ? "bg-primary/10 dark:bg-primary/20" : ""
-                        }`}
-                        onClick={() => logs.selectLog(row.id)}
-                      >
-                        <div class="col-span-2 text-slate-500 font-mono text-[11px] truncate">{row.time}</div>
-                        <div class="col-span-1">
-                          <span class={`inline-block px-1.5 py-0.5 rounded text-[10px] font-mono font-medium ${statusClass}`}>
-                            {row.status ?? "-"}
-                          </span>
+                  return (
+                    <button
+                      key={row.id}
+                      class={`w-full text-left flex items-center px-3 py-2 text-xs transition-colors hover:bg-slate-50 dark:hover:bg-border-dark/50 gap-2 ${
+                        logs.selected?.id === row.id ? "bg-primary/10 dark:bg-primary/20" : ""
+                      }`}
+                      onClick={() => logs.selectLog(row.id)}
+                    >
+                      <div class="w-[68px] shrink-0 text-slate-500 font-mono text-[11px] truncate">{row.time}</div>
+                      <div class="w-[38px] shrink-0 text-center">
+                        <span class={`inline-block px-1.5 py-0.5 rounded text-[10px] font-mono font-medium ${statusClass}`}>
+                          {row.status ?? "-"}
+                        </span>
+                      </div>
+                      <div class="w-[42px] shrink-0 text-center">
+                        <span
+                          class={`inline-block px-1.5 py-0.5 rounded text-[10px] font-medium ${
+                            row.direction === "ingress"
+                              ? "bg-sky-50 text-sky-700 dark:bg-sky-950/40 dark:text-sky-400"
+                              : "bg-indigo-50 text-indigo-700 dark:bg-indigo-950/40 dark:text-indigo-400"
+                          }`}
+                        >
+                          {t(`logsFilter.${row.direction}`)}
+                        </span>
+                      </div>
+                      <div class="flex-1 min-w-0 pr-1">
+                        <div class="font-medium text-slate-800 dark:text-white truncate">
+                          {row.model || row.path}
                         </div>
-                        <div class="col-span-1">
-                          <span
-                            class={`inline-block px-1.5 py-0.5 rounded text-[10px] font-medium ${
-                              row.direction === "ingress"
-                                ? "bg-sky-50 text-sky-700 dark:bg-sky-950/40 dark:text-sky-400"
-                                : "bg-indigo-50 text-indigo-700 dark:bg-indigo-950/40 dark:text-indigo-400"
-                            }`}
-                          >
-                            {t(`logsFilter.${row.direction}`)}
-                          </span>
-                        </div>
-                        <div class="col-span-3 min-w-0 pr-2">
-                          <div class="font-medium text-slate-800 dark:text-white truncate">
-                            {row.model || row.path}
-                          </div>
-                          {row.model && (
-                            <div class="text-[10px] text-slate-400 truncate">{row.path}</div>
-                          )}
-                        </div>
-                        <div class="col-span-1 font-mono text-slate-600 dark:text-slate-300">
-                          {formatDuration(row.ttftMs)}
-                        </div>
-                        <div class="col-span-1 font-mono text-emerald-600 dark:text-emerald-400">
-                          {formatSpeed(row.tokensPerSecond)}
-                        </div>
-                        <div class="col-span-1 font-mono text-amber-600 dark:text-amber-400">
-                          {formatCost(row.costUsd)}
-                        </div>
-                        <div class="col-span-2 font-mono text-right text-slate-600 dark:text-slate-300 font-medium">
-                          {row.latencyMs != null ? `${row.latencyMs}ms` : "-"}
-                        </div>
-                      </button>
-                    );
-                  })}
-                </div>
+                        {row.model && (
+                          <div class="text-[10px] text-slate-400 truncate">{row.path}</div>
+                        )}
+                      </div>
+                      <div class="w-[58px] shrink-0 font-mono text-right text-slate-600 dark:text-slate-300 text-[11px]">
+                        {formatDuration(row.ttftMs)}
+                      </div>
+                      <div class="w-[62px] shrink-0 font-mono text-right text-emerald-600 dark:text-emerald-400 text-[11px]">
+                        {formatSpeed(row.tokensPerSecond)}
+                      </div>
+                      <div class="w-[54px] shrink-0 font-mono text-right text-amber-600 dark:text-amber-400 text-[11px]">
+                        {formatCost(row.costUsd)}
+                      </div>
+                      <div class="w-[52px] shrink-0 font-mono text-right text-slate-600 dark:text-slate-300 font-medium text-[11px]">
+                        {row.latencyMs != null ? `${row.latencyMs}ms` : "-"}
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
 
                 <div class="flex items-center justify-between px-3 py-2.5 border-t border-slate-200 dark:border-border-dark text-xs text-slate-500 bg-slate-50 dark:bg-bg-dark">
                   <button
@@ -343,7 +342,6 @@ export function LogsPage({ embedded = false }: { embedded?: boolean }) {
                     {t("logsNext")}
                   </button>
                 </div>
-              </div>
             </div>
           </div>
         </div>
