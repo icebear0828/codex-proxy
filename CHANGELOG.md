@@ -10,6 +10,7 @@
 
 ### Changed
 
+- 默认模型与 Claude/Anthropic 推荐档位切换到 GPT-5.6 家族：`config/default.yaml` 默认模型改为 `gpt-5.6-sol`；Dashboard Anthropic Setup 预设与 Claude Code 指南改为 Opus → `gpt-5.6-sol` / Sonnet → `gpt-5.6-terra` / Haiku → `gpt-5.6-luna`；README / API 文档模型表与客户端示例同步更新（`config/default.yaml`、`web/src/components/AnthropicSetup.tsx`、`.github/guides/claude-code-setup.md`、`README.md`、`README_EN.md`、`API.md`、`API_CN.md`）
 - 账号持久化从 `accounts.json` 主存储迁移到 `accounts.sqlite`，启动时自动从旧 JSON 迁移并继续保留 `accounts.json` 镜像用于降级/回滚；批量导入改为持久化批处理，避免每个账号同步重写整份 JSON 导致大批量导入卡死。（#657）
 - 重构：消除类型守卫 `isRecord` 的多处重复声明（收拢翻译层与路由层到 `shared-utils.ts`）
 - 重构：合并推理预算映射表 `REASONING_EFFORT_BUDGET`（提取为 `shared-utils.ts` 的公共常量）

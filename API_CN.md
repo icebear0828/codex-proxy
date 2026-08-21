@@ -132,7 +132,7 @@ token 混到一起。
 
 ```jsonc
 {
-  "model": "gpt-5.5",
+  "model": "gpt-5.6-sol",
   "stream": true,
   "input": [{
     "role": "user",
@@ -175,11 +175,11 @@ OpenAI Chat 兼容路径会接受 `tools: [{"type":"image_generation"}]`，但�
 | `truncationPolicyLimit` | 上游提供的截断策略限制（如果返回） |
 
 静态值定义在 `config/models.yaml`；同一模型 ID 如果从
-`/backend-api/codex/models` 拉到动态条目，则以上游动态值为准。实测
-2026-05-08 的 Codex 后端对 `gpt-5.5` 回传 `context_window=272000`、
-`max_context_window=272000`、`truncation_policy.limit=10000`，对 `gpt-5.4`
-回传 `context_window=272000`、`max_context_window=1000000`、
-`truncation_policy.limit=10000`。这些是 Codex 运行时限制，不代表请求级
+`/backend-api/codex/models` 拉到动态条目，则以上游动态值为准。静态 GPT-5.6
+家族（`gpt-5.6-sol` / `gpt-5.6-terra` / `gpt-5.6-luna` / `gpt-5.6`）使用
+1,050,000 上下文与 128,000 最大输出。更早的运行时样本仍记录 `gpt-5.5` /
+`gpt-5.4` 的 `context_window=272000`，以及 `gpt-5.4` 的
+`max_context_window=1000000`。这些是 Codex 运行时限制，不代表请求级
 context 或 max-token 开关可用。
 
 ---

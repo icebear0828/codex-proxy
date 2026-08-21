@@ -136,7 +136,7 @@ message content. `data:` URLs and HTTPS URLs both work.
 
 ```jsonc
 {
-  "model": "gpt-5.5",
+  "model": "gpt-5.6-sol",
   "stream": true,
   "input": [{
     "role": "user",
@@ -225,12 +225,12 @@ Model catalog entries can include token metadata:
 
 Static catalog values are defined in `config/models.yaml`; dynamic entries from
 `/backend-api/codex/models` win when the same model ID is returned by upstream.
-On 2026-05-08, real Codex backend metadata returned `context_window=272000`,
-`max_context_window=272000`, `truncation_policy.limit=10000` for `gpt-5.5`, and
-`context_window=272000`, `max_context_window=1000000`,
-`truncation_policy.limit=10000` for `gpt-5.4`. Treat these as runtime Codex
-limits, not as proof that request-level context or max-token switches are
-supported.
+The static GPT-5.6 family (`gpt-5.6-sol` / `gpt-5.6-terra` / `gpt-5.6-luna` /
+`gpt-5.6`) uses a 1,050,000 context window and 128,000 max output tokens.
+Earlier runtime samples still document `context_window=272000` for `gpt-5.5` /
+`gpt-5.4`, with `max_context_window=1000000` on `gpt-5.4`. Treat these as
+runtime Codex limits, not as proof that request-level context or max-token
+switches are supported.
 
 ---
 

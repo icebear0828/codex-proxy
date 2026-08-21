@@ -10,15 +10,15 @@ interface AnthropicSetupProps {
 }
 
 export const DEFAULT_ANTHROPIC_MODELS = {
-  opus: "gpt-5.5",
-  sonnet: "gpt-5.4",
-  haiku: "gpt-5.4-mini",
+  opus: "gpt-5.6-sol",
+  sonnet: "gpt-5.6-terra",
+  haiku: "gpt-5.6-luna",
 };
 
 export const ANTHROPIC_MODEL_PRESETS: Array<{ label: string; value: string }> = [
-  { label: "gpt-5.5 (Opus 4.7)", value: DEFAULT_ANTHROPIC_MODELS.opus },
-  { label: "gpt-5.4 (Sonnet 4.6)", value: DEFAULT_ANTHROPIC_MODELS.sonnet },
-  { label: "gpt-5.4-mini (Haiku)", value: "gpt-5.4-mini" },
+  { label: "gpt-5.6-sol (Opus)", value: DEFAULT_ANTHROPIC_MODELS.opus },
+  { label: "gpt-5.6-terra (Sonnet)", value: DEFAULT_ANTHROPIC_MODELS.sonnet },
+  { label: "gpt-5.6-luna (Haiku)", value: DEFAULT_ANTHROPIC_MODELS.haiku },
 ];
 
 export function AnthropicSetup({ apiKey, selectedModel, reasoningEffort, serviceTier }: AnthropicSetupProps) {
