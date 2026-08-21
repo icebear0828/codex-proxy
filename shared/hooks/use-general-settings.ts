@@ -8,6 +8,8 @@ export interface GeneralSettingsData {
   inject_desktop_context: boolean;
   suppress_desktop_directives: boolean;
   default_model: string;
+  image_host_model: string;
+  image_host_model_allowed_models: string[];
   default_reasoning_effort: string | null;
   model_aliases: Record<string, string>;
   refresh_enabled: boolean;
@@ -76,6 +78,8 @@ export function useGeneralSettings(apiKey: string | null) {
         inject_desktop_context: result.inject_desktop_context,
         suppress_desktop_directives: result.suppress_desktop_directives,
         default_model: result.default_model,
+        image_host_model: result.image_host_model,
+        image_host_model_allowed_models: result.image_host_model_allowed_models ?? [],
         default_reasoning_effort: result.default_reasoning_effort,
         model_aliases: result.model_aliases,
         refresh_enabled: result.refresh_enabled,

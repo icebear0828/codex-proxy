@@ -35,6 +35,7 @@ export function createMockConfig(overrides?: MockConfigOverrides): AppConfig {
     },
     model: {
       default: "gpt-5.4",
+      image_host_model: "gpt-5.5",
       default_reasoning_effort: null,
       default_service_tier: null,
       inject_desktop_context: false,

@@ -13,6 +13,20 @@ models:
     supportsPersonality: true
     upgrade: null
 
+  - id: gpt-5.5
+    displayName: GPT-5.5
+    description: GPT-5.5 Codex host model
+    isDefault: false
+    supportedReasoningEfforts:
+      - { reasoningEffort: low, description: "Fastest responses" }
+      - { reasoningEffort: medium, description: "Balanced speed and quality" }
+      - { reasoningEffort: high, description: "Deepest reasoning" }
+    defaultReasoningEffort: medium
+    inputModalities: [text]
+    outputModalities: [text, image]
+    supportsPersonality: true
+    upgrade: null
+
   - id: gpt-5.3-codex
     displayName: GPT-5.3 Codex
     description: Codex flagship model

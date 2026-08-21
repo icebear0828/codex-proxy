@@ -313,6 +313,12 @@ function parseResponseData(data: unknown): CodexResponseData | undefined {
       result.usage.image_output_tokens = imgOut;
     }
   }
+  // Pass through the raw `output` array untouched (if present). Consumers that
+  // need to inspect individual output items — e.g. Images generations
+  // distinguishing an authoritative empty response.completed.output from a
+  // stale earlier output_item.done — read it straight off this field instead
+  // of duplicating a second parse path for the same data.
+  if (Array.isArray(resp.output)) result.output = resp.output;
   return result;
 }
 

@@ -12,6 +12,10 @@ client:
 
 model:
   default: gpt-5.4
+  # Codex host model for POST /v1/images/generations. The client-facing
+  # gpt-image-2 identifier only means "generate an image" — it is never
+  # sent upstream as the chat model itself.
+  image_host_model: gpt-5.5
   default_reasoning_effort: null
   default_service_tier: null
   default_tools: []

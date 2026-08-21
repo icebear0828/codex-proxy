@@ -46,7 +46,12 @@ export function annotateImageGenOutcome(
   expectsImageGen: boolean | undefined,
 ): UsageInfo | undefined {
   if (!expectsImageGen) return usage;
-  const succeeded = (usage?.image_output_tokens ?? 0) > 0;
+  // Prefer the format collector's own success determination when present —
+  // it only sets this after observing both a non-empty image result and the
+  // terminal event, which is stricter than "some image_output_tokens billed"
+  // (an upstream truncated/empty-result stream can still bill tokens).
+  const succeeded = usage?.image_request_succeeded
+    ?? ((usage?.image_output_tokens ?? 0) > 0);
   if (usage) {
     return { ...usage, image_request_attempted: true, image_request_succeeded: succeeded };
   }

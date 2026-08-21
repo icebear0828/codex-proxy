@@ -82,6 +82,14 @@ export const ConfigSchema = z.object({
 
   model: z.object({
     default: z.string().default("gpt-5.6-sol"),
+    /** Codex chat model that hosts `POST /v1/images/generations` requests via the
+     *  Responses `image_generation` tool. Cannot be `gpt-image-2` — that name is
+     *  only the Images API's client-facing identifier, not a routable Codex model. */
+    image_host_model: z.string().trim().min(1)
+      .refine((model) => model.toLowerCase() !== "gpt-image-2", {
+        message: "model.image_host_model must be a Codex chat model, not gpt-image-2",
+      })
+      .default("gpt-5.5"),
     default_reasoning_effort: z.string().nullable().default(null),
     default_service_tier: z.string().nullable().default(null),
     default_tools: z.array(z.string().trim().min(1)).default([]),

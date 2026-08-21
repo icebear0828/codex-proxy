@@ -4,6 +4,12 @@ import { getConfig, getLocalConfigPath, reloadAllConfigs, ROTATION_STRATEGIES } 
 import { logStore } from "../../logs/store.js";
 import { mutateYaml } from "../../utils/yaml-mutate.js";
 import { isLocalhostRequest } from "../../utils/is-localhost.js";
+import {
+  getRoutableCodexHostModelAllowedModels,
+  IMAGE_HOST_MODEL_CLIENT_ID,
+  isImageHostModelClientId,
+  resolveRoutableCodexHostModel,
+} from "../../models/routable-model-resolver.js";
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -118,6 +124,9 @@ export function createSettingsRoutes(): Hono {
       suppress_desktop_directives: config.model.suppress_desktop_directives,
       default_model: config.model.default,
       default_reasoning_effort: config.model.default_reasoning_effort,
+      image_host_model: config.model.image_host_model,
+      image_host_model_allowed_models: getRoutableCodexHostModelAllowedModels(),
+      default_tools: config.model.default_tools,
       model_aliases: config.model.aliases,
       refresh_enabled: config.auth.refresh_enabled,
       refresh_margin_seconds: config.auth.refresh_margin_seconds,
@@ -146,6 +155,7 @@ export function createSettingsRoutes(): Hono {
       suppress_desktop_directives?: boolean;
       default_model?: string;
       default_reasoning_effort?: string | null;
+      image_host_model?: string;
       model_aliases?: unknown;
       refresh_enabled?: boolean;
       refresh_margin_seconds?: number;
@@ -199,6 +209,33 @@ export function createSettingsRoutes(): Hono {
         return c.json({ error: result.error });
       }
       normalizedModelAliases = result.aliases;
+    }
+
+    let normalizedImageHostModel: string | null = null;
+    if (body.image_host_model !== undefined) {
+      if (typeof body.image_host_model !== "string") {
+        c.status(400);
+        return c.json({ error: "image_host_model must be a string" });
+      }
+      const trimmed = body.image_host_model.trim();
+      if (!trimmed) {
+        c.status(400);
+        return c.json({ error: "image_host_model must not be empty" });
+      }
+      if (isImageHostModelClientId(trimmed)) {
+        c.status(400);
+        return c.json({
+          error: `image_host_model cannot be ${IMAGE_HOST_MODEL_CLIENT_ID} — it is the Images API client identifier, not a routable Codex host model`,
+        });
+      }
+      const resolved = resolveRoutableCodexHostModel(trimmed);
+      if (resolved === null) {
+        c.status(400);
+        return c.json({
+          error: `${trimmed} is not a routable Codex model. Register it under model.custom_models or add an alias to a catalog model first`,
+        });
+      }
+      normalizedImageHostModel = resolved;
     }
 
     if (body.refresh_margin_seconds !== undefined) {
@@ -281,6 +318,10 @@ export function createSettingsRoutes(): Hono {
       if (body.default_reasoning_effort !== undefined) {
         if (!data.model) data.model = {};
         (data.model as Record<string, unknown>).default_reasoning_effort = body.default_reasoning_effort;
+      }
+      if (normalizedImageHostModel !== null) {
+        if (!data.model) data.model = {};
+        (data.model as Record<string, unknown>).image_host_model = normalizedImageHostModel;
       }
       if (normalizedModelAliases !== null) {
         if (!data.model) data.model = {};
@@ -365,6 +406,9 @@ export function createSettingsRoutes(): Hono {
       suppress_desktop_directives: updated.model.suppress_desktop_directives,
       default_model: updated.model.default,
       default_reasoning_effort: updated.model.default_reasoning_effort,
+      image_host_model: normalizedImageHostModel ?? updated.model.image_host_model,
+      image_host_model_allowed_models: getRoutableCodexHostModelAllowedModels(),
+      default_tools: updated.model.default_tools,
       model_aliases: updated.model.aliases,
       refresh_enabled: updated.auth.refresh_enabled,
       refresh_margin_seconds: updated.auth.refresh_margin_seconds,

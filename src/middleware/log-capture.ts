@@ -8,6 +8,7 @@ const KNOWN_LLM_PATHS = [
   /^\/v1\/responses(?:\/compact)?$/,
   /^\/v1\/models(?:\/.*)?$/,
   /^\/v1beta\/models(?:\/.*)?$/,
+  /^\/(?:v1\/)?images\/generations$/,
 ];
 
 export function isKnownLlmPath(path: string): boolean {
