@@ -94,7 +94,8 @@ export function getInstallationId(accountScope?: string | null): string {
   if (cached) return cached;
 
   const safeName = sanitizeKey(scope);
-  const accountFile = resolve(getDataDir(), "installation_ids", `${safeName}.id`);
+  const hashSuffix = createHash("sha256").update(scope).digest("hex").slice(0, 8);
+  const accountFile = resolve(getDataDir(), "installation_ids", `${safeName.slice(0, 32)}_${hashSuffix}.id`);
   const fromDisk = readUuidFile(accountFile);
   if (fromDisk) {
     _accountCache.set(scope, fromDisk);

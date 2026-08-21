@@ -478,5 +478,35 @@ describe("codex-api headers", () => {
 
       expect(transport.post).not.toHaveBeenCalled();
     });
+
+    it("sends account-scoped x-codex-installation-id on createCompactResponse", async () => {
+      const api = await createApi("entry-compact-1", "acct-compact-1");
+      const encoder = new TextEncoder();
+      transport.post = vi.fn(async (_url: string, headers: Record<string, string>) => {
+        transport.lastHeaders = headers;
+        return {
+          status: 200,
+          headers: new Headers({ "content-type": "application/json" }),
+          body: new ReadableStream({
+            start(c) {
+              c.enqueue(encoder.encode(JSON.stringify({ status: "completed", output: [] })));
+              c.close();
+            },
+          }),
+          setCookieHeaders: [],
+        };
+      });
+
+      await api.createCompactResponse({
+        model: "gpt-5.4",
+        input: [{ type: "message", role: "user", content: "test" }],
+      });
+
+      expect(mockGetInstallationId).toHaveBeenCalledWith("entry-compact-1");
+      expect(transport.lastHeaders!["x-codex-installation-id"]).toBe(
+        "11111111-2222-3333-4444-555555555555",
+      );
+    });
   });
 });
+

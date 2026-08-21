@@ -159,5 +159,40 @@ describe("Client Profile presets", () => {
     expect(headers["User-Agent"]).toBe("pi/0.5.0 (darwin arm64)");
     expect(headers["sec-ch-ua"]).toBeUndefined();
   });
+
+  it("uses preset originator when config originator retains default value", () => {
+    const desktopConfig = createMockConfig({
+      client: {
+        profile: "codex_desktop",
+        originator: "codex_cli_rs",
+        app_version: "26.506.31421",
+        platform: "darwin",
+        arch: "arm64",
+      },
+    });
+    vi.mocked(getConfig).mockReturnValue(desktopConfig);
+
+    const headers = buildHeaders("test-token");
+    expect(headers["originator"]).toBe("Codex Desktop");
+    expect(headers["User-Agent"]).toContain("Codex Desktop/26.506.31421");
+    expect(headers["sec-ch-ua"]).toBeDefined();
+  });
+
+  it("uses custom originator when profile is custom", () => {
+    const customConfig = createMockConfig({
+      client: {
+        profile: "custom",
+        originator: "my-custom-agent",
+        app_version: "1.2.3",
+        platform: "linux",
+        arch: "x64",
+      },
+    });
+    vi.mocked(getConfig).mockReturnValue(customConfig);
+
+    const headers = buildHeaders("test-token");
+    expect(headers["originator"]).toBe("my-custom-agent");
+  });
 });
+
 

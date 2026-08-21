@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { mkdtempSync, rmSync, writeFileSync, existsSync, readFileSync } from "fs";
 import { tmpdir } from "os";
 import { resolve } from "path";
+import { createHash } from "crypto";
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -98,13 +99,22 @@ describe("getInstallationId", () => {
     const { getInstallationId } = await freshModule();
     const acctId = getInstallationId("account-gamma");
 
-    const savedFile = resolve(tmpData, "installation_ids", "account-gamma.id");
+    const hashSuffix = createHash("sha256").update("account-gamma").digest("hex").slice(0, 8);
+    const savedFile = resolve(tmpData, "installation_ids", `account-gamma_${hashSuffix}.id`);
     expect(existsSync(savedFile)).toBe(true);
     expect(readFileSync(savedFile, "utf-8").trim()).toBe(acctId);
 
     // Fresh module reload
     const fresh = await freshModule();
     expect(fresh.getInstallationId("account-gamma")).toBe(acctId);
+  });
+
+  it("differentiates accounts whose sanitized names might otherwise collide", async () => {
+    const { getInstallationId } = await freshModule();
+    const id1 = getInstallationId("acc:test");
+    const id2 = getInstallationId("acc_test");
+
+    expect(id1).not.toBe(id2);
   });
 });
 

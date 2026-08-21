@@ -54,7 +54,7 @@ function getProfile(config: AppConfig): ClientProfile {
 function resolveOriginator(config: AppConfig): string {
   const profile = getProfile(config);
   if (profile !== "custom" && profile in PROFILE_PRESETS) {
-    return config.client.originator || PROFILE_PRESETS[profile].originator;
+    return PROFILE_PRESETS[profile].originator;
   }
   return config.client.originator || "codex_cli_rs";
 }
