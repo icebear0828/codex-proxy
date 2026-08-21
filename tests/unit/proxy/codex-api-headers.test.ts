@@ -19,9 +19,11 @@ vi.mock("@src/config.js", () => ({
 }));
 
 // Mock installation_id (deterministic value)
+const mockGetInstallationId = vi.fn((_accountScope?: string | null) => "11111111-2222-3333-4444-555555555555");
 vi.mock("@src/proxy/installation-id.js", () => ({
-  getInstallationId: () => "11111111-2222-3333-4444-555555555555",
+  getInstallationId: (accountScope?: string | null) => mockGetInstallationId(accountScope),
 }));
+
 
 // Capture createWebSocketResponse calls
 const mockCreateWebSocketResponse = vi.fn<
@@ -135,8 +137,9 @@ describe("codex-api headers", () => {
     });
 
     it("sends x-codex-installation-id header and inside body.client_metadata", async () => {
-      const api = await createApi();
+      const api = await createApi("entry-acc-99", "acct-99");
       await api.createResponse(makeRequest());
+      expect(mockGetInstallationId).toHaveBeenCalledWith("entry-acc-99");
       expect(transport.lastHeaders!["x-codex-installation-id"]).toBe(
         "11111111-2222-3333-4444-555555555555",
       );
@@ -145,6 +148,7 @@ describe("codex-api headers", () => {
         "x-codex-installation-id": "11111111-2222-3333-4444-555555555555",
       });
     });
+
 
     it("preserves caller-provided client_metadata fields and only injects installation id", async () => {
       const api = await createApi();

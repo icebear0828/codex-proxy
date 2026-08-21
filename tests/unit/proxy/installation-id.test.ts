@@ -76,4 +76,35 @@ describe("getInstallationId", () => {
     const second = getInstallationId();
     expect(first).toBe(second);
   });
+
+  it("isolates installation_id per account (different accounts get different UUIDs)", async () => {
+    const { getInstallationId } = await freshModule();
+    const acct1 = getInstallationId("account-alpha");
+    const acct2 = getInstallationId("account-beta");
+    const globalId = getInstallationId();
+
+    expect(acct1).toMatch(UUID_RE);
+    expect(acct2).toMatch(UUID_RE);
+    expect(acct1).not.toBe(acct2);
+    expect(acct1).not.toBe(globalId);
+    expect(acct2).not.toBe(globalId);
+
+    // Stable on repeated calls
+    expect(getInstallationId("account-alpha")).toBe(acct1);
+    expect(getInstallationId("account-beta")).toBe(acct2);
+  });
+
+  it("persists account-scoped installation_id to disk and reloads it", async () => {
+    const { getInstallationId } = await freshModule();
+    const acctId = getInstallationId("account-gamma");
+
+    const savedFile = resolve(tmpData, "installation_ids", "account-gamma.id");
+    expect(existsSync(savedFile)).toBe(true);
+    expect(readFileSync(savedFile, "utf-8").trim()).toBe(acctId);
+
+    // Fresh module reload
+    const fresh = await freshModule();
+    expect(fresh.getInstallationId("account-gamma")).toBe(acctId);
+  });
 });
+

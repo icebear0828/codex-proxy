@@ -2,12 +2,14 @@ api:
   base_url: https://chatgpt.com/backend-api
   timeout_seconds: 600
 client:
-  originator: Codex Desktop
-  app_version: 26.715.21425
-  build_number: "5488"
+  profile: codex_cli
+  originator: codex_cli_rs
+  app_version: 0.1.0
+  build_number: "6892"
   platform: darwin
   arch: arm64
   chromium_version: "146"
+
 model:
   default: gpt-5.4
   default_reasoning_effort: null
