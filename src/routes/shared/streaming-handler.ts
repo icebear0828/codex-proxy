@@ -225,6 +225,7 @@ export function handleStreaming(options: HandleStreamingOptions): Response {
         endMs: Date.now(),
         model: req.model,
         usage: usageInfo ?? null,
+        isStreaming: true,
       });
       c.set("metrics", metrics);
       updateLogEntry(requestId, {

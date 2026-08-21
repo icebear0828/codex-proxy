@@ -21,6 +21,7 @@ export interface CalculateLogMetricsOptions {
   usage?: UsageInfo | UsageCostInput | null;
   pricingCatalog?: PricingCatalog;
   nowMs?: () => number;
+  isStreaming?: boolean;
 }
 
 let cachedCatalog: PricingCatalog | null = null;
@@ -48,13 +49,14 @@ export function calculateLogMetrics(options: CalculateLogMetricsOptions): LogMet
     model,
     usage,
     pricingCatalog = getCatalog(),
+    isStreaming = firstTokenMs !== undefined,
   } = options;
 
   const durationMs = Math.max(0, Math.round(endMs - startMs));
   let ttftMs: number | null = null;
   if (firstTokenMs != null && Number.isFinite(firstTokenMs)) {
     ttftMs = Math.max(0, Math.round(firstTokenMs - startMs));
-  } else if (durationMs > 0) {
+  } else if (!isStreaming && durationMs > 0 && firstTokenMs === undefined) {
     ttftMs = durationMs;
   }
 

@@ -144,6 +144,7 @@ export async function handleDirectRequest(options: HandleDirectRequestOptions): 
           endMs: Date.now(),
           model: req.model,
           usage: usageInfo,
+          isStreaming: true,
         });
         c.set("metrics", metrics);
         updateLogEntry(requestId, {
@@ -173,6 +174,7 @@ export async function handleDirectRequest(options: HandleDirectRequestOptions): 
       endMs: Date.now(),
       model: req.model,
       usage: result.usage,
+      isStreaming: false,
     });
     c.set("metrics", metrics);
     updateLogEntry(requestId, {

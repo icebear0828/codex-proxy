@@ -234,4 +234,49 @@ describe("LogsPage", () => {
     expect(screen.getAllByText("45.2 t/s").length).toBeGreaterThan(0);
     expect(screen.getAllByText("$0.0035").length).toBeGreaterThan(0);
   });
+
+  it("does not double-count cost or tokens in 'all' mode when both ingress and egress records exist for same requestId", () => {
+    mockLogs.useLogs.mockReturnValue(
+      makeLogsState({
+        direction: "all",
+        records: [
+          {
+            id: "1",
+            requestId: "req-1",
+            direction: "ingress",
+            ts: "2026-04-15T00:00:01.000Z",
+            method: "POST",
+            path: "/v1/messages",
+            model: "gpt-5.5",
+            status: 200,
+            latencyMs: 1000,
+            costUsd: 0.01,
+            usage: { input_tokens: 1000, output_tokens: 200 },
+          },
+          {
+            id: "2",
+            requestId: "req-1",
+            direction: "egress",
+            ts: "2026-04-15T00:00:01.000Z",
+            method: "POST",
+            path: "/codex/responses",
+            model: "gpt-5.5",
+            status: 200,
+            latencyMs: 1000,
+            costUsd: 0.01,
+            usage: { input_tokens: 1000, output_tokens: 200 },
+          },
+        ],
+      }),
+    );
+    mockGeneralSettings.useGeneralSettings.mockReturnValue(makeGeneralSettings());
+
+    renderLogsPage();
+
+    // Cost should be $0.010, NOT $0.020
+    expect(screen.getByText("$0.0100")).toBeTruthy();
+    expect(screen.queryByText("$0.0200")).toBeNull();
+    // Tokens should be 1.2k (1000+200), NOT 2.4k
+    expect(screen.getByText("1.2k")).toBeTruthy();
+  });
 });

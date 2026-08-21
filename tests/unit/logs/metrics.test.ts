@@ -56,6 +56,24 @@ describe("calculateLogMetrics", () => {
     expect(metrics.tokensPerSecond).toBe(50); // 100 tokens / 2s = 50
   });
 
+  it("sets ttftMs to null for streaming requests when firstTokenMs is null", () => {
+    const metrics = calculateLogMetrics({
+      startMs: 1000,
+      firstTokenMs: null,
+      endMs: 2500,
+      model: "gpt-5.5",
+      isStreaming: true,
+      usage: {
+        input_tokens: 100,
+        output_tokens: 0,
+      },
+      pricingCatalog: catalog,
+    });
+
+    expect(metrics.durationMs).toBe(1500);
+    expect(metrics.ttftMs).toBeNull();
+  });
+
   it("handles zero output tokens gracefully", () => {
     const metrics = calculateLogMetrics({
       startMs: 1000,

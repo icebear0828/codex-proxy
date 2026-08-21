@@ -85,7 +85,12 @@ export function LogsPage({ embedded = false }: { embedded?: boolean }) {
     let successCount = 0;
     let completedCount = 0;
 
+    const seenRequestIds = new Set<string>();
     for (const r of logs.records) {
+      if (logs.direction === "all" && r.requestId) {
+        if (seenRequestIds.has(r.requestId)) continue;
+        seenRequestIds.add(r.requestId);
+      }
       if (r.status != null) {
         completedCount++;
         if (r.status >= 200 && r.status < 400) {
