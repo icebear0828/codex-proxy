@@ -9,12 +9,15 @@ import type { StatusCode } from "hono/utils/http-status";
 import { stream } from "hono/streaming";
 import { CodexApiError } from "../../proxy/codex-api.js";
 import { randomUUID } from "crypto";
-import { enqueueLogEntry } from "../../logs/entry.js";
+import { enqueueLogEntry, updateLogEntry } from "../../logs/entry.js";
+import { calculateLogMetrics } from "../../logs/metrics.js";
+import type { UsageInfo } from "../../translation/codex-event-extractor.js";
 import { recordStreamCloseEvent } from "../../logs/stream-close-event.js";
 import { streamResponse } from "./response-processor.js";
 import { toErrorStatus } from "./proxy-error-handler.js";
 import type { HandleDirectRequestOptions } from "./proxy-handler-types.js";
 import { canReturnStreamError, streamErrorResponse } from "./stream-error-response.js";
+import { recordClientKeyUsage } from "./proxy-handler-utils.js";
 
 export async function handleDirectRequest(options: HandleDirectRequestOptions): Promise<Response> {
   const { c, upstream, req, fmt } = options;
@@ -94,7 +97,11 @@ export async function handleDirectRequest(options: HandleDirectRequestOptions): 
     c.header("X-Accel-Buffering", "no");
 
     return stream(c, async (s) => {
+      let usageInfo: UsageInfo | null = null;
+      let firstTokenMs: number | null = null;
+      let clientAborted = false;
       s.onAbort(() => {
+        clientAborted = true;
         console.warn(`[stream-client-abort] rid=${requestId.slice(0, 8)} tag=${fmt.tag} model=${req.model}`);
         recordStreamCloseEvent({
           kind: "client-abort",
@@ -106,23 +113,51 @@ export async function handleDirectRequest(options: HandleDirectRequestOptions): 
         });
         abortController.abort();
       });
-      await streamResponse({
-        writer: s,
-        api: upstream,
-        response: rawResponse,
-        model: req.model,
-        adapter: fmt,
-        onUsage: () => {},
-        tupleSchema: req.tupleSchema,
-        onResponseId: () => {},
-        diagnostics: {
-          requestId: requestId.slice(0, 8),
-          tag: fmt.tag,
-          provider: upstream.tag,
-          path: "/v1/responses",
-          abortSignal: abortController.signal,
-        },
-      });
+      try {
+        await streamResponse({
+          writer: s,
+          api: upstream,
+          response: rawResponse,
+          model: req.model,
+          adapter: fmt,
+          onUsage: (u) => {
+            usageInfo = u;
+            recordClientKeyUsage(c, req.model, u);
+          },
+          tupleSchema: req.tupleSchema,
+          onResponseId: () => {},
+          onFirstToken: (ts) => {
+            firstTokenMs = ts;
+          },
+          diagnostics: {
+            requestId: requestId.slice(0, 8),
+            tag: fmt.tag,
+            provider: upstream.tag,
+            path: "/v1/responses",
+            abortSignal: abortController.signal,
+          },
+        });
+      } finally {
+        const metrics = calculateLogMetrics({
+          startMs,
+          firstTokenMs,
+          endMs: Date.now(),
+          model: req.model,
+          usage: usageInfo,
+          isStreaming: true,
+        });
+        c.set("metrics", metrics);
+        updateLogEntry(requestId, {
+          status: clientAborted ? 499 : rawResponse.status,
+          latencyMs: metrics.durationMs,
+          ttftMs: metrics.ttftMs,
+          durationMs: metrics.durationMs,
+          costUsd: metrics.costUsd,
+          tokensPerSecond: metrics.tokensPerSecond,
+          usage: usageInfo,
+          metrics,
+        });
+      }
     });
   }
 
@@ -133,12 +168,36 @@ export async function handleDirectRequest(options: HandleDirectRequestOptions): 
       model: req.model,
       tupleSchema: req.tupleSchema,
     });
+    recordClientKeyUsage(c, req.model, result.usage);
+    const metrics = calculateLogMetrics({
+      startMs,
+      endMs: Date.now(),
+      model: req.model,
+      usage: result.usage,
+      isStreaming: false,
+    });
+    c.set("metrics", metrics);
+    updateLogEntry(requestId, {
+      status: rawResponse.status,
+      latencyMs: metrics.durationMs,
+      ttftMs: metrics.ttftMs,
+      durationMs: metrics.durationMs,
+      costUsd: metrics.costUsd,
+      tokensPerSecond: metrics.tokensPerSecond,
+      usage: result.usage,
+      metrics,
+    });
     return c.json(result.response);
   } catch (err) {
     abortController.abort();
     const msg = err instanceof Error ? err.message : "Failed to collect upstream response";
     const code = toErrorStatus(0) as StatusCode;
     c.status(code);
+    updateLogEntry(requestId, {
+      status: code,
+      error: msg,
+      latencyMs: Date.now() - startMs,
+    });
     return c.json(fmt.formatError(code, msg));
   }
 }

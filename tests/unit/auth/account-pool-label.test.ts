@@ -81,3 +81,29 @@ describe("account label", () => {
     expect(entries[0].label).toBe("Staging");
   });
 });
+
+describe("Codex fingerprint mode", () => {
+  beforeEach(() => {
+    setConfigForTesting(createMockConfig());
+  });
+  afterEach(() => {
+    resetConfigForTesting();
+  });
+
+  it("defaults new accounts to off and returns the mode publicly", () => {
+    const pool = new AccountPool({ persistence: createMemoryPersistence() });
+    pool.addAccount(createValidJwt({ accountId: "fp-default" }));
+
+    expect(pool.getAccounts()[0].codexFingerprintMode).toBe("off");
+  });
+
+  it("persists an explicit session opt-in and exposes it on acquire", () => {
+    const persistence = createMemoryPersistence();
+    const pool = new AccountPool({ persistence });
+    const id = pool.addAccount(createValidJwt({ accountId: "fp-session" }));
+
+    expect(pool.setCodexFingerprintMode(id, "session")).toBe(true);
+    expect(pool.getAccounts()[0].codexFingerprintMode).toBe("session");
+    expect(pool.acquire()?.codexFingerprintMode).toBe("session");
+  });
+});

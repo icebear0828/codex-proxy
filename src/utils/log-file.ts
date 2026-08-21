@@ -32,6 +32,14 @@ export function installFileLogger(opts: InstallFileLoggerOptions): FileLoggerHan
   process.stdout.write = wrap(originalStdout, process.stdout, fd);
   process.stderr.write = wrap(originalStderr, process.stderr, fd);
 
+  const errorHandler = (error: unknown): void => {
+    if (isIgnorableStreamError(error)) return;
+    throw error;
+  };
+
+  process.stdout.on("error", errorHandler);
+  process.stderr.on("error", errorHandler);
+
   let uninstalled = false;
 
   return {
@@ -41,6 +49,8 @@ export function installFileLogger(opts: InstallFileLoggerOptions): FileLoggerHan
       uninstalled = true;
       process.stdout.write = originalStdout;
       process.stderr.write = originalStderr;
+      process.stdout.off("error", errorHandler);
+      process.stderr.off("error", errorHandler);
       try {
         closeSync(fd);
       } catch {
@@ -60,9 +70,23 @@ function wrap(original: WriteFn, stream: NodeJS.WriteStream, fd: number): WriteF
     } catch {
       // never let the file sink break the caller — stdout/stderr must stay live
     }
-    return (original as (...a: unknown[]) => boolean).apply(stream, args);
+    try {
+      return (original as (...a: unknown[]) => boolean).apply(stream, args);
+    } catch (error) {
+      if (isIgnorableStreamError(error)) return false;
+      throw error;
+    }
   };
   return wrapped as WriteFn;
+}
+
+function isIgnorableStreamError(error: unknown): boolean {
+  if (error === null || typeof error !== "object" || !("code" in error)) {
+    return false;
+  }
+
+  const code = (error as { code?: unknown }).code;
+  return code === "EPIPE" || code === "ECONNRESET";
 }
 
 function toBuffer(chunk: unknown, encoding: BufferEncoding | undefined): Buffer {

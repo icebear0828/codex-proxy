@@ -35,6 +35,7 @@ const HealthCheckSchema = z.object({
 }).optional();
 const BatchStatusSchema = z.object({ ids: z.array(z.string()).min(1), status: z.enum(["active", "disabled"]) });
 const LabelSchema = z.object({ label: z.string().max(64).nullable() });
+const CodexFingerprintSchema = z.object({ mode: z.enum(["off", "session"]) });
 export function createAccountRoutes(pool: AccountPool, scheduler: RefreshScheduler, cookieJar?: CookieJar, proxyPool?: ProxyPool): Hono {
   const app = new Hono();
   const importSvc = new AccountImportService(pool, scheduler, {
@@ -157,6 +158,17 @@ export function createAccountRoutes(pool: AccountPool, scheduler: RefreshSchedul
     if (!parsed.success) { c.status(400); return c.json({ error: "Invalid request", details: parsed.error.issues }); }
     if (!pool.setLabel(c.req.param("id"), parsed.data.label)) { c.status(404); return c.json({ error: "Account not found" }); }
     return c.json({ success: true });
+  });
+
+  app.patch("/auth/accounts/:id/codex-fingerprint", async (c) => {
+    const body = await c.req.json();
+    const parsed = CodexFingerprintSchema.safeParse(body);
+    if (!parsed.success) { c.status(400); return c.json({ error: "Invalid request", details: parsed.error.issues }); }
+    if (!pool.setCodexFingerprintMode(c.req.param("id"), parsed.data.mode)) {
+      c.status(404);
+      return c.json({ error: "Account not found" });
+    }
+    return c.json({ success: true, mode: parsed.data.mode });
   });
 
   app.get("/auth/accounts", (c) => {

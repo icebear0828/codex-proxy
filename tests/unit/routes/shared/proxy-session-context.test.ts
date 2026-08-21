@@ -167,4 +167,28 @@ describe("buildProxySessionContext", () => {
       inlineFunctionCallIds: ["call_a"],
     });
   });
+
+  it("derives correct variantHash and currentInstructions when system instructions are inlined in input[0]", () => {
+    const affinityMap = makeAffinityMap();
+    const request = makeProxyRequest({
+      clientConversationId: "client-thread",
+      codexRequest: makeCodexRequest({
+        instructions: "",
+        input: [
+          { role: "developer", content: [{ type: "input_text", text: "inlined system prompt" }] },
+          { role: "user", content: "hello" },
+        ],
+        tools: [{ type: "function", name: "lookup" }],
+      }),
+    });
+
+    const context = buildProxySessionContext({ request, affinityMap });
+    expect(context.currentInstructions).toBe("inlined system prompt");
+    const expectedVariantHash = computeVariantHash(
+      "inlined system prompt",
+      request.codexRequest.tools,
+      buildVariantIdentity(request.codexRequest, resolvePromptCacheIdentity(request.codexRequest, "client-thread")),
+    );
+    expect(context.variantHash).toBe(expectedVariantHash);
+  });
 });

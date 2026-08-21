@@ -17,6 +17,7 @@ import type {
   AccountEntry,
   AccountInfo,
   AcquiredAccount,
+  CodexFingerprintMode,
   CodexQuota,
 } from "./types.js";
 
@@ -97,6 +98,7 @@ export class AccountPool {
       input_tokens?: number;
       output_tokens?: number;
       cached_tokens?: number;
+      estimated_cost_usd?: number;
       image_input_tokens?: number;
       image_output_tokens?: number;
       image_request_attempted?: boolean;
@@ -175,6 +177,12 @@ export class AccountPool {
     return this.registry.setLabel(entryId, label);
   }
 
+  setCodexFingerprintMode(entryId: string, mode: CodexFingerprintMode): boolean {
+    const changed = this.registry.setCodexFingerprintMode(entryId, mode);
+    if (changed) this.evictWsPool(entryId);
+    return changed;
+  }
+
   // ── Status mutations (coordinate registry + lifecycle lock clear) ─
 
   /** Register a callback invoked when an account is marked "expired" (e.g. 401 from upstream). */
@@ -207,6 +215,17 @@ export class AccountPool {
     options?: { retryAfterSec?: number; resetsAtSec?: number; countRequest?: boolean },
   ): void {
     if (this.registry.applyRateLimit429(entryId, this.rateLimitBackoffSeconds, options)) {
+      this.lifecycle.clearLock(entryId);
+      this.evictWsPool(entryId);
+    }
+  }
+
+  applyAdditionalRateLimit429(
+    entryId: string,
+    limitId: string,
+    options?: { retryAfterSec?: number; resetsAtSec?: number; countRequest?: boolean },
+  ): void {
+    if (this.registry.applyAdditionalRateLimit429(entryId, limitId, this.rateLimitBackoffSeconds, options)) {
       this.lifecycle.clearLock(entryId);
       this.evictWsPool(entryId);
     }

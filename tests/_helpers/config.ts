@@ -18,11 +18,6 @@ export interface MockConfigOverrides {
   official_agent?: Partial<AppConfig["official_agent"]>;
 }
 
-/**
- * Create a complete mock AppConfig with optional section-level overrides.
- * Each section is merged individually so you only need to specify the
- * fields you want to change, e.g. createMockConfig({ auth: { rotation_strategy: "sticky" } }).
- */
 export function createMockConfig(overrides?: MockConfigOverrides): AppConfig {
   const base: AppConfig = {
     api: {
@@ -30,6 +25,7 @@ export function createMockConfig(overrides?: MockConfigOverrides): AppConfig {
       timeout_seconds: 60,
     },
     client: {
+      profile: "codex_desktop",
       originator: "Codex Desktop",
       app_version: "260202.0859",
       build_number: "517",
@@ -39,6 +35,7 @@ export function createMockConfig(overrides?: MockConfigOverrides): AppConfig {
     },
     model: {
       default: "gpt-5.4",
+      image_host_model: "gpt-5.5",
       default_reasoning_effort: null,
       default_service_tier: null,
       inject_desktop_context: false,
@@ -74,6 +71,7 @@ export function createMockConfig(overrides?: MockConfigOverrides): AppConfig {
       transport: "auto",
       force_http11: false,
     },
+
     quota: {
       refresh_interval_minutes: 5,
       concurrency: 10,
@@ -104,10 +102,11 @@ export function createMockConfig(overrides?: MockConfigOverrides): AppConfig {
   });
 }
 
+
 /** Create a complete mock FingerprintConfig with optional overrides. */
 export function createMockFingerprint(overrides?: Partial<FingerprintConfig>): FingerprintConfig {
   const base: FingerprintConfig = {
-    user_agent_template: "CodexDesktop/{version} ({platform}; {arch})",
+    user_agent_template: "Codex Desktop/{version} ({platform}; {arch})",
     auth_domains: ["chatgpt.com"],
     auth_domain_exclusions: [],
     header_order: [
@@ -116,6 +115,7 @@ export function createMockFingerprint(overrides?: Partial<FingerprintConfig>): F
       "originator",
       "User-Agent",
       "sec-ch-ua",
+
       "Content-Type",
       "Accept",
       "Accept-Encoding",

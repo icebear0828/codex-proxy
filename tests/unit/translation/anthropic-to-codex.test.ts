@@ -50,6 +50,7 @@ vi.mock("@src/models/model-store.js", () => ({
 
 import { translateAnthropicToCodexRequest } from "@src/translation/anthropic-to-codex.js";
 import { anthropicToolsToCodex, anthropicToolChoiceToCodex } from "@src/translation/tool-format.js";
+import type { ModelConfigOverride } from "@src/translation/shared-utils.js";
 import type { AnthropicMessagesRequest } from "@src/types/anthropic.js";
 
 function makeRequest(overrides: Partial<AnthropicMessagesRequest> = {}): AnthropicMessagesRequest {
@@ -59,6 +60,24 @@ function makeRequest(overrides: Partial<AnthropicMessagesRequest> = {}): Anthrop
     messages: [{ role: "user", content: "Hello" }],
     ...overrides,
   } as AnthropicMessagesRequest;
+}
+
+/**
+ * Build a ModelConfigOverride to pass directly into translateAnthropicToCodexRequest,
+ * avoiding a dependency on the global config mock. Defaults mirror the schema
+ * defaults; override per case.
+ */
+function makeModelConfig(
+  overrides: Partial<ModelConfigOverride> = {},
+): ModelConfigOverride {
+  return {
+    default_reasoning_effort: null,
+    default_service_tier: null,
+    inject_desktop_context: false,
+    suppress_desktop_directives: false,
+    system_prompt_strategy: "instructions",
+    ...overrides,
+  };
 }
 
 describe("translateAnthropicToCodexRequest", () => {
@@ -478,6 +497,156 @@ describe("translateAnthropicToCodexRequest", () => {
         makeRequest({ model: "gpt-5.4-high" }),
       );
       expect(result.reasoning?.effort).toBe("high");
+    });
+  });
+
+  // ── system_prompt_strategy switch ──────────────────────────────────────
+  // buildInstructions is mocked as identity in this file ((text) => text), so
+  // `instructions` equals whatever text was passed in — useful for asserting
+  // whether the user system prompt landed in `instructions`.
+  describe("system_prompt_strategy", () => {
+    it("case 1: baseline default — system goes into instructions", () => {
+      const result = translateAnthropicToCodexRequest(
+        makeRequest({ system: "hello" }),
+        makeModelConfig(),
+      );
+
+      expect(result.instructions).toContain("hello");
+      expect(result.input.length).toBe(1);
+      const item = result.input[0];
+      expect(item && "role" in item && item.role).toBe("user");
+      expect(item && "content" in item && item.content).toBe("Hello");
+    });
+
+    it("case 2: developer_inline moves system to input[0] as a developer message", () => {
+      const result = translateAnthropicToCodexRequest(
+        makeRequest({ system: "hello" }),
+        makeModelConfig({ system_prompt_strategy: "developer_inline" }),
+      );
+
+      expect(result.instructions).not.toContain("hello");
+      expect(result.input.length).toBe(2);
+      const first = result.input[0];
+      const second = result.input[1];
+      expect(first && "role" in first && first.role).toBe("developer");
+      expect(first && "content" in first && Array.isArray(first.content) && first.content[0]?.text).toBe("hello");
+      expect(second && "role" in second && second.role).toBe("user");
+    });
+
+    it("case 3: system_inline moves system to input[0] as a system message", () => {
+      const result = translateAnthropicToCodexRequest(
+        makeRequest({ system: "hello" }),
+        makeModelConfig({ system_prompt_strategy: "system_inline" }),
+      );
+
+      const first = result.input[0];
+      expect(first && "role" in first && first.role).toBe("system");
+      expect(first && "content" in first && Array.isArray(first.content) && first.content[0]?.text).toBe("hello");
+      expect(result.input.length).toBe(2);
+      expect(result.instructions).not.toContain("hello");
+    });
+
+    it("case 4: multi-block system array is joined", () => {
+      const result = translateAnthropicToCodexRequest(
+        makeRequest({
+          system: [
+            { type: "text" as const, text: "a" },
+            { type: "text" as const, text: "b" },
+          ],
+        }),
+        makeModelConfig({ system_prompt_strategy: "developer_inline" }),
+      );
+
+      const first = result.input[0];
+      expect(first && "content" in first && Array.isArray(first.content) && first.content[0]?.text).toBe("a\n\nb");
+    });
+
+    it("case 5: no unshift when system is absent", () => {
+      const result = translateAnthropicToCodexRequest(
+        makeRequest({ system: undefined }),
+        makeModelConfig({ system_prompt_strategy: "developer_inline" }),
+      );
+
+      expect(result.input.length).toBe(1);
+      const item = result.input[0];
+      expect(item && "role" in item && item.role).toBe("user");
+    });
+
+    it("case 5b: no unshift when all blocks are blank", () => {
+      const result = translateAnthropicToCodexRequest(
+        makeRequest({
+          system: [
+            { type: "text" as const, text: "" },
+            { type: "text" as const, text: "   " },
+          ],
+        }),
+        makeModelConfig({ system_prompt_strategy: "developer_inline" }),
+      );
+
+      expect(result.input.length).toBe(1);
+      const item = result.input[0];
+      expect(item && "role" in item && item.role).toBe("user");
+    });
+
+    it("case 6: billing header is still filtered", () => {
+      const result = translateAnthropicToCodexRequest(
+        makeRequest({
+          system: [
+            { type: "text" as const, text: "x-anthropic-billing-header: cc_version=2.1.185;" },
+            { type: "text" as const, text: "real prompt" },
+          ],
+        }),
+        makeModelConfig({ system_prompt_strategy: "developer_inline" }),
+      );
+
+      const first = result.input[0];
+      const text = first && "content" in first && Array.isArray(first.content) ? first.content[0]?.text : "";
+      expect(text).toBe("real prompt");
+      expect(text).not.toContain("billing");
+      expect(text).not.toContain("cc_version");
+    });
+
+    it("case 7: inline item shape is strict — only role+content, no type field", () => {
+      const result = translateAnthropicToCodexRequest(
+        makeRequest({ system: "x" }),
+        makeModelConfig({ system_prompt_strategy: "developer_inline" }),
+      );
+
+      const first = result.input[0];
+      expect(first).toBeDefined();
+      expect(first).not.toHaveProperty("type");
+      expect(Object.keys(first!).sort()).toEqual(["content", "role"]);
+      const contentPart = first && "content" in first && Array.isArray(first.content) ? first.content[0] : undefined;
+      expect(contentPart?.type).toBe("input_text");
+      expect(contentPart?.text).toBe("x");
+    });
+
+    // Contract test: in inline mode the user system goes through the inline
+    // item, and `instructions` gets whatever buildInstructions("", cfg)
+    // returns — i.e. user content never lands in `instructions`, leaving room
+    // for desktop-context injection (inject_desktop_context can still write
+    // to that field). Note: this file mocks buildInstructions as identity, so
+    // passing an empty string is observable as "". buildInstructions' real
+    // context-injection behavior is covered by shared-utils.test.ts; this
+    // test only verifies the contract.
+    it("case 8: developer_inline keeps user content out of instructions (leaves room for ctx injection)", () => {
+      const cfg = makeModelConfig({
+        system_prompt_strategy: "developer_inline",
+        inject_desktop_context: true,
+      });
+      const result = translateAnthropicToCodexRequest(
+        makeRequest({ system: "hello" }),
+        cfg,
+      );
+
+      // Empty string passed to buildInstructions -> identity mock -> instructions === ""
+      expect(result.instructions).toBe("");
+      expect(result.instructions).not.toContain("hello");
+
+      const first = result.input[0];
+      expect(first && "role" in first && first.role).toBe("developer");
+      const firstContent = first && "content" in first && Array.isArray(first.content) ? first.content[0] : undefined;
+      expect(firstContent?.text).toBe("hello");
     });
   });
 

@@ -12,9 +12,16 @@ import { createOllamaAdminRoutes } from "./admin/ollama.js";
 import { createUsageStatsRoutes } from "./admin/usage-stats.js";
 import { createLogRoutes } from "./admin/logs.js";
 import { createErrorLogRoutes } from "./admin/error-logs.js";
+import { createClientKeyAdminRoutes } from "./admin/client-keys.js";
+import { getConfig } from "../config.js";
 import type { UsageStatsStore } from "../auth/usage-stats.js";
+import type { ClientKeyPool } from "../auth/client-key-pool.js";
 
-export function createWebRoutes(accountPool: AccountPool, usageStats: UsageStatsStore): Hono {
+export function createWebRoutes(
+  accountPool: AccountPool,
+  usageStats: UsageStatsStore,
+  clientKeyPool?: ClientKeyPool,
+): Hono {
   const app = new Hono();
 
   const publicDir = getPublicDir();
@@ -51,6 +58,15 @@ export function createWebRoutes(accountPool: AccountPool, usageStats: UsageStats
   app.route("/", createUsageStatsRoutes(accountPool, usageStats));
   app.route("/", createLogRoutes());
   app.route("/", createErrorLogRoutes());
+  if (clientKeyPool) {
+    app.route(
+      "/",
+      createClientKeyAdminRoutes(
+        clientKeyPool,
+        () => getConfig().server.proxy_api_key ?? accountPool.getProxyApiKey() ?? null,
+      ),
+    );
+  }
 
   return app;
 }

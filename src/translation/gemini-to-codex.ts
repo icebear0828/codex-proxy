@@ -164,14 +164,15 @@ export function translateGeminiToCodexRequest(
   modelConfig?: ModelConfigOverride,
 ): GeminiTranslationResult {
   // Extract system instructions
-  let userInstructions: string;
+  let rawUserInstructions = "";
   if (req.systemInstruction) {
-    userInstructions = extractTextFromParts(req.systemInstruction.parts);
-  } else {
-    userInstructions = "You are a helpful assistant.";
+    rawUserInstructions = extractTextFromParts(req.systemInstruction.parts);
   }
+  const userInstructions = rawUserInstructions || "You are a helpful assistant.";
   const cfg = modelConfig ?? getConfig().model;
-  const instructions = buildInstructions(userInstructions, cfg);
+  const strategy = cfg.system_prompt_strategy ?? "instructions";
+  const inlineSystem = strategy === "developer_inline" || strategy === "system_inline";
+  const instructions = buildInstructions(inlineSystem ? "" : userInstructions, cfg);
 
   // Build input items from contents
   const input: CodexInputItem[] = [];
@@ -187,6 +188,15 @@ export function translateGeminiToCodexRequest(
   // Ensure at least one input message
   if (input.length === 0) {
     input.push({ role: "user", content: "" });
+  }
+
+  // Inline strategy: prepend user system prompt as the first input item
+  if (inlineSystem && rawUserInstructions) {
+    const role = strategy === "developer_inline" ? "developer" : "system";
+    input.unshift({
+      role,
+      content: [{ type: "input_text", text: rawUserInstructions }],
+    });
   }
 
   // Resolve model (suffix parsing extracts service_tier and reasoning_effort)

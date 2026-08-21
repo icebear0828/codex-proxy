@@ -3,6 +3,7 @@ import type { StatusCode } from "hono/utils/http-status";
 import type { ChainAdvanceTicket, SessionAffinityMap } from "../../auth/session-affinity.js";
 import type { AccountPool } from "../../auth/account-pool.js";
 import { clearCfChallengeCooldown } from "../../auth/cf-challenge-cooldown.js";
+import { annotateUsageCost } from "./proxy-handler-utils.js";
 import type { CodexApi, WsPoolContext } from "../../proxy/codex-api.js";
 import { CodexApiError } from "../../proxy/codex-api.js";
 import type { CookieJar } from "../../proxy/cookie-jar.js";
@@ -286,7 +287,7 @@ export async function retryNonStreamingEmptyResponse(
     `[${tag}] Account ${currentEntryId} (${email}) | Empty response (attempt ${attempt}/${maxRetries + 1}), switching account...`,
   );
   accountPool.recordEmptyResponse(currentEntryId);
-  releaseAccount(accountPool, currentEntryId, annotateImageGenOutcome(collectErr.usage, req.expectsImageGen), released);
+  releaseAccount(accountPool, currentEntryId, annotateUsageCost(req.model, annotateImageGenOutcome(collectErr.usage, req.expectsImageGen)), released);
   restoreImplicitResumeRequest?.();
 
   const acquired = acquireAccount(accountPool, req.codexRequest.model, undefined, tag);
@@ -298,7 +299,14 @@ export async function retryNonStreamingEmptyResponse(
     };
   }
 
-  const nextApi = buildCodexApi(acquired.token, acquired.accountId, cookieJar, acquired.entryId, proxyPool);
+  const nextApi = buildCodexApi(
+    acquired.token,
+    acquired.accountId,
+    cookieJar,
+    acquired.entryId,
+    proxyPool,
+    acquired.codexFingerprintMode ?? "off",
+  );
   setActiveAccount?.(acquired.entryId, nextApi);
 
   const retryStartMs = nowMs();
@@ -404,6 +412,7 @@ export interface ReleaseNonStreamingSuccessAccountOptions {
   entryId: string;
   usage: UsageInfo;
   expectsImageGen?: boolean;
+  model?: string;
   released: Set<string>;
 }
 
@@ -413,11 +422,12 @@ export function releaseNonStreamingSuccessAccount(options: ReleaseNonStreamingSu
     entryId,
     usage,
     expectsImageGen,
+    model,
     released,
   } = options;
 
   clearCfChallengeCooldown(entryId);
-  releaseAccount(accountPool, entryId, annotateImageGenOutcome(usage, expectsImageGen), released);
+  releaseAccount(accountPool, entryId, annotateUsageCost(model, annotateImageGenOutcome(usage, expectsImageGen)), released);
 }
 
 // ── 10. non-streaming-usage-log ──────────────────────────────────

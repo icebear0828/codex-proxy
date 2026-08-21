@@ -8,12 +8,75 @@ import { getConfig, getFingerprint, type AppConfig, type FingerprintConfig } fro
 import { extractChatGptAccountId } from "../auth/jwt-utils.js";
 import type { AppContext } from "../context.js";
 
+export type ClientProfile = "codex_cli" | "codex_desktop" | "opencode" | "pi" | "custom";
+
+export interface ProfilePreset {
+  originator: string;
+  userAgentTemplate: string;
+  includeBrowserHeaders: boolean;
+}
+
+export const PROFILE_PRESETS: Record<Exclude<ClientProfile, "custom">, ProfilePreset> = {
+  codex_cli: {
+    originator: "codex_cli_rs",
+    userAgentTemplate: "codex_cli_rs/{version} ({platform} {arch})",
+    includeBrowserHeaders: false,
+  },
+  codex_desktop: {
+    originator: "Codex Desktop",
+    userAgentTemplate: "Codex Desktop/{version} ({platform}; {arch})",
+    includeBrowserHeaders: true,
+  },
+  opencode: {
+    originator: "opencode",
+    userAgentTemplate: "opencode/{version} ({platform} {arch})",
+    includeBrowserHeaders: false,
+  },
+  pi: {
+    originator: "pi",
+    userAgentTemplate: "pi/{version} ({platform} {arch})",
+    includeBrowserHeaders: false,
+  },
+};
+
 /** Resolve config + fingerprint from optional context or fall back to singletons. */
 function resolve(ctx?: AppContext): { config: AppConfig; fp: FingerprintConfig } {
   return {
     config: ctx?.config ?? getConfig(),
     fp: ctx?.fingerprint ?? getFingerprint(),
   };
+}
+
+function getProfile(config: AppConfig): ClientProfile {
+  return config.client.profile ?? "codex_cli";
+}
+
+function resolveOriginator(config: AppConfig): string {
+  const profile = getProfile(config);
+  if (profile !== "custom" && profile in PROFILE_PRESETS) {
+    return PROFILE_PRESETS[profile].originator;
+  }
+  return config.client.originator || "codex_cli_rs";
+}
+
+function resolveUserAgent(config: AppConfig, fp: FingerprintConfig): string {
+  const profile = getProfile(config);
+  let template = fp.user_agent_template;
+  if (profile !== "custom" && profile in PROFILE_PRESETS) {
+    template = PROFILE_PRESETS[profile].userAgentTemplate;
+  }
+  return template
+    .replace("{version}", config.client.app_version)
+    .replace("{platform}", config.client.platform)
+    .replace("{arch}", config.client.arch);
+}
+
+function shouldIncludeBrowserHeaders(config: AppConfig): boolean {
+  const profile = getProfile(config);
+  if (profile !== "custom" && profile in PROFILE_PRESETS) {
+    return PROFILE_PRESETS[profile].includeBrowserHeaders;
+  }
+  return config.client.originator === "Codex Desktop";
 }
 
 /**
@@ -47,28 +110,24 @@ function buildSecChUa(config: AppConfig): string {
 }
 
 /**
- * Build the User-Agent string from config + fingerprint template.
- */
-function buildUserAgent(config: AppConfig, fp: FingerprintConfig): string {
-  return fp.user_agent_template
-    .replace("{version}", config.client.app_version)
-    .replace("{platform}", config.client.platform)
-    .replace("{arch}", config.client.arch);
-}
-
-/**
  * Build raw headers (unordered) with all fingerprint fields.
  * Does NOT include Authorization, ChatGPT-Account-Id, Content-Type, or Accept.
  */
 function buildRawDefaultHeaders(config: AppConfig, fp: FingerprintConfig): Record<string, string> {
   const raw: Record<string, string> = {};
+  const includeBrowser = shouldIncludeBrowserHeaders(config);
 
-  raw["User-Agent"] = buildUserAgent(config, fp);
-  raw["sec-ch-ua"] = buildSecChUa(config);
+  raw["User-Agent"] = resolveUserAgent(config, fp);
+  if (includeBrowser) {
+    raw["sec-ch-ua"] = buildSecChUa(config);
+  }
 
   // Add static default headers (Accept-Encoding, Accept-Language, sec-fetch-*, etc.)
   if (fp.default_headers) {
     for (const [key, value] of Object.entries(fp.default_headers)) {
+      if (!includeBrowser && key.toLowerCase().startsWith("sec-")) {
+        continue;
+      }
       raw[key] = value;
     }
   }
@@ -101,7 +160,7 @@ export function buildHeaders(
   const acctId = accountId ?? extractChatGptAccountId(token);
   if (acctId) raw["ChatGPT-Account-Id"] = acctId;
 
-  raw["originator"] = config.client.originator;
+  raw["originator"] = resolveOriginator(config);
 
   // Merge default headers (User-Agent, sec-ch-ua, Accept-Encoding, etc.)
   const defaults = buildRawDefaultHeaders(config, fp);
@@ -125,7 +184,7 @@ export function buildHeadersWithContentType(
   const acctId = accountId ?? extractChatGptAccountId(token);
   if (acctId) raw["ChatGPT-Account-Id"] = acctId;
 
-  raw["originator"] = config.client.originator;
+  raw["originator"] = resolveOriginator(config);
 
   // Merge default headers
   const defaults = buildRawDefaultHeaders(config, fp);
@@ -138,3 +197,4 @@ export function buildHeadersWithContentType(
   // Single orderHeaders call (no double-sorting)
   return orderHeaders(raw, fp.header_order);
 }
+

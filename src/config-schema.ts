@@ -71,21 +71,45 @@ export const ConfigSchema = z.object({
     timeout_seconds: z.number().min(1).default(60),
   }),
   client: z.object({
-    originator: z.string().default("Codex Desktop"),
-    app_version: z.string().default("260202.0859"),
+    profile: z.enum(["codex_cli", "codex_desktop", "opencode", "pi", "custom"]).default("codex_cli"),
+    originator: z.string().default("codex_cli_rs"),
+    app_version: z.string().default("0.1.0"),
     build_number: z.string().default("517"),
     platform: z.string().default("darwin"),
     arch: z.string().default("arm64"),
     chromium_version: z.string().default("136"),
   }),
+
   model: z.object({
     default: z.string().default("gpt-5.6-sol"),
+    /** Codex chat model that hosts `POST /v1/images/generations` requests via the
+     *  Responses `image_generation` tool. Cannot be `gpt-image-2` — that name is
+     *  only the Images API's client-facing identifier, not a routable Codex model. */
+    image_host_model: z.string().trim().min(1)
+      .refine((model) => model.toLowerCase() !== "gpt-image-2", {
+        message: "model.image_host_model must be a Codex chat model, not gpt-image-2",
+      })
+      .default("gpt-5.5"),
     default_reasoning_effort: z.string().nullable().default(null),
     default_service_tier: z.string().nullable().default(null),
+    default_tools: z.array(z.string().trim().min(1)).default([]),
     aliases: z.record(z.string(), z.string()).default({}),
     custom_models: z.array(CustomModelSchema).default([]),
     inject_desktop_context: z.boolean().default(false),
     suppress_desktop_directives: z.boolean().default(true),
+    /** Allow dashboard clients to change how system prompts are sent upstream. */
+    allow_client_system_prompt_strategy: z.boolean().default(false),
+    /**
+     * How a user-supplied system prompt is delivered to the Codex backend:
+     *   instructions     - default; user system goes into the top-level `instructions` field
+     *   developer_inline - user system is moved to input[0] as a developer-role message
+     *   system_inline    - user system is moved to input[0] as a system-role message
+     * The two `_inline` modes can bypass the Codex backend's built-in base prompt prior
+     * in cases where the `instructions` field is overridden by server-injected context.
+     */
+    system_prompt_strategy: z
+      .enum(["instructions", "developer_inline", "system_inline"])
+      .default("instructions"),
   }),
   auth: z.object({
     jwt_token: z.string().nullable().default(null),
@@ -119,6 +143,7 @@ export const ConfigSchema = z.object({
     }, {
       message: "Invalid hostname format. Use bare hostnames like 'example.com' or '192.168.1.1'",
     })).default([]),
+    cors_allow_null_origin: z.boolean().default(false),
   }),
   logs: z.object({
     enabled: z.boolean().default(false),

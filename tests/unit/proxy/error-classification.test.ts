@@ -6,6 +6,8 @@ import {
   isCfChallengeError,
   isCfPathBlockError,
   isQuotaExhaustedError,
+  isServerOverloadedError,
+  isEarlyServerError,
   isTokenInvalidError,
   isModelNotSupportedError,
   isUnansweredFunctionCallError,
@@ -62,6 +64,38 @@ describe("isQuotaExhaustedError", () => {
   });
 });
 
+describe("isServerOverloadedError", () => {
+  it("accepts only a structured server_is_overloaded 503", () => {
+    expect(isServerOverloadedError(new CodexApiError(503, JSON.stringify({
+      error: { code: "server_is_overloaded" },
+    })))).toBe(true);
+    expect(isServerOverloadedError(new CodexApiError(503, JSON.stringify({
+      error: { type: "server_is_overloaded" },
+    })))).toBe(true);
+    expect(isServerOverloadedError(new CodexApiError(503, "database unavailable"))).toBe(false);
+    expect(isServerOverloadedError(new CodexApiError(502, JSON.stringify({
+      error: { code: "server_is_overloaded" },
+    })))).toBe(false);
+  });
+});
+
+describe("isEarlyServerError", () => {
+  it("accepts only structured server_error 500 responses", () => {
+    expect(isEarlyServerError(new CodexApiError(500, JSON.stringify({
+      error: { code: "server_error", message: "internal" },
+    })))).toBe(true);
+    expect(isEarlyServerError(new CodexApiError(500, JSON.stringify({
+      error: { type: "server_error", message: "internal" },
+    })))).toBe(true);
+    expect(isEarlyServerError(new CodexApiError(500, "internal"))).toBe(false);
+    expect(isEarlyServerError(new CodexApiError(503, JSON.stringify({
+      error: { code: "server_error" },
+    })))).toBe(false);
+    expect(isEarlyServerError(new CodexApiError(500, JSON.stringify({
+      error: { code: "server_is_overloaded" },
+    })))).toBe(false);
+  });
+});
 describe("isBanError", () => {
   it("returns true for non-CF 403", () => {
     const err = new CodexApiError(403, '{"detail": "Your account has been flagged"}');

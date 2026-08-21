@@ -27,6 +27,7 @@ import { fetchUsage } from "./codex-usage.js";
 import { fetchModels, probeEndpoint as probeEndpointFn } from "./codex-models.js";
 import type { CookieJar } from "./cookie-jar.js";
 import type { BackendModelEntry } from "../models/model-store.js";
+import type { CodexFingerprintMode } from "../auth/types.js";
 
 const X_CODEX_TURN_METADATA_HEADER = "x-codex-turn-metadata";
 const X_CODEX_BETA_FEATURES_HEADER = "x-codex-beta-features";
@@ -68,6 +69,10 @@ import {
   type CodexUsageResponse,
 } from "./codex-types.js";
 
+export interface CodexApiOptions {
+  codexFingerprintMode?: CodexFingerprintMode;
+}
+
 export class CodexApi {
   readonly tag = "codex" as const;
 
@@ -78,6 +83,7 @@ export class CodexApi {
   private proxyUrl: string | null | undefined;
   private baseUrl: string | undefined;
   private transport: TlsTransport | undefined;
+  private codexFingerprintMode: CodexFingerprintMode = "off";
 
   constructor(
     token: string,
@@ -87,6 +93,7 @@ export class CodexApi {
     proxyUrl?: string | null,
     baseUrl?: string,
     transport?: TlsTransport,
+    options?: CodexApiOptions,
   ) {
     this.token = token;
     this.accountId = accountId;
@@ -95,6 +102,7 @@ export class CodexApi {
     this.proxyUrl = proxyUrl;
     this.baseUrl = baseUrl;
     this.transport = transport;
+    this.codexFingerprintMode = options?.codexFingerprintMode === "session" ? "session" : "off";
   }
 
   private resolveBaseUrl(): string {
@@ -107,6 +115,7 @@ export class CodexApi {
 
   private buildConversationIdentity(request: CodexResponsesRequest): {
     conversationId: string | null;
+    sessionId: string | null;
     windowId: string | null;
   } {
     const clientConversationId =
@@ -119,10 +128,24 @@ export class CodexApi {
     const clientWindowId = this.firstRequestString(request, X_CODEX_WINDOW_ID_HEADER);
     return {
       conversationId,
+      sessionId: this.codexFingerprintMode === "session"
+        ? this.buildAccountStableIdentity("session")
+        : conversationId,
       windowId: clientWindowId
         ? this.buildAccountScopedIdentity("window", clientWindowId)
         : conversationId ? `${conversationId}:0` : null,
     };
+  }
+
+  private buildAccountStableIdentity(kind: "session"): string {
+    const accountScope = this.entryId ?? this.accountId ?? "anonymous";
+    const digest = createHash("sha256")
+      .update(kind)
+      .update("\0")
+      .update(accountScope)
+      .digest("hex")
+      .slice(0, 32);
+    return `cs_${digest}`;
   }
 
   private buildAccountScopedIdentity(kind: "conversation" | "window", clientValue: string): string {
@@ -173,11 +196,13 @@ export class CodexApi {
   private buildCodexClientMetadata(
     request: CodexResponsesRequest,
     installationId: string,
+    sessionId: string | null,
     windowId: string | null,
   ): Record<string, string> {
     const metadata: Record<string, string> = {
       ...(request.client_metadata ?? {}),
       "x-codex-installation-id": installationId,
+      ...(sessionId ? { session_id: sessionId } : {}),
       ...(windowId ? { [X_CODEX_WINDOW_ID_HEADER]: windowId } : {}),
     };
     const turnMetadata = this.firstRequestString(request, X_CODEX_TURN_METADATA_HEADER);
@@ -323,13 +348,13 @@ export class CodexApi {
     headers["OpenAI-Beta"] = "responses_websockets=2026-02-06";
     headers["x-openai-internal-codex-residency"] = "us";
     headers["x-client-request-id"] = crypto.randomUUID();
-    const installationId = getInstallationId();
+    const installationId = getInstallationId(this.entryId ?? this.accountId);
     headers["x-codex-installation-id"] = installationId;
     const identity = this.buildConversationIdentity(request);
     if (identity.conversationId) {
       headers["x-client-request-id"] = identity.conversationId;
-      headers["session_id"] = identity.conversationId;
     }
+    if (identity.sessionId) headers["session_id"] = identity.sessionId;
     if (identity.windowId) headers["x-codex-window-id"] = identity.windowId;
     this.applyCodexContextHeaders(headers, request);
     const openAiSubagent = normalizeOpenAISubagent(request.client_metadata?.[OPENAI_SUBAGENT_HEADER]);
@@ -355,7 +380,12 @@ export class CodexApi {
     if (serviceTier) wsRequest.service_tier = serviceTier;
     if (identity.conversationId) wsRequest.prompt_cache_key = identity.conversationId;
     if (request.include?.length) wsRequest.include = request.include;
-    wsRequest.client_metadata = this.buildCodexClientMetadata(request, installationId, identity.windowId);
+    wsRequest.client_metadata = this.buildCodexClientMetadata(
+      request,
+      installationId,
+      identity.sessionId,
+      identity.windowId,
+    );
 
     return createWebSocketResponse(wsUrl, headers, wsRequest, signal, this.proxyUrl, onRateLimits, poolCtx);
   }
@@ -379,13 +409,14 @@ export class CodexApi {
     headers["OpenAI-Beta"] = "responses_websockets=2026-02-06";
     headers["x-openai-internal-codex-residency"] = "us";
     headers["x-client-request-id"] = crypto.randomUUID();
-    const installationId = getInstallationId();
+    const installationId = getInstallationId(this.entryId ?? this.accountId);
     headers["x-codex-installation-id"] = installationId;
+
     const identity = this.buildConversationIdentity(request);
     if (identity.conversationId) {
       headers["x-client-request-id"] = identity.conversationId;
-      headers["session_id"] = identity.conversationId;
     }
+    if (identity.sessionId) headers["session_id"] = identity.sessionId;
     if (identity.windowId) headers["x-codex-window-id"] = identity.windowId;
     this.applyCodexContextHeaders(headers, request);
     const openAiSubagent = normalizeOpenAISubagent(request.client_metadata?.[OPENAI_SUBAGENT_HEADER]);
@@ -409,7 +440,12 @@ export class CodexApi {
       ...bodyFields,
       ...(upstreamServiceTier ? { service_tier: upstreamServiceTier } : {}),
       ...(identity.conversationId ? { prompt_cache_key: identity.conversationId } : {}),
-      client_metadata: this.buildCodexClientMetadata(request, installationId, identity.windowId),
+      client_metadata: this.buildCodexClientMetadata(
+        request,
+        installationId,
+        identity.sessionId,
+        identity.windowId,
+      ),
     };
     const body = JSON.stringify(bodyWithMetadata);
 
@@ -473,7 +509,7 @@ export class CodexApi {
     headers["OpenAI-Beta"] = "responses_websockets=2026-02-06";
     headers["x-openai-internal-codex-residency"] = "us";
     headers["x-client-request-id"] = crypto.randomUUID();
-    headers["x-codex-installation-id"] = getInstallationId();
+    headers["x-codex-installation-id"] = getInstallationId(this.entryId ?? this.accountId);
 
     const body = JSON.stringify(request);
 

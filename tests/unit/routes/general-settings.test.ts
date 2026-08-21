@@ -9,10 +9,14 @@ const mockConfig = {
   tls: { proxy_url: null as string | null, force_http11: false },
   model: {
     default: "gpt-5.4",
+    image_host_model: "gpt-5.5",
     default_reasoning_effort: null as string | null,
     aliases: {} as Record<string, string>,
+    custom_models: [] as Array<string | { id: string }>,
     inject_desktop_context: false,
     suppress_desktop_directives: true,
+    allow_client_system_prompt_strategy: false,
+    system_prompt_strategy: "instructions",
   },
   quota: {
     refresh_interval_minutes: 5,
@@ -96,6 +100,17 @@ vi.mock("@hono/node-server/conninfo", () => ({
   getConnInfo: vi.fn(() => ({ remote: { address: "127.0.0.1" } })),
 }));
 
+vi.mock("@src/models/routable-model-resolver.js", () => ({
+  IMAGE_HOST_MODEL_CLIENT_ID: "gpt-image-2",
+  isImageHostModelClientId: (input: string) => input.trim().toLowerCase() === "gpt-image-2",
+  resolveRoutableCodexHostModel: (input: string) => {
+    const trimmed = input.trim();
+    if (!trimmed || trimmed.toLowerCase() === "gpt-image-2") return null;
+    return ["gpt-5.4", "gpt-5.5"].includes(trimmed) ? trimmed : null;
+  },
+  getRoutableCodexHostModelAllowedModels: () => ["gpt-5.4", "gpt-5.5"],
+}));
+
 import { createWebRoutes } from "@src/routes/web.js";
 import { mutateYaml } from "@src/utils/yaml-mutate.js";
 import { reloadAllConfigs } from "@src/config.js";
@@ -118,6 +133,8 @@ describe("GET /admin/general-settings", () => {
     mockConfig.logs.llm_only = true;
     mockConfig.usage_stats.history_retention_days = null;
     mockConfig.usage_stats.credits_per_usd = 25;
+    mockConfig.model.allow_client_system_prompt_strategy = false;
+    mockConfig.model.system_prompt_strategy = "instructions";
   });
 
   it("returns current values including logs_llm_only and credits_per_usd", async () => {
@@ -130,7 +147,10 @@ describe("GET /admin/general-settings", () => {
       port: 8080,
       proxy_url: null,
       force_http11: false,
+      allow_client_system_prompt_strategy: false,
+      system_prompt_strategy: "instructions",
       default_model: "gpt-5.4",
+      image_host_model: "gpt-5.5",
       model_aliases: {},
       refresh_enabled: true,
       auto_update: true,
@@ -152,6 +172,63 @@ describe("POST /admin/general-settings", () => {
     mockConfig.logs.llm_only = true;
     mockConfig.usage_stats.history_retention_days = null;
     mockConfig.usage_stats.credits_per_usd = 25;
+    mockConfig.model.allow_client_system_prompt_strategy = false;
+    mockConfig.model.system_prompt_strategy = "instructions";
+  });
+
+  it("persists a routable image_host_model without requiring restart", async () => {
+    const app = makeApp();
+    const res = await app.request("/admin/general-settings", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ image_host_model: "gpt-5.4" }),
+    });
+
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(data.success).toBe(true);
+    expect(data.restart_required).toBe(false);
+    expect(data.image_host_model).toBe("gpt-5.4");
+    const mutate = vi.mocked(mutateYaml).mock.calls[0]?.[1];
+    const localConfig: Record<string, unknown> = {};
+    mutate?.(localConfig);
+    expect(localConfig).toEqual({ model: { image_host_model: "gpt-5.4" } });
+  });
+
+  it("rejects gpt-image-2 as image_host_model, case-insensitively", async () => {
+    const app = makeApp();
+    const res = await app.request("/admin/general-settings", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ image_host_model: "GPT-Image-2" }),
+    });
+
+    expect(res.status).toBe(400);
+    expect(mutateYaml).not.toHaveBeenCalled();
+  });
+
+  it("rejects an unroutable image_host_model", async () => {
+    const app = makeApp();
+    const res = await app.request("/admin/general-settings", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ image_host_model: "not-a-real-model" }),
+    });
+
+    expect(res.status).toBe(400);
+    expect(mutateYaml).not.toHaveBeenCalled();
+  });
+
+  it("rejects a non-string image_host_model", async () => {
+    const app = makeApp();
+    const res = await app.request("/admin/general-settings", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ image_host_model: 12345 }),
+    });
+
+    expect(res.status).toBe(400);
+    expect(mutateYaml).not.toHaveBeenCalled();
   });
 
   it("persists logs_llm_only without requiring restart", async () => {
@@ -189,6 +266,149 @@ describe("POST /admin/general-settings", () => {
     mutate?.(localConfig);
     expect(localConfig).toEqual({
       update: { show_update_dialog: true },
+    });
+  });
+
+  it("rejects system prompt strategy updates while the client switch is disabled", async () => {
+    const app = makeApp();
+    const res = await app.request("/admin/general-settings", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ system_prompt_strategy: "developer_inline" }),
+    });
+
+    expect(res.status).toBe(400);
+    const data = await res.json();
+    expect(data.error).toContain("allow_client_system_prompt_strategy");
+    expect(mutateYaml).not.toHaveBeenCalled();
+    expect(reloadAllConfigs).not.toHaveBeenCalled();
+  });
+
+  it("persists enabling the client switch and changing system prompt strategy in the same request", async () => {
+    const app = makeApp();
+    const res = await app.request("/admin/general-settings", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        allow_client_system_prompt_strategy: true,
+        system_prompt_strategy: "developer_inline",
+      }),
+    });
+
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(data.success).toBe(true);
+    expect(data.restart_required).toBe(false);
+    expect(mutateYaml).toHaveBeenCalledOnce();
+    expect(reloadAllConfigs).toHaveBeenCalledOnce();
+    const mutate = vi.mocked(mutateYaml).mock.calls[0]?.[1];
+    const localConfig: Record<string, unknown> = {};
+    mutate?.(localConfig);
+    expect(localConfig).toEqual({
+      model: {
+        allow_client_system_prompt_strategy: true,
+        system_prompt_strategy: "developer_inline",
+      },
+    });
+  });
+
+  it("rejects disabling the client switch and changing system prompt strategy to non-default in the same request", async () => {
+    mockConfig.model.allow_client_system_prompt_strategy = true;
+    const app = makeApp();
+    const res = await app.request("/admin/general-settings", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        allow_client_system_prompt_strategy: false,
+        system_prompt_strategy: "developer_inline",
+      }),
+    });
+
+    expect(res.status).toBe(400);
+    const data = await res.json();
+    expect(data.error).toContain("allow_client_system_prompt_strategy");
+    expect(mutateYaml).not.toHaveBeenCalled();
+    expect(reloadAllConfigs).not.toHaveBeenCalled();
+  });
+
+  it("allows disabling the client switch and resetting system prompt strategy to instructions in the same request", async () => {
+    mockConfig.model.allow_client_system_prompt_strategy = true;
+    const app = makeApp();
+    const res = await app.request("/admin/general-settings", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        allow_client_system_prompt_strategy: false,
+        system_prompt_strategy: "instructions",
+      }),
+    });
+
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(data.success).toBe(true);
+    expect(mutateYaml).toHaveBeenCalledOnce();
+    expect(reloadAllConfigs).toHaveBeenCalledOnce();
+  });
+
+  it("rejects invalid system prompt strategy", async () => {
+    mockConfig.model.allow_client_system_prompt_strategy = true;
+    const app = makeApp();
+    const res = await app.request("/admin/general-settings", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ system_prompt_strategy: "invalid" }),
+    });
+
+    expect(res.status).toBe(400);
+    const data = await res.json();
+    expect(data.error).toContain("system_prompt_strategy");
+    expect(mutateYaml).not.toHaveBeenCalled();
+    expect(reloadAllConfigs).not.toHaveBeenCalled();
+  });
+
+  it.each(["instructions", "developer_inline", "system_inline"])("persists system prompt strategy %s when the persisted client switch is enabled", async (strategy) => {
+    mockConfig.model.allow_client_system_prompt_strategy = true;
+    const app = makeApp();
+    const res = await app.request("/admin/general-settings", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ system_prompt_strategy: strategy }),
+    });
+
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(data.success).toBe(true);
+    expect(data.restart_required).toBe(false);
+    expect(mutateYaml).toHaveBeenCalledOnce();
+    expect(reloadAllConfigs).toHaveBeenCalledOnce();
+    const mutate = vi.mocked(mutateYaml).mock.calls[0]?.[1];
+    const localConfig: Record<string, unknown> = {};
+    mutate?.(localConfig);
+    expect(localConfig).toEqual({
+      model: { system_prompt_strategy: strategy },
+    });
+  });
+
+  it.each([true, false])("persists client system prompt strategy switch %s by itself", async (enabled) => {
+    mockConfig.model.allow_client_system_prompt_strategy = !enabled;
+    const app = makeApp();
+    const res = await app.request("/admin/general-settings", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ allow_client_system_prompt_strategy: enabled }),
+    });
+
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(data.success).toBe(true);
+    expect(data.restart_required).toBe(false);
+    expect(mutateYaml).toHaveBeenCalledOnce();
+    expect(reloadAllConfigs).toHaveBeenCalledOnce();
+    const mutate = vi.mocked(mutateYaml).mock.calls[0]?.[1];
+    const localConfig: Record<string, unknown> = {};
+    mutate?.(localConfig);
+    expect(localConfig).toEqual({
+      model: { allow_client_system_prompt_strategy: enabled },
     });
   });
 

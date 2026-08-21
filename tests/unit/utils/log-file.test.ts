@@ -103,6 +103,76 @@ describe("installFileLogger", () => {
     expect(typeof result).toBe("boolean");
   });
 
+  it.each(["EPIPE", "ECONNRESET"] as const)(
+    "suppresses synchronous %s errors from the underlying stream",
+    (code) => {
+      const dir = mkdtempSync(join(tmpdir(), "codex-proxy-log-"));
+      cleanups.push(() => rmSync(dir, { recursive: true, force: true }));
+
+      const originalWrite = process.stdout.write;
+      const error = Object.assign(new Error(code), { code });
+      process.stdout.write = (() => {
+        throw error;
+      }) as typeof process.stdout.write;
+      cleanups.push(() => {
+        process.stdout.write = originalWrite;
+      });
+
+      const handle = installFileLogger({ dir, filename: "test.log" });
+      cleanups.push(() => handle.uninstall());
+
+      expect(() => process.stdout.write("broken pipe\n")).not.toThrow();
+      expect(process.stdout.write("broken pipe\n")).toBe(false);
+    },
+  );
+
+  it("rethrows non-ignorable synchronous stream errors", () => {
+    const dir = mkdtempSync(join(tmpdir(), "codex-proxy-log-"));
+    cleanups.push(() => rmSync(dir, { recursive: true, force: true }));
+
+    const originalWrite = process.stdout.write;
+    const error = Object.assign(new Error("invalid argument"), { code: "EINVAL" });
+    process.stdout.write = (() => {
+      throw error;
+    }) as typeof process.stdout.write;
+    cleanups.push(() => {
+      process.stdout.write = originalWrite;
+    });
+
+    const handle = installFileLogger({ dir, filename: "test.log" });
+    cleanups.push(() => handle.uninstall());
+
+    expect(() => process.stdout.write("invalid\n")).toThrow(error);
+  });
+
+  it("suppresses ignorable stream error events", () => {
+    const dir = mkdtempSync(join(tmpdir(), "codex-proxy-log-"));
+    cleanups.push(() => rmSync(dir, { recursive: true, force: true }));
+
+    const handle = installFileLogger({ dir, filename: "test.log" });
+    cleanups.push(() => handle.uninstall());
+
+    for (const code of ["EPIPE", "ECONNRESET"] as const) {
+      const error = Object.assign(new Error(code), { code });
+      expect(() => process.stdout.emit("error", error)).not.toThrow();
+    }
+  });
+
+  it("rethrows non-ignorable stream error events and removes handlers on uninstall", () => {
+    const dir = mkdtempSync(join(tmpdir(), "codex-proxy-log-"));
+    cleanups.push(() => rmSync(dir, { recursive: true, force: true }));
+
+    const before = process.stdout.listenerCount("error");
+    const handle = installFileLogger({ dir, filename: "test.log" });
+    expect(process.stdout.listenerCount("error")).toBe(before + 1);
+
+    const error = Object.assign(new Error("invalid argument"), { code: "EINVAL" });
+    expect(() => process.stdout.emit("error", error)).toThrow(error);
+
+    handle.uninstall();
+    expect(process.stdout.listenerCount("error")).toBe(before);
+  });
+
   it("appends to an existing file instead of truncating", () => {
     const dir = mkdtempSync(join(tmpdir(), "codex-proxy-log-"));
     cleanups.push(() => rmSync(dir, { recursive: true, force: true }));
@@ -118,5 +188,48 @@ describe("installFileLogger", () => {
     const contents = readFileSync(second.path, "utf8");
     expect(contents).toContain("first run");
     expect(contents).toContain("second run");
+  });
+
+  it("catches EPIPE write errors from the underlying stream and returns false instead of crashing", () => {
+    const dir = mkdtempSync(join(tmpdir(), "codex-proxy-log-"));
+    cleanups.push(() => rmSync(dir, { recursive: true, force: true }));
+
+    const originalWrite = process.stdout.write;
+    process.stdout.write = () => {
+      const err = new Error("write EPIPE") as Error & { code?: string };
+      err.code = "EPIPE";
+      throw err;
+    };
+
+    const handle = installFileLogger({ dir, filename: "test-epipe.log" });
+    cleanups.push(() => {
+      handle.uninstall();
+      process.stdout.write = originalWrite;
+    });
+
+    let result: boolean | undefined;
+    expect(() => {
+      result = process.stdout.write("should not crash\n");
+    }).not.toThrow();
+    expect(result).toBe(false);
+  });
+
+  it("ignores EPIPE and ECONNRESET error events on stdout/stderr to prevent process crash", () => {
+    const dir = mkdtempSync(join(tmpdir(), "codex-proxy-log-"));
+    cleanups.push(() => rmSync(dir, { recursive: true, force: true }));
+
+    const handle = installFileLogger({ dir, filename: "test-events.log" });
+    cleanups.push(() => handle.uninstall());
+
+    const epipeErr = new Error("write EPIPE") as Error & { code?: string };
+    epipeErr.code = "EPIPE";
+
+    const econnresetErr = new Error("write ECONNRESET") as Error & { code?: string };
+    econnresetErr.code = "ECONNRESET";
+
+    expect(() => {
+      process.stdout.emit("error", epipeErr);
+      process.stderr.emit("error", econnresetErr);
+    }).not.toThrow();
   });
 });

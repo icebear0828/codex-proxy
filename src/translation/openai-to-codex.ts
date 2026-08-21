@@ -69,6 +69,19 @@ function extractContent(
   return parts.length > 0 ? parts : "";
 }
 
+/**
+ * Cursor serializes grammar-backed custom calls in the normal Chat
+ * `function` envelope on subsequent turns. The tool definition identifies
+ * which raw `function.arguments` values are actually custom tool input.
+ */
+function getCustomToolNames(tools: ChatCompletionRequest["tools"]): Set<string> {
+  const names = new Set<string>();
+  for (const tool of tools ?? []) {
+    if (tool.type === "custom") names.add(tool.name);
+  }
+  return names;
+}
+
 
 /**
  * Convert a ChatCompletionRequest to a CodexResponsesRequest.
@@ -93,15 +106,18 @@ export function translateToCodexRequest(
   const systemMessages = req.messages.filter(
     (m) => m.role === "system" || m.role === "developer",
   );
-  const userInstructions =
-    systemMessages.map((m) => extractText(m.content)).join("\n\n") ||
-    "You are a helpful assistant.";
+  const rawUserInstructions = systemMessages.map((m) => extractText(m.content)).filter(Boolean).join("\n\n");
+  const userInstructions = rawUserInstructions || "You are a helpful assistant.";
   const cfg = modelConfig ?? getConfig().model;
-  const instructions = buildInstructions(userInstructions, cfg);
+  const strategy = cfg.system_prompt_strategy ?? "instructions";
+  const inlineSystem = strategy === "developer_inline" || strategy === "system_inline";
+  const instructions = buildInstructions(inlineSystem ? "" : userInstructions, cfg);
 
   // Build input items from non-system messages
   // Handles new format (tool/tool_calls) and legacy format (function/function_call)
   const input: CodexInputItem[] = [];
+  const customToolNames = getCustomToolNames(req.tools);
+  const toolCallKinds = new Map<string, "function" | "custom">();
   for (const msg of req.messages) {
     if (msg.role === "system" || msg.role === "developer") continue;
 
@@ -114,12 +130,28 @@ export function translateToCodexRequest(
       // Then push tool calls as native function_call items
       if (msg.tool_calls?.length) {
         for (const tc of msg.tool_calls) {
-          input.push({
-            type: "function_call",
-            call_id: tc.id,
-            name: tc.function.name,
-            arguments: tc.function.arguments,
-          });
+          const isNativeCustomCall = tc.type === "custom";
+          const name = isNativeCustomCall ? tc.custom.name : tc.function.name;
+          const inputValue = isNativeCustomCall ? tc.custom.input : tc.function.arguments;
+          const toolCallKind = isNativeCustomCall || customToolNames.has(name)
+            ? "custom"
+            : "function";
+          toolCallKinds.set(tc.id, toolCallKind);
+          if (toolCallKind === "custom") {
+            input.push({
+              type: "custom_tool_call",
+              call_id: tc.id,
+              name,
+              input: inputValue,
+            });
+          } else {
+            input.push({
+              type: "function_call",
+              call_id: tc.id,
+              name,
+              arguments: inputValue,
+            });
+          }
         }
       }
       if (msg.function_call) {
@@ -132,11 +164,20 @@ export function translateToCodexRequest(
       }
     } else if (msg.role === "tool") {
       // Native tool result
-      input.push({
-        type: "function_call_output",
-        call_id: msg.tool_call_id ?? "unknown",
-        output: extractText(msg.content),
-      });
+      const callId = msg.tool_call_id ?? "unknown";
+      if (msg.tool_call_type === "custom" || toolCallKinds.get(callId) === "custom") {
+        input.push({
+          type: "custom_tool_call_output",
+          call_id: callId,
+          output: extractText(msg.content),
+        });
+      } else {
+        input.push({
+          type: "function_call_output",
+          call_id: callId,
+          output: extractText(msg.content),
+        });
+      }
     } else if (msg.role === "function") {
       // Legacy function result → native format
       input.push({
@@ -152,6 +193,15 @@ export function translateToCodexRequest(
   // Ensure at least one input message
   if (input.length === 0) {
     input.push({ role: "user", content: "" });
+  }
+
+  // Inline strategy: prepend user system prompt as the first input item
+  if (inlineSystem && rawUserInstructions) {
+    const role = strategy === "developer_inline" ? "developer" : "system";
+    input.unshift({
+      role,
+      content: [{ type: "input_text", text: rawUserInstructions }],
+    });
   }
 
   // Resolve model (suffix parsing extracts service_tier and reasoning_effort)

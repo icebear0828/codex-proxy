@@ -48,6 +48,7 @@ function createMockPool(entries: Array<{
   image_output_tokens?: number;
   image_request_count?: number;
   image_request_failed_count?: number;
+  estimated_cost_usd?: number;
 }>): AccountPool {
   return {
     getAllEntries: () =>
@@ -63,6 +64,7 @@ function createMockPool(entries: Array<{
           image_request_count: e.image_request_count ?? 0,
           image_request_failed_count: e.image_request_failed_count ?? 0,
           request_count: e.request_count,
+          estimated_cost_usd: e.estimated_cost_usd ?? 0,
         },
       })),
   } as unknown as AccountPool;
@@ -101,6 +103,7 @@ describe("UsageStatsStore", () => {
         image_output_tokens: 0,
         image_request_count: 0,
         image_request_failed_count: 0,
+        estimated_cost_usd: 0,
         request_count: 10,
         active_accounts: 2,
       });
@@ -119,6 +122,7 @@ describe("UsageStatsStore", () => {
         image_output_tokens: 0,
         image_request_count: 0,
         image_request_failed_count: 0,
+        estimated_cost_usd: 0,
         request_count: 0,
         active_accounts: 0,
       });
@@ -134,6 +138,20 @@ describe("UsageStatsStore", () => {
 
       expect(persistence.saved[0].totals.cached_tokens).toBe(800);
     });
+
+  it("records estimated API cost from account usage", () => {
+      const pool = createMockPool([
+        { status: "active", input_tokens: 1000, output_tokens: 200, request_count: 5, estimated_cost_usd: 0.12 },
+        { status: "active", input_tokens: 500, output_tokens: 100, request_count: 3, estimated_cost_usd: 0.08 },
+      ]);
+
+      store.recordSnapshot(pool);
+
+      expect(persistence.saved[0].totals.estimated_cost_usd).toBeCloseTo(0.2);
+      expect(store.getSummary(pool).total_estimated_cost_usd).toBeCloseTo(0.2);
+    });
+
+
   });
 
   describe("getSummary", () => {
@@ -152,6 +170,7 @@ describe("UsageStatsStore", () => {
         total_image_output_tokens: 0,
         total_image_request_count: 0,
         total_image_request_failed_count: 0,
+        total_estimated_cost_usd: 0,
         total_request_count: 8,
         total_accounts: 2,
         active_accounts: 1,
@@ -172,6 +191,14 @@ describe("UsageStatsStore", () => {
       ]);
 
       expect(store.getSummary(pool).total_cached_tokens).toBe(5500);
+    });
+
+    it("returns estimated cost from the live pool", () => {
+      const pool = createMockPool([
+        { status: "active", input_tokens: 0, output_tokens: 0, request_count: 0, estimated_cost_usd: 1.25 },
+      ]);
+
+      expect(store.getSummary(pool).total_estimated_cost_usd).toBeCloseTo(1.25);
     });
 
     it("includes baseline in summary totals", () => {
@@ -244,6 +271,7 @@ describe("UsageStatsStore", () => {
         image_output_tokens: 0,
         image_request_count: 0,
         image_request_failed_count: 0,
+        estimated_cost_usd: 0,
       });
 
       const lastSnapshot = persistence.saved[persistence.saved.length - 1];
@@ -308,6 +336,7 @@ describe("UsageStatsStore", () => {
         image_output_tokens: 0,
         image_request_count: 0,
         image_request_failed_count: 0,
+        estimated_cost_usd: 0,
       });
     });
 
@@ -338,6 +367,7 @@ describe("UsageStatsStore", () => {
         image_output_tokens: 0,
         image_request_count: 0,
         image_request_failed_count: 0,
+        estimated_cost_usd: 0,
       });
     });
 
@@ -359,6 +389,7 @@ describe("UsageStatsStore", () => {
         image_output_tokens: 0,
         image_request_count: 0,
         image_request_failed_count: 0,
+        estimated_cost_usd: 0,
       });
 
       const pool = createMockPool([
@@ -598,6 +629,7 @@ describe("UsageStatsStore", () => {
         image_output_tokens: 0,
         image_request_count: 0,
         image_request_failed_count: 0,
+        estimated_cost_usd: 0,
       });
     });
 

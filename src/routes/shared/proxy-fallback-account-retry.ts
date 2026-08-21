@@ -71,7 +71,14 @@ export function prepareProxyFallbackAccountRetry(
     };
   }
 
-  const api = buildCodexApi(retry.token, retry.accountId, cookieJar, retry.entryId, proxyPool);
+  const api = buildCodexApi(
+    retry.token,
+    retry.accountId,
+    cookieJar,
+    retry.entryId,
+    proxyPool,
+    retry.codexFingerprintMode ?? "off",
+  );
   log(`[${tag}] Fallback \u2192 account ${retry.entryId}`);
   return {
     action: "retry",

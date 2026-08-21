@@ -47,6 +47,7 @@ export async function* streamCodexToOpenAI(
   wantReasoning?: boolean,
   tupleSchema?: Record<string, unknown> | null,
   onResponseCompleted?: (id?: string) => void,
+  customToolCallsAsFunctions = false,
 ): AsyncGenerator<string> {
   const chunkId = `chatcmpl-${randomUUID().replace(/-/g, "").slice(0, 24)}`;
   const created = Math.floor(Date.now() / 1000);
@@ -59,6 +60,8 @@ export async function* streamCodexToOpenAI(
   let nextToolCallIndex = 0;
   // Track which call_ids have received argument deltas
   const callIdsWithDeltas = new Set<string>();
+  const customToolCallIndexMap = new Map<string, number>();
+  const customCallIdsWithDeltas = new Set<string>();
 
   // Send initial role chunk
   yield formatSSE({
@@ -166,6 +169,49 @@ export async function* streamCodexToOpenAI(
       continue;
     }
 
+    if (evt.customToolCallStart) {
+      hasToolCalls = true;
+      hasContent = true;
+      const idx = nextToolCallIndex++;
+      customToolCallIndexMap.set(evt.customToolCallStart.callId, idx);
+      const toolCall: ChatCompletionChunkToolCall = customToolCallsAsFunctions
+        ? {
+          index: idx,
+          id: evt.customToolCallStart.callId,
+          type: "function",
+          // Cursor's Chat Completions adapter dereferences function.name for
+          // every call, including its grammar-backed ApplyPatch tool. Keep
+          // the patch body raw in function.arguments; do not JSON-encode it.
+          function: {
+            name: evt.customToolCallStart.name,
+            arguments: "",
+          },
+        }
+        : {
+          index: idx,
+          id: evt.customToolCallStart.callId,
+          type: "custom",
+          custom: {
+            name: evt.customToolCallStart.name,
+            input: "",
+          },
+        };
+      yield formatSSE({
+        id: chunkId,
+        object: "chat.completion.chunk",
+        created,
+        model,
+        choices: [
+          {
+            index: 0,
+            delta: { tool_calls: [toolCall] },
+            finish_reason: null,
+          },
+        ],
+      });
+      continue;
+    }
+
     if (evt.functionCallDelta) {
       callIdsWithDeltas.add(evt.functionCallDelta.callId);
       const idx = toolCallIndexMap.get(evt.functionCallDelta.callId) ?? 0;
@@ -192,6 +238,40 @@ export async function* streamCodexToOpenAI(
     }
 
     // functionCallDone — emit full arguments if no deltas were streamed
+    if (evt.customToolCallDelta) {
+      const idx = customToolCallIndexMap.get(evt.customToolCallDelta.callId);
+      if (idx !== undefined) {
+        customCallIdsWithDeltas.add(evt.customToolCallDelta.callId);
+        const toolCall: ChatCompletionChunkToolCall = customToolCallsAsFunctions
+          ? {
+            index: idx,
+            function: {
+              arguments: evt.customToolCallDelta.delta,
+            },
+          }
+          : {
+            index: idx,
+            custom: {
+              input: evt.customToolCallDelta.delta,
+            },
+          };
+        yield formatSSE({
+          id: chunkId,
+          object: "chat.completion.chunk",
+          created,
+          model,
+          choices: [
+            {
+              index: 0,
+              delta: { tool_calls: [toolCall] },
+              finish_reason: null,
+            },
+          ],
+        });
+      }
+      continue;
+    }
+
     if (evt.functionCallDone) {
       if (!callIdsWithDeltas.has(evt.functionCallDone.callId)) {
         const idx = toolCallIndexMap.get(evt.functionCallDone.callId) ?? 0;
@@ -201,6 +281,65 @@ export async function* streamCodexToOpenAI(
             arguments: evt.functionCallDone.arguments,
           },
         };
+        yield formatSSE({
+          id: chunkId,
+          object: "chat.completion.chunk",
+          created,
+          model,
+          choices: [
+            {
+              index: 0,
+              delta: { tool_calls: [toolCall] },
+              finish_reason: null,
+            },
+          ],
+        });
+      }
+      continue;
+    }
+
+    if (evt.customToolCallDone) {
+      hasToolCalls = true;
+      hasContent = true;
+      if (!customCallIdsWithDeltas.has(evt.customToolCallDone.callId)) {
+        const existingIndex = customToolCallIndexMap.get(evt.customToolCallDone.callId);
+        const idx = existingIndex ?? nextToolCallIndex++;
+        if (existingIndex === undefined) {
+          customToolCallIndexMap.set(evt.customToolCallDone.callId, idx);
+        }
+        const toolCall: ChatCompletionChunkToolCall = existingIndex === undefined
+          ? customToolCallsAsFunctions
+            ? {
+              index: idx,
+              id: evt.customToolCallDone.callId,
+              type: "function",
+              function: {
+                name: evt.customToolCallDone.name,
+                arguments: evt.customToolCallDone.input,
+              },
+            }
+            : {
+              index: idx,
+              id: evt.customToolCallDone.callId,
+              type: "custom",
+              custom: {
+                name: evt.customToolCallDone.name,
+                input: evt.customToolCallDone.input,
+              },
+            }
+          : customToolCallsAsFunctions
+            ? {
+              index: idx,
+              function: {
+                arguments: evt.customToolCallDone.input,
+              },
+            }
+            : {
+              index: idx,
+              custom: {
+                input: evt.customToolCallDone.input,
+              },
+            };
         yield formatSSE({
           id: chunkId,
           object: "chat.completion.chunk",
@@ -364,6 +503,7 @@ export async function collectCodexResponse(
   model: string,
   wantReasoning?: boolean,
   tupleSchema?: Record<string, unknown> | null,
+  customToolCallsAsFunctions = false,
 ): Promise<{ response: ChatCompletionResponse; usage: UsageInfo; responseId: string | null }> {
   const id = `chatcmpl-${randomUUID().replace(/-/g, "").slice(0, 24)}`;
   const created = Math.floor(Date.now() / 1000);
@@ -413,6 +553,25 @@ export async function collectCodexResponse(
           arguments: evt.functionCallDone.arguments,
         },
       });
+    }
+    if (evt.customToolCallDone) {
+      toolCalls.push(customToolCallsAsFunctions
+        ? {
+          id: evt.customToolCallDone.callId,
+          type: "function",
+          function: {
+            name: evt.customToolCallDone.name,
+            arguments: evt.customToolCallDone.input,
+          },
+        }
+        : {
+          id: evt.customToolCallDone.callId,
+          type: "custom",
+          custom: {
+            name: evt.customToolCallDone.name,
+            input: evt.customToolCallDone.input,
+          },
+        });
     }
     if (evt.imageGenerationDone) {
       toolCalls.push({

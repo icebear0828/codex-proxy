@@ -93,9 +93,10 @@ interface AccountCardProps {
   onRefreshQuota?: (id: string) => Promise<void>;
   onToggleStatus?: (id: string, currentStatus: string) => Promise<string | null>;
   onUpdateLabel?: (id: string, label: string | null) => Promise<string | null>;
+  onUpdateCodexFingerprintMode?: (id: string, mode: "off" | "session") => Promise<string | null>;
 }
 
-export function AccountCard({ account, index, onDelete, proxies, onProxyChange, selected, onToggleSelect, onRefreshQuota, onToggleStatus, onUpdateLabel }: AccountCardProps) {
+export function AccountCard({ account, index, onDelete, proxies, onProxyChange, selected, onToggleSelect, onRefreshQuota, onToggleStatus, onUpdateLabel, onUpdateCodexFingerprintMode }: AccountCardProps) {
   const t = useT();
   const { lang } = useI18n();
   const email = account.email || "Unknown";
@@ -254,6 +255,23 @@ export function AccountCard({ account, index, onDelete, proxies, onProxyChange, 
     if (e.key === "Escape") setEditingLabel(false);
   }, [handleLabelSave]);
 
+  const [fingerprintUpdating, setFingerprintUpdating] = useState(false);
+  const handleFingerprintModeChange = useCallback(async (control: HTMLInputElement) => {
+    const enabled = control.checked;
+    if (!onUpdateCodexFingerprintMode || fingerprintUpdating) return;
+    if (enabled && !confirm(t("codexSessionConvergenceWarning"))) {
+      control.checked = false;
+      return;
+    }
+    setFingerprintUpdating(true);
+    try {
+      const err = await onUpdateCodexFingerprintMode(account.id, enabled ? "session" : "off");
+      if (err) console.error(err);
+    } finally {
+      setFingerprintUpdating(false);
+    }
+  }, [account.id, fingerprintUpdating, onUpdateCodexFingerprintMode, t]);
+
   return (
     <div class={`bg-white dark:bg-card-dark border rounded-xl p-4 shadow-sm hover:shadow-md transition-all ${selected ? "border-primary ring-1 ring-primary/30" : "border-gray-200 dark:border-border-dark hover:border-primary/30 dark:hover:border-primary/50"}`}>
       {/* Header */}
@@ -387,6 +405,21 @@ export function AccountCard({ account, index, onDelete, proxies, onProxyChange, 
           </span>
         </div>
       </div>
+
+      <label class="flex items-center justify-between gap-3 text-[0.78rem] mt-3 pt-3 border-t border-slate-100 dark:border-border-dark">
+        <span>
+          <span class="block text-slate-500 dark:text-text-dim">{t("codexSessionConvergence")}</span>
+          <span class="block text-[0.65rem] text-slate-400 dark:text-text-dim/70">{t("codexSessionConvergenceHint")}</span>
+        </span>
+        <input
+          type="checkbox"
+          aria-label={t("codexSessionConvergence")}
+          checked={account.codexFingerprintMode === "session"}
+          disabled={!onUpdateCodexFingerprintMode || fingerprintUpdating}
+          onChange={(event) => void handleFingerprintModeChange(event.currentTarget)}
+          class="size-4 rounded border-gray-300 text-primary focus:ring-primary/50 disabled:opacity-40"
+        />
+      </label>
 
       {/* Proxy selector */}
       {proxies && onProxyChange && (

@@ -117,6 +117,20 @@ export interface CodexFunctionCallArgsDoneEvent {
   name: string;
 }
 
+export interface CodexCustomToolCallInputDeltaEvent {
+  type: "response.custom_tool_call_input.delta";
+  delta: string;
+  outputIndex: number;
+  itemId: string;
+}
+
+export interface CodexCustomToolCallInputDoneEvent {
+  type: "response.custom_tool_call_input.done";
+  input: string;
+  outputIndex: number;
+  itemId: string;
+}
+
 export interface CodexOutputItemDoneEvent {
   type: "response.output_item.done";
   outputIndex: number;
@@ -126,6 +140,7 @@ export interface CodexOutputItemDoneEvent {
     call_id?: string;
     name?: string;
     arguments?: string;
+    input?: string;
     content?: unknown[];
     actions?: unknown[];
     result?: string;
@@ -197,6 +212,8 @@ export type TypedCodexEvent =
   | CodexQueuedEvent
   | CodexFunctionCallArgsDeltaEvent
   | CodexFunctionCallArgsDoneEvent
+  | CodexCustomToolCallInputDeltaEvent
+  | CodexCustomToolCallInputDoneEvent
   | CodexErrorEvent
   | CodexResponseFailedEvent
   | CodexUnknownEvent;
@@ -296,6 +313,12 @@ function parseResponseData(data: unknown): CodexResponseData | undefined {
       result.usage.image_output_tokens = imgOut;
     }
   }
+  // Pass through the raw `output` array untouched (if present). Consumers that
+  // need to inspect individual output items — e.g. Images generations
+  // distinguishing an authoritative empty response.completed.output from a
+  // stale earlier output_item.done — read it straight off this field instead
+  // of duplicating a second parse path for the same data.
+  if (Array.isArray(resp.output)) result.output = resp.output;
   return result;
 }
 
@@ -462,6 +485,42 @@ export function parseCodexEvent(evt: CodexSSEEvent): TypedCodexEvent {
       }
       return { type: "unknown", raw: data };
     }
+    case "response.custom_tool_call_input.delta": {
+      const itemId = isRecord(data)
+        ? (typeof data.item_id === "string" ? data.item_id : typeof data.call_id === "string" ? data.call_id : "")
+        : "";
+      if (
+        isRecord(data) &&
+        typeof data.delta === "string" &&
+        itemId
+      ) {
+        return {
+          type: "response.custom_tool_call_input.delta",
+          delta: data.delta,
+          outputIndex: typeof data.output_index === "number" ? data.output_index : 0,
+          itemId,
+        };
+      }
+      return { type: "unknown", raw: data };
+    }
+    case "response.custom_tool_call_input.done": {
+      const itemId = isRecord(data)
+        ? (typeof data.item_id === "string" ? data.item_id : typeof data.call_id === "string" ? data.call_id : "")
+        : "";
+      if (
+        isRecord(data) &&
+        typeof data.input === "string" &&
+        itemId
+      ) {
+        return {
+          type: "response.custom_tool_call_input.done",
+          input: data.input,
+          outputIndex: typeof data.output_index === "number" ? data.output_index : 0,
+          itemId,
+        };
+      }
+      return { type: "unknown", raw: data };
+    }
     case "error": {
       return {
         type: "error",
@@ -490,6 +549,7 @@ export function parseCodexEvent(evt: CodexSSEEvent): TypedCodexEvent {
             ...(typeof data.item.call_id === "string" ? { call_id: data.item.call_id } : {}),
             ...(typeof data.item.name === "string" ? { name: data.item.name } : {}),
             ...(typeof data.item.arguments === "string" ? { arguments: data.item.arguments } : {}),
+            ...(typeof data.item.input === "string" ? { input: data.item.input } : {}),
             ...(Array.isArray(data.item.content) ? { content: data.item.content } : {}),
             ...(Array.isArray(data.item.actions) ? { actions: data.item.actions } : {}),
             ...(typeof data.item.result === "string" ? { result: data.item.result } : {}),

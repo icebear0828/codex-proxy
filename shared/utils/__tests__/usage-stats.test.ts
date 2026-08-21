@@ -71,6 +71,7 @@ describe("sumUsageWindow", () => {
         image_output_tokens: 20,
         image_request_count: 1,
         image_request_failed_count: 0,
+        estimated_cost_usd: 0.12,
         request_count: 2,
       }),
       point({
@@ -81,6 +82,7 @@ describe("sumUsageWindow", () => {
         image_output_tokens: 40,
         image_request_count: 2,
         image_request_failed_count: 1,
+        estimated_cost_usd: 0.34,
         request_count: 5,
       }),
     ]);
@@ -93,6 +95,7 @@ describe("sumUsageWindow", () => {
       image_output_tokens: 60,
       image_request_count: 3,
       image_request_failed_count: 1,
+      estimated_cost_usd: 0.46,
       request_count: 7,
     });
   });

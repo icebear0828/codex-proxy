@@ -8,11 +8,14 @@ import {
   getModelCatalog,
   getModelInfo,
   getModelStoreDebug,
+  resolveModelId,
   type CodexModelInfo,
 } from "../models/model-store.js";
 import { triggerImmediateRefresh } from "../models/model-fetcher.js";
 import { getConfig } from "../config.js";
 import type { ApiKeyPool } from "../auth/api-key-pool.js";
+import type { ClientKeyPool } from "../auth/client-key-pool.js";
+import { extractProxyApiKey } from "../utils/extract-api-key.js";
 
 // --- Routes ---
 
@@ -70,8 +73,16 @@ function toRuntimeOpenAIModel(id: string): OpenAIModel {
   };
 }
 
-export function createModelRoutes(apiKeyPool?: ApiKeyPool): Hono {
+export function createModelRoutes(apiKeyPool?: ApiKeyPool, clientKeyPool?: ClientKeyPool): Hono {
   const app = new Hono();
+
+  function getClientKeyAllowedModels(c: import("hono").Context): string[] | null {
+    if (!clientKeyPool) return null;
+    const token = extractProxyApiKey(c);
+    if (!token) return null;
+    const key = clientKeyPool.getByKey(token);
+    return key?.allowed_models && key.allowed_models.length > 0 ? key.allowed_models : null;
+  }
 
   app.get("/v1/models", (c) => {
     const catalog = getModelCatalog();
@@ -86,18 +97,34 @@ export function createModelRoutes(apiKeyPool?: ApiKeyPool): Hono {
       }
     }
 
-    const response: OpenAIModelList = { object: "list", data: [...modelsById.values()] };
+    let data = [...modelsById.values()];
+    const allowed = getClientKeyAllowedModels(c);
+    if (allowed) {
+      data = data.filter((m) => allowed.includes(m.id));
+    }
+
+    const response: OpenAIModelList = { object: "list", data };
     return c.json(response);
   });
 
   // Full catalog with reasoning efforts (for dashboard UI)
   // Must be before :modelId to avoid being matched as a model ID
   app.get("/v1/models/catalog", (c) => {
+    let catalog = getModelCatalog();
+    const config = getConfig();
+    const rawDefault = config.model?.default?.trim();
+    const configDefault = rawDefault ? resolveModelId(rawDefault) : undefined;
+    const allowed = getClientKeyAllowedModels(c);
+    if (allowed) {
+      catalog = catalog.filter((m) => allowed.includes(m.id));
+    }
+
     // Default outputModalities to ["text"] for chat-family entries that don't
     // set it explicitly, matching the interface's documented default.
     return c.json(
-      getModelCatalog().map((m) => ({
+      catalog.map((m) => ({
         ...m,
+        isDefault: configDefault ? m.id === configDefault : m.isDefault,
         outputModalities: m.outputModalities ?? ["text"],
       })),
     );
@@ -105,6 +132,19 @@ export function createModelRoutes(apiKeyPool?: ApiKeyPool): Hono {
 
   app.get("/v1/models/:modelId", (c) => {
     const modelId = c.req.param("modelId");
+    const allowed = getClientKeyAllowedModels(c);
+    if (allowed && !allowed.includes(modelId)) {
+      c.status(404);
+      return c.json({
+        error: {
+          message: `Model '${modelId}' not found`,
+          type: "invalid_request_error",
+          param: "model",
+          code: "model_not_found",
+        },
+      });
+    }
+
     const catalog = getModelCatalog();
 
     const info = catalog.find((m) => m.id === modelId);
@@ -128,6 +168,12 @@ export function createModelRoutes(apiKeyPool?: ApiKeyPool): Hono {
   // Extended endpoint: model details with reasoning efforts
   app.get("/v1/models/:modelId/info", (c) => {
     const modelId = c.req.param("modelId");
+    const allowed = getClientKeyAllowedModels(c);
+    if (allowed && !allowed.includes(modelId)) {
+      c.status(404);
+      return c.json({ error: `Model '${modelId}' not found` });
+    }
+
     const info = getModelInfo(modelId);
     if (!info) {
       c.status(404);

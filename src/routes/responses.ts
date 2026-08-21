@@ -24,6 +24,8 @@ import { parseModelName, resolveModelId, buildDisplayModelName } from "../models
 import { handleProxyRequest } from "./shared/proxy-handler.js";
 import { handleDirectRequest } from "./shared/direct-request-handler.js";
 import type { UpstreamRouter } from "../proxy/upstream-router.js";
+import type { ClientKeyPool } from "../auth/client-key-pool.js";
+import { validateClientKeyModel, recordClientKeyUsage } from "./shared/proxy-handler-utils.js";
 import {
   extractOpenAISubagentFromMetadata,
   normalizeOpenAISubagent,
@@ -32,6 +34,7 @@ import {
 } from "../proxy/openai-subagent.js";
 import { PASSTHROUGH_FORMAT } from "./responses-passthrough.js";
 import { handleCompact } from "./responses-compact.js";
+import { resolveDefaultTools, mergeDefaultTools } from "./shared/default-tools.js";
 
 // Re-export for downstream consumers
 export { extractResponseUsage, extractImageGenUsage, streamPassthrough, collectPassthrough } from "./responses-passthrough.js";
@@ -96,6 +99,7 @@ export function createResponsesRoutes(
   cookieJar?: CookieJar,
   proxyPool?: ProxyPool,
   upstreamRouter?: UpstreamRouter,
+  clientKeyPool?: ClientKeyPool,
 ): Hono {
   const app = new Hono();
   // Register errorHandler locally so that when testing this router in isolation (e.g. unit tests),
@@ -109,6 +113,21 @@ export function createResponsesRoutes(
     if (body instanceof Response) return body;
 
     const rawModel = typeof body.model === "string" ? body.model : "codex";
+
+    const modelCheck = validateClientKeyModel(c, rawModel);
+    if (!modelCheck.allowed) {
+      c.status(403);
+      return c.json({
+        type: "error",
+        error: {
+          type: "invalid_request_error",
+          code: "model_not_allowed",
+          message: modelCheck.message,
+          param: "model",
+        },
+      });
+    }
+
     const routeMatch = upstreamRouter?.resolveMatch(rawModel);
     const allowUnauthenticated = routeMatch?.kind === "api-key" || routeMatch?.kind === "adapter";
     const authErr = checkAuth(c, accountPool, allowUnauthenticated);
@@ -196,8 +215,12 @@ export function createResponsesRoutes(
       codexRequest.service_tier = serviceTier;
     }
 
-    if (Array.isArray(body.tools) && body.tools.length > 0) {
-      codexRequest.tools = body.tools;
+    const defaultTools = resolveDefaultTools(c, { allowUnauthenticated });
+    if (defaultTools.length > 0 || (Array.isArray(body.tools) && body.tools.length > 0)) {
+      const merged = mergeDefaultTools(Array.isArray(body.tools) ? (body.tools as Record<string, unknown>[]) : undefined, defaultTools);
+      if (merged.length > 0) {
+        codexRequest.tools = merged;
+      }
     }
     if (body.tool_choice !== undefined) {
       codexRequest.tool_choice = body.tool_choice as CodexResponsesRequest["tool_choice"];
@@ -206,8 +229,8 @@ export function createResponsesRoutes(
       codexRequest.parallel_tool_calls = body.parallel_tool_calls;
     }
 
-    const expectsImageGen = Array.isArray(body.tools)
-      && body.tools.some((t): t is Record<string, unknown> => isRecord(t) && t.type === "image_generation");
+    const expectsImageGen = Array.isArray(codexRequest.tools)
+      && codexRequest.tools.some((tool) => isRecord(tool) && tool.type === "image_generation");
 
     // Text format (JSON mode / structured outputs)
     let tupleSchema: Record<string, unknown> | null = null;
@@ -275,6 +298,21 @@ export function createResponsesRoutes(
     if (body instanceof Response) return body;
 
     const rawModel = typeof body.model === "string" ? body.model : "codex";
+
+    const modelCheck = validateClientKeyModel(c, rawModel);
+    if (!modelCheck.allowed) {
+      c.status(403);
+      return c.json({
+        type: "error",
+        error: {
+          type: "invalid_request_error",
+          code: "model_not_allowed",
+          message: modelCheck.message,
+          param: "model",
+        },
+      });
+    }
+
     const routeMatch = upstreamRouter?.resolveMatch(rawModel);
     const allowUnauthenticated = routeMatch?.kind === "api-key" || routeMatch?.kind === "adapter";
     const authErr = checkAuth(c, accountPool, allowUnauthenticated);
@@ -294,14 +332,18 @@ export function createResponsesRoutes(
       }),
     });
 
-    return handleCompact(c, accountPool, cookieJar, proxyPool, body, upstreamRouter);
+    const res = await handleCompact(c, accountPool, cookieJar, proxyPool, body, upstreamRouter);
+    if (res.ok) {
+      recordClientKeyUsage(c, rawModel, { input_tokens: 100, output_tokens: 100 });
+    }
+    return res;
   };
 
-  app.post("/v1/responses", apiKeyAuth(accountPool), responsesHandler);
-  app.post("/v1/responses/review", apiKeyAuth(accountPool), responsesHandler);
-  app.post("/responses", apiKeyAuth(accountPool), responsesHandler);
-  app.post("/responses/review", apiKeyAuth(accountPool), responsesHandler);
-  app.post("/v1/responses/compact", apiKeyAuth(accountPool), compactHandler);
+  app.post("/v1/responses", apiKeyAuth(accountPool, clientKeyPool), responsesHandler);
+  app.post("/v1/responses/review", apiKeyAuth(accountPool, clientKeyPool), responsesHandler);
+  app.post("/responses", apiKeyAuth(accountPool, clientKeyPool), responsesHandler);
+  app.post("/responses/review", apiKeyAuth(accountPool, clientKeyPool), responsesHandler);
+  app.post("/v1/responses/compact", apiKeyAuth(accountPool, clientKeyPool), compactHandler);
 
   return app;
 }

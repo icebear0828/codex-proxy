@@ -1,13 +1,19 @@
 import { useState, useEffect, useCallback } from "preact/hooks";
 import { extractErrorMessage } from "../utils/extract-error";
 
+export type SystemPromptStrategy = "instructions" | "developer_inline" | "system_inline";
+
 export interface GeneralSettingsData {
   port: number;
   proxy_url: string | null;
   force_http11: boolean;
   inject_desktop_context: boolean;
   suppress_desktop_directives: boolean;
+  allow_client_system_prompt_strategy: boolean;
+  system_prompt_strategy: SystemPromptStrategy;
   default_model: string;
+  image_host_model: string;
+  image_host_model_allowed_models: string[];
   default_reasoning_effort: string | null;
   model_aliases: Record<string, string>;
   refresh_enabled: boolean;
@@ -75,7 +81,11 @@ export function useGeneralSettings(apiKey: string | null) {
         force_http11: result.force_http11,
         inject_desktop_context: result.inject_desktop_context,
         suppress_desktop_directives: result.suppress_desktop_directives,
+        allow_client_system_prompt_strategy: result.allow_client_system_prompt_strategy,
+        system_prompt_strategy: result.system_prompt_strategy,
         default_model: result.default_model,
+        image_host_model: result.image_host_model,
+        image_host_model_allowed_models: result.image_host_model_allowed_models ?? [],
         default_reasoning_effort: result.default_reasoning_effort,
         model_aliases: result.model_aliases,
         refresh_enabled: result.refresh_enabled,

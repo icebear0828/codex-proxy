@@ -18,8 +18,14 @@
 - 重构：抽象路由层的 JSON 拦截与 API Key 校验（提取统一的 API Key 提取器 `extractProxyApiKey`；由全局 `errorHandler` 统一拦截 SyntaxError 带来的 JSON 解析失败并返回 400）
 - 更新 `README_EN.md` 中过时的模型推荐说明以匹配最新的模型别名映射（`README_EN.md`）
 
+### Fixed
+
+- 修复分发 Key（Client Access Keys）页面创建与编辑弹窗背景透明问题：修正非标准 Tailwind 类名（`bg-surface-light`、`bg-surface-dark`、`border-border-light` 等），采用标准 `bg-white dark:bg-card-dark` 与 `border-slate-200 dark:border-border-dark` 确保弹窗遮罩及背景不透明显示。（`web/src/pages/ClientKeysPage.tsx`）
+
 ### Added
 
+- 新增按账号显式启用的 Codex `session_id` 指纹收敛模式，默认保持关闭；启用后仅将 HTTP/WebSocket 的上游 `session_id` 收敛为账号级稳定值，不合并 installation、conversation、window、turn 或 prompt-cache identity。Dashboard 提供风险确认开关，账号切换、空响应重试与 failover 均继承各自账号配置，旧持久化数据和非法模式安全回退为 `off`。（`src/auth/`、`src/proxy/codex-api.ts`、`src/routes/shared/`、`web/src/components/AccountCard.tsx`）
+- 日志可观测性与性能监控增强：为项目日志页面与数据链路添加全方位的可观测性指标捕获，包括首字延迟（TTFT）、单次预估金额（USD Cost）、Token 吐字生成速率（tok/s）、总执行耗时（Latency/Duration）及详细 Token 用量（Prompt / Completion / Reasoning / Cache Hit Rate）。在 Dashboard Logs 页面新增顶部可观测性概览看板（平均首字延迟、平均吐字速率、平均总耗时、总预估金额、Token 吞吐及请求成功率）、增强型列表表格列与 4 宫格性能详情抽屉；支持一键清空内存日志；补齐中英双语国际化支持。（`src/logs/metrics.ts`、`src/logs/store.ts`、`src/logs/entry.ts`、`src/routes/shared/streaming-handler.ts`、`src/routes/shared/non-streaming-handler.ts`、`src/routes/shared/direct-request-handler.ts`、`web/src/pages/LogsPage.tsx`、`shared/hooks/use-logs.ts`、`shared/i18n/translations.ts`）
 - Release Notes 改为 LLM 双语生成（替换并删除此前的逐词替换字典 `translate-notes.js`，机翻词盐根因）：新增 `summarize-release-notes.mjs` 调 OpenAI-compatible endpoint（secrets：`RELEASE_NOTES_BASE_URL/API_KEY/MODEL`）按 Electron 用户视角输出「✨ 本次更新」中文亮点 + 英文对照 + 折叠完整 commit 清单；输出强校验（JSON 契约、必须含 CJK、条数上限），LLM 不可用/校验失败时回退按 type 分组的纯英文列表，脚本永不非零退出（notes 问题不阻塞发版）；notes 过滤规则对齐 bump 的 `SKIP_RELEASE_PATTERN`（排除 chore/docs/ci/test/refactor/style）；已用真实 gateway 连调 3 次验证双语产出（`.github/scripts/summarize-release-notes.mjs`、`.github/scripts/generate-release-notes.sh`、`tests/unit/ci/summarize-release-notes.test.ts`、`tests/unit/ci/release-notes-script.test.ts`）
 - CI 发版通知 webhook：release 成功/失败、promote 成功/ff 前提破坏时 POST 纯文本到 `NOTIFY_WEBHOOK_URL` secret（ntfy 开箱可用）；secret 未配置时静默跳过、永不阻塞流水线（`.github/scripts/notify-webhook.sh`、`.github/workflows/release.yml`、`.github/workflows/promote-dev-to-master.yml`）
 - 自定义 API Key 的 Upstream protocol 新增 Anthropic Messages / Gemini generateContent 选项，并支持对应 base URL、模型列表获取与底层转发（`shared/hooks/use-api-keys.ts`、`src/auth/api-key-model-cache.ts`、`src/proxy/adapter-factory.ts`、`web/src/components/ApiKeyManager.tsx`）。
@@ -41,6 +47,12 @@
 - 本地 uncaught error log（observability foundation，#480 PR-1）：进程级 `uncaughtException` / `unhandledRejection` 自动落盘到 `data/error-log.jsonl`，单 backup 滚动（默认 10MB → `error-log.1.jsonl`），`context` 经 `redactJson` 脱敏 token / cookie / api_key / oauth；新增 4 个 admin 端点 `/admin/error-logs`（按 `name + first stack frame` 聚合）/ `/admin/error-logs/raw`（裸 JSONL tail）/ `/admin/error-logs/count`（含 unread）/ `/admin/error-logs/seen`（推进读游标）/ `/admin/error-logs/report`（renderer / 外部 POST 上报）；`uncaughtException` 走 `setImmediate(throw)` 保留 Node 默认崩溃语义，不会静默吞掉 fatal；新增 schema 节 `observability: { local_error_log: bool=true, max_log_bytes: int=10485760 }`；前端 Errors tab + 浮起 badge 由 PR-2 跟进（`src/logs/error-log.ts`、`src/routes/admin/error-logs.ts`、`src/config-schema.ts`、`src/index.ts`、`tests/unit/logs/error-log.test.ts`、`tests/unit/routes/admin/error-logs.test.ts`）
 
 ### Fixed
+
+- 修复默认 hosted tools 的协议兼容：按工具 `type` 通用判重，保留 Anthropic Messages 在全局默认列表为空时的 Web Search fallback，基于最终注入后的工具统计图片请求，并将默认 `image_generation` 结果分别转换为 Anthropic `tool_use` 与 Gemini `inlineData`；新增路由、翻译、集成测试及真实上游 Web Search / 图片生成连续 3 次验证。（`src/routes/shared/default-tools.ts`、`src/routes/{chat,gemini,messages,responses}.ts`、`src/translation/codex-to-{anthropic,gemini}.ts`、`tests/{unit,integration,real}`）
+- Retry early upstream `server_error` responses once on a different account before streaming, while preserving already-started streams and formatting errors according to client protocol.
+- 修复 `promote-dev-to-master` 将同一 commit 上历史 Electron release 失败记录误当作当前 CI 失败的问题：晋升门禁现在只读取该 commit 最新的 `ci-quality.yml` 结果，并支持分页读取 workflow runs，避免一次临时发布下载错误在成功重试后永久阻塞 `dev → master`，并补充回归测试（`.github/scripts/check-promote-ci.sh`、`.github/workflows/promote-dev-to-master.yml`、`tests/unit/ci/promote-ci-gate.test.ts`）
+
+- 修复上游 WebSocket 首帧 `server_is_overloaded` 被当作普通 SSE 错误透传、最终表现为 `stream disconnected before completion` 的问题：现在在 HTTP 响应提交前映射为 503，进入账号切换/有限重试；已产生输出后不重放请求，且 `response.completed` 后的异常关闭不再误报未完成流。（`src/proxy/error-classification.ts`、`src/proxy/ws-pool.ts`、`src/proxy/ws-transport.ts`、`src/routes/shared/proxy-error-handler.ts`、`src/translation/codex-api-error-from-event.ts`）
 
 - 修复 Dashboard Errors tab 的“全部标记已读”和“删除”操作被 Settings Bearer-token middleware 拦截成 401 的问题；`/admin/error-logs*` 统一交给 dashboard session auth，避免 cookie 登录会话被误判失效并跳回登录页。（`src/routes/admin/settings.ts`、`tests/integration/error-logs-dashboard-auth.test.ts`）
 - 修复 release notes 生成脚本在 LLM endpoint 不可达时可能被 60s 默认请求超时拖慢测试的问题；新增 `RELEASE_NOTES_REQUEST_TIMEOUT_MS` 仅用于覆盖该脚本请求超时，生产默认仍为 60s。（`.github/scripts/summarize-release-notes.mjs`、`tests/unit/ci/summarize-release-notes.test.ts`）

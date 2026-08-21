@@ -50,10 +50,24 @@ import type { CodexApi } from "@src/proxy/codex-api.js";
 const fakeCodexApi = {} as CodexApi;
 const fakeResponse = new Response(null);
 
-async function collectStreamOutput(events: ExtractedEvent[], wantReasoning = false): Promise<string[]> {
+async function collectStreamOutput(
+  events: ExtractedEvent[],
+  wantReasoning = false,
+  customToolCallsAsFunctions = false,
+): Promise<string[]> {
   mockEvents = events;
   const chunks: string[] = [];
-  for await (const chunk of streamCodexToOpenAI(fakeCodexApi, fakeResponse, "gpt-5.4", undefined, undefined, wantReasoning)) {
+  for await (const chunk of streamCodexToOpenAI(
+    fakeCodexApi,
+    fakeResponse,
+    "gpt-5.4",
+    undefined,
+    undefined,
+    wantReasoning,
+    undefined,
+    undefined,
+    customToolCallsAsFunctions,
+  )) {
     chunks.push(chunk);
   }
   return chunks;
@@ -196,6 +210,147 @@ describe("collectCodexResponse", () => {
       .rejects.toThrow("empty response");
 
     expect(dumpSpy).not.toHaveBeenCalled();
+  });
+});
+
+describe("custom tool call translation", () => {
+  const patch = "*** Begin Patch\n*** Update File: temp-agent-edit-test.txt\n*** End Patch";
+
+  function customToolStream(): ExtractedEvent[] {
+    return [
+      createCreated("resp_custom"),
+      createInProgress("resp_custom"),
+      {
+        typed: {
+          type: "response.output_item.added",
+          outputIndex: 0,
+          item: {
+            type: "custom_tool_call",
+            id: "item_patch",
+            call_id: "call_patch",
+            name: "ApplyPatch",
+          },
+        },
+        customToolCallStart: {
+          callId: "call_patch",
+          name: "ApplyPatch",
+          outputIndex: 0,
+        },
+      },
+      {
+        typed: {
+          type: "response.custom_tool_call_input.delta",
+          delta: patch,
+          outputIndex: 0,
+          itemId: "item_patch",
+        },
+        customToolCallDelta: {
+          callId: "call_patch",
+          delta: patch,
+        },
+      },
+      {
+        typed: {
+          type: "response.custom_tool_call_input.done",
+          input: patch,
+          outputIndex: 0,
+          itemId: "item_patch",
+        },
+        customToolCallDone: {
+          callId: "call_patch",
+          name: "ApplyPatch",
+          input: patch,
+        },
+      },
+      createCompleted("resp_custom", { input_tokens: 10, output_tokens: 5 }),
+    ];
+  }
+
+  it("streams raw custom input instead of function arguments", async () => {
+    const chunks = await collectStreamOutput(customToolStream());
+    const toolCalls = chunks
+      .filter((chunk) => chunk.startsWith("data: {"))
+      .flatMap((chunk) => {
+        const parsed = JSON.parse(chunk.replace("data: ", "")) as {
+          choices?: Array<{ delta?: { tool_calls?: Array<Record<string, unknown>> } }>;
+        };
+        return parsed.choices?.[0]?.delta?.tool_calls ?? [];
+      });
+
+    expect(toolCalls).toContainEqual({
+      index: 0,
+      id: "call_patch",
+      type: "custom",
+      custom: { name: "ApplyPatch", input: "" },
+    });
+    const streamedInput = toolCalls
+      .map((toolCall) => (toolCall.custom as { input?: string } | undefined)?.input ?? "")
+      .join("");
+    expect(streamedInput).toBe(patch);
+  });
+
+  it("collects custom calls with the exact raw input", async () => {
+    mockEvents = customToolStream();
+    const { response } = await collectCodexResponse(
+      fakeCodexApi, fakeResponse, "gpt-5.4",
+    );
+
+    expect(response.choices[0].message.tool_calls).toEqual([
+      {
+        id: "call_patch",
+        type: "custom",
+        custom: {
+          name: "ApplyPatch",
+          input: patch,
+        },
+      },
+    ]);
+  });
+
+  it("uses Cursor's function envelope without JSON-encoding raw custom input", async () => {
+    const chunks = await collectStreamOutput(customToolStream(), false, true);
+    const toolCalls = chunks
+      .filter((chunk) => chunk.startsWith("data: {"))
+      .flatMap((chunk) => {
+        const parsed = JSON.parse(chunk.replace("data: ", "")) as {
+          choices?: Array<{ delta?: { tool_calls?: Array<Record<string, unknown>> } }>;
+        };
+        return parsed.choices?.[0]?.delta?.tool_calls ?? [];
+      });
+
+    expect(toolCalls).toContainEqual({
+      index: 0,
+      id: "call_patch",
+      type: "function",
+      function: { name: "ApplyPatch", arguments: "" },
+    });
+    const streamedInput = toolCalls
+      .map((toolCall) => (toolCall.function as { arguments?: string } | undefined)?.arguments ?? "")
+      .join("");
+    expect(streamedInput).toBe(patch);
+  });
+
+  it("collects Cursor-compatible custom calls as raw function arguments", async () => {
+    mockEvents = customToolStream();
+    const { response } = await collectCodexResponse(
+      fakeCodexApi,
+      fakeResponse,
+      "gpt-5.4",
+      false,
+      undefined,
+      true,
+    );
+
+    expect(response.choices[0].message.tool_calls).toEqual([
+      {
+        id: "call_patch",
+        type: "function",
+        function: {
+          name: "ApplyPatch",
+          arguments: patch,
+        },
+      },
+    ]);
   });
 });
 

@@ -172,4 +172,26 @@ describe("account-pool plan-based routing", () => {
     expect(acquired).not.toBeNull();
     expect(acquired!.token).toBe(jwts.get("free1"));
   });
+
+  it("skips accounts with exhausted Spark rate limit when acquiring for Spark, but allows non-Spark", () => {
+    setConfigForTesting(createMockConfig({ quota: { skip_exhausted: true } }));
+    vi.mocked(getModelPlanTypes).mockReturnValue(["plus"]);
+    const { pool, jwts } = createPool(
+      { accountId: "plus1", planType: "plus", email: "plus1@test.com" },
+      { accountId: "plus2", planType: "plus", email: "plus2@test.com" },
+    );
+
+    // Limit plus1 on Spark only
+    const entry1 = pool.getAccounts().find((a) => a.accountId === "plus1")!;
+    pool.applyAdditionalRateLimit429(entry1.id, "codex_bengalfox", { retryAfterSec: 3600 });
+
+    // Requesting normal model should still acquire plus1 or plus2 (plus1 is not limited on primary)
+    const normal = pool.acquire({ model: "gpt-5.3-codex" });
+    expect(normal).not.toBeNull();
+
+    // Requesting spark model should skip plus1 and acquire plus2
+    const spark = pool.acquire({ model: "gpt-5.3-codex-spark" });
+    expect(spark).not.toBeNull();
+    expect(spark!.token).toBe(jwts.get("plus2"));
+  });
 });

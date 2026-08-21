@@ -27,8 +27,14 @@ import type { FormatAdapter, ProxyRequest } from "./shared/proxy-handler-types.j
 import type { UpstreamRouter } from "../proxy/upstream-router.js";
 import { summarizeRequestForLog } from "../logs/request-summary.js";
 import { apiKeyAuth } from "../middleware/api-key-auth.js";
+import type { ClientKeyPool } from "../auth/client-key-pool.js";
+import { validateClientKeyModel } from "./shared/proxy-handler-utils.js";
+import { resolveDefaultTools, mergeDefaultTools } from "./shared/default-tools.js";
 
-function makeOpenAIFormat(wantReasoning: boolean): FormatAdapter {
+function makeOpenAIFormat(
+  wantReasoning: boolean,
+  customToolCallsAsFunctions = false,
+): FormatAdapter {
   return {
     tag: "Chat",
     noAccountStatus: 503,
@@ -58,10 +64,24 @@ function makeOpenAIFormat(wantReasoning: boolean): FormatAdapter {
       },
     }),
     streamTranslator: ({ api, response, model, onUsage, onResponseId, onResponseCompleted, tupleSchema }) =>
-      streamCodexToOpenAI(api, response, model, onUsage, onResponseId, wantReasoning, tupleSchema, onResponseCompleted),
+      streamCodexToOpenAI(
+        api,
+        response,
+        model,
+        onUsage,
+        onResponseId,
+        wantReasoning,
+        tupleSchema,
+        onResponseCompleted,
+        customToolCallsAsFunctions,
+      ),
     collectTranslator: ({ api, response, model, tupleSchema }) =>
-      collectCodexResponse(api, response, model, wantReasoning, tupleSchema),
+      collectCodexResponse(api, response, model, wantReasoning, tupleSchema, customToolCallsAsFunctions),
   };
+}
+
+function isCursorClient(c: Context): boolean {
+  return /^cursor\//i.test(c.req.header("user-agent") ?? "");
 }
 
 function formatModelNotFound(model: string) {
@@ -80,10 +100,11 @@ export function createChatRoutes(
   cookieJar?: CookieJar,
   proxyPool?: ProxyPool,
   upstreamRouter?: UpstreamRouter,
+  clientKeyPool?: ClientKeyPool,
 ): Hono {
   const app = new Hono();
 
-  app.post("/v1/chat/completions", apiKeyAuth(accountPool), async (c) => {
+  app.post("/v1/chat/completions", apiKeyAuth(accountPool, clientKeyPool), async (c) => {
     // Parse request
     const body = await c.req.json();
     const parsed = ChatCompletionRequestSchema.safeParse(body);
@@ -99,6 +120,19 @@ export function createChatRoutes(
       });
     }
     const req = parsed.data;
+
+    const modelCheck = validateClientKeyModel(c, req.model);
+    if (!modelCheck.allowed) {
+      c.status(403);
+      return c.json({
+        error: {
+          message: modelCheck.message,
+          type: "invalid_request_error",
+          param: "model",
+          code: "model_not_allowed",
+        },
+      });
+    }
     const routeMatch = upstreamRouter?.resolveMatch(req.model) ?? (isRecognizedModelName(req.model)
       ? { kind: "codex" as const }
       : { kind: "not-found" as const });
@@ -108,12 +142,19 @@ export function createChatRoutes(
       return c.json(formatModelNotFound(req.model));
     }
 
+    const defaultTools = resolveDefaultTools(c, {
+      allowUnauthenticated: routeMatch.kind === "api-key" || routeMatch.kind === "adapter",
+    });
+
     const { codexRequest, tupleSchema } = translateToCodexRequest(req);
+    if (defaultTools.length > 0) {
+      codexRequest.tools = mergeDefaultTools(codexRequest.tools, defaultTools);
+    }
     const expectsImageGen = Array.isArray(codexRequest.tools)
       && codexRequest.tools.some((t): t is Record<string, unknown> => isRecord(t) && t.type === "image_generation");
     // Check after translation so suffix-parsed and config-default effort are included.
     const wantReasoning = !!codexRequest.reasoning?.effort;
-    const fmt = makeOpenAIFormat(wantReasoning);
+    const fmt = makeOpenAIFormat(wantReasoning, isCursorClient(c));
     const displayModel = buildDisplayModelName(parseModelName(req.model));
     const proxyReq: ProxyRequest = {
       codexRequest,

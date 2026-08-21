@@ -2,20 +2,35 @@ api:
   base_url: https://chatgpt.com/backend-api
   timeout_seconds: 600
 client:
-  originator: Codex Desktop
-  app_version: 26.715.21425
-  build_number: "5488"
+  profile: codex_cli
+  originator: codex_cli_rs
+  app_version: 0.1.0
+  build_number: "6892"
   platform: darwin
   arch: arm64
   chromium_version: "146"
+
 model:
   default: gpt-5.4
+  # Codex host model for POST /v1/images/generations. The client-facing
+  # gpt-image-2 identifier only means "generate an image" — it is never
+  # sent upstream as the chat model itself.
+  image_host_model: gpt-5.5
   default_reasoning_effort: null
   default_service_tier: null
+  default_tools: []
   aliases: {}
   custom_models: []
   inject_desktop_context: false
   suppress_desktop_directives: false
+  allow_client_system_prompt_strategy: false
+  # How user-supplied system prompt is delivered to the Codex backend:
+  #   instructions     - default; user system goes into the top-level `instructions` field
+  #   developer_inline - user system is moved to input[0] as a developer-role message
+  #   system_inline    - user system is moved to input[0] as a system-role message
+  # The two `_inline` modes can bypass Codex backend's built-in base prompt prior
+  # in cases where the `instructions` field is overridden by server-injected context.
+  system_prompt_strategy: instructions
 auth:
   jwt_token: null
   chatgpt_oauth: true
@@ -31,6 +46,7 @@ server:
   port: 8080
   proxy_api_key: null
   trust_proxy: false
+  cors_allow_null_origin: false
 logs:
   enabled: false
   capacity: 2000

@@ -436,7 +436,57 @@ describe("translateGeminiToCodexRequest", () => {
         (i) => "role" in i && i.role === "assistant",
       );
       expect(assistant).toBeDefined();
-      expect((assistant as { content: string }).content).toBe("");
+      expect(assistant && "content" in assistant && assistant.content).toBe("");
+    });
+  });
+
+  describe("system_prompt_strategy", () => {
+    it("developer_inline moves systemInstruction to input[0] as developer message", () => {
+      const result = _translateGeminiToCodexRequest(
+        makeRequest({
+          systemInstruction: { parts: [{ text: "gemini system" }] },
+          contents: [{ role: "user", parts: [{ text: "hi" }] }],
+        }),
+        "gpt-5.4",
+        {
+          default_reasoning_effort: null,
+          default_service_tier: null,
+          inject_desktop_context: false,
+          suppress_desktop_directives: false,
+          system_prompt_strategy: "developer_inline",
+        },
+      ).codexRequest;
+
+      expect(result.instructions).toBe("");
+      expect(result.input).toHaveLength(2);
+      const first = result.input[0];
+      expect(first && "role" in first && first.role).toBe("developer");
+      const firstContent = first && "content" in first && Array.isArray(first.content) ? first.content[0] : undefined;
+      expect(firstContent?.text).toBe("gemini system");
+    });
+
+    it("system_inline moves systemInstruction to input[0] as system message", () => {
+      const result = _translateGeminiToCodexRequest(
+        makeRequest({
+          systemInstruction: { parts: [{ text: "gemini system" }] },
+          contents: [{ role: "user", parts: [{ text: "hi" }] }],
+        }),
+        "gpt-5.4",
+        {
+          default_reasoning_effort: null,
+          default_service_tier: null,
+          inject_desktop_context: false,
+          suppress_desktop_directives: false,
+          system_prompt_strategy: "system_inline",
+        },
+      ).codexRequest;
+
+      expect(result.instructions).toBe("");
+      expect(result.input).toHaveLength(2);
+      const first = result.input[0];
+      expect(first && "role" in first && first.role).toBe("system");
+      const firstContent = first && "content" in first && Array.isArray(first.content) ? first.content[0] : undefined;
+      expect(firstContent?.text).toBe("gemini system");
     });
   });
 });

@@ -1,6 +1,6 @@
 import { useState, useCallback } from "preact/hooks";
 import { useT } from "../../../shared/i18n/context";
-import { useGeneralSettings } from "../../../shared/hooks/use-general-settings";
+import { useGeneralSettings, type SystemPromptStrategy } from "../../../shared/hooks/use-general-settings";
 import { useSettings } from "../../../shared/hooks/use-settings";
 
 export function GeneralSettings() {
@@ -13,7 +13,10 @@ export function GeneralSettings() {
   const [draftForceHttp11, setDraftForceHttp11] = useState<boolean | null>(null);
   const [draftInjectContext, setDraftInjectContext] = useState<boolean | null>(null);
   const [draftSuppressDirectives, setDraftSuppressDirectives] = useState<boolean | null>(null);
+  const [draftAllowSystemPromptStrategy, setDraftAllowSystemPromptStrategy] = useState<boolean | null>(null);
+  const [draftSystemPromptStrategy, setDraftSystemPromptStrategy] = useState<SystemPromptStrategy | null>(null);
   const [draftDefaultModel, setDraftDefaultModel] = useState<string | null>(null);
+  const [draftImageHostModel, setDraftImageHostModel] = useState<string | null>(null);
   const [draftReasoningEffort, setDraftReasoningEffort] = useState<string | null>(null);
   const [draftRefreshEnabled, setDraftRefreshEnabled] = useState<boolean | null>(null);
   const [draftRefreshMargin, setDraftRefreshMargin] = useState<string | null>(null);
@@ -31,7 +34,11 @@ export function GeneralSettings() {
   const currentForceHttp11 = gs.data?.force_http11 ?? false;
   const currentInjectContext = gs.data?.inject_desktop_context ?? false;
   const currentSuppressDirectives = gs.data?.suppress_desktop_directives ?? false;
+  const currentAllowSystemPromptStrategy = gs.data?.allow_client_system_prompt_strategy ?? false;
+  const currentSystemPromptStrategy = gs.data?.system_prompt_strategy ?? "instructions";
   const currentDefaultModel = gs.data?.default_model ?? "";
+  const currentImageHostModel = gs.data?.image_host_model ?? "";
+  const currentImageHostModelAllowedModels = gs.data?.image_host_model_allowed_models ?? [];
   const currentReasoningEffort = gs.data?.default_reasoning_effort ?? "";
   const currentRefreshEnabled = gs.data?.refresh_enabled ?? true;
   const currentRefreshMargin = gs.data?.refresh_margin_seconds ?? 300;
@@ -48,7 +55,11 @@ export function GeneralSettings() {
   const displayForceHttp11 = draftForceHttp11 ?? currentForceHttp11;
   const displayInjectContext = draftInjectContext ?? currentInjectContext;
   const displaySuppressDirectives = draftSuppressDirectives ?? currentSuppressDirectives;
+  const displayAllowSystemPromptStrategy = draftAllowSystemPromptStrategy ?? currentAllowSystemPromptStrategy;
+  const canEditSystemPromptStrategy = displayAllowSystemPromptStrategy;
+  const displaySystemPromptStrategy = draftSystemPromptStrategy ?? currentSystemPromptStrategy;
   const displayDefaultModel = draftDefaultModel ?? currentDefaultModel;
+  const displayImageHostModel = draftImageHostModel ?? currentImageHostModel;
   const displayReasoningEffort = draftReasoningEffort ?? currentReasoningEffort;
   const displayRefreshEnabled = draftRefreshEnabled ?? currentRefreshEnabled;
   const displayRefreshMargin = draftRefreshMargin ?? String(currentRefreshMargin);
@@ -66,7 +77,10 @@ export function GeneralSettings() {
     draftForceHttp11 !== null ||
     draftInjectContext !== null ||
     draftSuppressDirectives !== null ||
+    draftAllowSystemPromptStrategy !== null ||
+    draftSystemPromptStrategy !== null ||
     draftDefaultModel !== null ||
+    draftImageHostModel !== null ||
     draftReasoningEffort !== null ||
     draftRefreshEnabled !== null ||
     draftRefreshMargin !== null ||
@@ -103,8 +117,20 @@ export function GeneralSettings() {
       patch.suppress_desktop_directives = draftSuppressDirectives;
     }
 
+    if (draftAllowSystemPromptStrategy !== null) {
+      patch.allow_client_system_prompt_strategy = draftAllowSystemPromptStrategy;
+    }
+
+    if (draftSystemPromptStrategy !== null) {
+      patch.system_prompt_strategy = draftSystemPromptStrategy;
+    }
+
     if (draftDefaultModel !== null) {
       patch.default_model = draftDefaultModel.trim();
+    }
+
+    if (draftImageHostModel !== null) {
+      patch.image_host_model = draftImageHostModel.trim();
     }
 
     if (draftReasoningEffort !== null) {
@@ -168,7 +194,10 @@ export function GeneralSettings() {
     setDraftForceHttp11(null);
     setDraftInjectContext(null);
     setDraftSuppressDirectives(null);
+    setDraftAllowSystemPromptStrategy(null);
+    setDraftSystemPromptStrategy(null);
     setDraftDefaultModel(null);
+    setDraftImageHostModel(null);
     setDraftReasoningEffort(null);
     setDraftRefreshEnabled(null);
     setDraftRefreshMargin(null);
@@ -179,7 +208,7 @@ export function GeneralSettings() {
     setDraftAutoUpdate(null);
     setDraftAutoDownload(null);
     setDraftShowUpdateDialog(null);
-  }, [draftPort, draftProxyUrl, draftForceHttp11, draftInjectContext, draftSuppressDirectives, draftDefaultModel, draftReasoningEffort, draftRefreshEnabled, draftRefreshMargin, draftRefreshConcurrency, draftMaxConcurrent, draftRequestInterval, draftUsageHistoryRetention, draftAutoUpdate, draftAutoDownload, draftShowUpdateDialog, gs]);
+  }, [draftPort, draftProxyUrl, draftForceHttp11, draftInjectContext, draftSuppressDirectives, draftAllowSystemPromptStrategy, draftSystemPromptStrategy, draftDefaultModel, draftImageHostModel, draftReasoningEffort, draftRefreshEnabled, draftRefreshMargin, draftRefreshConcurrency, draftMaxConcurrent, draftRequestInterval, draftUsageHistoryRetention, draftAutoUpdate, draftAutoDownload, draftShowUpdateDialog, gs]);
 
   const inputCls =
     "w-full px-3 py-2 bg-white dark:bg-bg-dark border border-gray-200 dark:border-border-dark rounded-lg text-[0.78rem] font-mono text-slate-700 dark:text-text-main outline-none focus:ring-1 focus:ring-primary";
@@ -296,6 +325,26 @@ export function GeneralSettings() {
             />
           </div>
 
+          {/* Images API Host Model */}
+          <div class="space-y-1.5">
+            <label for="image-host-model" class="text-xs font-semibold text-slate-700 dark:text-text-main">
+              {t("generalSettingsImageHostModel")}
+            </label>
+            <p class="text-xs text-slate-400 dark:text-text-dim">{t("generalSettingsImageHostModelHint")}</p>
+            <input
+              id="image-host-model"
+              type="text"
+              class={inputCls}
+              value={displayImageHostModel}
+              list="image-host-model-allowed-models"
+              onInput={(e) => setDraftImageHostModel((e.target as HTMLInputElement).value)}
+              placeholder="gpt-5.5"
+            />
+            <datalist id="image-host-model-allowed-models">
+              {currentImageHostModelAllowedModels.map((model: string) => <option key={model} value={model} />)}
+            </datalist>
+          </div>
+
           {/* Default Reasoning Effort */}
           <div class="space-y-1.5">
             <label class="text-xs font-semibold text-slate-700 dark:text-text-main">
@@ -389,6 +438,68 @@ export function GeneralSettings() {
               </label>
             </div>
             <p class="text-xs text-slate-400 dark:text-text-dim ml-6">{t("generalSettingsSuppressDirectivesHint")}</p>
+          </div>
+
+          {/* Client System Prompt Strategy */}
+          <div class="space-y-1">
+            <div class="flex items-center gap-2">
+              <input
+                type="checkbox"
+                id="allow-system-prompt-strategy"
+                checked={displayAllowSystemPromptStrategy}
+                onChange={(e) => setDraftAllowSystemPromptStrategy((e.target as HTMLInputElement).checked)}
+                class="w-4 h-4 rounded border-gray-300 dark:border-border-dark text-primary focus:ring-primary cursor-pointer"
+              />
+              <label for="allow-system-prompt-strategy" class="text-xs font-semibold text-slate-700 dark:text-text-main cursor-pointer">
+                {t("generalSettingsAllowSystemPromptStrategy")}
+              </label>
+            </div>
+            <p class="text-xs text-slate-400 dark:text-text-dim ml-6">{t("generalSettingsAllowSystemPromptStrategyHint")}</p>
+          </div>
+
+          <div class="space-y-1.5">
+            <label class={`text-xs font-semibold ${
+              canEditSystemPromptStrategy ? "text-slate-700 dark:text-text-main" : "text-slate-400 dark:text-text-dim"
+            }`}>
+              {t("generalSettingsSystemPromptStrategy")}
+            </label>
+            <div class="text-xs text-slate-400 dark:text-text-dim space-y-1">
+              <p>{t("generalSettingsSystemPromptStrategyHintIntro")}</p>
+              <ul class="space-y-1">
+                <li class="flex gap-2">
+                  <code class="font-mono text-[0.7rem] text-slate-500 dark:text-text-main shrink-0">instructions</code>
+                  <span>{t("generalSettingsSystemPromptStrategyDescInstructions")}</span>
+                </li>
+                <li class="flex gap-2">
+                  <code class="font-mono text-[0.7rem] text-slate-500 dark:text-text-main shrink-0">developer_inline</code>
+                  <span>
+                    {t("generalSettingsSystemPromptStrategyDescDeveloperInline")}
+                    <span class="ml-1 inline-block rounded px-1 py-0.5 text-[0.65rem] font-medium bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-400">
+                      {t("generalSettingsSystemPromptStrategyRecommended")}
+                    </span>
+                  </span>
+                </li>
+                <li class="flex gap-2">
+                  <code class="font-mono text-[0.7rem] text-slate-500 dark:text-text-main shrink-0">system_inline</code>
+                  <span>{t("generalSettingsSystemPromptStrategyDescSystemInline")}</span>
+                </li>
+              </ul>
+            </div>
+            <select
+              class={`${inputCls} max-w-[240px] ${canEditSystemPromptStrategy ? "" : "cursor-not-allowed opacity-50"}`}
+              value={displaySystemPromptStrategy}
+              disabled={!canEditSystemPromptStrategy}
+              title={canEditSystemPromptStrategy ? undefined : t("generalSettingsSystemPromptStrategyDisabledHint")}
+              aria-label={t("generalSettingsSystemPromptStrategy")}
+              onChange={(e) => setDraftSystemPromptStrategy((e.target as HTMLSelectElement).value as SystemPromptStrategy)}
+            >
+              <option value="instructions">{t("generalSettingsSystemPromptStrategyOptionInstructions")}</option>
+              <option value="developer_inline">{t("generalSettingsSystemPromptStrategyOptionDeveloperInline")}</option>
+              <option value="system_inline">{t("generalSettingsSystemPromptStrategyOptionSystemInline")}</option>
+            </select>
+            {!canEditSystemPromptStrategy && (
+              <p class="text-xs text-amber-600 dark:text-amber-400">{t("generalSettingsSystemPromptStrategyDisabledHint")}</p>
+            )}
           </div>
 
           {/* Auto-refresh Tokens */}

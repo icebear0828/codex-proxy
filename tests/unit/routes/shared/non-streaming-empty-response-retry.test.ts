@@ -35,6 +35,7 @@ function acquired(overrides: Partial<AcquiredAccount> = {}): AcquiredAccount {
     entryId: "entry-2",
     token: "token-2",
     accountId: "account-2",
+    codexFingerprintMode: "off",
     prevSlotMs: null,
     ...overrides,
   };
@@ -77,7 +78,7 @@ describe("retryNonStreamingEmptyResponse", () => {
   });
 
   it("releases the empty-response account, reacquires without exclusions, and returns the retry response", async () => {
-    const pool = makePool(acquired({ entryId: "entry-2" }));
+    const pool = makePool(acquired({ entryId: "entry-2", codexFingerprintMode: "session" }));
     const response = new Response("retry ok", { status: 203 });
     const createResponse = vi.fn<CodexApi["createResponse"]>(async () => response);
     const api = makeApi(createResponse);
@@ -124,7 +125,14 @@ describe("retryNonStreamingEmptyResponse", () => {
       excludeIds: undefined,
       preferredEntryId: undefined,
     });
-    expect(buildCodexApiMock).toHaveBeenCalledWith("token-2", "account-2", undefined, "entry-2", undefined);
+    expect(buildCodexApiMock).toHaveBeenCalledWith(
+      "token-2",
+      "account-2",
+      undefined,
+      "entry-2",
+      undefined,
+      "session",
+    );
     expect(setActiveAccount).toHaveBeenCalledWith("entry-2", api);
     expect(createResponse).toHaveBeenCalledWith(request.codexRequest, expect.any(AbortSignal), undefined, poolCtx);
     expect(recordProxyEgressLogMock).toHaveBeenCalledWith({

@@ -31,6 +31,29 @@ jobs:
       - name: Type-check public update scripts
         run: npm run typecheck:scripts
 
+  backend-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install web dependencies
+        run: cd web && npm ci
+
+      - name: Build web assets
+        run: npm run build:web
+
+      - name: Run root vitest test suite
+        run: npm test
+
   frontend-tests:
     runs-on: ubuntu-latest
     timeout-minutes: 10

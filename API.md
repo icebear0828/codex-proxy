@@ -100,7 +100,8 @@ and the model falls back to returning SVG text.
 
 **Silently rewritten / hard-rejected fields**:
 
-- `model` — whatever you send, upstream forces `gpt-image-2`.
+- `model` — whatever you send, upstream forces `gpt-image-2` (echoed as `gpt-image-2-codex` in responses).
+- `size` — user-requested dimensions like `2048x2048`, `2K`, `4K` are echoed/normalized upstream to `auto` and the actual resolution is decided server-side (e.g. `1254x1254`).
 - `quality` — any value is echoed back as `auto`; the user-supplied value has no effect.
 - `n` — rejected (`unknown_parameter`); one image per call.
 - `input_image`, `mask`, `input_fidelity`, `style`, `response_format` — rejected.

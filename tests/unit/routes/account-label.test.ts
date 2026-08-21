@@ -128,4 +128,25 @@ describe("account label API", () => {
     const data = await res.json();
     expect(data.accounts[0].label).toBe("Production");
   });
+
+  it("PATCH explicitly enables account-scoped session fingerprint convergence", async () => {
+    const res = await app.request(`/auth/accounts/${accountId}/codex-fingerprint`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ mode: "session" }),
+    });
+
+    expect(res.status).toBe(200);
+    expect(pool.getAccounts()[0].codexFingerprintMode).toBe("session");
+  });
+
+  it("rejects unsupported fingerprint convergence modes", async () => {
+    const res = await app.request(`/auth/accounts/${accountId}/codex-fingerprint`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ mode: "full" }),
+    });
+
+    expect(res.status).toBe(400);
+  });
 });

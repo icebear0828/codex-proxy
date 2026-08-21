@@ -14,7 +14,11 @@ import { hasTupleSchemas, convertTupleSchemas } from "./tuple-schema.js";
 /** Subset of model config used by translation functions. */
 export type ModelConfigOverride = Pick<
   AppConfig["model"],
-  "default_reasoning_effort" | "default_service_tier" | "inject_desktop_context" | "suppress_desktop_directives"
+  | "default_reasoning_effort"
+  | "default_service_tier"
+  | "inject_desktop_context"
+  | "suppress_desktop_directives"
+  | "system_prompt_strategy"
 >;
 
 let cachedDesktopContext: string | null = null;

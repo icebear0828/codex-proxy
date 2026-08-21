@@ -3,6 +3,7 @@ import type { ProxyRequest } from "./proxy-handler-types.js";
 import { computeVariantHash } from "./variant-hash.js";
 import {
   buildVariantIdentity,
+  extractEffectiveInstructions,
   getContinuationInputStartIndex,
   getFunctionCallOutputIds,
   getInlineFunctionCallIds,
@@ -44,7 +45,7 @@ export function buildProxySessionContext(
 ): ProxySessionContext {
   const { request, affinityMap } = options;
   const { codexRequest } = request;
-  const currentInstructions = codexRequest.instructions;
+  const currentInstructions = extractEffectiveInstructions(codexRequest);
   const explicitPrevRespId = codexRequest.previous_response_id;
   const promptCacheIdentity = resolvePromptCacheIdentity(codexRequest, request.clientConversationId);
   const promptCacheKey = promptCacheIdentity.promptCacheKey;
@@ -53,7 +54,7 @@ export function buildProxySessionContext(
   const effectiveConversationId = promptCacheIdentity.conversationId;
   const chainConversationId = explicitConversationId ?? effectiveConversationId;
   const variantIdentity = buildVariantIdentity(codexRequest, promptCacheIdentity);
-  const variantHash = computeVariantHash(codexRequest.instructions, codexRequest.tools, variantIdentity);
+  const variantHash = computeVariantHash(currentInstructions, codexRequest.tools, variantIdentity);
   const implicitPrevRespId =
     !explicitPrevRespId &&
     continuationInputStart > 0 &&

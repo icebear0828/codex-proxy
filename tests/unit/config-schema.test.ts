@@ -32,6 +32,7 @@ describe("ConfigSchema", () => {
     expect(result.server.port).toBe(8080);
     expect(result.server.host).toBe("127.0.0.1");
     expect(result.server.proxy_api_key).toBeNull();
+    expect(result.server.cors_allow_null_origin).toBe(false);
     expect(result.auth.rotation_strategy).toBe("least_used");
     expect(result.auth.refresh_concurrency).toBe(2);
     expect(result.auth.max_concurrent_per_account).toBe(3);
@@ -40,6 +41,8 @@ describe("ConfigSchema", () => {
     expect(result.model.default_reasoning_effort).toBeNull();
     expect(result.model.aliases).toEqual({});
     expect(result.model.custom_models).toEqual([]);
+    expect(result.model.allow_client_system_prompt_strategy).toBe(false);
+    expect(result.model.system_prompt_strategy).toBe("instructions");
     expect(result.tls.force_http11).toBe(false);
     expect(result.tls.health_check_url).toBe("https://api.ipify.org?format=json");
     expect(result.usage_stats.snapshot_interval_minutes).toBe(5);
@@ -97,7 +100,7 @@ describe("ConfigSchema", () => {
         ],
       },
       auth: { rotation_strategy: "round_robin", max_concurrent_per_account: null },
-      server: { port: 3000, proxy_api_key: "sk-test" },
+      server: { port: 3000, proxy_api_key: "sk-test", cors_allow_null_origin: true },
       session: { ttl_minutes: 120 },
       tls: { force_http11: true, health_check_url: "https://my-health.org" },
       providers: {
@@ -151,6 +154,7 @@ describe("ConfigSchema", () => {
     expect(result.auth.max_concurrent_per_account).toBeNull();
     expect(result.server.port).toBe(3000);
     expect(result.server.proxy_api_key).toBe("sk-test");
+    expect(result.server.cors_allow_null_origin).toBe(true);
     expect(result.tls.force_http11).toBe(true);
     expect(result.tls.health_check_url).toBe("https://my-health.org");
     expect(result.providers?.anthropic?.base_url).toBe("https://my-anthropic.com/v1");

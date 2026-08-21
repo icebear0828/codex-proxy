@@ -20,6 +20,27 @@ export function normalizeLogsQueryState<T>(
 }
 
 
+export interface LogUsage {
+  input_tokens: number;
+  output_tokens: number;
+  cached_tokens?: number;
+  reasoning_tokens?: number;
+  image_input_tokens?: number;
+  image_output_tokens?: number;
+}
+
+export interface LogMetrics {
+  ttftMs?: number | null;
+  durationMs?: number | null;
+  costUsd?: number | null;
+  tokensPerSecond?: number | null;
+  inputTokens?: number | null;
+  outputTokens?: number | null;
+  cachedTokens?: number | null;
+  reasoningTokens?: number | null;
+  totalTokens?: number | null;
+}
+
 export interface LogRecord {
   id: string;
   requestId: string;
@@ -35,6 +56,12 @@ export interface LogRecord {
   error?: string | null;
   request?: unknown;
   response?: unknown;
+  ttftMs?: number | null;
+  durationMs?: number | null;
+  costUsd?: number | null;
+  tokensPerSecond?: number | null;
+  usage?: LogUsage | null;
+  metrics?: LogMetrics | null;
 }
 
 export interface LogState {
@@ -147,10 +174,25 @@ export function useLogs(refreshIntervalMs = 1500) {
     if (resp.ok) setState(await resp.json());
   }, []);
 
-  const selectLog = useCallback(async (id: string) => {
+  const selectLog = useCallback(async (id: string | null) => {
+    if (!id) {
+      setSelected(null);
+      return;
+    }
     try {
       const resp = await fetch(`/admin/logs/${id}`);
       if (resp.ok) setSelected(await resp.json());
+    } catch { /* ignore */ }
+  }, []);
+
+  const clearLogs = useCallback(async () => {
+    try {
+      const resp = await fetch("/admin/logs/clear", { method: "POST" });
+      if (resp.ok) {
+        setRecords([]);
+        setTotal(0);
+        setSelected(null);
+      }
     } catch { /* ignore */ }
   }, []);
 
@@ -167,6 +209,7 @@ export function useLogs(refreshIntervalMs = 1500) {
     loading,
     state,
     setLogState,
+    clearLogs,
     selected,
     selectLog,
     page,

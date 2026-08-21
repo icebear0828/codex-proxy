@@ -45,6 +45,9 @@ function isCorsEnabledPath(path: string): boolean {
 
 export function getAllowedOrigin(origin: string | undefined): string | null {
   if (!origin) return null;
+  if (origin === "null") {
+    return getConfig().server.cors_allow_null_origin ? "null" : null;
+  }
   try {
     const url = new URL(origin);
     if (url.protocol !== "http:" && url.protocol !== "https:") return null;

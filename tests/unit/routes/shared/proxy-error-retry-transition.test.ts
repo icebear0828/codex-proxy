@@ -96,6 +96,7 @@ describe("applyProxyErrorRetryTransition", () => {
     expect(accountPool.acquire).not.toHaveBeenCalled();
   });
 
+
   it("releases model-not-supported accounts before acquiring a fallback and marks the model retried", () => {
     const accountPool = mockPool({ acquiredAccount: acquired({ entryId: "entry-2" }) });
     const restoreImplicitResumeRequest = vi.fn();
@@ -186,6 +187,68 @@ describe("applyProxyErrorRetryTransition", () => {
     });
     expect(accountPool.release).not.toHaveBeenCalled();
     expect(restoreImplicitResumeRequest).toHaveBeenCalledOnce();
+    expect(accountPool.acquire).not.toHaveBeenCalled();
+  });
+
+  it("releases an overloaded account and excludes every tried account from retry", () => {
+    const accountPool = mockPool({ acquiredAccount: acquired({ entryId: "entry-3" }) });
+    const restoreImplicitResumeRequest = vi.fn();
+
+    const result = applyProxyErrorRetryTransition({
+      accountPool,
+      entryId: "entry-2",
+      model: "gpt-5.4",
+      triedEntryIds: ["entry-1", "entry-2"],
+      tag: "Test",
+      decision: retryDecision({
+        status: 503,
+        message: "The server is overloaded",
+        releaseBeforeRetry: true,
+      }),
+      released: new Set<string>(),
+      restoreImplicitResumeRequest,
+      modelRetried: false,
+    });
+
+    expect(result.action).toBe("retry");
+    expect(accountPool.release).toHaveBeenCalledWith("entry-2", undefined);
+    expect(accountPool.acquire).toHaveBeenCalledWith({
+      model: "gpt-5.4",
+      excludeIds: ["entry-1", "entry-2"],
+      preferredEntryId: undefined,
+    });
+  });
+
+  it("returns one finite 503 response when overload has no fallback account", () => {
+    const accountPool = mockPool({
+      available: false,
+      summary: summary({ rate_limited: 0, active: 0 }),
+    });
+    const restoreImplicitResumeRequest = vi.fn();
+
+    const result = applyProxyErrorRetryTransition({
+      accountPool,
+      entryId: "entry-1",
+      model: "gpt-5.4",
+      triedEntryIds: ["entry-1"],
+      tag: "Test",
+      decision: retryDecision({
+        status: 503,
+        message: "The server is overloaded",
+        releaseBeforeRetry: true,
+      }),
+      released: new Set<string>(),
+      restoreImplicitResumeRequest,
+      modelRetried: false,
+    });
+
+    expect(result).toEqual({
+      action: "respond",
+      status: 503,
+      message: "No accounts available. The server is overloaded",
+      modelRetried: false,
+    });
+    expect(accountPool.release).toHaveBeenCalledWith("entry-1", undefined);
     expect(accountPool.acquire).not.toHaveBeenCalled();
   });
 });

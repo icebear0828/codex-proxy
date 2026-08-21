@@ -147,4 +147,72 @@ describe("AccountPool.applyRateLimit429", () => {
     expect(entry?.cachedQuota?.rate_limit.limit_reached).toBe(false);
     expect(available).toBe(true);
   });
+
+  describe("AccountPool.applyAdditionalRateLimit429", () => {
+    it("writes limit_reached=true into rate_limits_by_limit_id without touching primary rate_limit", () => {
+      const id = pool.addAccount(createValidJwt({ accountId: "spark-1", planType: "plus" }));
+      pool.updateCachedQuota(id, makeQuota({
+        rate_limit: {
+          allowed: true,
+          limit_reached: false,
+          used_percent: 20,
+          reset_at: Math.floor(Date.now() / 1000) + 3600,
+          limit_window_seconds: 18000,
+        },
+      }));
+
+      pool.applyAdditionalRateLimit429(id, "codex_bengalfox", { retryAfterSec: 300, countRequest: true });
+
+      const entry = pool.getEntry(id);
+      expect(entry?.cachedQuota?.rate_limit.limit_reached).toBe(false);
+      expect(entry?.cachedQuota?.rate_limit.used_percent).toBe(20);
+
+      const sparkLimit = entry?.cachedQuota?.rate_limits_by_limit_id?.["codex_bengalfox"];
+      expect(sparkLimit).toBeDefined();
+      expect(sparkLimit?.limit_reached).toBe(true);
+      expect(sparkLimit?.used_percent).toBe(100);
+      expect(sparkLimit?.remaining_percent).toBe(0);
+      expect(entry?.usage.request_count).toBe(1);
+    });
+
+    it("preserves existing further reset_at for the limitId", () => {
+      const id = pool.addAccount(createValidJwt({ accountId: "spark-2", planType: "plus" }));
+      const farFuture = Math.floor(Date.now() / 1000) + 50000;
+      pool.updateCachedQuota(id, makeQuota({
+        rate_limits_by_limit_id: {
+          codex_bengalfox: {
+            limit_id: "codex_bengalfox",
+            limit_name: "Codex Spark",
+            allowed: false,
+            limit_reached: true,
+            used_percent: 100,
+            remaining_percent: 0,
+            reset_at: farFuture,
+            limit_window_seconds: 3600,
+          },
+        },
+      }));
+
+      pool.applyAdditionalRateLimit429(id, "codex_bengalfox", { retryAfterSec: 60 });
+
+      const entry = pool.getEntry(id);
+      expect(entry?.cachedQuota?.rate_limits_by_limit_id?.["codex_bengalfox"]?.reset_at).toBe(farFuture);
+    });
+
+    it("auto-clears limit_reached on expired additional rate limit via refreshStatus", () => {
+      const id = pool.addAccount(createValidJwt({ accountId: "spark-3", planType: "plus" }));
+      const pastResetAt = Math.floor(Date.now() / 1000) - 10;
+      pool.applyAdditionalRateLimit429(id, "codex_bengalfox", { resetsAtSec: pastResetAt });
+
+      const beforeRefresh = pool.getEntry(id);
+      expect(beforeRefresh?.cachedQuota?.rate_limits_by_limit_id?.["codex_bengalfox"]?.limit_reached).toBe(true);
+
+      // Trigger refreshStatus
+      pool.getAccounts();
+
+      const afterRefresh = pool.getEntry(id);
+      expect(afterRefresh?.cachedQuota?.rate_limits_by_limit_id?.["codex_bengalfox"]?.limit_reached).toBe(false);
+      expect(afterRefresh?.cachedQuota?.rate_limits_by_limit_id?.["codex_bengalfox"]?.used_percent).toBe(0);
+    });
+  });
 });
