@@ -11,6 +11,7 @@ import {
 interface MockPool {
   markRateLimited: ReturnType<typeof vi.fn>;
   applyRateLimit429: ReturnType<typeof vi.fn>;
+  applyAdditionalRateLimit429: ReturnType<typeof vi.fn>;
   markStatus: ReturnType<typeof vi.fn>;
   getEntry: ReturnType<typeof vi.fn>;
   acquire: ReturnType<typeof vi.fn>;
@@ -20,6 +21,7 @@ function createMockPool(): MockPool {
   return {
     markRateLimited: vi.fn(),
     applyRateLimit429: vi.fn(),
+    applyAdditionalRateLimit429: vi.fn(),
     markStatus: vi.fn(),
     getEntry: vi.fn().mockReturnValue({ email: "test@example.com" }),
     acquire: vi.fn(),
@@ -103,6 +105,19 @@ describe("handleCodexApiError", () => {
         retryAfterSec: undefined,
         countRequest: true,
       });
+    });
+
+    it("records Spark 429 in its additional quota bucket", () => {
+      const body = JSON.stringify({ error: { resets_in_seconds: 30 } });
+      const err = new CodexApiError(429, body);
+
+      handleCodexApiError(err, pool as never, entryId, "gpt-5.3-codex-spark", tag, false);
+
+      expect(pool.applyAdditionalRateLimit429).toHaveBeenCalledWith(entryId, "codex_bengalfox", {
+        retryAfterSec: 30,
+        countRequest: true,
+      });
+      expect(pool.applyRateLimit429).not.toHaveBeenCalled();
     });
 
     it("does not combine with cached quota in handler (don't-shrink-existing-reset_at lives inside applyRateLimit429)", () => {

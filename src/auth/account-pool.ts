@@ -213,6 +213,17 @@ export class AccountPool {
     }
   }
 
+  applyAdditionalRateLimit429(
+    entryId: string,
+    limitId: string,
+    options?: { retryAfterSec?: number; resetsAtSec?: number; countRequest?: boolean },
+  ): void {
+    if (this.registry.applyAdditionalRateLimit429(entryId, limitId, this.rateLimitBackoffSeconds, options)) {
+      this.lifecycle.clearLock(entryId);
+      this.evictWsPool(entryId);
+    }
+  }
+
   // ── Quota / usage ─────────────────────────────────────────────────
 
   recordEmptyResponse(entryId: string): void {

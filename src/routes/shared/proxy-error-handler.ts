@@ -111,7 +111,11 @@ export function handleCodexApiError(
   // so a fresh secondary-window lock survives a stale primary 429.
   if (err.status === 429) {
     const retryAfterSec = extractRetryAfterSec(err.body);
-    pool.applyRateLimit429(entryId, { retryAfterSec, countRequest: true });
+    if (model === "gpt-5.3-codex-spark") {
+      pool.applyAdditionalRateLimit429(entryId, "codex_bengalfox", { retryAfterSec, countRequest: true });
+    } else {
+      pool.applyRateLimit429(entryId, { retryAfterSec, countRequest: true });
+    }
     const backoffDisplay = retryAfterSec != null ? Math.round(retryAfterSec) : null;
     console.warn(
       `[${tag}] Account ${entryId} (${email}) | 429 rate limited` +

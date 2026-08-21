@@ -277,6 +277,65 @@ export class AccountRegistry {
     return true;
   }
 
+  applyAdditionalRateLimit429(
+    entryId: string,
+    limitId: string,
+    backoffSeconds: number,
+    options?: { retryAfterSec?: number; resetsAtSec?: number; countRequest?: boolean },
+  ): boolean {
+    const entry = this.accounts.get(entryId);
+    if (!entry) return false;
+
+    const nowSec = Date.now() / 1000;
+    const explicit = options?.resetsAtSec;
+    const fromRetry = options?.retryAfterSec != null
+      ? nowSec + jitter(options.retryAfterSec, 0.2)
+      : null;
+    const newResetAt = explicit ?? fromRetry ?? (nowSec + jitter(backoffSeconds, 0.2));
+    const quota: CodexQuota = entry.cachedQuota ?? {
+      plan_type: entry.planType ?? "unknown",
+      rate_limit: {
+        allowed: true,
+        limit_reached: false,
+        used_percent: null,
+        reset_at: null,
+        limit_window_seconds: null,
+      },
+      secondary_rate_limit: null,
+      code_review_rate_limit: null,
+    };
+    const limits = quota.rate_limits_by_limit_id ?? {};
+    const existing = limits[limitId];
+    const existingResetAt = existing?.reset_at;
+    const finalResetAt = existingResetAt != null && existingResetAt > newResetAt
+      ? existingResetAt
+      : newResetAt;
+
+    limits[limitId] = {
+      limit_id: limitId,
+      limit_name: existing?.limit_name ?? limitId,
+      allowed: false,
+      limit_reached: true,
+      used_percent: 100,
+      remaining_percent: 0,
+      reset_at: finalResetAt,
+      limit_window_seconds: existing?.limit_window_seconds ?? entry.usage.limit_window_seconds ?? null,
+      secondary_rate_limit: existing?.secondary_rate_limit ?? null,
+    };
+    quota.rate_limits_by_limit_id = limits;
+    entry.cachedQuota = quota;
+    entry.quotaFetchedAt = new Date().toISOString();
+
+    if (options?.countRequest) {
+      entry.usage.request_count++;
+      entry.usage.last_used = new Date().toISOString();
+      entry.usage.window_request_count = (entry.usage.window_request_count ?? 0) + 1;
+    }
+
+    this.schedulePersist();
+    return true;
+  }
+
   // ── Query ─────────────────────────────────────────────────────────
 
   getAccounts(): AccountInfo[] {
