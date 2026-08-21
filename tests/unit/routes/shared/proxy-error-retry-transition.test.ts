@@ -96,6 +96,7 @@ describe("applyProxyErrorRetryTransition", () => {
     expect(accountPool.acquire).not.toHaveBeenCalled();
   });
 
+
   it("releases model-not-supported accounts before acquiring a fallback and marks the model retried", () => {
     const accountPool = mockPool({ acquiredAccount: acquired({ entryId: "entry-2" }) });
     const restoreImplicitResumeRequest = vi.fn();

@@ -44,21 +44,33 @@ function makeLogsState(overrides: Partial<ReturnType<typeof mockLogs.useLogs>> =
       {
         id: "1",
         requestId: "r1",
-        direction: "ingress",
+        direction: "ingress" as const,
         ts: "2026-04-15T00:00:01.000Z",
         method: "POST",
         path: "/v1/messages",
+        model: "gpt-5.5",
         status: 200,
-        latencyMs: 10,
+        latencyMs: 1500,
+        ttftMs: 250,
+        durationMs: 1500,
+        tokensPerSecond: 45.2,
+        costUsd: 0.0035,
+        usage: {
+          input_tokens: 1200,
+          output_tokens: 60,
+          cached_tokens: 400,
+          reasoning_tokens: 15,
+        },
       },
     ],
     total: 1,
     loading: false,
     state: { enabled: true, paused: false },
     setLogState: vi.fn(),
+    clearLogs: vi.fn(),
     selected: null,
     selectLog: vi.fn(),
-    direction: "all",
+    direction: "all" as const,
     setDirection: vi.fn(),
     search: "",
     setSearch: vi.fn(),
@@ -107,12 +119,31 @@ describe("LogsPage", () => {
     expect(nextPage).toHaveBeenCalledTimes(1);
   });
 
-  it("shows selected log details and clears to hint when nothing is selected", () => {
+  it("shows selected log details only when selected and hides when null", () => {
     mockGeneralSettings.useGeneralSettings.mockReturnValue(makeGeneralSettings());
 
-    mockLogs.useLogs.mockReturnValue(makeLogsState({ selected: { id: "1", path: "/v1/messages" } }));
+    mockLogs.useLogs.mockReturnValue(
+      makeLogsState({
+        selected: {
+          id: "1",
+          requestId: "r1",
+          direction: "ingress",
+          ts: "2026-04-15T00:00:01.000Z",
+          method: "POST",
+          path: "/v1/messages",
+          model: "gpt-5.5",
+          ttftMs: 250,
+          tokensPerSecond: 45.2,
+          costUsd: 0.0035,
+          latencyMs: 1500,
+          usage: { input_tokens: 100, output_tokens: 50 },
+        },
+      }),
+    );
     const { rerender } = renderLogsPage();
-    expect(screen.getByText(/"path": "\/v1\/messages"/)).toBeTruthy();
+    expect(screen.getByText("Token Usage Breakdown")).toBeTruthy();
+    expect(screen.getAllByText("250ms").length).toBeGreaterThan(0);
+    expect(screen.getByText("Details")).toBeTruthy();
 
     mockLogs.useLogs.mockReturnValue(makeLogsState({ selected: null }));
     rerender(
@@ -120,7 +151,7 @@ describe("LogsPage", () => {
         <LogsPage embedded />
       </I18nProvider>,
     );
-    expect(screen.getByText("Select a log to view details")).toBeTruthy();
+    expect(screen.queryByText("Details")).toBeNull();
   });
 
   it("renders zero latency as 0ms", () => {
@@ -144,7 +175,8 @@ describe("LogsPage", () => {
 
     renderLogsPage();
 
-    expect(screen.getByText("0ms")).toBeTruthy();
+    const zeroMsElements = screen.getAllByText("0ms");
+    expect(zeroMsElements.length).toBeGreaterThan(0);
   });
 
   it("renders and toggles the logs mode button", () => {
@@ -158,18 +190,93 @@ describe("LogsPage", () => {
     expect(save).toHaveBeenCalledWith({ logs_llm_only: false });
   });
 
-  it("keeps the log list constrained on narrow screens", () => {
-    mockLogs.useLogs.mockReturnValue(makeLogsState());
+  it("keeps the log table full width and shows details on selection", () => {
+    mockLogs.useLogs.mockReturnValue(
+      makeLogsState({
+        selected: {
+          id: "1",
+          requestId: "r1",
+          direction: "ingress",
+          ts: "2026-04-15T00:00:01.000Z",
+          method: "POST",
+          path: "/v1/messages",
+          model: "gpt-5.5",
+          ttftMs: 250,
+          tokensPerSecond: 45.2,
+          costUsd: 0.0035,
+          latencyMs: 1500,
+        },
+      }),
+    );
     mockGeneralSettings.useGeneralSettings.mockReturnValue(makeGeneralSettings());
 
     renderLogsPage();
 
     const timeHeader = screen.getByText("Time");
-    expect(hasAncestorClass(timeHeader, "overflow-x-auto")).toBe(true);
-    expect(hasAncestorClass(timeHeader, "min-w-[520px]")).toBe(true);
+    expect(hasAncestorClass(timeHeader, "w-full")).toBe(true);
 
-    const detailsPanel = screen.getByText("Details").parentElement?.parentElement;
+    const detailsHeader = screen.getByText("Details");
+    const detailsPanel = detailsHeader.closest(".w-full.lg\\:w-\\[460px\\]") ?? detailsHeader.parentElement?.parentElement?.parentElement;
     expect(detailsPanel?.className).toContain("w-full");
-    expect(detailsPanel?.className).toContain("lg:w-[360px]");
+    expect(detailsPanel?.className).toContain("lg:w-[460px]");
+  });
+
+  it("renders observability KPI cards with TTFT, speed, cost, and tokens", () => {
+    mockLogs.useLogs.mockReturnValue(makeLogsState());
+    mockGeneralSettings.useGeneralSettings.mockReturnValue(makeGeneralSettings());
+
+    renderLogsPage();
+
+    expect(screen.getByText("Avg TTFT")).toBeTruthy();
+    expect(screen.getByText("Avg Speed")).toBeTruthy();
+    expect(screen.getByText("Avg Latency")).toBeTruthy();
+    expect(screen.getByText("Total Cost")).toBeTruthy();
+    expect(screen.getAllByText("45.2 t/s").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("$0.0035").length).toBeGreaterThan(0);
+  });
+
+  it("does not double-count cost or tokens in 'all' mode when both ingress and egress records exist for same requestId", () => {
+    mockLogs.useLogs.mockReturnValue(
+      makeLogsState({
+        direction: "all",
+        records: [
+          {
+            id: "1",
+            requestId: "req-1",
+            direction: "ingress",
+            ts: "2026-04-15T00:00:01.000Z",
+            method: "POST",
+            path: "/v1/messages",
+            model: "gpt-5.5",
+            status: 200,
+            latencyMs: 1000,
+            costUsd: 0.01,
+            usage: { input_tokens: 1000, output_tokens: 200 },
+          },
+          {
+            id: "2",
+            requestId: "req-1",
+            direction: "egress",
+            ts: "2026-04-15T00:00:01.000Z",
+            method: "POST",
+            path: "/codex/responses",
+            model: "gpt-5.5",
+            status: 200,
+            latencyMs: 1000,
+            costUsd: 0.01,
+            usage: { input_tokens: 1000, output_tokens: 200 },
+          },
+        ],
+      }),
+    );
+    mockGeneralSettings.useGeneralSettings.mockReturnValue(makeGeneralSettings());
+
+    renderLogsPage();
+
+    // Cost should be $0.010, NOT $0.020
+    expect(screen.getByText("$0.0100")).toBeTruthy();
+    expect(screen.queryByText("$0.0200")).toBeNull();
+    // Tokens should be 1.2k (1000+200), NOT 2.4k
+    expect(screen.getByText("1.2k")).toBeTruthy();
   });
 });

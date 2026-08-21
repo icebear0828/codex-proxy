@@ -107,6 +107,35 @@ export function usageStream(): ExtractedEvent[] {
   ];
 }
 
+/** Stream whose only semantic output is a completed image generation call. */
+export function imageGenerationStream(): ExtractedEvent[] {
+  return [
+    createCreated("resp_image"),
+    createInProgress("resp_image"),
+    {
+      typed: {
+        type: "response.output_item.done",
+        outputIndex: 0,
+        item: {
+          type: "image_generation_call",
+          id: "img_1",
+          result: "iVBORw0KGgoAAAANSUhEUg==",
+          revised_prompt: "A small blue circle",
+        },
+      },
+      imageGenerationDone: {
+        id: "img_1",
+        result: "iVBORw0KGgoAAAANSUhEUg==",
+        revised_prompt: "A small blue circle",
+      },
+    },
+    createCompleted("resp_image", {
+      input_tokens: 12,
+      output_tokens: 0,
+    }),
+  ];
+}
+
 /** Tool call stream with no argument deltas (only start + done). */
 export function toolCallNoDeltaStream(): ExtractedEvent[] {
   return [

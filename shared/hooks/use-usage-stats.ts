@@ -16,6 +16,7 @@ export interface UsageSummary {
    *  a request that declared the tool. */
   total_image_request_count: number;
   total_image_request_failed_count: number;
+  total_estimated_cost_usd: number;
   total_request_count: number;
   total_accounts: number;
   active_accounts: number;
@@ -30,6 +31,8 @@ export interface UsageDataPoint {
   image_output_tokens: number;
   image_request_count: number;
   image_request_failed_count: number;
+  /** Estimated API-equivalent cost for this history bucket, in USD. */
+  estimated_cost_usd?: number;
   request_count: number;
 }
 

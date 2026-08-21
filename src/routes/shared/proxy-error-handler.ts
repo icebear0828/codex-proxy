@@ -6,6 +6,7 @@
  */
 
 import type { AccountPool } from "../../auth/account-pool.js";
+import { getRateLimitIdForModel } from "../../auth/quota-utils.js";
 import {
   extractRetryAfterSec,
   isBanError,
@@ -13,6 +14,7 @@ import {
   isCfPathBlockError,
   isQuotaExhaustedError,
   isServerOverloadedError,
+  isEarlyServerError,
   isTokenInvalidError,
   isModelNotSupportedError,
 } from "../../proxy/error-classification.js";
@@ -32,11 +34,12 @@ export function toErrorStatus(status: number): StatusCode {
 }
 
 export type ErrorAction =
-  | { action: "respond"; status: number; message: string; errorBody?: string }
+  | { action: "respond"; status: number; message: string }
   | {
       action: "retry";
       releaseBeforeRetry?: boolean;
       markModelRetried?: boolean;
+      markEarlyServerErrorRetried?: boolean;
       /** Fallback status/message when no retry account is available. */
       status: number;
       message: string;
@@ -65,6 +68,7 @@ export function handleCodexApiError(
   tag: string,
   modelRetried: boolean,
   cookieJar?: CookieJar,
+  earlyServerErrorRetried = false,
 ): ErrorAction {
   const email = pool.getEntry(entryId)?.email ?? "?";
 
@@ -86,15 +90,38 @@ export function handleCodexApiError(
 
   console.error(`[${tag}] Account ${entryId} | Codex API error:`, err.message);
 
+  // A server_error frame before any visible output is a transient backend
+  // failure. Retry it once on a fresh account/connection; never classify it
+  // as quota, rate-limit, ban, or overload.
+  if (isEarlyServerError(err)) {
+    if (!earlyServerErrorRetried) {
+      console.warn(`[${tag}] Account ${entryId} (${email}) | 500 early server error, trying different account...`);
+      return {
+        action: "retry",
+        releaseBeforeRetry: true,
+        markEarlyServerErrorRetried: true,
+        status: 500,
+        message: err.message,
+      };
+    }
+    return { action: "respond", status: 500, message: err.message };
+  }
+
   // 2. Rate-limited — write into cachedQuota.rate_limit (single source of
   // truth). applyRateLimit429 internally never shrinks an existing reset_at,
   // so a fresh secondary-window lock survives a stale primary 429.
   if (err.status === 429) {
     const retryAfterSec = extractRetryAfterSec(err.body);
-    pool.applyRateLimit429(entryId, { retryAfterSec, countRequest: true });
+    const limitId = getRateLimitIdForModel(model);
+    if (limitId) {
+      pool.applyAdditionalRateLimit429(entryId, limitId, { retryAfterSec, countRequest: true });
+    } else {
+      pool.applyRateLimit429(entryId, { retryAfterSec, countRequest: true });
+    }
     const backoffDisplay = retryAfterSec != null ? Math.round(retryAfterSec) : null;
     console.warn(
       `[${tag}] Account ${entryId} (${email}) | 429 rate limited` +
+        (limitId ? ` [${limitId}]` : "") +
         (backoffDisplay != null ? ` (resets in ${backoffDisplay}s)` : "") +
         `, trying different account...`,
     );
@@ -196,7 +223,9 @@ export function handleCodexApiError(
     };
   }
 
-  // 8. Generic error — return to client (preserve original body for passthrough)
+  // 8. Generic error — let the route formatter produce the client protocol
+  // envelope. Raw upstream bodies are reserved for terminal early
+  // `server_error`, where preserving the exact backend payload is useful.
   const status = toErrorStatus(err.status);
-  return { action: "respond", status, message: err.message, errorBody: err.body };
+  return { action: "respond", status, message: err.message };
 }

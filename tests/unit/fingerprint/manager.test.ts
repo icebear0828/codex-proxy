@@ -33,7 +33,7 @@ vi.mocked(getFingerprint).mockReturnValue(mockFp);
 describe("buildAnonymousHeaders", () => {
   it("includes User-Agent", () => {
     const headers = buildAnonymousHeaders();
-    expect(headers["User-Agent"]).toContain("CodexDesktop");
+    expect(headers["User-Agent"]).toContain("Codex Desktop");
   });
 
   it("includes dynamic sec-ch-ua based on chromium_version", () => {
@@ -82,10 +82,11 @@ describe("buildHeaders", () => {
 
   it("includes User-Agent and sec-ch-ua", () => {
     const headers = buildHeaders("test-token");
-    expect(headers["User-Agent"]).toContain("CodexDesktop");
+    expect(headers["User-Agent"]).toContain("Codex Desktop");
     expect(headers["sec-ch-ua"]).toContain("Chromium");
   });
 });
+
 
 describe("buildHeadersWithContentType", () => {
   it("includes Content-Type: application/json", () => {
@@ -101,3 +102,97 @@ describe("buildHeadersWithContentType", () => {
     expect(headers["sec-ch-ua"]).toBeDefined();
   });
 });
+
+describe("Client Profile presets", () => {
+  it("generates codex_cli profile headers without browser headers", () => {
+    const cliConfig = createMockConfig({
+      client: {
+        profile: "codex_cli",
+        originator: "codex_cli_rs",
+        app_version: "0.1.0",
+        platform: "darwin",
+        arch: "arm64",
+      },
+    });
+    vi.mocked(getConfig).mockReturnValue(cliConfig);
+
+    const headers = buildHeaders("test-token");
+    expect(headers["originator"]).toBe("codex_cli_rs");
+    expect(headers["User-Agent"]).toBe("codex_cli_rs/0.1.0 (darwin arm64)");
+    expect(headers["sec-ch-ua"]).toBeUndefined();
+    expect(headers["sec-fetch-dest"]).toBeUndefined();
+    expect(headers["Accept-Encoding"]).toBeDefined();
+  });
+
+  it("generates opencode profile headers", () => {
+    const opencodeConfig = createMockConfig({
+      client: {
+        profile: "opencode",
+        originator: "opencode",
+        app_version: "1.0.0",
+        platform: "linux",
+        arch: "x64",
+      },
+    });
+    vi.mocked(getConfig).mockReturnValue(opencodeConfig);
+
+    const headers = buildHeaders("test-token");
+    expect(headers["originator"]).toBe("opencode");
+    expect(headers["User-Agent"]).toBe("opencode/1.0.0 (linux x64)");
+    expect(headers["sec-ch-ua"]).toBeUndefined();
+  });
+
+  it("generates pi profile headers", () => {
+    const piConfig = createMockConfig({
+      client: {
+        profile: "pi",
+        originator: "pi",
+        app_version: "0.5.0",
+        platform: "darwin",
+        arch: "arm64",
+      },
+    });
+    vi.mocked(getConfig).mockReturnValue(piConfig);
+
+    const headers = buildHeaders("test-token");
+    expect(headers["originator"]).toBe("pi");
+    expect(headers["User-Agent"]).toBe("pi/0.5.0 (darwin arm64)");
+    expect(headers["sec-ch-ua"]).toBeUndefined();
+  });
+
+  it("uses preset originator when config originator retains default value", () => {
+    const desktopConfig = createMockConfig({
+      client: {
+        profile: "codex_desktop",
+        originator: "codex_cli_rs",
+        app_version: "26.506.31421",
+        platform: "darwin",
+        arch: "arm64",
+      },
+    });
+    vi.mocked(getConfig).mockReturnValue(desktopConfig);
+
+    const headers = buildHeaders("test-token");
+    expect(headers["originator"]).toBe("Codex Desktop");
+    expect(headers["User-Agent"]).toContain("Codex Desktop/26.506.31421");
+    expect(headers["sec-ch-ua"]).toBeDefined();
+  });
+
+  it("uses custom originator when profile is custom", () => {
+    const customConfig = createMockConfig({
+      client: {
+        profile: "custom",
+        originator: "my-custom-agent",
+        app_version: "1.2.3",
+        platform: "linux",
+        arch: "x64",
+      },
+    });
+    vi.mocked(getConfig).mockReturnValue(customConfig);
+
+    const headers = buildHeaders("test-token");
+    expect(headers["originator"]).toBe("my-custom-agent");
+  });
+});
+
+

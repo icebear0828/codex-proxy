@@ -71,17 +71,20 @@ export const ConfigSchema = z.object({
     timeout_seconds: z.number().min(1).default(60),
   }),
   client: z.object({
-    originator: z.string().default("Codex Desktop"),
-    app_version: z.string().default("260202.0859"),
+    profile: z.enum(["codex_cli", "codex_desktop", "opencode", "pi", "custom"]).default("codex_cli"),
+    originator: z.string().default("codex_cli_rs"),
+    app_version: z.string().default("0.1.0"),
     build_number: z.string().default("517"),
     platform: z.string().default("darwin"),
     arch: z.string().default("arm64"),
     chromium_version: z.string().default("136"),
   }),
+
   model: z.object({
     default: z.string().default("gpt-5.6-sol"),
     default_reasoning_effort: z.string().nullable().default(null),
     default_service_tier: z.string().nullable().default(null),
+    default_tools: z.array(z.string().trim().min(1)).default([]),
     aliases: z.record(z.string(), z.string()).default({}),
     custom_models: z.array(CustomModelSchema).default([]),
     inject_desktop_context: z.boolean().default(false),
@@ -119,6 +122,7 @@ export const ConfigSchema = z.object({
     }, {
       message: "Invalid hostname format. Use bare hostnames like 'example.com' or '192.168.1.1'",
     })).default([]),
+    cors_allow_null_origin: z.boolean().default(false),
   }),
   logs: z.object({
     enabled: z.boolean().default(false),

@@ -32,6 +32,13 @@ export interface CodexToolDefinition {
   strict?: boolean;
 }
 
+export interface CodexCustomToolDefinition {
+  type: "custom";
+  name: string;
+  description?: string;
+  format?: Record<string, unknown>;
+}
+
 export interface CodexHostedWebSearchTool {
   type: "web_search";
   search_context_size?: "low" | "medium" | "high";
@@ -43,7 +50,11 @@ export interface CodexImageGenerationTool {
   [key: string]: unknown;
 }
 
-export type CodexTool = CodexToolDefinition | CodexHostedWebSearchTool | CodexImageGenerationTool;
+export type CodexTool =
+  | CodexToolDefinition
+  | CodexCustomToolDefinition
+  | CodexHostedWebSearchTool
+  | CodexImageGenerationTool;
 
 export interface AnthropicToolConversionOptions {
   mapClaudeCodeWebSearch?: boolean;
@@ -134,6 +145,17 @@ export function openAIToolsToCodex(
       continue;
     }
 
+    if (t.type === "custom") {
+      const def: CodexCustomToolDefinition = {
+        type: "custom",
+        name: t.name,
+      };
+      if (t.description) def.description = t.description;
+      if (t.format) def.format = t.format;
+      defs.push(def);
+      continue;
+    }
+
     if (t.type !== "function") continue;
     const def: CodexToolDefinition = {
       type: "function",
@@ -149,7 +171,7 @@ export function openAIToolsToCodex(
 
 export function openAIToolChoiceToCodex(
   choice: ChatCompletionRequest["tool_choice"],
-): string | { type: "function"; name: string } | { type: "web_search" } | undefined {
+): string | { type: "function"; name: string } | { type: "custom"; name: string } | { type: "web_search" } | undefined {
   if (!choice) return undefined;
   if (typeof choice === "string") {
     // "none" | "auto" | "required" → pass through
@@ -159,6 +181,9 @@ export function openAIToolChoiceToCodex(
     return { type: "web_search" };
   }
   // { type: "function", function: { name } } → { type: "function", name }
+  if (choice.type === "custom") {
+    return { type: "custom", name: choice.name };
+  }
   const fn = isRecord(choice.function) ? choice.function : null;
   const name = typeof fn?.name === "string" ? fn.name : "";
   return { type: "function", name };

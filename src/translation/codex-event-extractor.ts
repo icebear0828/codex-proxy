@@ -16,6 +16,10 @@ export interface UsageInfo {
   input_tokens: number;
   output_tokens: number;
   cached_tokens?: number;
+  /** Requested model used to calculate the local API-price estimate. */
+  model?: string;
+  /** Estimated USD cost using config/model-pricing.yaml. */
+  estimated_cost_usd?: number;
   reasoning_tokens?: number;
   /** Tokens billed by the image_generation tool (gpt-image-2). Separate from host-model usage. */
   image_input_tokens?: number;
@@ -41,6 +45,23 @@ export interface FunctionCallDone {
   callId: string;
   name: string;
   arguments: string;
+}
+
+export interface CustomToolCallStart {
+  callId: string;
+  name: string;
+  outputIndex: number;
+}
+
+export interface CustomToolCallDelta {
+  callId: string;
+  delta: string;
+}
+
+export interface CustomToolCallDone {
+  callId: string;
+  name: string;
+  input: string;
 }
 
 export class EmptyResponseError extends Error {
@@ -89,6 +110,9 @@ export interface ExtractedEvent {
   functionCallStart?: FunctionCallStart;
   functionCallDelta?: FunctionCallDelta;
   functionCallDone?: FunctionCallDone;
+  customToolCallStart?: CustomToolCallStart;
+  customToolCallDelta?: CustomToolCallDelta;
+  customToolCallDone?: CustomToolCallDone;
   imageGenerationDone?: {
     id: string;
     result: string;
@@ -106,6 +130,7 @@ export async function* iterateCodexEvents(
 ): AsyncGenerator<ExtractedEvent> {
   // Map item_id → { call_id, name } for resolving delta/done events
   const itemIdToCallInfo = new Map<string, { callId: string; name: string }>();
+  const completedCustomToolCallIds = new Set<string>();
 
   for await (const raw of api.parseStream(rawResponse)) {
     const typed = parseCodexEvent(raw);
@@ -131,6 +156,17 @@ export async function* iterateCodexEvents(
         break;
 
       case "response.output_item.added":
+        if (typed.item.type === "custom_tool_call" && typed.item.call_id && typed.item.name) {
+          itemIdToCallInfo.set(typed.item.id, {
+            callId: typed.item.call_id,
+            name: typed.item.name,
+          });
+          extracted.customToolCallStart = {
+            callId: typed.item.call_id,
+            name: typed.item.name,
+            outputIndex: typed.outputIndex,
+          };
+        }
         if (typed.item.type === "function_call" && typed.item.call_id && typed.item.name) {
           // Register item_id → call_id mapping
           itemIdToCallInfo.set(typed.item.id, {
@@ -166,12 +202,47 @@ export async function* iterateCodexEvents(
         break;
       }
 
+      case "response.custom_tool_call_input.delta": {
+        const deltaInfo = itemIdToCallInfo.get(typed.itemId);
+        extracted.customToolCallDelta = {
+          callId: deltaInfo?.callId ?? typed.itemId,
+          delta: typed.delta,
+        };
+        break;
+      }
+
+      case "response.custom_tool_call_input.done": {
+        const doneInfo = itemIdToCallInfo.get(typed.itemId);
+        if (!doneInfo) break;
+        completedCustomToolCallIds.add(doneInfo.callId);
+        extracted.customToolCallDone = {
+          callId: doneInfo.callId,
+          name: doneInfo.name,
+          input: typed.input,
+        };
+        break;
+      }
+
       case "response.output_item.done":
         if (typed.item.type === "image_generation_call") {
           extracted.imageGenerationDone = {
             id: typed.item.id || "",
             result: typed.item.result || "",
             revised_prompt: typed.item.revised_prompt,
+          };
+        }
+        if (
+          typed.item.type === "custom_tool_call" &&
+          typed.item.call_id &&
+          typed.item.name &&
+          typeof typed.item.input === "string" &&
+          !completedCustomToolCallIds.has(typed.item.call_id)
+        ) {
+          completedCustomToolCallIds.add(typed.item.call_id);
+          extracted.customToolCallDone = {
+            callId: typed.item.call_id,
+            name: typed.item.name,
+            input: typed.item.input,
           };
         }
         break;

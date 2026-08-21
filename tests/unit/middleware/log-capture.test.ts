@@ -2,11 +2,13 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 
 const mocks = vi.hoisted(() => ({
   enqueueLogEntry: vi.fn(),
+  updateLogEntry: vi.fn(() => false),
   getConfig: vi.fn(() => ({ logs: { llm_only: true } })),
 }));
 
 vi.mock("@src/logs/entry.js", () => ({
   enqueueLogEntry: mocks.enqueueLogEntry,
+  updateLogEntry: mocks.updateLogEntry,
 }));
 
 vi.mock("@src/config.js", () => ({
@@ -33,6 +35,8 @@ function createContext(path = "/v1/messages", extraGet: Record<string, unknown> 
 describe("logCapture middleware", () => {
   beforeEach(() => {
     mocks.enqueueLogEntry.mockClear();
+    mocks.updateLogEntry.mockClear();
+    mocks.updateLogEntry.mockReturnValue(false);
     mocks.getConfig.mockReturnValue({ logs: { llm_only: true } });
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-04-15T00:00:00.000Z"));
@@ -45,7 +49,7 @@ describe("logCapture middleware", () => {
     expect(isKnownLlmPath("/admin/settings")).toBe(false);
   });
 
-  it("enqueues an ingress log for LLM paths", async () => {
+  it("enqueues an ingress log for LLM paths when record does not exist", async () => {
     const c = createContext("/v1/messages");
     const next = vi.fn(async () => {
       vi.setSystemTime(new Date("2026-04-15T00:00:00.025Z"));
@@ -54,6 +58,10 @@ describe("logCapture middleware", () => {
     await logCapture(c, next as never);
 
     expect(next).toHaveBeenCalledTimes(1);
+    expect(mocks.updateLogEntry).toHaveBeenCalledWith("req-123", expect.objectContaining({
+      status: 201,
+      latencyMs: 25,
+    }));
     expect(mocks.enqueueLogEntry).toHaveBeenCalledWith(expect.objectContaining({
       requestId: "req-123",
       direction: "ingress",
@@ -64,25 +72,42 @@ describe("logCapture middleware", () => {
     }));
   });
 
-  it("skips unrelated requests in llm-only mode", async () => {
-    const c = createContext("/admin/settings");
+  it("does not enqueue duplicate log if updateLogEntry returns true", async () => {
+    mocks.updateLogEntry.mockReturnValue(true);
+    const c = createContext("/v1/messages");
+    const next = vi.fn(async () => {
+      vi.setSystemTime(new Date("2026-04-15T00:00:00.025Z"));
+    });
 
-    await logCapture(c, vi.fn(async () => {}) as never);
+    await logCapture(c, next as never);
 
+    expect(mocks.updateLogEntry).toHaveBeenCalledTimes(1);
     expect(mocks.enqueueLogEntry).not.toHaveBeenCalled();
   });
 
-  it("captures forwarded requests even when path is unrelated", async () => {
-    const c = createContext("/custom/provider", { logForwarded: true });
+  it("skips internal admin requests even in all-logs mode", async () => {
+    mocks.getConfig.mockReturnValue({ logs: { llm_only: false } });
+    const c = createContext("/admin/logs");
 
     await logCapture(c, vi.fn(async () => {}) as never);
 
-    expect(mocks.enqueueLogEntry).toHaveBeenCalledOnce();
+    expect(mocks.updateLogEntry).not.toHaveBeenCalled();
+    expect(mocks.enqueueLogEntry).not.toHaveBeenCalled();
   });
 
-  it("captures all requests when llm-only mode is disabled", async () => {
+  it("skips health and static assets", async () => {
     mocks.getConfig.mockReturnValue({ logs: { llm_only: false } });
-    const c = createContext("/admin/settings");
+    const c = createContext("/health");
+
+    await logCapture(c, vi.fn(async () => {}) as never);
+
+    expect(mocks.updateLogEntry).not.toHaveBeenCalled();
+    expect(mocks.enqueueLogEntry).not.toHaveBeenCalled();
+  });
+
+  it("captures non-admin requests when llm-only mode is disabled", async () => {
+    mocks.getConfig.mockReturnValue({ logs: { llm_only: false } });
+    const c = createContext("/v2/custom/generate");
 
     await logCapture(c, vi.fn(async () => {}) as never);
 

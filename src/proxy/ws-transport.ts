@@ -67,6 +67,8 @@ const ROTATABLE_ERROR_CODES: Readonly<Record<string, number>> = {
   previous_response_not_found: 400,
   // 503 — transient upstream capacity error
   server_is_overloaded: 503,
+  // 500 — transient backend failure before any response output
+  server_error: 500,
 };
 
 function classifyWsErrorEvent(msg: Record<string, unknown>): { status: number } | null {

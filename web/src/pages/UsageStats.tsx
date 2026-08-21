@@ -1,6 +1,7 @@
 import { useState } from "preact/hooks";
 import { useT } from "../../../shared/i18n/context";
 import { useUsageSummary, useUsageHistory, type Granularity, type UsageHistoryRange } from "../../../shared/hooks/use-usage-stats";
+import { formatUsd } from "../../../shared/utils/format";
 import { UsageChart, formatNumber, formatHitRate, sumUsageWindow, sumWindow } from "../components/UsageChart";
 import type { TranslationKey } from "../../../shared/i18n/translations";
 
@@ -52,6 +53,11 @@ function UsageContent({ t, summary, summaryLoading, granularity, setGranularity,
         <SummaryCard
           label={t("totalOutputTokens")}
           value={historyLoading ? "—" : formatNumber(usageWindow.output_tokens)}
+        />
+        <SummaryCard
+          label={t("estimatedApiCost")}
+          value={historyLoading ? "—" : formatUsd(usageWindow.estimated_cost_usd)}
+          hint={historyLoading ? undefined : t("estimatedApiCostHint")}
         />
         <SummaryCard
           label={t("cacheHitRate")}

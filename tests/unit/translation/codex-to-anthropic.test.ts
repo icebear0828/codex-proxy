@@ -12,6 +12,7 @@ import {
   emptyStream,
   multiToolCallStream,
   usageStream,
+  imageGenerationStream,
 } from "@fixtures/sse-streams.js";
 
 let mockEvents: ExtractedEvent[] = [];
@@ -111,6 +112,25 @@ describe("streamCodexToAnthropic", () => {
     expect((msgDelta?.data.delta as Record<string, unknown>)?.stop_reason).toBe("end_turn");
   });
 
+  it("emits generated images as image_generation tool_use blocks", async () => {
+    const chunks = await collectStreamOutput(imageGenerationStream());
+    const events = parseSSEEvents(chunks);
+    const toolStart = events.find(
+      (event) => event.event === "content_block_start"
+        && (event.data.content_block as Record<string, unknown> | undefined)?.type === "tool_use",
+    );
+
+    expect(toolStart?.data.content_block).toEqual({
+      type: "tool_use",
+      id: "img_1",
+      name: "image_generation",
+      input: {
+        result: "iVBORw0KGgoAAAANSUhEUg==",
+        revised_prompt: "A small blue circle",
+      },
+    });
+  });
+
   it("throws CodexApiError on upstream error events", async () => {
     await expect(collectStreamOutput(errorStream()))
       .rejects.toMatchObject({ status: 429 });
@@ -177,6 +197,24 @@ describe("streamCodexToAnthropic — usage details", () => {
     expect(usage.input_tokens).toBe(20);
     expect(usage.cache_read_input_tokens).toBe(30);
     expect(usage).not.toHaveProperty("cache_creation_input_tokens");
+  });
+
+  it("collects generated images as image_generation tool_use blocks", async () => {
+    mockEvents = imageGenerationStream();
+    const { response } = await collectCodexToAnthropicResponse(
+      fakeCodexApi, fakeResponse, "gpt-5.4",
+    );
+
+    expect(response.stop_reason).toBe("tool_use");
+    expect(response.content[0]).toEqual({
+      type: "tool_use",
+      id: "img_1",
+      name: "image_generation",
+      input: {
+        result: "iVBORw0KGgoAAAANSUhEUg==",
+        revised_prompt: "A small blue circle",
+      },
+    });
   });
 
   it("omits cache_read_input_tokens when not present", async () => {

@@ -24,6 +24,9 @@ import {
   getReasoningReplayCache,
 } from "../../proxy/reasoning-replay-cache.js";
 import { relayCodexTurnState } from "./codex-turn-state.js";
+import { recordClientKeyUsage } from "./proxy-handler-utils.js";
+import { updateLogEntry } from "../../logs/entry.js";
+import { calculateLogMetrics } from "../../logs/metrics.js";
 
 
 const MAX_EMPTY_RETRIES = 2;
@@ -79,6 +82,7 @@ export async function handleNonStreaming(options: HandleNonStreamingOptions): Pr
   let currentEntryId = initialEntryId;
   let currentApi = initialApi;
   let currentRawResponse = initialResponse;
+  const initialStartMs = Date.now();
   const evictReasoningReplayIdentity = (): void => {
     if (!conversationId || !variantHash) return;
     getReasoningReplayCache().evictByIdentity({
@@ -125,11 +129,32 @@ export async function handleNonStreaming(options: HandleNonStreamingOptions): Pr
       if (result.usage) {
         logNonStreamingUsage({ tag: fmt.tag, entryId: currentEntryId, requestId, usage: result.usage });
       }
+      recordClientKeyUsage(c, req.model, result.usage);
+
+      const metrics = calculateLogMetrics({
+        startMs: initialStartMs,
+        endMs: Date.now(),
+        model: req.model,
+        usage: result.usage,
+      });
+      c.set("metrics", metrics);
+      updateLogEntry(requestId, {
+        status: 200,
+        latencyMs: metrics.durationMs,
+        ttftMs: metrics.ttftMs,
+        durationMs: metrics.durationMs,
+        costUsd: metrics.costUsd,
+        tokensPerSecond: metrics.tokensPerSecond,
+        usage: result.usage,
+        metrics,
+      });
+
       releaseNonStreamingSuccessAccount({
         accountPool,
         entryId: currentEntryId,
         usage: result.usage,
         expectsImageGen: req.expectsImageGen,
+        model: req.model,
         released,
       });
       relayCodexTurnState(c, currentRawResponse, fmt.tag);

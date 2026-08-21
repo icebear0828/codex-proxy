@@ -171,6 +171,7 @@ export async function handleProxyRequest(options: HandleProxyRequestOptions): Pr
   );
   const triedEntryIds: string[] = [entryId];
   let modelRetried = false;
+  let earlyServerErrorRetried = false;
   let stripAndRetryDone = false;
   const reasoningReplayCache = getReasoningReplayCache();
   const reasoningReplayItems = sessionContext.implicitPrevRespId
@@ -414,6 +415,7 @@ export async function handleProxyRequest(options: HandleProxyRequestOptions): Pr
         case "error_handler_decides": {
           const decision = handleCodexApiError(
             err as CodexApiError, accountPool, entryId, req.codexRequest.model, fmt.tag, modelRetried, cookieJar,
+            earlyServerErrorRetried,
           );
 
           const errorRetryTransition = applyProxyErrorRetryTransition({
@@ -436,6 +438,9 @@ export async function handleProxyRequest(options: HandleProxyRequestOptions): Pr
           }
 
           modelRetried = errorRetryTransition.modelRetried;
+          if (decision.action === "retry" && decision.markEarlyServerErrorRetried) {
+            earlyServerErrorRetried = true;
+          }
           entryId = errorRetryTransition.entryId;
           triedEntryIds.push(errorRetryTransition.entryId);
           codexApi = errorRetryTransition.api;

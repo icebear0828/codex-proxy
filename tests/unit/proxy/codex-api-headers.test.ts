@@ -19,9 +19,11 @@ vi.mock("@src/config.js", () => ({
 }));
 
 // Mock installation_id (deterministic value)
+const mockGetInstallationId = vi.fn((_accountScope?: string | null) => "11111111-2222-3333-4444-555555555555");
 vi.mock("@src/proxy/installation-id.js", () => ({
-  getInstallationId: () => "11111111-2222-3333-4444-555555555555",
+  getInstallationId: (accountScope?: string | null) => mockGetInstallationId(accountScope),
 }));
+
 
 // Capture createWebSocketResponse calls
 const mockCreateWebSocketResponse = vi.fn<
@@ -148,8 +150,9 @@ describe("codex-api headers", () => {
     });
 
     it("sends x-codex-installation-id header and inside body.client_metadata", async () => {
-      const api = await createApi();
+      const api = await createApi("entry-acc-99", "acct-99");
       await api.createResponse(makeRequest());
+      expect(mockGetInstallationId).toHaveBeenCalledWith("entry-acc-99");
       expect(transport.lastHeaders!["x-codex-installation-id"]).toBe(
         "11111111-2222-3333-4444-555555555555",
       );
@@ -158,6 +161,7 @@ describe("codex-api headers", () => {
         "x-codex-installation-id": "11111111-2222-3333-4444-555555555555",
       });
     });
+
 
     it("preserves caller-provided client_metadata fields and only injects installation id", async () => {
       const api = await createApi();
@@ -549,5 +553,35 @@ describe("codex-api headers", () => {
 
       expect(transport.post).not.toHaveBeenCalled();
     });
+
+    it("sends account-scoped x-codex-installation-id on createCompactResponse", async () => {
+      const api = await createApi("entry-compact-1", "acct-compact-1");
+      const encoder = new TextEncoder();
+      transport.post = vi.fn(async (_url: string, headers: Record<string, string>) => {
+        transport.lastHeaders = headers;
+        return {
+          status: 200,
+          headers: new Headers({ "content-type": "application/json" }),
+          body: new ReadableStream({
+            start(c) {
+              c.enqueue(encoder.encode(JSON.stringify({ status: "completed", output: [] })));
+              c.close();
+            },
+          }),
+          setCookieHeaders: [],
+        };
+      });
+
+      await api.createCompactResponse({
+        model: "gpt-5.4",
+        input: [{ type: "message", role: "user", content: "test" }],
+      });
+
+      expect(mockGetInstallationId).toHaveBeenCalledWith("entry-compact-1");
+      expect(transport.lastHeaders!["x-codex-installation-id"]).toBe(
+        "11111111-2222-3333-4444-555555555555",
+      );
+    });
   });
 });
+

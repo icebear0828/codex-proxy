@@ -136,10 +136,12 @@ If you see streaming AI text, the setup is working. If you get 401, double-check
 - **Auto-mark unreachable** — unreachable proxies excluded from rotation
 
 ### 4. 🛡️ Anti-Detection & Protocol Impersonation
-- **Rust Native TLS** — built-in reqwest + rustls native addon, TLS fingerprint matches real Codex Desktop exactly (pinned dependency versions)
-- **Desktop header replication** — `originator`, `User-Agent`, `x-openai-internal-codex-residency`, `x-codex-turn-state`, `x-client-request-id` headers sent per real client behavior
-- **Cookie persistence** — automatic Cloudflare cookie capture and replay
-- **Fingerprint auto-update** — polls Codex Desktop update feed, auto-syncs `app_version` and `build_number`
+- **Rust Native TLS** — built-in reqwest + rustls native addon, TLS fingerprint matches real Codex clients exactly (pinned dependency versions)
+- **Client Profile Presets** — support for `codex_cli` (default, official CLI clean terminal headers), `codex_desktop` (Desktop complete headers), `opencode`, `pi`, and `custom`; CLI mode cleanly strips browser-specific headers (`sec-ch-ua`, etc.)
+- **Per-Account Device ID Isolation** — independently derives and persists unique `x-codex-installation-id` for each account to prevent device correlation
+- **Full Request Header Emulation** — `originator`, `User-Agent`, `x-openai-internal-codex-residency`, `x-codex-turn-state`, `x-client-request-id` headers accurately sent per selected profile
+- **Cookie Persistence** — automatic Cloudflare cookie capture and replay
+- **Fingerprint Auto-Update** — polls Codex update feed, auto-syncs `app_version` and `build_number`
 
 ## 🏗️ Architecture
 
@@ -224,7 +226,9 @@ curl -N http://localhost:8080/v1/responses \
   }'
 ```
 
-Tunable fields: `size` (1024×1024 / 1024×1536 / 1536×1024 / 2048×2048 / 2048×3072 / 3072×2048 / 3840×2160 (4K UHD) / `auto`; longest edge ≤ 3840 px, pixel budget ≈ 8 MP), `output_format` (`png` / `jpeg` / `webp`), `output_compression` (jpeg / webp only), `background` (`auto` / `opaque`), `moderation` (`auto` / `low`), `partial_images` (0–3). Upstream forces `model = gpt-image-2` and rejects `n`, `input_image`, `mask`, `input_fidelity`, `style`, `response_format`. See [API.md](./API.md#image_generation-tool) for the full matrix.
+Tunable fields: `size` (can request 1024×1024 / 1024×1536 / 1536×1024 / 2048×2048 / 2048×3072 / 3072×2048 / 3840×2160 / `auto`), `output_format` (`png` / `jpeg` / `webp`), `output_compression` (jpeg / webp only), `background` (`auto` / `opaque`), `moderation` (`auto` / `low`), `partial_images` (0–3). Only 1 image per call (`n` is fixed to 1); the `model` field is always rewritten upstream to the image tool's actual model (currently echoed as `gpt-image-2-codex`). See [API.md](./API.md#image_generation-tool).
+
+> **`size` is not a strict pixel-dimension guarantee.** The proxy preserves and sends the client-specified value, but upstream currently normalizes requests like `2048x2048`, `2K`, and `4K` to `size: "auto"` and determines the actual output dimensions dynamically. In real requests tested on 2026-08-10, a `size: "2048x2048"` tool configuration echoed back as `auto`, and both `image_generation_call.size` and the decoded PNG pixels were `1254x1254`. Therefore, you cannot rely on this field for native, exact 2K/4K outputs; refer to the result item's `size` or the decoded image dimensions. If your workload strictly requires exact `2048x2048` files, apply post-processing such as interpolation or AI upscaling after generation.
 
 In the stream, the `image_generation_call` item's `result` field is a base64-encoded image; `revised_prompt` contains the final prompt used by the model.
 
@@ -477,13 +481,30 @@ server:
 |---------|-------------|-------------|
 | `server` | `host`, `port`, `proxy_api_key` | Listen address and API key |
 | `api` | `base_url`, `timeout_seconds` | Upstream API URL and timeout |
-| `client` | `app_version`, `build_number`, `chromium_version` | Codex Desktop version to impersonate |
+| `client` | `profile`, `originator`, `app_version`, `build_number`, `platform`, `arch`, `chromium_version` | Client fingerprint preset (`codex_cli` / `codex_desktop` / `opencode` / `pi` / `custom`) and version metadata |
 | `model` | `default`, `default_reasoning_effort`, `default_service_tier`, `aliases`, `custom_models`, `inject_desktop_context` | Default model, reasoning config, aliases, and custom catalog entries |
 | `auth` | `rotation_strategy`, `rate_limit_backoff_seconds` | Rotation strategy and rate limit backoff |
 | `tls` | `proxy_url`, `force_http11` | TLS proxy and HTTP version |
 | `quota` | `refresh_interval_minutes`, `warning_thresholds`, `skip_exhausted` | Usage snapshots, threshold config, exhausted-account skipping |
 | `session` | `ttl_minutes`, `cleanup_interval_minutes` | Dashboard session management |
 | `ollama` | `enabled`, `host`, `port`, `version`, `disable_vision` | Ollama-compatible bridge |
+
+### Client Profile & Fingerprint Presets
+
+`client.profile` allows switching client identity presets with automatic header and anti-detection formatting:
+
+```yaml
+client:
+  profile: codex_cli         # Presets: codex_cli (default), codex_desktop, opencode, pi, custom
+  # Preset details:
+  # - codex_cli:     Official Codex CLI clean terminal headers (originator: codex_cli_rs), strips browser-only headers (sec-ch-ua, etc.)
+  # - codex_desktop: Official Codex Desktop complete headers (originator: Codex Desktop), includes sec-ch-ua and Chromium version
+  # - opencode:      opencode terminal headers (originator: opencode)
+  # - pi:            pi terminal headers (originator: pi)
+  # - custom:        Fully custom mode, reads client.originator and fingerprint.yaml template
+```
+
+Additionally, the proxy automatically derives and persists an isolated `x-codex-installation-id` per account (under `data/installation_ids/`), ensuring each account retains an independent device identity and preventing multi-account cross-correlation upstream.
 
 ### Model Aliases
 

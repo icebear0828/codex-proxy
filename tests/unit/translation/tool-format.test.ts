@@ -117,6 +117,34 @@ describe("openAIToolsToCodex", () => {
       { type: "image_generation", size: "1024x1024", quality: "high" },
     ]);
   });
+
+  it("preserves custom grammar tools without converting them to functions", () => {
+    const result = openAIToolsToCodex([
+      {
+        type: "custom",
+        name: "ApplyPatch",
+        description: "Apply a repository patch",
+        format: {
+          type: "grammar",
+          syntax: "lark",
+          definition: "start: begin_patch hunk end_patch",
+        },
+      },
+    ] satisfies NonNullable<ChatCompletionRequest["tools"]>);
+
+    expect(result).toEqual([
+      {
+        type: "custom",
+        name: "ApplyPatch",
+        description: "Apply a repository patch",
+        format: {
+          type: "grammar",
+          syntax: "lark",
+          definition: "start: begin_patch hunk end_patch",
+        },
+      },
+    ]);
+  });
 });
 
 // ── openAIToolChoiceToCodex ─────────────────────────────────────
@@ -138,6 +166,13 @@ describe("openAIToolChoiceToCodex", () => {
       function: { name: "my_func" },
     });
     expect(result).toEqual({ type: "function", name: "my_func" });
+  });
+
+  it("preserves custom tool choices", () => {
+    expect(openAIToolChoiceToCodex({ type: "custom", name: "ApplyPatch" })).toEqual({
+      type: "custom",
+      name: "ApplyPatch",
+    });
   });
 });
 

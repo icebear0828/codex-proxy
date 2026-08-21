@@ -46,6 +46,7 @@ export interface StreamResponseOptions {
   onResponseCompleted?: (id?: string) => void;
   usageHint?: UsageHint;
   onResponseMetadata?: (metadata: ResponseMetadata) => void;
+  onFirstToken?: (timestampMs: number) => void;
   diagnostics?: StreamDiagnostics;
   /** Idle heartbeat cadence in ms. A SSE comment line is written whenever no
    *  real chunk has been forwarded for this long, keeping tunnels (ngrok /
@@ -123,6 +124,7 @@ export async function streamResponse(options: StreamResponseOptions): Promise<vo
     variantHash: diagnostics?.variantHash,
     ...(diagnostics?.abortSignal ? { abortSignal: diagnostics.abortSignal } : {}),
   };
+  let sawFirstToken = false;
   try {
     for await (const chunk of adapter.streamTranslator({
       api,
@@ -136,6 +138,10 @@ export async function streamResponse(options: StreamResponseOptions): Promise<vo
       onResponseMetadata,
       streamContext,
     })) {
+      if (!sawFirstToken && chunk.trim().length > 0 && !chunk.startsWith(":")) {
+        sawFirstToken = true;
+        options.onFirstToken?.(Date.now());
+      }
       const chunkTrace = inspectStreamChunk(chunk);
       if (debugDumpEnabled()) {
         debugDump("upstream-chunk", {

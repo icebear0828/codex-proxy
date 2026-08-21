@@ -206,6 +206,44 @@ describe("createWebSocketResponse — early-stream error rejection", () => {
     }
   });
 
+  it("rejects with CodexApiError(500) when metadata is followed by an early server_error", async () => {
+    const promise = createWebSocketResponse("wss://test/ws", {}, BASE_REQUEST);
+    promise.catch(() => undefined);
+    const ws = await waitForOpen();
+
+    ws.emit("message", JSON.stringify({ type: "response.created", response: { id: "resp_1" } }));
+    ws.emit("message", JSON.stringify({ type: "response.in_progress", response: { id: "resp_1" } }));
+    ws.emit("message", JSON.stringify({
+      type: "error",
+      error: { code: "server_error", message: "The server had an internal error" },
+    }));
+
+    await expect(promise).rejects.toMatchObject({ status: 500 });
+    try {
+      await promise;
+    } catch (err) {
+      expect(err).toBeInstanceOf(CodexApiError);
+      expect((err as CodexApiError).body).toContain("server_error");
+    }
+  });
+
+  it("passes through server_error after visible output", async () => {
+    const promise = createWebSocketResponse("wss://test/ws", {}, BASE_REQUEST);
+    const ws = await waitForOpen();
+    ws.emit("message", JSON.stringify({ type: "response.created", response: { id: "resp_1" } }));
+    ws.emit("message", JSON.stringify({ type: "response.output_text.delta", delta: "partial" }));
+    const response = await promise;
+
+    ws.emit("message", JSON.stringify({
+      type: "error",
+      error: { code: "server_error", message: "The server had an internal error" },
+    }));
+
+    const text = await readAll(response);
+    expect(text).toContain("event: response.output_text.delta");
+    expect(text).toContain("event: error");
+    expect(text).toContain("server_error");
+  });
   it("resolves normally when first frame is an error with an unmapped code", async () => {
     // Genuine model errors (e.g. invalid request, model_not_supported_in_plan)
     // must NOT trigger rotation — they keep the SSE pass-through behavior so

@@ -26,6 +26,7 @@ import {
   buildToolCallStreamChunks,
   buildReasoningStreamChunks,
   buildImageGenStreamChunks,
+  sseChunk,
 } from "@helpers/sse.js";
 import { createValidJwt } from "@helpers/jwt.js";
 
@@ -260,6 +261,11 @@ describe("E2E: POST /v1/chat/completions", () => {
           type: "custom",
           name: "apply_patch",
           description: "Apply a patch",
+          format: {
+            type: "grammar",
+            syntax: "lark",
+            definition: "start: begin_patch hunk end_patch",
+          },
         },
       ],
       reasoning: { effort: "high" },
@@ -270,7 +276,7 @@ describe("E2E: POST /v1/chat/completions", () => {
     const sentBody = JSON.parse(getLastTransportBody()!) as {
       instructions?: string;
       input?: Array<{ role?: string; content?: unknown }>;
-      tools?: Array<{ type?: string; name?: string; parameters?: unknown }>;
+      tools?: Array<{ type?: string; name?: string; parameters?: unknown; format?: unknown }>;
       reasoning?: { effort?: string };
     };
     expect(sentBody.instructions).toContain("Preserve the existing style.");
@@ -283,13 +289,97 @@ describe("E2E: POST /v1/chat/completions", () => {
         parameters: { type: "object", properties: { path: { type: "string" } } },
       },
       {
-        type: "function",
+        type: "custom",
         name: "apply_patch",
-        strict: false,
         description: "Apply a patch",
+        format: {
+          type: "grammar",
+          syntax: "lark",
+          definition: "start: begin_patch hunk end_patch",
+        },
       },
     ]);
     expect(sentBody.reasoning?.effort).toBe("high");
+  });
+
+  it("Cursor-style custom calls stream the raw patch input", async () => {
+    const rawPatch = "*** Begin Patch\n*** Update File: temp-agent-edit-test.txt\n*** End Patch";
+    setTransportPost(async () =>
+      makeTransportResponse(
+        sseChunk("response.created", { response: { id: "resp_custom_patch" } }) +
+        sseChunk("response.in_progress", { response: { id: "resp_custom_patch" } }) +
+        sseChunk("response.output_item.added", {
+          output_index: 0,
+          item: {
+            type: "custom_tool_call",
+            id: "item_patch",
+            call_id: "call_patch",
+            name: "ApplyPatch",
+          },
+        }) +
+        sseChunk("response.custom_tool_call_input.delta", {
+          output_index: 0,
+          item_id: "item_patch",
+          delta: rawPatch,
+        }) +
+        sseChunk("response.custom_tool_call_input.done", {
+          output_index: 0,
+          item_id: "item_patch",
+          input: rawPatch,
+        }) +
+        sseChunk("response.output_item.done", {
+          output_index: 0,
+          item: {
+            type: "custom_tool_call",
+            id: "item_patch",
+            call_id: "call_patch",
+            name: "ApplyPatch",
+            input: rawPatch,
+          },
+        }) +
+        sseChunk("response.completed", {
+          response: {
+            id: "resp_custom_patch",
+            usage: { input_tokens: 10, output_tokens: 5 },
+          },
+        }),
+      ),
+    );
+
+    const res = await chatRequest({
+      model: "gpt-5.4",
+      input: [{ role: "user", content: [{ type: "input_text", text: "Apply the patch." }] }],
+      tools: [{
+        type: "custom",
+        name: "ApplyPatch",
+        format: {
+          type: "grammar",
+          syntax: "lark",
+          definition: "start: begin_patch hunk end_patch",
+        },
+      }],
+      stream: true,
+    });
+
+    expect(res.status).toBe(200);
+    const chunks = parseOpenAISSE(await res.text());
+    const toolCalls = chunks.flatMap((chunk) => {
+      const choices = chunk.choices as Array<{
+        delta?: { tool_calls?: Array<Record<string, unknown>> };
+      }> | undefined;
+      return choices?.[0]?.delta?.tool_calls ?? [];
+    });
+
+    expect(toolCalls).toContainEqual({
+      index: 0,
+      id: "call_patch",
+      type: "custom",
+      custom: { name: "ApplyPatch", input: "" },
+    });
+    const streamedInput = toolCalls
+      .map((toolCall) => (toolCall.custom as { input?: string } | undefined)?.input ?? "")
+      .join("");
+    expect(streamedInput).toBe(rawPatch);
   });
 
   // ── Error format ──────────────────────────────────────────────

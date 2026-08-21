@@ -119,6 +119,7 @@ export async function startOllamaBridge(
     proxyApiKey: config.server.proxy_api_key,
     version: config.ollama.version,
     disableVision: config.ollama.disable_vision,
+    corsAllowNullOrigin: config.server.cors_allow_null_origin,
   });
 
   try {

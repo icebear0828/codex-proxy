@@ -5,10 +5,12 @@ import { clearCfChallengeCooldown } from "../../auth/cf-challenge-cooldown.js";
 import type { ChainAdvanceTicket, SessionAffinityMap } from "../../auth/session-affinity.js";
 import type { CodexApi } from "../../proxy/codex-api.js";
 import { recordStreamCloseEvent } from "../../logs/stream-close-event.js";
+import { updateLogEntry } from "../../logs/entry.js";
+import { calculateLogMetrics } from "../../logs/metrics.js";
 import type { UsageInfo } from "../../translation/codex-event-extractor.js";
 import { releaseAccount } from "./account-acquisition.js";
 import type { FormatAdapter, ProxyRequest, UsageHint } from "./proxy-handler-types.js";
-import { annotateImageGenOutcome } from "./proxy-handler-utils.js";
+import { annotateImageGenOutcome, annotateUsageCost, recordClientKeyUsage } from "./proxy-handler-utils.js";
 import { streamResponse } from "./response-processor.js";
 import { createResponseMetadataCollector } from "./response-metadata-collector.js";
 import { logProxyUsage } from "./proxy-usage-log.js";
@@ -132,6 +134,8 @@ export function handleStreaming(options: HandleStreamingOptions): Response {
         variantHash,
       });
     };
+    const streamStartMs = Date.now();
+    let firstTokenMs: number | null = null;
     try {
       await streamResponse({
         writer: s,
@@ -152,6 +156,9 @@ export function handleStreaming(options: HandleStreamingOptions): Response {
           if (id) capturedResponseId = id;
           responseCompleted = true;
           recordStreamAffinity();
+        },
+        onFirstToken: (ts) => {
+          firstTokenMs = ts;
         },
         usageHint,
         onResponseMetadata: (metadata) => {
@@ -203,6 +210,7 @@ export function handleStreaming(options: HandleStreamingOptions): Response {
       }
       if (streamCompletedWithoutError) clearCfChallengeCooldown(capturedEntryId);
       if (usageInfo) {
+        recordClientKeyUsage(c, req.model, usageInfo);
         logProxyUsage({
           tag: fmt.tag,
           entryId: capturedEntryId,
@@ -212,7 +220,28 @@ export function handleStreaming(options: HandleStreamingOptions): Response {
           includeReasoningInHighInputWarning: true,
         });
       }
-      releaseAccount(accountPool, capturedEntryId, annotateImageGenOutcome(usageInfo, req.expectsImageGen), released);
+
+      const metrics = calculateLogMetrics({
+        startMs: streamStartMs,
+        firstTokenMs,
+        endMs: Date.now(),
+        model: req.model,
+        usage: usageInfo ?? null,
+        isStreaming: true,
+      });
+      c.set("metrics", metrics);
+      updateLogEntry(requestId, {
+        status: streamCompletedWithoutError ? 200 : (clientAborted ? 499 : 500),
+        latencyMs: metrics.durationMs,
+        ttftMs: metrics.ttftMs,
+        durationMs: metrics.durationMs,
+        costUsd: metrics.costUsd,
+        tokensPerSecond: metrics.tokensPerSecond,
+        usage: usageInfo ?? null,
+        metrics,
+      });
+
+      releaseAccount(accountPool, capturedEntryId, annotateUsageCost(req.model, annotateImageGenOutcome(usageInfo, req.expectsImageGen)), released);
     }
   });
 }

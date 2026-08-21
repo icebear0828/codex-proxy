@@ -17,6 +17,7 @@ import { AccountManagement } from "./pages/AccountManagement";
 import { UsageStats } from "./pages/UsageStats";
 import { LogsPage } from "./pages/LogsPage";
 import { ErrorsPage } from "./pages/ErrorsPage";
+import { ClientKeysPage } from "./pages/ClientKeysPage";
 import { useAccounts } from "../../shared/hooks/use-accounts";
 import { useErrorLogsCount } from "../../shared/hooks/use-error-logs";
 import { useProxies } from "../../shared/hooks/use-proxies";
@@ -65,6 +66,7 @@ function useUpdateMessage() {
 const TABS: Array<{ hash: string; label: TranslationKey }> = [
   { hash: "", label: "overview" },
   { hash: "#/accounts", label: "manageAccounts" },
+  { hash: "#/client-keys", label: "clientKeys" },
   { hash: "#/api-keys", label: "apiKeys" },
   { hash: "#/proxies", label: "proxySettings" },
   { hash: "#/usage-stats", label: "usageStats" },
@@ -190,6 +192,10 @@ function Dashboard() {
 
           {activeTab === "#/accounts" && (
             <AccountManagement embedded />
+          )}
+
+          {activeTab === "#/client-keys" && (
+            <ClientKeysPage masterApiKey={status.apiKey} />
           )}
 
           {activeTab === "#/api-keys" && (

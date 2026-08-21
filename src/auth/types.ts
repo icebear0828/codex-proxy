@@ -16,6 +16,10 @@ export interface AccountUsage {
   request_count: number;
   input_tokens: number;
   output_tokens: number;
+  /** Estimated equivalent API cost, not the upstream account balance. */
+  estimated_cost_usd?: number;
+  /** Per-window estimated equivalent API cost (resets when window expires). */
+  window_estimated_cost_usd?: number;
   /** Cached prompt tokens billed at the discounted rate (subset of input_tokens). */
   cached_tokens?: number;
   /** image_generation tool tokens (gpt-image-2). Tracked separately from host-model tokens. */

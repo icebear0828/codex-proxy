@@ -58,7 +58,21 @@ export function isServerOverloadedError(err: unknown): boolean {
   try {
     const parsed = JSON.parse(err.body) as Record<string, unknown>;
     const error = parsed.error as Record<string, unknown> | undefined;
-    return error?.code === "server_is_overloaded";
+    const code = (error?.code ?? error?.type) as string | undefined;
+    return code === "server_is_overloaded";
+  } catch {
+    return false;
+  }
+}
+
+/** Check if a 500 is the transient upstream server error emitted before output. */
+export function isEarlyServerError(err: unknown): boolean {
+  if (!isCodexLike(err) || err.status !== 500) return false;
+  try {
+    const parsed = JSON.parse(err.body) as Record<string, unknown>;
+    const error = parsed.error as Record<string, unknown> | undefined;
+    const code = (error?.code ?? error?.type) as string | undefined;
+    return code === "server_error";
   } catch {
     return false;
   }

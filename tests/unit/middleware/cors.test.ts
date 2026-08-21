@@ -3,7 +3,7 @@ import { Hono } from "hono";
 import { cors } from "@src/middleware/cors.js";
 
 const mocks = vi.hoisted(() => ({
-  getConfig: vi.fn(() => ({ server: { cors: [] as string[] } })),
+  getConfig: vi.fn(() => ({ server: { cors: [] as string[], cors_allow_null_origin: false } })),
 }));
 
 vi.mock("@src/config.js", () => ({
@@ -19,7 +19,7 @@ function createApp(): Hono {
 
 describe("cors middleware", () => {
   beforeEach(() => {
-    mocks.getConfig.mockClear();
+    mocks.getConfig.mockReturnValue({ server: { cors: [], cors_allow_null_origin: false } });
   });
   it("allows loopback origins on API compatibility routes", async () => {
     const app = createApp();
@@ -131,7 +131,7 @@ describe("cors middleware", () => {
     });
 
     it("rejects non-allowlisted non-loopback origins", async () => {
-      mocks.getConfig.mockReturnValue({ server: { cors: ["allowed.com"] } });
+      mocks.getConfig.mockReturnValue({ server: { cors: ["allowed.com"], cors_allow_null_origin: false } });
 
       const app = createApp();
 
@@ -145,6 +145,76 @@ describe("cors middleware", () => {
 
       expect(res.status).toBe(403);
       expect(res.headers.get("Access-Control-Allow-Origin")).toBeNull();
+    });
+  });
+
+  describe("cors_allow_null_origin", () => {
+    it("rejects Origin: null by default (when false)", async () => {
+      mocks.getConfig.mockReturnValue({ server: { cors: [], cors_allow_null_origin: false } });
+
+      const app = createApp();
+
+      const preflight = await app.request("/v1/chat/completions", {
+        method: "OPTIONS",
+        headers: {
+          Origin: "null",
+          "Access-Control-Request-Method": "POST",
+        },
+      });
+      expect(preflight.status).toBe(403);
+      expect(preflight.headers.get("Access-Control-Allow-Origin")).toBeNull();
+
+      const req = await app.request("/v1/chat/completions", {
+        method: "POST",
+        headers: {
+          Origin: "null",
+        },
+      });
+      expect(req.status).toBe(200);
+      expect(req.headers.get("Access-Control-Allow-Origin")).toBeNull();
+    });
+
+    it("allows Origin: null on API preflight and actual requests when enabled", async () => {
+      mocks.getConfig.mockReturnValue({ server: { cors: [], cors_allow_null_origin: true } });
+
+      const app = createApp();
+
+      const preflight = await app.request("/v1/chat/completions", {
+        method: "OPTIONS",
+        headers: {
+          Origin: "null",
+          "Access-Control-Request-Method": "POST",
+        },
+      });
+      expect(preflight.status).toBe(204);
+      expect(preflight.headers.get("Access-Control-Allow-Origin")).toBe("null");
+      expect(preflight.headers.get("Vary")).toBe("Origin, Access-Control-Request-Method, Access-Control-Request-Headers");
+
+      const req = await app.request("/v1/chat/completions", {
+        method: "POST",
+        headers: {
+          Origin: "null",
+        },
+      });
+      expect(req.status).toBe(200);
+      expect(req.headers.get("Access-Control-Allow-Origin")).toBe("null");
+      expect(req.headers.get("Vary")).toBe("Origin");
+    });
+
+    it("does not allow non-loopback origins even when cors_allow_null_origin is true", async () => {
+      mocks.getConfig.mockReturnValue({ server: { cors: [], cors_allow_null_origin: true } });
+
+      const app = createApp();
+
+      const preflight = await app.request("/v1/chat/completions", {
+        method: "OPTIONS",
+        headers: {
+          Origin: "https://evil.com",
+          "Access-Control-Request-Method": "POST",
+        },
+      });
+      expect(preflight.status).toBe(403);
+      expect(preflight.headers.get("Access-Control-Allow-Origin")).toBeNull();
     });
   });
 });

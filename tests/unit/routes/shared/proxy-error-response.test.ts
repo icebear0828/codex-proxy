@@ -97,4 +97,45 @@ describe("proxy error response helpers", () => {
     expect(await res.json()).toEqual({ error: "no_account" });
     expect(fmt.formatNoAccount).toHaveBeenCalledOnce();
   });
+
+  it("formats non-streaming 500 proxy errors with the route formatter", async () => {
+    const app = new Hono();
+    const fmt = createMockFormatAdapter();
+    app.get("/server-error", (c) => respondWithProxyError({
+      c,
+      req: createRequest(false),
+      fmt,
+      status: 500,
+      message: "internal error",
+    }));
+
+    const res = await app.request("/server-error");
+    expect(res.status).toBe(500);
+    expect(await res.json()).toEqual({
+      error: "api_error",
+      status: 500,
+      message: "internal error",
+    });
+    expect(fmt.formatError).toHaveBeenCalledWith(500, "internal error");
+  });
+
+  it("formats streaming 500 proxy errors as SSE when the adapter supports stream errors", async () => {
+    const app = new Hono();
+    const fmt = createMockFormatAdapter();
+    app.get("/stream-server-error", (c) => respondWithProxyError({
+      c,
+      req: createRequest(true),
+      fmt,
+      status: 500,
+      message: "internal error",
+    }));
+
+    const res = await app.request("/stream-server-error");
+    expect(res.status).toBe(200);
+    expect(res.headers.get("content-type")).toContain("text/event-stream");
+    const text = await res.text();
+    expect(text).toContain("event: response.failed");
+    expect(text).toContain("internal error");
+    expect(fmt.formatStreamError).toHaveBeenCalledWith(500, "internal error");
+  });
 });

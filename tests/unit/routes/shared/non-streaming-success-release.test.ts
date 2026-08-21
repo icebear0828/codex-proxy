@@ -64,6 +64,29 @@ describe("releaseNonStreamingSuccessAccount", () => {
     expect(usage.image_request_succeeded).toBeUndefined();
   });
 
+  it("adds the configured API cost when the completed request includes a model", () => {
+    const accountPool = makePool();
+    const usage: UsageInfo = {
+      input_tokens: 1_000_000,
+      cached_tokens: 250_000,
+      output_tokens: 500_000,
+    };
+
+    releaseNonStreamingSuccessAccount({
+      accountPool,
+      entryId: "entry-priced",
+      model: "gpt-5.4",
+      usage,
+      released: new Set<string>(),
+    });
+
+    expect(accountPool.release).toHaveBeenCalledWith("entry-priced", {
+      ...usage,
+      model: "gpt-5.4",
+      estimated_cost_usd: 9.4375,
+    });
+  });
+
   it("keeps release idempotent through the shared release guard", () => {
     const accountPool = makePool();
     const usage: UsageInfo = { input_tokens: 1, output_tokens: 2 };

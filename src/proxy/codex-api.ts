@@ -348,7 +348,7 @@ export class CodexApi {
     headers["OpenAI-Beta"] = "responses_websockets=2026-02-06";
     headers["x-openai-internal-codex-residency"] = "us";
     headers["x-client-request-id"] = crypto.randomUUID();
-    const installationId = getInstallationId();
+    const installationId = getInstallationId(this.entryId ?? this.accountId);
     headers["x-codex-installation-id"] = installationId;
     const identity = this.buildConversationIdentity(request);
     if (identity.conversationId) {
@@ -409,8 +409,9 @@ export class CodexApi {
     headers["OpenAI-Beta"] = "responses_websockets=2026-02-06";
     headers["x-openai-internal-codex-residency"] = "us";
     headers["x-client-request-id"] = crypto.randomUUID();
-    const installationId = getInstallationId();
+    const installationId = getInstallationId(this.entryId ?? this.accountId);
     headers["x-codex-installation-id"] = installationId;
+
     const identity = this.buildConversationIdentity(request);
     if (identity.conversationId) {
       headers["x-client-request-id"] = identity.conversationId;
@@ -508,7 +509,7 @@ export class CodexApi {
     headers["OpenAI-Beta"] = "responses_websockets=2026-02-06";
     headers["x-openai-internal-codex-residency"] = "us";
     headers["x-client-request-id"] = crypto.randomUUID();
-    headers["x-codex-installation-id"] = getInstallationId();
+    headers["x-codex-installation-id"] = getInstallationId(this.entryId ?? this.accountId);
 
     const body = JSON.stringify(request);
 

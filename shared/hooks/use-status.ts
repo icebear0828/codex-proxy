@@ -22,7 +22,7 @@ export interface ModelFamily {
  * gpt-5.3-codex-spark → gpt-5.3-codex-spark (spark is a distinct family)
  * gpt-5.4 → gpt-5.4
  */
-function getFamilyId(id: string): string {
+export function getFamilyId(id: string): string {
   // Bare model: gpt-5.4
   if (/^gpt-\d+(?:\.\d+)?$/.test(id)) return id;
   // Spark family: gpt-X.Y-codex-spark
@@ -39,16 +39,16 @@ function getFamilyId(id: string): string {
 }
 
 /** Check if a model ID is a tier variant (not the base family model). */
-function isTierVariant(id: string): boolean {
+export function isTierVariant(id: string): boolean {
   return /^gpt-\d+(?:\.\d+)?-codex-(?:high|mid|low|max)$/.test(id);
 }
 
-function isSelectableChatModel(model: CatalogModel): boolean {
+export function isSelectableChatModel(model: CatalogModel): boolean {
   if (model.outputModalities && !model.outputModalities.includes("text")) return false;
   return model.supportedReasoningEfforts.length > 0;
 }
 
-function selectDefaultModel(catalog: CatalogModel[], ids: string[]): string {
+export function selectDefaultModel(catalog: CatalogModel[], ids: string[]): string {
   const selectable = catalog.filter(isSelectableChatModel);
   return selectable.find((m) => m.isDefault)?.id ?? selectable[0]?.id ?? ids[0] ?? "";
 }
@@ -93,11 +93,14 @@ export function useStatus(accountCount: number) {
 
     async function loadStatus() {
       try {
-        const resp = await fetch("/auth/status");
-        const data = await resp.json();
-        if (!data.authenticated) return;
         setBaseUrl(`${window.location.origin}/v1`);
-        setApiKey(data.proxy_api_key || "any-string");
+        const resp = await fetch("/auth/status");
+        if (resp.ok) {
+          const data = await resp.json();
+          setApiKey(data.proxy_api_key || "any-string");
+        } else {
+          setApiKey("any-string");
+        }
         await fetchModels(true);
 
         // Refresh model list every 60s to pick up dynamic backend changes

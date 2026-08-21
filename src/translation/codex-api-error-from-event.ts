@@ -19,6 +19,7 @@ export function codexApiErrorFromEvent(
 function statusForCode(code: string): number {
   const lower = code.toLowerCase();
   if (lower === "server_is_overloaded") return 503;
+  if (lower === "server_error") return 500;
   if (lower.includes("invalid_request") || lower.includes("not_found")) return 400;
   if (lower.includes("rate_limit") || lower.includes("usage_limit")) return 429;
   if (lower.includes("unauthorized") || lower.includes("invalid_api_key")) return 401;
