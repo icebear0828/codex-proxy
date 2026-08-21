@@ -646,6 +646,15 @@ export class AccountRegistry {
       changed = resetExpiredQuotaWindow(quota.secondary_rate_limit, nowSec) || changed;
       changed = resetExpiredQuotaWindow(quota.code_review_rate_limit, nowSec) || changed;
 
+      if (quota.rate_limits_by_limit_id) {
+        for (const limit of Object.values(quota.rate_limits_by_limit_id)) {
+          changed = resetExpiredQuotaWindow(limit, nowSec) || changed;
+          if (limit.secondary_rate_limit) {
+            changed = resetExpiredQuotaWindow(limit.secondary_rate_limit, nowSec) || changed;
+          }
+        }
+      }
+
       if (changed) {
         entry.quotaVerifyRequired = true; // Mark dirty when offline reset rolls over
         this.schedulePersist();

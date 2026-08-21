@@ -105,3 +105,12 @@ export function toQuota(usage: CodexUsageResponse): CodexQuota {
     credits: normalizeCredits(usage.credits),
   };
 }
+
+export function getRateLimitIdForModel(model?: string | null): string | null {
+  if (!model) return null;
+  const normalized = model.trim().toLowerCase();
+  if (normalized.includes("spark") || normalized.includes("bengalfox")) {
+    return "codex_bengalfox";
+  }
+  return null;
+}

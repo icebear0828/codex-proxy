@@ -120,6 +120,19 @@ describe("handleCodexApiError", () => {
       expect(pool.applyRateLimit429).not.toHaveBeenCalled();
     });
 
+    it("records Spark 429 for spark model variants in its additional quota bucket", () => {
+      const body = JSON.stringify({ error: { resets_in_seconds: 45 } });
+      const err = new CodexApiError(429, body);
+
+      handleCodexApiError(err, pool as never, entryId, "gpt-5.3-spark", tag, false);
+
+      expect(pool.applyAdditionalRateLimit429).toHaveBeenCalledWith(entryId, "codex_bengalfox", {
+        retryAfterSec: 45,
+        countRequest: true,
+      });
+      expect(pool.applyRateLimit429).not.toHaveBeenCalled();
+    });
+
     it("does not combine with cached quota in handler (don't-shrink-existing-reset_at lives inside applyRateLimit429)", () => {
       const resetAt = Math.floor(Date.now() / 1000) + 86400;
       pool.getEntry.mockReturnValue({

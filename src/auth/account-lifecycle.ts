@@ -94,7 +94,7 @@ export class AccountLifecycle {
         this.slotCount(a.id) < maxConcurrent &&
         (!excludeSet || !excludeSet.has(a.id)) &&
         !isCfChallengeCooldownActive(a.id) &&
-        (!skipExhausted || !hasReachedCachedQuota(a)),
+        (!skipExhausted || !hasReachedCachedQuota(a, options?.model)),
     );
 
     if (available.length === 0) return null;
