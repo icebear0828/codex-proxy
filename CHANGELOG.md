@@ -18,6 +18,10 @@
 - 重构：抽象路由层的 JSON 拦截与 API Key 校验（提取统一的 API Key 提取器 `extractProxyApiKey`；由全局 `errorHandler` 统一拦截 SyntaxError 带来的 JSON 解析失败并返回 400）
 - 更新 `README_EN.md` 中过时的模型推荐说明以匹配最新的模型别名映射（`README_EN.md`）
 
+### Fixed
+
+- 修复分发 Key（Client Access Keys）页面创建与编辑弹窗背景透明问题：修正非标准 Tailwind 类名（`bg-surface-light`、`bg-surface-dark`、`border-border-light` 等），采用标准 `bg-white dark:bg-card-dark` 与 `border-slate-200 dark:border-border-dark` 确保弹窗遮罩及背景不透明显示。（`web/src/pages/ClientKeysPage.tsx`）
+
 ### Added
 
 - Dashboard 用量统计新增按当前筛选时间窗口显示的 `Estimated API Cost`；请求完成时按 `config/model-pricing.yaml` 的官方 OpenAI API 价格和实际 input/output/cache/image token 累计 USD 等价成本。价格清单集中维护，未知模型不猜价，旧历史数据按 `$0` 兼容。（`config/model-pricing.yaml`、`src/auth/usage-pricing.ts`、`shared/utils/usage-stats.ts`、`web/src/pages/UsageStats.tsx`）

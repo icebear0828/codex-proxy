@@ -249,12 +249,12 @@ export const ClientKeysPage: FunctionalComponent<ClientKeysPageProps> = ({
   return (
     <div class="space-y-6">
       {/* Top Header & Summary Stats */}
-      <div class="bg-surface-light dark:bg-surface-dark rounded-xl p-6 shadow-sm border border-border-light dark:border-border-dark flex flex-col md:flex-row md:items-center justify-between gap-4">
+      <div class="bg-white dark:bg-card-dark rounded-xl p-6 shadow-sm border border-slate-200 dark:border-border-dark flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
           <h2 class="text-xl font-bold text-slate-800 dark:text-slate-100 flex items-center gap-2">
             🔑 {t("clientKeys")}
           </h2>
-          <p class="text-xs text-text-sub mt-1">
+          <p class="text-xs text-slate-500 dark:text-text-dim mt-1">
             {t("clientKeysDesc")}
           </p>
         </div>
@@ -268,24 +268,24 @@ export const ClientKeysPage: FunctionalComponent<ClientKeysPageProps> = ({
 
       {/* Global Usage Cards */}
       <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
-        <div class="bg-surface-light dark:bg-surface-dark p-4 rounded-xl border border-border-light dark:border-border-dark shadow-sm">
-          <div class="text-xs font-semibold text-text-sub uppercase tracking-wider">{t("totalAll")}</div>
+        <div class="bg-white dark:bg-card-dark p-4 rounded-xl border border-slate-200 dark:border-border-dark shadow-sm">
+          <div class="text-xs font-semibold text-slate-500 dark:text-text-dim uppercase tracking-wider">{t("totalAll")}</div>
           <div class="text-2xl font-bold text-slate-800 dark:text-slate-100 mt-1">{keys.length}</div>
         </div>
-        <div class="bg-surface-light dark:bg-surface-dark p-4 rounded-xl border border-border-light dark:border-border-dark shadow-sm">
-          <div class="text-xs font-semibold text-text-sub uppercase tracking-wider">{t("active")}</div>
+        <div class="bg-white dark:bg-card-dark p-4 rounded-xl border border-slate-200 dark:border-border-dark shadow-sm">
+          <div class="text-xs font-semibold text-slate-500 dark:text-text-dim uppercase tracking-wider">{t("active")}</div>
           <div class="text-2xl font-bold text-emerald-600 dark:text-emerald-400 mt-1">
             {keys.filter((k) => k.status === "active").length}
           </div>
         </div>
-        <div class="bg-surface-light dark:bg-surface-dark p-4 rounded-xl border border-border-light dark:border-border-dark shadow-sm">
-          <div class="text-xs font-semibold text-text-sub uppercase tracking-wider">{t("clientKeyUsedCost")}</div>
+        <div class="bg-white dark:bg-card-dark p-4 rounded-xl border border-slate-200 dark:border-border-dark shadow-sm">
+          <div class="text-xs font-semibold text-slate-500 dark:text-text-dim uppercase tracking-wider">{t("clientKeyUsedCost")}</div>
           <div class="text-2xl font-bold text-amber-600 dark:text-amber-400 mt-1">
             ${totalCostUsd.toFixed(4)}
           </div>
         </div>
-        <div class="bg-surface-light dark:bg-surface-dark p-4 rounded-xl border border-border-light dark:border-border-dark shadow-sm">
-          <div class="text-xs font-semibold text-text-sub uppercase tracking-wider">{t("clientKeyRequests")}</div>
+        <div class="bg-white dark:bg-card-dark p-4 rounded-xl border border-slate-200 dark:border-border-dark shadow-sm">
+          <div class="text-xs font-semibold text-slate-500 dark:text-text-dim uppercase tracking-wider">{t("clientKeyRequests")}</div>
           <div class="text-2xl font-bold text-blue-600 dark:text-blue-400 mt-1">
             {totalRequests.toLocaleString()}
           </div>
@@ -299,11 +299,11 @@ export const ClientKeysPage: FunctionalComponent<ClientKeysPageProps> = ({
       )}
 
       {/* Keys List */}
-      <div class="bg-surface-light dark:bg-surface-dark rounded-xl border border-border-light dark:border-border-dark overflow-hidden shadow-sm">
+      <div class="bg-white dark:bg-card-dark rounded-xl border border-slate-200 dark:border-border-dark overflow-hidden shadow-sm">
         {isLoading && keys.length === 0 ? (
-          <div class="p-8 text-center text-text-sub text-sm">{t("loading")}</div>
+          <div class="p-8 text-center text-slate-500 dark:text-text-dim text-sm">{t("loading")}</div>
         ) : keys.length === 0 ? (
-          <div class="p-12 text-center text-text-sub space-y-3">
+          <div class="p-12 text-center text-slate-500 dark:text-text-dim space-y-3">
             <div class="text-3xl">📭</div>
             <div class="font-medium text-slate-700 dark:text-slate-300">{t("noAccounts")}</div>
           </div>
@@ -311,7 +311,7 @@ export const ClientKeysPage: FunctionalComponent<ClientKeysPageProps> = ({
           <div class="overflow-x-auto">
             <table class="w-full text-left text-xs border-collapse">
               <thead>
-                <tr class="border-b border-border-light dark:border-border-dark bg-slate-50 dark:bg-slate-900/50 text-text-sub">
+                <tr class="border-b border-slate-200 dark:border-border-dark bg-slate-50 dark:bg-slate-900/50 text-slate-500 dark:text-text-dim">
                   <th class="py-3 px-4 font-semibold">{t("clientKeyName")}</th>
                   <th class="py-3 px-4 font-semibold">{t("clientKeySecret")}</th>
                   <th class="py-3 px-4 font-semibold">{t("clientKeyBudget")}</th>
@@ -340,12 +340,12 @@ export const ClientKeysPage: FunctionalComponent<ClientKeysPageProps> = ({
                           {k.name}
                         </div>
                         {k.allowed_models && k.allowed_models.length > 0 && (
-                          <div class="text-[10px] text-text-sub mt-0.5">
+                          <div class="text-[10px] text-slate-500 dark:text-text-dim mt-0.5">
                             {k.allowed_models.join(", ")}
                           </div>
                         )}
                         {k.default_tools != null && (
-                          <div class="text-[10px] text-text-sub mt-0.5">
+                          <div class="text-[10px] text-slate-500 dark:text-text-dim mt-0.5">
                             {k.default_tools.length > 0 ? (
                               <span class="text-primary dark:text-primary-light">
                                 Tools: {k.default_tools.join(", ")}
@@ -362,7 +362,7 @@ export const ClientKeysPage: FunctionalComponent<ClientKeysPageProps> = ({
                       <td class="py-3.5 px-4">
                         <div class="text-slate-800 dark:text-slate-200 font-medium">
                           ${k.used_cost_usd.toFixed(4)}
-                          <span class="text-text-sub text-[10px] font-normal">
+                          <span class="text-slate-500 dark:text-text-dim text-[10px] font-normal">
                             {" / "}
                             {k.max_budget_usd != null ? `$${k.max_budget_usd}` : "∞"}
                           </span>
@@ -376,7 +376,7 @@ export const ClientKeysPage: FunctionalComponent<ClientKeysPageProps> = ({
                       <td class="py-3.5 px-4">
                         <div class="text-slate-800 dark:text-slate-200 font-medium">
                           {k.used_tokens.toLocaleString()}
-                          <span class="text-text-sub text-[10px] font-normal">
+                          <span class="text-slate-500 dark:text-text-dim text-[10px] font-normal">
                             {" / "}
                             {k.max_tokens != null ? k.max_tokens.toLocaleString() : "∞"}
                           </span>
@@ -401,7 +401,7 @@ export const ClientKeysPage: FunctionalComponent<ClientKeysPageProps> = ({
                             )}
                           </div>
                         ) : (
-                          <span class="text-text-sub">{t("clientKeyNeverExpires")}</span>
+                          <span class="text-slate-500 dark:text-text-dim">{t("clientKeyNeverExpires")}</span>
                         )}
                       </td>
                       <td class="py-3.5 px-4">
@@ -456,7 +456,7 @@ export const ClientKeysPage: FunctionalComponent<ClientKeysPageProps> = ({
       {/* Create / Secret Key Reveal Modal */}
       {showCreateModal && (
         <div class="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div class="bg-surface-light dark:bg-surface-dark border border-border-light dark:border-border-dark rounded-2xl shadow-xl max-w-lg w-full p-6 space-y-4">
+          <div class="bg-white dark:bg-card-dark border border-slate-200 dark:border-border-dark rounded-2xl shadow-xl max-w-lg w-full p-6 space-y-4">
             <h3 class="text-lg font-bold text-slate-800 dark:text-slate-100">
               {createdSecretKey ? t("clientKeySecret") : t("addClientKey")}
             </h3>
@@ -467,13 +467,13 @@ export const ClientKeysPage: FunctionalComponent<ClientKeysPageProps> = ({
                   ⚠️ {t("clientKeyCreatedSuccess")}
                 </p>
                 <div>
-                  <label class="block text-xs font-semibold text-text-sub mb-1">{t("clientKeySecret")}</label>
+                  <label class="block text-xs font-semibold text-slate-500 dark:text-text-dim mb-1">{t("clientKeySecret")}</label>
                   <div class="flex items-center gap-2">
                     <input
                       type="text"
                       readOnly
                       value={createdSecretKey}
-                      class="flex-grow px-3 py-2 bg-slate-100 dark:bg-slate-900 border border-border-light dark:border-border-dark rounded-lg font-mono text-xs text-slate-800 dark:text-slate-200"
+                      class="flex-grow px-3 py-2 bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-border-dark rounded-lg font-mono text-xs text-slate-800 dark:text-slate-200"
                     />
                     <button
                       onClick={handleCopySecret}
@@ -500,7 +500,7 @@ export const ClientKeysPage: FunctionalComponent<ClientKeysPageProps> = ({
                   </div>
                 )}
                 <div>
-                  <label class="block text-xs font-semibold text-text-sub mb-1">
+                  <label class="block text-xs font-semibold text-slate-500 dark:text-text-dim mb-1">
                     {t("clientKeyName")} *
                   </label>
                   <input
@@ -509,12 +509,12 @@ export const ClientKeysPage: FunctionalComponent<ClientKeysPageProps> = ({
                     placeholder="e.g. Frontend Dev Team / Alice"
                     value={formName}
                     onInput={(e) => setFormName((e.currentTarget as HTMLInputElement).value)}
-                    class="w-full px-3 py-2 bg-bg-light dark:bg-bg-dark border border-border-light dark:border-border-dark rounded-lg text-xs"
+                    class="w-full px-3 py-2 bg-bg-light dark:bg-bg-dark border border-slate-200 dark:border-border-dark rounded-lg text-xs"
                   />
                 </div>
 
                 <div>
-                  <label class="block text-xs font-semibold text-text-sub mb-1">
+                  <label class="block text-xs font-semibold text-slate-500 dark:text-text-dim mb-1">
                     {t("clientKeySecret")}
                   </label>
                   <input
@@ -522,13 +522,13 @@ export const ClientKeysPage: FunctionalComponent<ClientKeysPageProps> = ({
                     placeholder="sk-proxy-custom-secret..."
                     value={formCustomKey}
                     onInput={(e) => setFormCustomKey((e.currentTarget as HTMLInputElement).value)}
-                    class="w-full px-3 py-2 bg-bg-light dark:bg-bg-dark border border-border-light dark:border-border-dark rounded-lg text-xs font-mono"
+                    class="w-full px-3 py-2 bg-bg-light dark:bg-bg-dark border border-slate-200 dark:border-border-dark rounded-lg text-xs font-mono"
                   />
                 </div>
 
                 <div class="grid grid-cols-2 gap-3">
                   <div>
-                    <label class="block text-xs font-semibold text-text-sub mb-1">
+                    <label class="block text-xs font-semibold text-slate-500 dark:text-text-dim mb-1">
                       {t("clientKeyBudget")} ($)
                     </label>
                     <input
@@ -537,11 +537,11 @@ export const ClientKeysPage: FunctionalComponent<ClientKeysPageProps> = ({
                       placeholder="e.g. 5.00"
                       value={formMaxBudgetUsd}
                       onInput={(e) => setFormMaxBudgetUsd((e.currentTarget as HTMLInputElement).value)}
-                      class="w-full px-3 py-2 bg-bg-light dark:bg-bg-dark border border-border-light dark:border-border-dark rounded-lg text-xs"
+                      class="w-full px-3 py-2 bg-bg-light dark:bg-bg-dark border border-slate-200 dark:border-border-dark rounded-lg text-xs"
                     />
                   </div>
                   <div>
-                    <label class="block text-xs font-semibold text-text-sub mb-1">
+                    <label class="block text-xs font-semibold text-slate-500 dark:text-text-dim mb-1">
                       {t("clientKeyTokens")}
                     </label>
                     <input
@@ -549,14 +549,14 @@ export const ClientKeysPage: FunctionalComponent<ClientKeysPageProps> = ({
                       placeholder="e.g. 100000"
                       value={formMaxTokens}
                       onInput={(e) => setFormMaxTokens((e.currentTarget as HTMLInputElement).value)}
-                      class="w-full px-3 py-2 bg-bg-light dark:bg-bg-dark border border-border-light dark:border-border-dark rounded-lg text-xs"
+                      class="w-full px-3 py-2 bg-bg-light dark:bg-bg-dark border border-slate-200 dark:border-border-dark rounded-lg text-xs"
                     />
                   </div>
                 </div>
 
                 <div class="grid grid-cols-2 gap-3">
                   <div>
-                    <label class="block text-xs font-semibold text-text-sub mb-1">
+                    <label class="block text-xs font-semibold text-slate-500 dark:text-text-dim mb-1">
                       {t("clientKeyConcurrency")}
                     </label>
                     <input
@@ -564,24 +564,24 @@ export const ClientKeysPage: FunctionalComponent<ClientKeysPageProps> = ({
                       placeholder="e.g. 2"
                       value={formMaxConcurrency}
                       onInput={(e) => setFormMaxConcurrency((e.currentTarget as HTMLInputElement).value)}
-                      class="w-full px-3 py-2 bg-bg-light dark:bg-bg-dark border border-border-light dark:border-border-dark rounded-lg text-xs"
+                      class="w-full px-3 py-2 bg-bg-light dark:bg-bg-dark border border-slate-200 dark:border-border-dark rounded-lg text-xs"
                     />
                   </div>
                   <div>
-                    <label class="block text-xs font-semibold text-text-sub mb-1">
+                    <label class="block text-xs font-semibold text-slate-500 dark:text-text-dim mb-1">
                       {t("clientKeyExpiresAt")}
                     </label>
                     <input
                       type="datetime-local"
                       value={formExpiresAt}
                       onInput={(e) => setFormExpiresAt((e.currentTarget as HTMLInputElement).value)}
-                      class="w-full px-3 py-2 bg-bg-light dark:bg-bg-dark border border-border-light dark:border-border-dark rounded-lg text-xs"
+                      class="w-full px-3 py-2 bg-bg-light dark:bg-bg-dark border border-slate-200 dark:border-border-dark rounded-lg text-xs"
                     />
                   </div>
                 </div>
 
                 <div>
-                  <label class="block text-xs font-semibold text-text-sub mb-1">
+                  <label class="block text-xs font-semibold text-slate-500 dark:text-text-dim mb-1">
                     {t("clientKeyAllowedModels")} ({t("clientKeyAllowedModelsHint")})
                   </label>
                   <input
@@ -589,12 +589,12 @@ export const ClientKeysPage: FunctionalComponent<ClientKeysPageProps> = ({
                     placeholder="gpt-5.4, gpt-5.3-codex"
                     value={formAllowedModels}
                     onInput={(e) => setFormAllowedModels((e.currentTarget as HTMLInputElement).value)}
-                    class="w-full px-3 py-2 bg-bg-light dark:bg-bg-dark border border-border-light dark:border-border-dark rounded-lg text-xs"
+                    class="w-full px-3 py-2 bg-bg-light dark:bg-bg-dark border border-slate-200 dark:border-border-dark rounded-lg text-xs"
                   />
                 </div>
 
                 <div>
-                  <label class="block text-xs font-semibold text-text-sub mb-1">
+                  <label class="block text-xs font-semibold text-slate-500 dark:text-text-dim mb-1">
                     {t("clientKeyDefaultTools")} ({t("clientKeyDefaultToolsHint")})
                   </label>
                   <input
@@ -602,7 +602,7 @@ export const ClientKeysPage: FunctionalComponent<ClientKeysPageProps> = ({
                     placeholder="web_search, image_generation"
                     value={formDefaultTools}
                     onInput={(e) => setFormDefaultTools((e.currentTarget as HTMLInputElement).value)}
-                    class="w-full px-3 py-2 bg-bg-light dark:bg-bg-dark border border-border-light dark:border-border-dark rounded-lg text-xs"
+                    class="w-full px-3 py-2 bg-bg-light dark:bg-bg-dark border border-slate-200 dark:border-border-dark rounded-lg text-xs"
                   />
                 </div>
 
@@ -610,7 +610,7 @@ export const ClientKeysPage: FunctionalComponent<ClientKeysPageProps> = ({
                   <button
                     type="button"
                     onClick={() => setShowCreateModal(false)}
-                    class="px-3 py-1.5 text-xs text-text-sub hover:text-text-main"
+                    class="px-3 py-1.5 text-xs text-slate-500 dark:text-text-dim hover:text-text-main"
                   >
                     {t("cancel")}
                   </button>
@@ -631,7 +631,7 @@ export const ClientKeysPage: FunctionalComponent<ClientKeysPageProps> = ({
       {/* Edit Modal */}
       {editingKey && (
         <div class="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div class="bg-surface-light dark:bg-surface-dark border border-border-light dark:border-border-dark rounded-2xl shadow-xl max-w-lg w-full p-6 space-y-4">
+          <div class="bg-white dark:bg-card-dark border border-slate-200 dark:border-border-dark rounded-2xl shadow-xl max-w-lg w-full p-6 space-y-4">
             <h3 class="text-lg font-bold text-slate-800 dark:text-slate-100">
               {t("editClientKey")}
             </h3>
@@ -643,7 +643,7 @@ export const ClientKeysPage: FunctionalComponent<ClientKeysPageProps> = ({
                 </div>
               )}
               <div>
-                <label class="block text-xs font-semibold text-text-sub mb-1">
+                <label class="block text-xs font-semibold text-slate-500 dark:text-text-dim mb-1">
                   {t("clientKeyName")} *
                 </label>
                 <input
@@ -651,13 +651,13 @@ export const ClientKeysPage: FunctionalComponent<ClientKeysPageProps> = ({
                   required
                   value={formName}
                   onInput={(e) => setFormName((e.currentTarget as HTMLInputElement).value)}
-                  class="w-full px-3 py-2 bg-bg-light dark:bg-bg-dark border border-border-light dark:border-border-dark rounded-lg text-xs"
+                  class="w-full px-3 py-2 bg-bg-light dark:bg-bg-dark border border-slate-200 dark:border-border-dark rounded-lg text-xs"
                 />
               </div>
 
               <div class="grid grid-cols-2 gap-3">
                 <div>
-                  <label class="block text-xs font-semibold text-text-sub mb-1">
+                  <label class="block text-xs font-semibold text-slate-500 dark:text-text-dim mb-1">
                     {t("clientKeyBudget")} ($)
                   </label>
                   <input
@@ -666,11 +666,11 @@ export const ClientKeysPage: FunctionalComponent<ClientKeysPageProps> = ({
                     placeholder="Unlimited"
                     value={formMaxBudgetUsd}
                     onInput={(e) => setFormMaxBudgetUsd((e.currentTarget as HTMLInputElement).value)}
-                    class="w-full px-3 py-2 bg-bg-light dark:bg-bg-dark border border-border-light dark:border-border-dark rounded-lg text-xs"
+                    class="w-full px-3 py-2 bg-bg-light dark:bg-bg-dark border border-slate-200 dark:border-border-dark rounded-lg text-xs"
                   />
                 </div>
                 <div>
-                  <label class="block text-xs font-semibold text-text-sub mb-1">
+                  <label class="block text-xs font-semibold text-slate-500 dark:text-text-dim mb-1">
                     {t("clientKeyTokens")}
                   </label>
                   <input
@@ -678,14 +678,14 @@ export const ClientKeysPage: FunctionalComponent<ClientKeysPageProps> = ({
                     placeholder="Unlimited"
                     value={formMaxTokens}
                     onInput={(e) => setFormMaxTokens((e.currentTarget as HTMLInputElement).value)}
-                    class="w-full px-3 py-2 bg-bg-light dark:bg-bg-dark border border-border-light dark:border-border-dark rounded-lg text-xs"
+                    class="w-full px-3 py-2 bg-bg-light dark:bg-bg-dark border border-slate-200 dark:border-border-dark rounded-lg text-xs"
                   />
                 </div>
               </div>
 
               <div class="grid grid-cols-2 gap-3">
                 <div>
-                  <label class="block text-xs font-semibold text-text-sub mb-1">
+                  <label class="block text-xs font-semibold text-slate-500 dark:text-text-dim mb-1">
                     {t("clientKeyConcurrency")}
                   </label>
                   <input
@@ -693,24 +693,24 @@ export const ClientKeysPage: FunctionalComponent<ClientKeysPageProps> = ({
                     placeholder="Unlimited"
                     value={formMaxConcurrency}
                     onInput={(e) => setFormMaxConcurrency((e.currentTarget as HTMLInputElement).value)}
-                    class="w-full px-3 py-2 bg-bg-light dark:bg-bg-dark border border-border-light dark:border-border-dark rounded-lg text-xs"
+                    class="w-full px-3 py-2 bg-bg-light dark:bg-bg-dark border border-slate-200 dark:border-border-dark rounded-lg text-xs"
                   />
                 </div>
                 <div>
-                  <label class="block text-xs font-semibold text-text-sub mb-1">
+                  <label class="block text-xs font-semibold text-slate-500 dark:text-text-dim mb-1">
                     {t("clientKeyExpiresAt")}
                   </label>
                   <input
                     type="datetime-local"
                     value={formExpiresAt}
                     onInput={(e) => setFormExpiresAt((e.currentTarget as HTMLInputElement).value)}
-                    class="w-full px-3 py-2 bg-bg-light dark:bg-bg-dark border border-border-light dark:border-border-dark rounded-lg text-xs"
+                    class="w-full px-3 py-2 bg-bg-light dark:bg-bg-dark border border-slate-200 dark:border-border-dark rounded-lg text-xs"
                   />
                 </div>
               </div>
 
               <div>
-                <label class="block text-xs font-semibold text-text-sub mb-1">
+                <label class="block text-xs font-semibold text-slate-500 dark:text-text-dim mb-1">
                   {t("clientKeyAllowedModels")} ({t("clientKeyAllowedModelsHint")})
                 </label>
                 <input
@@ -718,12 +718,12 @@ export const ClientKeysPage: FunctionalComponent<ClientKeysPageProps> = ({
                   placeholder="gpt-5.4, gpt-5.3-codex"
                   value={formAllowedModels}
                   onInput={(e) => setFormAllowedModels((e.currentTarget as HTMLInputElement).value)}
-                  class="w-full px-3 py-2 bg-bg-light dark:bg-bg-dark border border-border-light dark:border-border-dark rounded-lg text-xs"
+                  class="w-full px-3 py-2 bg-bg-light dark:bg-bg-dark border border-slate-200 dark:border-border-dark rounded-lg text-xs"
                 />
               </div>
 
               <div>
-                <label class="block text-xs font-semibold text-text-sub mb-1">
+                <label class="block text-xs font-semibold text-slate-500 dark:text-text-dim mb-1">
                   {t("clientKeyDefaultTools")} ({t("clientKeyDefaultToolsHint")})
                 </label>
                 <input
@@ -731,18 +731,18 @@ export const ClientKeysPage: FunctionalComponent<ClientKeysPageProps> = ({
                   placeholder="web_search, image_generation"
                   value={formDefaultTools}
                   onInput={(e) => setFormDefaultTools((e.currentTarget as HTMLInputElement).value)}
-                  class="w-full px-3 py-2 bg-bg-light dark:bg-bg-dark border border-border-light dark:border-border-dark rounded-lg text-xs"
+                  class="w-full px-3 py-2 bg-bg-light dark:bg-bg-dark border border-slate-200 dark:border-border-dark rounded-lg text-xs"
                 />
               </div>
 
               <div>
-                <label class="block text-xs font-semibold text-text-sub mb-1">
+                <label class="block text-xs font-semibold text-slate-500 dark:text-text-dim mb-1">
                   Status
                 </label>
                 <select
                   value={formStatus}
                   onChange={(e) => setFormStatus((e.currentTarget as HTMLSelectElement).value as "active" | "disabled")}
-                  class="w-full px-3 py-2 bg-bg-light dark:bg-bg-dark border border-border-light dark:border-border-dark rounded-lg text-xs"
+                  class="w-full px-3 py-2 bg-bg-light dark:bg-bg-dark border border-slate-200 dark:border-border-dark rounded-lg text-xs"
                 >
                   <option value="active">{t("clientKeyStatusActive")}</option>
                   <option value="disabled">{t("clientKeyStatusDisabled")}</option>
@@ -753,7 +753,7 @@ export const ClientKeysPage: FunctionalComponent<ClientKeysPageProps> = ({
                 <button
                   type="button"
                   onClick={() => setEditingKey(null)}
-                  class="px-3 py-1.5 text-xs text-text-sub hover:text-text-main"
+                  class="px-3 py-1.5 text-xs text-slate-500 dark:text-text-dim hover:text-text-main"
                 >
                   {t("cancel")}
                 </button>
