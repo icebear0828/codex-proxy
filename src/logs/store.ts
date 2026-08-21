@@ -1,4 +1,6 @@
 import { redactJson } from "./redact.js";
+import type { LogMetrics } from "./metrics.js";
+import type { UsageInfo } from "../translation/codex-event-extractor.js";
 
 export type LogDirection = "ingress" | "egress";
 
@@ -20,6 +22,12 @@ export interface LogRecord {
   request?: unknown;
   response?: unknown;
   meta?: Record<string, unknown>;
+  ttftMs?: number | null;
+  durationMs?: number | null;
+  costUsd?: number | null;
+  tokensPerSecond?: number | null;
+  usage?: UsageInfo | null;
+  metrics?: LogMetrics | null;
 }
 
 export interface LogState {
@@ -134,6 +142,32 @@ export class LogStore {
 
   get(id: string): LogRecord | null {
     return this.records.find((r) => r.id === id) ?? null;
+  }
+
+  updateByRequestId(requestId: string, patch: Partial<LogRecord>): boolean {
+    if (this.queue.length > 0) {
+      this.flush();
+    }
+    let updated = false;
+    for (const record of this.records) {
+      if (record.requestId === requestId) {
+        updated = true;
+        if (patch.status !== undefined) record.status = patch.status;
+        if (patch.latencyMs !== undefined) record.latencyMs = patch.latencyMs;
+        if (patch.model !== undefined) record.model = patch.model;
+        if (patch.error !== undefined) record.error = patch.error;
+        if (patch.ttftMs !== undefined) record.ttftMs = patch.ttftMs;
+        if (patch.durationMs !== undefined) record.durationMs = patch.durationMs;
+        if (patch.costUsd !== undefined) record.costUsd = patch.costUsd;
+        if (patch.tokensPerSecond !== undefined) record.tokensPerSecond = patch.tokensPerSecond;
+        if (patch.usage !== undefined) record.usage = patch.usage;
+        if (patch.metrics !== undefined) record.metrics = patch.metrics;
+        if (patch.response !== undefined) {
+          record.response = redactJson(patch.response);
+        }
+      }
+    }
+    return updated;
   }
 
   private flush(): void {

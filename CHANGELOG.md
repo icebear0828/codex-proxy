@@ -20,6 +20,12 @@
 
 ### Added
 
+- 日志可观测性与性能监控增强：为项目日志页面与数据链路添加全方位的可观测性指标捕获，包括首字延迟（TTFT）、单次预估金额（USD Cost）、Token 吐字生成速率（tok/s）、总执行耗时（Latency/Duration）及详细 Token 用量（Prompt / Completion / Reasoning / Cache Hit Rate）。在 Dashboard Logs 页面新增顶部可观测性概览看板（平均首字延迟、平均吐字速率、平均总耗时、总预估金额、Token 吞吐及请求成功率）、增强型列表表格列与 4 宫格性能详情抽屉；支持一键清空内存日志；补齐中英双语国际化支持。（`src/logs/metrics.ts`、`src/logs/store.ts`、`src/logs/entry.ts`、`src/routes/shared/streaming-handler.ts`、`src/routes/shared/non-streaming-handler.ts`、`src/routes/shared/direct-request-handler.ts`、`web/src/pages/LogsPage.tsx`、`shared/hooks/use-logs.ts`、`shared/i18n/translations.ts`）
+
+### Fixed
+
+- 修复日志轮询触发死循环自增与成功率被腰斩稀释的问题：在 `log-capture` 中间件中严格排除 `/admin/*`、`/health` 及静态资源等内部路由；通过 `updateByRequestId` 解决同一请求被重复入队为两条 Ingress 记录导致成功率假性下跌的问题。（`src/middleware/log-capture.ts`、`src/logs/store.ts`、`web/src/pages/LogsPage.tsx`）
+
 - Dashboard 用量统计新增按当前筛选时间窗口显示的 `Estimated API Cost`；请求完成时按 `config/model-pricing.yaml` 的官方 OpenAI API 价格和实际 input/output/cache/image token 累计 USD 等价成本。价格清单集中维护，未知模型不猜价，旧历史数据按 `$0` 兼容。（`config/model-pricing.yaml`、`src/auth/usage-pricing.ts`、`shared/utils/usage-stats.ts`、`web/src/pages/UsageStats.tsx`）
 - Release Notes 改为 LLM 双语生成（替换并删除此前的逐词替换字典 `translate-notes.js`，机翻词盐根因）：新增 `summarize-release-notes.mjs` 调 OpenAI-compatible endpoint（secrets：`RELEASE_NOTES_BASE_URL/API_KEY/MODEL`）按 Electron 用户视角输出「✨ 本次更新」中文亮点 + 英文对照 + 折叠完整 commit 清单；输出强校验（JSON 契约、必须含 CJK、条数上限），LLM 不可用/校验失败时回退按 type 分组的纯英文列表，脚本永不非零退出（notes 问题不阻塞发版）；notes 过滤规则对齐 bump 的 `SKIP_RELEASE_PATTERN`（排除 chore/docs/ci/test/refactor/style）；已用真实 gateway 连调 3 次验证双语产出（`.github/scripts/summarize-release-notes.mjs`、`.github/scripts/generate-release-notes.sh`、`tests/unit/ci/summarize-release-notes.test.ts`、`tests/unit/ci/release-notes-script.test.ts`）
 - CI 发版通知 webhook：release 成功/失败、promote 成功/ff 前提破坏时 POST 纯文本到 `NOTIFY_WEBHOOK_URL` secret（ntfy 开箱可用）；secret 未配置时静默跳过、永不阻塞流水线（`.github/scripts/notify-webhook.sh`、`.github/workflows/release.yml`、`.github/workflows/promote-dev-to-master.yml`）

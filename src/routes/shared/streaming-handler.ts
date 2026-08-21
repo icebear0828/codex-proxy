@@ -5,6 +5,8 @@ import { clearCfChallengeCooldown } from "../../auth/cf-challenge-cooldown.js";
 import type { ChainAdvanceTicket, SessionAffinityMap } from "../../auth/session-affinity.js";
 import type { CodexApi } from "../../proxy/codex-api.js";
 import { recordStreamCloseEvent } from "../../logs/stream-close-event.js";
+import { updateLogEntry } from "../../logs/entry.js";
+import { calculateLogMetrics } from "../../logs/metrics.js";
 import type { UsageInfo } from "../../translation/codex-event-extractor.js";
 import { releaseAccount } from "./account-acquisition.js";
 import type { FormatAdapter, ProxyRequest, UsageHint } from "./proxy-handler-types.js";
@@ -130,6 +132,8 @@ export function handleStreaming(options: HandleStreamingOptions): Response {
         variantHash,
       });
     };
+    const streamStartMs = Date.now();
+    let firstTokenMs: number | null = null;
     try {
       await streamResponse({
         writer: s,
@@ -150,6 +154,9 @@ export function handleStreaming(options: HandleStreamingOptions): Response {
           if (id) capturedResponseId = id;
           responseCompleted = true;
           recordStreamAffinity();
+        },
+        onFirstToken: (ts) => {
+          firstTokenMs = ts;
         },
         usageHint,
         onResponseMetadata: (metadata) => {
@@ -211,6 +218,26 @@ export function handleStreaming(options: HandleStreamingOptions): Response {
           includeReasoningInHighInputWarning: true,
         });
       }
+
+      const metrics = calculateLogMetrics({
+        startMs: streamStartMs,
+        firstTokenMs,
+        endMs: Date.now(),
+        model: req.model,
+        usage: usageInfo ?? null,
+      });
+      c.set("metrics", metrics);
+      updateLogEntry(requestId, {
+        status: streamCompletedWithoutError ? 200 : (clientAborted ? 499 : 500),
+        latencyMs: metrics.durationMs,
+        ttftMs: metrics.ttftMs,
+        durationMs: metrics.durationMs,
+        costUsd: metrics.costUsd,
+        tokensPerSecond: metrics.tokensPerSecond,
+        usage: usageInfo ?? null,
+        metrics,
+      });
+
       releaseAccount(accountPool, capturedEntryId, annotateUsageCost(req.model, annotateImageGenOutcome(usageInfo, req.expectsImageGen)), released);
     }
   });

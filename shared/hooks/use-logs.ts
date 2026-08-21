@@ -20,6 +20,27 @@ export function normalizeLogsQueryState<T>(
 }
 
 
+export interface LogUsage {
+  input_tokens: number;
+  output_tokens: number;
+  cached_tokens?: number;
+  reasoning_tokens?: number;
+  image_input_tokens?: number;
+  image_output_tokens?: number;
+}
+
+export interface LogMetrics {
+  ttftMs?: number | null;
+  durationMs?: number | null;
+  costUsd?: number | null;
+  tokensPerSecond?: number | null;
+  inputTokens?: number | null;
+  outputTokens?: number | null;
+  cachedTokens?: number | null;
+  reasoningTokens?: number | null;
+  totalTokens?: number | null;
+}
+
 export interface LogRecord {
   id: string;
   requestId: string;
@@ -35,6 +56,12 @@ export interface LogRecord {
   error?: string | null;
   request?: unknown;
   response?: unknown;
+  ttftMs?: number | null;
+  durationMs?: number | null;
+  costUsd?: number | null;
+  tokensPerSecond?: number | null;
+  usage?: LogUsage | null;
+  metrics?: LogMetrics | null;
 }
 
 export interface LogState {
@@ -154,6 +181,17 @@ export function useLogs(refreshIntervalMs = 1500) {
     } catch { /* ignore */ }
   }, []);
 
+  const clearLogs = useCallback(async () => {
+    try {
+      const resp = await fetch("/admin/logs/clear", { method: "POST" });
+      if (resp.ok) {
+        setRecords([]);
+        setTotal(0);
+        setSelected(null);
+      }
+    } catch { /* ignore */ }
+  }, []);
+
   const nextPage = useCallback(() => setPage((p) => p + 1), []);
   const prevPage = useCallback(() => setPage((p) => Math.max(0, p - 1)), []);
 
@@ -167,6 +205,7 @@ export function useLogs(refreshIntervalMs = 1500) {
     loading,
     state,
     setLogState,
+    clearLogs,
     selected,
     selectLog,
     page,

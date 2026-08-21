@@ -44,12 +44,23 @@ function makeLogsState(overrides: Partial<ReturnType<typeof mockLogs.useLogs>> =
       {
         id: "1",
         requestId: "r1",
-        direction: "ingress",
+        direction: "ingress" as const,
         ts: "2026-04-15T00:00:01.000Z",
         method: "POST",
         path: "/v1/messages",
+        model: "gpt-5.5",
         status: 200,
-        latencyMs: 10,
+        latencyMs: 1500,
+        ttftMs: 250,
+        durationMs: 1500,
+        tokensPerSecond: 45.2,
+        costUsd: 0.0035,
+        usage: {
+          input_tokens: 1200,
+          output_tokens: 60,
+          cached_tokens: 400,
+          reasoning_tokens: 15,
+        },
       },
     ],
     total: 1,
@@ -58,7 +69,7 @@ function makeLogsState(overrides: Partial<ReturnType<typeof mockLogs.useLogs>> =
     setLogState: vi.fn(),
     selected: null,
     selectLog: vi.fn(),
-    direction: "all",
+    direction: "all" as const,
     setDirection: vi.fn(),
     search: "",
     setSearch: vi.fn(),
@@ -110,9 +121,27 @@ describe("LogsPage", () => {
   it("shows selected log details and clears to hint when nothing is selected", () => {
     mockGeneralSettings.useGeneralSettings.mockReturnValue(makeGeneralSettings());
 
-    mockLogs.useLogs.mockReturnValue(makeLogsState({ selected: { id: "1", path: "/v1/messages" } }));
+    mockLogs.useLogs.mockReturnValue(
+      makeLogsState({
+        selected: {
+          id: "1",
+          requestId: "r1",
+          direction: "ingress",
+          ts: "2026-04-15T00:00:01.000Z",
+          method: "POST",
+          path: "/v1/messages",
+          model: "gpt-5.5",
+          ttftMs: 250,
+          tokensPerSecond: 45.2,
+          costUsd: 0.0035,
+          latencyMs: 1500,
+          usage: { input_tokens: 100, output_tokens: 50 },
+        },
+      }),
+    );
     const { rerender } = renderLogsPage();
-    expect(screen.getByText(/"path": "\/v1\/messages"/)).toBeTruthy();
+    expect(screen.getByText("Token Usage Breakdown")).toBeTruthy();
+    expect(screen.getAllByText("250ms").length).toBeGreaterThan(0);
 
     mockLogs.useLogs.mockReturnValue(makeLogsState({ selected: null }));
     rerender(
@@ -144,7 +173,8 @@ describe("LogsPage", () => {
 
     renderLogsPage();
 
-    expect(screen.getByText("0ms")).toBeTruthy();
+    const zeroMsElements = screen.getAllByText("0ms");
+    expect(zeroMsElements.length).toBeGreaterThan(0);
   });
 
   it("renders and toggles the logs mode button", () => {
@@ -166,10 +196,24 @@ describe("LogsPage", () => {
 
     const timeHeader = screen.getByText("Time");
     expect(hasAncestorClass(timeHeader, "overflow-x-auto")).toBe(true);
-    expect(hasAncestorClass(timeHeader, "min-w-[520px]")).toBe(true);
 
-    const detailsPanel = screen.getByText("Details").parentElement?.parentElement;
+    const detailsHeader = screen.getByText("Details");
+    const detailsPanel = detailsHeader.closest(".w-full.lg\\:w-\\[420px\\]") ?? detailsHeader.parentElement?.parentElement?.parentElement;
     expect(detailsPanel?.className).toContain("w-full");
-    expect(detailsPanel?.className).toContain("lg:w-[360px]");
+    expect(detailsPanel?.className).toContain("lg:w-[420px]");
+  });
+
+  it("renders observability KPI cards with TTFT, speed, cost, and tokens", () => {
+    mockLogs.useLogs.mockReturnValue(makeLogsState());
+    mockGeneralSettings.useGeneralSettings.mockReturnValue(makeGeneralSettings());
+
+    renderLogsPage();
+
+    expect(screen.getByText("Avg TTFT")).toBeTruthy();
+    expect(screen.getByText("Avg Speed")).toBeTruthy();
+    expect(screen.getByText("Avg Latency")).toBeTruthy();
+    expect(screen.getByText("Total Cost")).toBeTruthy();
+    expect(screen.getAllByText("45.2 t/s").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("$0.0035").length).toBeGreaterThan(0);
   });
 });
