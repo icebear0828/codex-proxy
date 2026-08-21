@@ -67,6 +67,7 @@ function makeLogsState(overrides: Partial<ReturnType<typeof mockLogs.useLogs>> =
     loading: false,
     state: { enabled: true, paused: false },
     setLogState: vi.fn(),
+    clearLogs: vi.fn(),
     selected: null,
     selectLog: vi.fn(),
     direction: "all" as const,
@@ -118,7 +119,7 @@ describe("LogsPage", () => {
     expect(nextPage).toHaveBeenCalledTimes(1);
   });
 
-  it("shows selected log details and clears to hint when nothing is selected", () => {
+  it("shows selected log details only when selected and hides when null", () => {
     mockGeneralSettings.useGeneralSettings.mockReturnValue(makeGeneralSettings());
 
     mockLogs.useLogs.mockReturnValue(
@@ -142,6 +143,7 @@ describe("LogsPage", () => {
     const { rerender } = renderLogsPage();
     expect(screen.getByText("Token Usage Breakdown")).toBeTruthy();
     expect(screen.getAllByText("250ms").length).toBeGreaterThan(0);
+    expect(screen.getByText("Details")).toBeTruthy();
 
     mockLogs.useLogs.mockReturnValue(makeLogsState({ selected: null }));
     rerender(
@@ -149,7 +151,7 @@ describe("LogsPage", () => {
         <LogsPage embedded />
       </I18nProvider>,
     );
-    expect(screen.getByText("Select a log to view details")).toBeTruthy();
+    expect(screen.queryByText("Details")).toBeNull();
   });
 
   it("renders zero latency as 0ms", () => {
@@ -188,8 +190,24 @@ describe("LogsPage", () => {
     expect(save).toHaveBeenCalledWith({ logs_llm_only: false });
   });
 
-  it("keeps the log list constrained on narrow screens", () => {
-    mockLogs.useLogs.mockReturnValue(makeLogsState());
+  it("keeps the log table full width and shows details on selection", () => {
+    mockLogs.useLogs.mockReturnValue(
+      makeLogsState({
+        selected: {
+          id: "1",
+          requestId: "r1",
+          direction: "ingress",
+          ts: "2026-04-15T00:00:01.000Z",
+          method: "POST",
+          path: "/v1/messages",
+          model: "gpt-5.5",
+          ttftMs: 250,
+          tokensPerSecond: 45.2,
+          costUsd: 0.0035,
+          latencyMs: 1500,
+        },
+      }),
+    );
     mockGeneralSettings.useGeneralSettings.mockReturnValue(makeGeneralSettings());
 
     renderLogsPage();
@@ -198,9 +216,9 @@ describe("LogsPage", () => {
     expect(hasAncestorClass(timeHeader, "w-full")).toBe(true);
 
     const detailsHeader = screen.getByText("Details");
-    const detailsPanel = detailsHeader.closest(".w-full.lg\\:w-\\[420px\\]") ?? detailsHeader.parentElement?.parentElement?.parentElement;
+    const detailsPanel = detailsHeader.closest(".w-full.lg\\:w-\\[460px\\]") ?? detailsHeader.parentElement?.parentElement?.parentElement;
     expect(detailsPanel?.className).toContain("w-full");
-    expect(detailsPanel?.className).toContain("lg:w-[420px]");
+    expect(detailsPanel?.className).toContain("lg:w-[460px]");
   });
 
   it("renders observability KPI cards with TTFT, speed, cost, and tokens", () => {

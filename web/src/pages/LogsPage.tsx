@@ -1,4 +1,4 @@
-import { useMemo, useState } from "preact/hooks";
+import { useCallback, useMemo, useState } from "preact/hooks";
 import { useT } from "../../../shared/i18n/context";
 import { useLogs, type LogRecord } from "../../../shared/hooks/use-logs";
 import { useSettings } from "../../../shared/hooks/use-settings";
@@ -35,6 +35,16 @@ export function LogsPage({ embedded = false }: { embedded?: boolean }) {
   const gs = useGeneralSettings(settings.apiKey);
   const logsLlmOnly = gs.data?.logs_llm_only ?? true;
   const [detailTab, setDetailTab] = useState<"formatted" | "raw">("formatted");
+  const [copied, setCopied] = useState(false);
+
+  const copyDetailsJson = useCallback(async () => {
+    if (!logs.selected) return;
+    try {
+      await navigator.clipboard.writeText(JSON.stringify(logs.selected, null, 2));
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch { /* ignore */ }
+  }, [logs.selected]);
 
   const toggleLogsMode = async () => {
     await gs.save({ logs_llm_only: !logsLlmOnly });
@@ -281,7 +291,7 @@ export function LogsPage({ embedded = false }: { embedded?: boolean }) {
                       class={`w-full text-left flex items-center px-3 py-2 text-xs transition-colors hover:bg-slate-50 dark:hover:bg-border-dark/50 gap-2 ${
                         logs.selected?.id === row.id ? "bg-primary/10 dark:bg-primary/20" : ""
                       }`}
-                      onClick={() => logs.selectLog(row.id)}
+                      onClick={() => logs.selectLog(logs.selected?.id === row.id ? null : row.id)}
                     >
                       <div class="w-[68px] shrink-0 text-slate-500 font-mono text-[11px] truncate">{row.time}</div>
                       <div class="w-[38px] shrink-0 text-center">
@@ -346,23 +356,21 @@ export function LogsPage({ embedded = false }: { embedded?: boolean }) {
           </div>
         </div>
 
-        {/* Observability Details Panel */}
-        <div class="w-full lg:w-[420px] shrink-0">
-          <div class="border border-slate-200 dark:border-border-dark rounded-lg bg-white dark:bg-bg-dark shadow-sm h-full flex flex-col">
-            <div class="px-3 py-2.5 border-b border-slate-200 dark:border-border-dark flex items-center justify-between">
-              <div class="flex items-center gap-2">
-                <span class="text-xs font-semibold text-slate-800 dark:text-white">
-                  {t("logsDetails")}
-                </span>
-                {logs.selected && (
+        {/* Observability Details Panel (Shown only when a log is selected) */}
+        {logs.selected && (
+          <div class="w-full lg:w-[460px] shrink-0">
+            <div class="border border-slate-200 dark:border-border-dark rounded-lg bg-white dark:bg-bg-dark shadow-sm h-full flex flex-col">
+              <div class="px-3 py-2.5 border-b border-slate-200 dark:border-border-dark flex items-center justify-between">
+                <div class="flex items-center gap-2">
+                  <span class="text-xs font-semibold text-slate-800 dark:text-white">
+                    {t("logsDetails")}
+                  </span>
                   <span class="text-[10px] px-1.5 py-0.5 rounded bg-slate-100 dark:bg-border-dark text-slate-600 dark:text-text-dim font-mono">
                     {logs.selected.requestId?.slice(0, 8)}
                   </span>
-                )}
-              </div>
+                </div>
 
-              {logs.selected && (
-                <div class="flex items-center gap-1.5">
+                <div class="flex items-center gap-2">
                   <div class="flex bg-slate-100 dark:bg-border-dark p-0.5 rounded-md">
                     <button
                       class={`px-2 py-0.5 text-[11px] rounded font-medium transition-colors ${
@@ -385,158 +393,170 @@ export function LogsPage({ embedded = false }: { embedded?: boolean }) {
                       {t("logsTabRaw")}
                     </button>
                   </div>
-                  <CopyButton getText={() => JSON.stringify(logs.selected, null, 2)} />
+
+                  <button
+                    class="px-2 py-1 rounded bg-slate-100 dark:bg-border-dark hover:bg-slate-200 text-slate-600 dark:text-text-dim text-[11px] font-medium transition-colors"
+                    onClick={copyDetailsJson}
+                  >
+                    {copied ? t("logsCopied") : t("logsCopyJson")}
+                  </button>
+
+                  <button
+                    class="p-1 rounded-md text-slate-400 hover:text-slate-700 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-border-dark transition-colors ml-1"
+                    onClick={() => void logs.selectLog(null)}
+                    title="Close"
+                  >
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                  </button>
                 </div>
-              )}
-            </div>
+              </div>
 
-            <div class="p-3 text-xs flex-1 max-h-[580px] overflow-y-auto">
-              {!logs.selected ? (
-                <div class="p-6 text-center text-slate-400 dark:text-text-dim">
-                  {t("logsSelectHint")}
-                </div>
-              ) : detailTab === "formatted" ? (
-                <div class="flex flex-col gap-3.5">
-                  {/* KPI 4-Card Grid */}
-                  <div class="grid grid-cols-2 gap-2">
-                    <div class="p-2.5 rounded-lg bg-slate-50 dark:bg-border-dark/30 border border-slate-200/60 dark:border-border-dark">
-                      <div class="text-[10px] text-slate-400 font-medium">{t("logsTtft")}</div>
-                      <div class="text-base font-semibold font-mono text-slate-800 dark:text-white mt-0.5">
-                        {formatDuration(logs.selected.ttftMs)}
-                      </div>
-                    </div>
-
-                    <div class="p-2.5 rounded-lg bg-slate-50 dark:bg-border-dark/30 border border-slate-200/60 dark:border-border-dark">
-                      <div class="text-[10px] text-slate-400 font-medium">{t("logsSpeed")}</div>
-                      <div class="text-base font-semibold font-mono text-emerald-600 dark:text-emerald-400 mt-0.5">
-                        {formatSpeed(logs.selected.tokensPerSecond)}
-                      </div>
-                    </div>
-
-                    <div class="p-2.5 rounded-lg bg-slate-50 dark:bg-border-dark/30 border border-slate-200/60 dark:border-border-dark">
-                      <div class="text-[10px] text-slate-400 font-medium">{t("logsCost")}</div>
-                      <div class="text-base font-semibold font-mono text-amber-600 dark:text-amber-400 mt-0.5">
-                        {formatCost(logs.selected.costUsd)}
-                      </div>
-                    </div>
-
-                    <div class="p-2.5 rounded-lg bg-slate-50 dark:bg-border-dark/30 border border-slate-200/60 dark:border-border-dark">
-                      <div class="text-[10px] text-slate-400 font-medium">{t("logsLatency")}</div>
-                      <div class="text-base font-semibold font-mono text-slate-800 dark:text-white mt-0.5">
-                        {logs.selected.latencyMs != null ? `${logs.selected.latencyMs}ms` : "-"}
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Token Breakdown Card */}
-                  {logs.selected.usage && (
-                    <div class="p-3 rounded-lg border border-slate-200 dark:border-border-dark bg-slate-50/50 dark:bg-border-dark/20 flex flex-col gap-2">
-                      <div class="text-[11px] font-semibold text-slate-700 dark:text-slate-200">
-                        {t("logsTokensDetail")}
-                      </div>
-                      <div class="grid grid-cols-2 gap-2 text-[11px]">
-                        <div>
-                          <span class="text-slate-400">{t("logsPromptTokens")}:</span>{" "}
-                          <span class="font-mono font-medium">{logs.selected.usage.input_tokens ?? 0}</span>
+              <div class="p-3 text-xs flex-1 max-h-[580px] overflow-y-auto">
+                {detailTab === "formatted" ? (
+                  <div class="flex flex-col gap-3.5">
+                    {/* KPI 4-Card Grid */}
+                    <div class="grid grid-cols-2 gap-2">
+                      <div class="p-2.5 rounded-lg bg-slate-50 dark:bg-border-dark/30 border border-slate-200/60 dark:border-border-dark">
+                        <div class="text-[10px] text-slate-400 font-medium">{t("logsTtft")}</div>
+                        <div class="text-base font-semibold font-mono text-slate-800 dark:text-white mt-0.5">
+                          {formatDuration(logs.selected.ttftMs)}
                         </div>
-                        <div>
-                          <span class="text-slate-400">{t("logsCompletionTokens")}:</span>{" "}
-                          <span class="font-mono font-medium">{logs.selected.usage.output_tokens ?? 0}</span>
-                        </div>
-                        {logs.selected.usage.cached_tokens != null && logs.selected.usage.cached_tokens > 0 && (
-                          <div class="col-span-2">
-                            <span class="text-slate-400">{t("logsCachedTokens")}:</span>{" "}
-                            <span class="font-mono font-medium text-primary">
-                              {logs.selected.usage.cached_tokens}
-                              {logs.selected.usage.input_tokens > 0 && (
-                                <span class="text-xs text-slate-400 ml-1">
-                                  ({((logs.selected.usage.cached_tokens / logs.selected.usage.input_tokens) * 100).toFixed(1)}%)
-                                </span>
-                              )}
-                            </span>
-                          </div>
-                        )}
-                        {logs.selected.usage.reasoning_tokens != null && logs.selected.usage.reasoning_tokens > 0 && (
-                          <div class="col-span-2">
-                            <span class="text-slate-400">{t("logsReasoningTokens")}:</span>{" "}
-                            <span class="font-mono font-medium text-indigo-600 dark:text-indigo-400">
-                              {logs.selected.usage.reasoning_tokens}
-                            </span>
-                          </div>
-                        )}
                       </div>
-                    </div>
-                  )}
 
-                  {/* Metadata List */}
-                  <div class="p-3 rounded-lg border border-slate-200 dark:border-border-dark bg-white dark:bg-bg-dark flex flex-col gap-1.5 text-[11px]">
-                    <div class="text-[11px] font-semibold text-slate-700 dark:text-slate-200 mb-1">
-                      {t("logsMetadata")}
+                      <div class="p-2.5 rounded-lg bg-slate-50 dark:bg-border-dark/30 border border-slate-200/60 dark:border-border-dark">
+                        <div class="text-[10px] text-slate-400 font-medium">{t("logsSpeed")}</div>
+                        <div class="text-base font-semibold font-mono text-emerald-600 dark:text-emerald-400 mt-0.5">
+                          {formatSpeed(logs.selected.tokensPerSecond)}
+                        </div>
+                      </div>
+
+                      <div class="p-2.5 rounded-lg bg-slate-50 dark:bg-border-dark/30 border border-slate-200/60 dark:border-border-dark">
+                        <div class="text-[10px] text-slate-400 font-medium">{t("logsCost")}</div>
+                        <div class="text-base font-semibold font-mono text-amber-600 dark:text-amber-400 mt-0.5">
+                          {formatCost(logs.selected.costUsd)}
+                        </div>
+                      </div>
+
+                      <div class="p-2.5 rounded-lg bg-slate-50 dark:bg-border-dark/30 border border-slate-200/60 dark:border-border-dark">
+                        <div class="text-[10px] text-slate-400 font-medium">{t("logsLatency")}</div>
+                        <div class="text-base font-semibold font-mono text-slate-800 dark:text-white mt-0.5">
+                          {logs.selected.latencyMs != null ? `${logs.selected.latencyMs}ms` : "-"}
+                        </div>
+                      </div>
                     </div>
-                    <div class="flex justify-between py-0.5 border-b border-slate-100 dark:border-border-dark">
-                      <span class="text-slate-400">{t("logsRequestId")}</span>
-                      <span class="font-mono text-slate-700 dark:text-slate-200 select-all">{logs.selected.requestId}</span>
-                    </div>
-                    {logs.selected.model && (
-                      <div class="flex justify-between py-0.5 border-b border-slate-100 dark:border-border-dark">
-                        <span class="text-slate-400">{t("logsModel")}</span>
-                        <span class="font-medium text-slate-700 dark:text-slate-200">{logs.selected.model}</span>
+
+                    {/* Token Breakdown Card */}
+                    {logs.selected.usage && (
+                      <div class="p-3 rounded-lg border border-slate-200 dark:border-border-dark bg-slate-50/50 dark:bg-border-dark/20 flex flex-col gap-2">
+                        <div class="text-[11px] font-semibold text-slate-700 dark:text-slate-200">
+                          {t("logsTokensDetail")}
+                        </div>
+                        <div class="grid grid-cols-2 gap-2 text-[11px]">
+                          <div>
+                            <span class="text-slate-400">{t("logsPromptTokens")}:</span>{" "}
+                            <span class="font-mono font-medium">{logs.selected.usage.input_tokens ?? 0}</span>
+                          </div>
+                          <div>
+                            <span class="text-slate-400">{t("logsCompletionTokens")}:</span>{" "}
+                            <span class="font-mono font-medium">{logs.selected.usage.output_tokens ?? 0}</span>
+                          </div>
+                          {logs.selected.usage.cached_tokens != null && logs.selected.usage.cached_tokens > 0 && (
+                            <div class="col-span-2">
+                              <span class="text-slate-400">{t("logsCachedTokens")}:</span>{" "}
+                              <span class="font-mono font-medium text-primary">
+                                {logs.selected.usage.cached_tokens}
+                                {logs.selected.usage.input_tokens > 0 && (
+                                  <span class="text-xs text-slate-400 ml-1">
+                                    ({((logs.selected.usage.cached_tokens / logs.selected.usage.input_tokens) * 100).toFixed(1)}%)
+                                  </span>
+                                )}
+                              </span>
+                            </div>
+                          )}
+                          {logs.selected.usage.reasoning_tokens != null && logs.selected.usage.reasoning_tokens > 0 && (
+                            <div class="col-span-2">
+                              <span class="text-slate-400">{t("logsReasoningTokens")}:</span>{" "}
+                              <span class="font-mono font-medium text-indigo-600 dark:text-indigo-400">
+                                {logs.selected.usage.reasoning_tokens}
+                              </span>
+                            </div>
+                          )}
+                        </div>
                       </div>
                     )}
-                    {logs.selected.provider && (
+
+                    {/* Metadata List */}
+                    <div class="p-3 rounded-lg border border-slate-200 dark:border-border-dark bg-white dark:bg-bg-dark flex flex-col gap-1.5 text-[11px]">
+                      <div class="text-[11px] font-semibold text-slate-700 dark:text-slate-200 mb-1">
+                        {t("logsMetadata")}
+                      </div>
                       <div class="flex justify-between py-0.5 border-b border-slate-100 dark:border-border-dark">
-                        <span class="text-slate-400">{t("logsProvider")}</span>
-                        <span class="text-slate-700 dark:text-slate-200">{logs.selected.provider}</span>
+                        <span class="text-slate-400">{t("logsRequestId")}</span>
+                        <span class="font-mono text-slate-700 dark:text-slate-200 select-all">{logs.selected.requestId}</span>
+                      </div>
+                      {logs.selected.model && (
+                        <div class="flex justify-between py-0.5 border-b border-slate-100 dark:border-border-dark">
+                          <span class="text-slate-400">{t("logsModel")}</span>
+                          <span class="font-medium text-slate-700 dark:text-slate-200">{logs.selected.model}</span>
+                        </div>
+                      )}
+                      {logs.selected.provider && (
+                        <div class="flex justify-between py-0.5 border-b border-slate-100 dark:border-border-dark">
+                          <span class="text-slate-400">{t("logsProvider")}</span>
+                          <span class="text-slate-700 dark:text-slate-200">{logs.selected.provider}</span>
+                        </div>
+                      )}
+                      <div class="flex justify-between py-0.5 border-b border-slate-100 dark:border-border-dark">
+                        <span class="text-slate-400">{t("logsPath")}</span>
+                        <span class="font-mono text-slate-700 dark:text-slate-200">{logs.selected.method} {logs.selected.path}</span>
+                      </div>
+                      {logs.selected.stream !== undefined && (
+                        <div class="flex justify-between py-0.5">
+                          <span class="text-slate-400">{t("logsStreaming")}</span>
+                          <span class="text-slate-700 dark:text-slate-200">
+                            {logs.selected.stream ? t("logsStreaming") : t("logsNonStreaming")}
+                          </span>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Request Payload View */}
+                    {logs.selected.request !== undefined && (
+                      <div class="rounded-lg border border-slate-200 dark:border-border-dark overflow-hidden">
+                        <div class="px-3 py-1.5 bg-slate-50 dark:bg-border-dark/50 text-[11px] font-semibold text-slate-700 dark:text-slate-200 border-b border-slate-200 dark:border-border-dark flex justify-between items-center">
+                          <span>{t("logsRequestPayload")}</span>
+                        </div>
+                        <pre class="p-3 bg-slate-900 text-slate-100 text-[11px] font-mono whitespace-pre-wrap overflow-x-auto max-h-48">
+                          {JSON.stringify(logs.selected.request, null, 2)}
+                        </pre>
                       </div>
                     )}
-                    <div class="flex justify-between py-0.5 border-b border-slate-100 dark:border-border-dark">
-                      <span class="text-slate-400">{t("logsPath")}</span>
-                      <span class="font-mono text-slate-700 dark:text-slate-200">{logs.selected.method} {logs.selected.path}</span>
-                    </div>
-                    {logs.selected.stream !== undefined && (
-                      <div class="flex justify-between py-0.5">
-                        <span class="text-slate-400">{t("logsStreaming")}</span>
-                        <span class="text-slate-700 dark:text-slate-200">
-                          {logs.selected.stream ? t("logsStreaming") : t("logsNonStreaming")}
-                        </span>
+
+                    {/* Response Payload / Error View */}
+                    {(logs.selected.response !== undefined || logs.selected.error) && (
+                      <div class="rounded-lg border border-slate-200 dark:border-border-dark overflow-hidden">
+                        <div class="px-3 py-1.5 bg-slate-50 dark:bg-border-dark/50 text-[11px] font-semibold text-slate-700 dark:text-slate-200 border-b border-slate-200 dark:border-border-dark">
+                          <span>{t("logsResponsePayload")}</span>
+                        </div>
+                        <pre class="p-3 bg-slate-900 text-slate-100 text-[11px] font-mono whitespace-pre-wrap overflow-x-auto max-h-48">
+                          {logs.selected.error
+                            ? logs.selected.error
+                            : JSON.stringify(logs.selected.response, null, 2)}
+                        </pre>
                       </div>
                     )}
                   </div>
-
-                  {/* Request Payload View */}
-                  {logs.selected.request !== undefined && (
-                    <div class="rounded-lg border border-slate-200 dark:border-border-dark overflow-hidden">
-                      <div class="px-3 py-1.5 bg-slate-50 dark:bg-border-dark/50 text-[11px] font-semibold text-slate-700 dark:text-slate-200 border-b border-slate-200 dark:border-border-dark flex justify-between items-center">
-                        <span>{t("logsRequestPayload")}</span>
-                      </div>
-                      <pre class="p-3 bg-slate-900 text-slate-100 text-[11px] font-mono whitespace-pre-wrap overflow-x-auto max-h-48">
-                        {JSON.stringify(logs.selected.request, null, 2)}
-                      </pre>
-                    </div>
-                  )}
-
-                  {/* Response Payload / Error View */}
-                  {(logs.selected.response !== undefined || logs.selected.error) && (
-                    <div class="rounded-lg border border-slate-200 dark:border-border-dark overflow-hidden">
-                      <div class="px-3 py-1.5 bg-slate-50 dark:bg-border-dark/50 text-[11px] font-semibold text-slate-700 dark:text-slate-200 border-b border-slate-200 dark:border-border-dark">
-                        <span>{t("logsResponsePayload")}</span>
-                      </div>
-                      <pre class="p-3 bg-slate-900 text-slate-100 text-[11px] font-mono whitespace-pre-wrap overflow-x-auto max-h-48">
-                        {logs.selected.error
-                          ? logs.selected.error
-                          : JSON.stringify(logs.selected.response, null, 2)}
-                      </pre>
-                    </div>
-                  )}
-                </div>
-              ) : (
-                <pre class="bg-slate-900 text-slate-100 p-3 rounded-lg text-[11px] font-mono whitespace-pre-wrap overflow-auto max-h-[520px]">
-                  {JSON.stringify(logs.selected, null, 2)}
-                </pre>
-              )}
+                ) : (
+                  <pre class="bg-slate-900 text-slate-100 p-3 rounded-lg text-[11px] font-mono whitespace-pre-wrap overflow-auto max-h-[520px]">
+                    {JSON.stringify(logs.selected, null, 2)}
+                  </pre>
+                )}
+              </div>
             </div>
           </div>
-        </div>
+        )}
       </div>
     </div>
   );

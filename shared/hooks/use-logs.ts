@@ -174,7 +174,11 @@ export function useLogs(refreshIntervalMs = 1500) {
     if (resp.ok) setState(await resp.json());
   }, []);
 
-  const selectLog = useCallback(async (id: string) => {
+  const selectLog = useCallback(async (id: string | null) => {
+    if (!id) {
+      setSelected(null);
+      return;
+    }
     try {
       const resp = await fetch(`/admin/logs/${id}`);
       if (resp.ok) setSelected(await resp.json());
