@@ -42,4 +42,29 @@ describe("AccountImportExport", () => {
       expect(onExport).toHaveBeenCalledWith(["acct-1"], "sub2api");
     });
   });
+
+  it("shows the first concrete import error instead of only the failed count", async () => {
+    const onImport = vi.fn(async () => ({
+      success: true,
+      added: 0,
+      updated: 0,
+      failed: 1,
+      errors: ["Account identity discovery failed: HTTP 403"],
+    }));
+    const { container } = render(
+      <AccountImportExport
+        onExport={vi.fn()}
+        onImport={onImport}
+        selectedIds={new Set()}
+      />,
+    );
+    const input = container.querySelector('input[type="file"]') as HTMLInputElement;
+    const file = new File(["{}"], "account.json", { type: "application/json" });
+
+    fireEvent.change(input, { target: { files: [file] } });
+
+    await waitFor(() => {
+      expect(screen.getByText(/Account identity discovery failed: HTTP 403/)).toBeTruthy();
+    });
+  });
 });

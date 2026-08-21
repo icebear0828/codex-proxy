@@ -35,7 +35,11 @@ describe("account transfer formats", () => {
     ]);
 
     expect(entries).toEqual([
-      { token: "access.jwt.token", refreshToken: "rt_portable" },
+      {
+        token: "access.jwt.token",
+        refreshToken: "rt_portable",
+        emailHint: "user@example.com",
+      },
       { token: "nested.jwt.token", refreshToken: "rt_nested", label: "Nested" },
     ]);
   });
@@ -53,6 +57,11 @@ describe("account transfer formats", () => {
           credentials: {
             access_token: "sub2api.jwt.token",
             refresh_token: "rt_sub2api",
+            id_token: "sub2api.id.token",
+            organization_id: "org-sub2api",
+            chatgpt_user_id: "user-sub2api",
+            email: "sub2api@example.com",
+            plan_type: "plus",
           },
           concurrency: 0,
           priority: 0,
@@ -70,7 +79,13 @@ describe("account transfer formats", () => {
       {
         token: "sub2api.jwt.token",
         refreshToken: "rt_sub2api",
+        idToken: "sub2api.id.token",
         label: "Team Alpha",
+        organizationId: "org-sub2api",
+        userIdHint: "user-sub2api",
+        emailHint: "sub2api@example.com",
+        planTypeHint: "plus",
+        sourceFormat: "sub2api",
       },
     ]);
   });
@@ -97,7 +112,9 @@ describe("account transfer formats", () => {
       email: "alpha@example.com",
       planType: "plus",
     });
-    const entryId = pool.addAccount(token, "rt_alpha");
+    const entryId = pool.addAccount(token, "rt_alpha", {
+      organizationId: "org-alpha",
+    });
     pool.setLabel(entryId, "Alpha");
     const entries = pool.getAllEntries();
 
@@ -107,6 +124,7 @@ describe("account transfer formats", () => {
         access_token: token,
         refresh_token: "rt_alpha",
         account_id: "acct-1",
+        organization_id: "org-alpha",
         email: "alpha@example.com",
         type: "codex",
       }),
@@ -125,6 +143,7 @@ describe("account transfer formats", () => {
             access_token: token,
             refresh_token: "rt_alpha",
             chatgpt_account_id: "acct-1",
+            organization_id: "org-alpha",
           }),
         }),
       ],
@@ -135,6 +154,7 @@ describe("account transfer formats", () => {
       access_token: token,
       refresh_token: "rt_alpha",
       account_id: "acct-1",
+      organization_id: "org-alpha",
       type: "codex",
     }));
   });

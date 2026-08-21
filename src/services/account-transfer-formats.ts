@@ -27,6 +27,7 @@ interface PortableCodexToken {
   access_token: string;
   refresh_token?: string;
   account_id?: string;
+  organization_id?: string;
   last_refresh?: string;
   email?: string;
   type: "codex";
@@ -126,6 +127,52 @@ function candidateFromValue(value: unknown, fallbackLabel?: string | null): Impo
     ["credentials", "refreshToken"],
     ["credentials", "refresh_token"],
   ]);
+  const idToken = firstString(record, [
+    ["idToken"],
+    ["id_token"],
+    ["tokens", "idToken"],
+    ["tokens", "id_token"],
+    ["credentials", "idToken"],
+    ["credentials", "id_token"],
+  ]);
+  const accountIdHint = firstString(record, [
+    ["accountId"],
+    ["account_id"],
+    ["chatgpt_account_id"],
+    ["workspace_id"],
+    ["credentials", "accountId"],
+    ["credentials", "account_id"],
+    ["credentials", "chatgpt_account_id"],
+    ["credentials", "workspace_id"],
+  ]);
+  const organizationId = firstString(record, [
+    ["organizationId"],
+    ["organization_id"],
+    ["poid"],
+    ["credentials", "organizationId"],
+    ["credentials", "organization_id"],
+    ["credentials", "poid"],
+  ]);
+  const userIdHint = firstString(record, [
+    ["userId"],
+    ["user_id"],
+    ["chatgpt_user_id"],
+    ["credentials", "userId"],
+    ["credentials", "user_id"],
+    ["credentials", "chatgpt_user_id"],
+  ]);
+  const emailHint = firstString(record, [
+    ["email"],
+    ["credentials", "email"],
+  ]);
+  const planTypeHint = firstString(record, [
+    ["planType"],
+    ["plan_type"],
+    ["chatgpt_plan_type"],
+    ["credentials", "planType"],
+    ["credentials", "plan_type"],
+    ["credentials", "chatgpt_plan_type"],
+  ]);
   const label = labelFromValue(record) ?? fallbackLabel ?? undefined;
 
   if (!token && !refreshToken) return null;
@@ -133,7 +180,13 @@ function candidateFromValue(value: unknown, fallbackLabel?: string | null): Impo
   return {
     ...(token ? { token: normalizeBearer(token) } : {}),
     ...(refreshToken ? { refreshToken } : {}),
+    ...(idToken ? { idToken } : {}),
     ...(label !== undefined ? { label } : {}),
+    ...(accountIdHint ? { accountIdHint } : {}),
+    ...(organizationId ? { organizationId } : {}),
+    ...(userIdHint ? { userIdHint } : {}),
+    ...(emailHint ? { emailHint } : {}),
+    ...(planTypeHint ? { planTypeHint } : {}),
   };
 }
 
@@ -162,7 +215,7 @@ function parseSub2ApiPayload(value: JsonRecord): ImportEntry[] | null {
     if (!credentials) continue;
     const label = normalizeLabel(record?.name);
     const entry = candidateFromValue(credentials, label);
-    if (entry) entries.push(entry);
+    if (entry) entries.push({ ...entry, sourceFormat: "sub2api" });
   }
   return entries;
 }
@@ -254,6 +307,7 @@ function toPortableToken(entry: AccountEntry): PortableCodexToken {
     access_token: entry.token,
     ...(entry.refreshToken ? { refresh_token: entry.refreshToken } : {}),
     ...(entry.accountId ? { account_id: entry.accountId } : {}),
+    ...(entry.organizationId ? { organization_id: entry.organizationId } : {}),
     last_refresh: entry.quotaFetchedAt ?? entry.addedAt,
     ...(entry.email ? { email: entry.email } : {}),
     type: "codex",
@@ -267,6 +321,7 @@ function toSub2ApiAccount(entry: AccountEntry): Sub2ApiAccountItem {
     ...(entry.refreshToken ? { refresh_token: entry.refreshToken } : {}),
     ...(entry.email ? { email: entry.email } : {}),
     ...(entry.accountId ? { chatgpt_account_id: entry.accountId } : {}),
+    ...(entry.organizationId ? { organization_id: entry.organizationId } : {}),
     ...(entry.userId ? { chatgpt_user_id: entry.userId } : {}),
     ...(entry.planType ? { plan_type: entry.planType } : {}),
     ...(accessTokenExpiry(entry) ? { expires_at: accessTokenExpiry(entry) } : {}),

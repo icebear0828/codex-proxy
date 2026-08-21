@@ -14,6 +14,7 @@ import {
   extractUserProfile,
   isTokenExpired,
 } from "./jwt-utils.js";
+import type { CodexTokenMetadata } from "./token-metadata.js";
 import type { AccountPersistence } from "./account-persistence.js";
 import type {
   AccountEntry,
@@ -96,27 +97,50 @@ export class AccountRegistry {
 
   // ── CRUD ──────────────────────────────────────────────────────────
 
-  addAccount(token: string, refreshToken?: string | null): string {
-    const accountId = extractChatGptAccountId(token);
+  addAccount(
+    token: string,
+    refreshToken?: string | null,
+    metadata?: Partial<CodexTokenMetadata>,
+  ): string {
+    const tokenAccountId = extractChatGptAccountId(token);
     const profile = extractUserProfile(token);
-    const userId = profile?.chatgpt_user_id ?? null;
+    const accountId = tokenAccountId ?? metadata?.accountId ?? null;
+    const organizationId = metadata?.organizationId ?? null;
+    const userId = profile?.chatgpt_user_id ?? metadata?.userId ?? null;
+    const email = profile?.email ?? metadata?.email ?? null;
+    const planType = profile?.chatgpt_plan_type ?? metadata?.planType ?? null;
+    const accountIdSource = tokenAccountId
+      ? "access_token"
+      : metadata?.accountIdSource ?? null;
 
     for (const existing of this.accounts.values()) {
-      if (accountId) {
-        if (existing.accountId === accountId && existing.userId === userId) {
-          existing.token = token;
-          if (typeof refreshToken === "string" && refreshToken.length > 0) {
-            existing.refreshToken = refreshToken;
-          }
-          existing.email = profile?.email ?? existing.email;
-          existing.planType = profile?.chatgpt_plan_type ?? existing.planType;
-          existing.status = isTokenExpired(token) ? "expired" : "active";
-          this.persistNow();
-          return existing.id;
-        }
-      } else if (existing.token === token) {
-        return existing.id;
+      const sameAccountUser = Boolean(
+        accountId &&
+        existing.accountId === accountId &&
+        existing.userId === userId,
+      );
+      const sameOrganizationUser = Boolean(
+        organizationId &&
+        userId &&
+        (!accountId || !existing.accountId) &&
+        existing.organizationId === organizationId &&
+        existing.userId === userId,
+      );
+      if (!sameAccountUser && !sameOrganizationUser && existing.token !== token) continue;
+
+      existing.token = token;
+      if (typeof refreshToken === "string" && refreshToken.length > 0) {
+        existing.refreshToken = refreshToken;
       }
+      existing.email = email ?? existing.email;
+      existing.accountId = accountId ?? existing.accountId;
+      existing.organizationId = organizationId ?? existing.organizationId ?? null;
+      existing.accountIdSource = accountIdSource ?? existing.accountIdSource ?? null;
+      existing.userId = userId ?? existing.userId;
+      existing.planType = planType ?? existing.planType;
+      existing.status = isTokenExpired(token) ? "expired" : "active";
+      this.persistNow();
+      return existing.id;
     }
 
     const id = randomBytes(8).toString("hex");
@@ -124,11 +148,13 @@ export class AccountRegistry {
       id,
       token,
       refreshToken: refreshToken ?? null,
-      email: profile?.email ?? null,
+      email,
       accountId,
+      organizationId,
+      accountIdSource,
       userId,
       label: null,
-      planType: profile?.chatgpt_plan_type ?? null,
+      planType,
       proxyApiKey: "codex-proxy-" + randomBytes(24).toString("hex"),
       status: isTokenExpired(token) ? "expired" : "active",
       usage: {
@@ -171,10 +197,12 @@ export class AccountRegistry {
       entry.refreshToken = refreshToken;
     }
     const profile = extractUserProfile(newToken);
+    const accountId = extractChatGptAccountId(newToken);
     entry.email = profile?.email ?? entry.email;
     entry.planType = profile?.chatgpt_plan_type ?? entry.planType;
-    entry.accountId = extractChatGptAccountId(newToken) ?? entry.accountId;
+    entry.accountId = accountId ?? entry.accountId;
     entry.userId = profile?.chatgpt_user_id ?? entry.userId;
+    if (accountId) entry.accountIdSource = "access_token";
     // Don't reactivate manually disabled or banned accounts
     if (entry.status !== "disabled" && entry.status !== "banned") {
       entry.status = isTokenExpired(newToken) ? "expired" : "active";
@@ -669,6 +697,8 @@ export class AccountRegistry {
       id: entry.id,
       email: entry.email,
       accountId: entry.accountId,
+      organizationId: entry.organizationId ?? null,
+      accountIdSource: entry.accountIdSource ?? null,
       userId: entry.userId,
       label: entry.label,
       planType: entry.planType,

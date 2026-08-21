@@ -5,7 +5,7 @@
 
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { createMemoryPersistence } from "@helpers/account-pool-factory.js";
-import { createValidJwt } from "@helpers/jwt.js";
+import { createJwt, createValidJwt } from "@helpers/jwt.js";
 import { setConfigForTesting, resetConfigForTesting } from "@src/config.js";
 import { createMockConfig } from "@helpers/config.js";
 import { AccountPool } from "@src/auth/account-pool.js";
@@ -86,6 +86,109 @@ describe("AccountImportService", () => {
       expect(pool.getAccounts()).toHaveLength(0);
     });
 
+    it("discovers and stores identity for a valid accountId-less Sub2API token without consuming RT", async () => {
+      const pool = makePool();
+      const refreshToken = vi.fn();
+      const discoverIdentity = vi.fn(async (_token, metadata) => ({
+        ...metadata,
+        accountId: "workspace-discovered",
+        planType: "plus",
+        accountIdSource: "upstream_discovery" as const,
+      }));
+      const token = createJwt({
+        exp: Math.floor(Date.now() / 1000) + 3600,
+        "https://api.openai.com/auth": {
+          poid: "org-portable",
+          user_id: "user-portable",
+        },
+        "https://api.openai.com/profile": { email: "portable@example.com" },
+      });
+      const svc = new AccountImportService(pool, makeScheduler(), makeDeps({
+        validateToken: () => ({
+          valid: false,
+          error: "Token missing chatgpt_account_id claim",
+        }),
+        refreshToken,
+        discoverIdentity,
+      }));
+
+      const result = await svc.importMany([{
+        token,
+        refreshToken: "rt_must_not_be_consumed",
+        organizationId: "org-portable",
+        userIdHint: "user-portable",
+        planTypeHint: "plus",
+        sourceFormat: "sub2api",
+      }]);
+
+      expect(result).toMatchObject({ added: 1, failed: 0 });
+      expect(refreshToken).not.toHaveBeenCalled();
+      expect(discoverIdentity).toHaveBeenCalledTimes(1);
+      expect(pool.getAllEntries()[0]).toMatchObject({
+        accountId: "workspace-discovered",
+        organizationId: "org-portable",
+        userId: "user-portable",
+        planType: "plus",
+        refreshToken: "rt_must_not_be_consumed",
+        accountIdSource: "upstream_discovery",
+      });
+    });
+
+    it("uses a file-supplied id_token account ID only as an upstream discovery hint", async () => {
+      const pool = makePool();
+      const discoverIdentity = vi.fn(async (_token, metadata, options) => ({
+        ...metadata,
+        accountId: options.accountIdHint ?? null,
+        accountIdSource: "upstream_discovery" as const,
+      }));
+      const accessToken = createJwt({
+        exp: Math.floor(Date.now() / 1000) + 3600,
+        "https://api.openai.com/profile": { email: "id-fallback@example.com" },
+      });
+      const idToken = createJwt({
+        "https://api.openai.com/auth": {
+          chatgpt_account_id: "workspace-from-id-token",
+          user_id: "user-from-id-token",
+        },
+      });
+      const svc = new AccountImportService(pool, makeScheduler(), makeDeps({
+        validateToken: () => ({ valid: false, error: "missing account ID" }),
+        discoverIdentity,
+      }));
+
+      const result = await svc.importMany([{ token: accessToken, idToken }]);
+
+      expect(result).toMatchObject({ added: 1, failed: 0 });
+      expect(discoverIdentity).toHaveBeenCalledWith(
+        accessToken,
+        expect.objectContaining({ accountId: null, accountIdSource: null }),
+        expect.objectContaining({ accountIdHint: "workspace-from-id-token" }),
+      );
+      expect(pool.getAllEntries()[0]).toMatchObject({
+        accountId: "workspace-from-id-token",
+        accountIdSource: "upstream_discovery",
+        userId: "user-from-id-token",
+      });
+    });
+
+    it("does not silently import an accountId-less direct token when identity discovery fails", async () => {
+      const pool = makePool();
+      const token = createJwt({
+        exp: Math.floor(Date.now() / 1000) + 3600,
+        "https://api.openai.com/auth": { user_id: "user-portable" },
+      });
+      const svc = new AccountImportService(pool, makeScheduler(), makeDeps({
+        validateToken: () => ({ valid: false, error: "missing account ID" }),
+        discoverIdentity: async () => { throw new Error("HTTP 403"); },
+      }));
+
+      const result = await svc.importMany([{ token }]);
+
+      expect(result).toMatchObject({ added: 0, failed: 1 });
+      expect(result.errors[0]).toContain("identity discovery failed");
+      expect(pool.getAccounts()).toHaveLength(0);
+    });
+
     it("exchanges refresh token when no access token provided", async () => {
       const pool = makePool();
       const scheduler = makeScheduler();
@@ -108,6 +211,137 @@ describe("AccountImportService", () => {
       expect(result.added).toBe(1);
       expect(result.failed).toBe(0);
       expect(pool.getAccounts()).toHaveLength(1);
+    });
+
+    it("accepts a structurally valid RT-exchanged token without accountId without probing upstream", async () => {
+      const pool = makePool();
+      const discoverIdentity = vi.fn();
+      const accountless = createJwt({
+        exp: Math.floor(Date.now() / 1000) + 3600,
+        "https://api.openai.com/auth": {
+          poid: "org-rt",
+          user_id: "user-rt",
+        },
+        "https://api.openai.com/profile": { email: "rt@example.com" },
+      });
+      const svc = new AccountImportService(pool, makeScheduler(), makeDeps({
+        validateToken: () => ({ valid: false, error: "missing account ID" }),
+        refreshToken: async () => ({
+          access_token: accountless,
+          refresh_token: "rotated_rt",
+        }),
+        discoverIdentity,
+      }));
+
+      const result = await svc.importMany([{ refreshToken: "old_rt" }]);
+
+      expect(result).toMatchObject({ added: 1, failed: 0 });
+      expect(discoverIdentity).not.toHaveBeenCalled();
+      expect(pool.getAllEntries()[0]).toMatchObject({
+        accountId: null,
+        organizationId: "org-rt",
+        userId: "user-rt",
+        refreshToken: "rotated_rt",
+      });
+    });
+
+    it("never promotes a file-supplied id_token workspace ID after RT exchange", async () => {
+      const pool = makePool();
+      const accountless = createJwt({
+        exp: Math.floor(Date.now() / 1000) + 3600,
+        "https://api.openai.com/auth": { user_id: "user-from-access" },
+      });
+      const unverifiedFileIdToken = createJwt({
+        "https://api.openai.com/auth": {
+          chatgpt_account_id: "workspace-unverified-file",
+          poid: "org-from-file-id-token",
+        },
+      });
+      const svc = new AccountImportService(pool, makeScheduler(), makeDeps({
+        refreshToken: async () => ({
+          access_token: accountless,
+          refresh_token: "rotated_rt",
+        }),
+      }));
+
+      const result = await svc.importMany([{
+        refreshToken: "old_rt",
+        idToken: unverifiedFileIdToken,
+      }]);
+
+      expect(result).toMatchObject({ added: 1, failed: 0 });
+      expect(pool.getAllEntries()[0]).toMatchObject({
+        accountId: null,
+        accountIdSource: null,
+        organizationId: "org-from-file-id-token",
+        userId: "user-from-access",
+      });
+    });
+
+    it("accepts a workspace ID from the token endpoint's fresh id_token", async () => {
+      const pool = makePool();
+      const accountless = createJwt({
+        exp: Math.floor(Date.now() / 1000) + 3600,
+      });
+      const exchangedIdToken = createJwt({
+        "https://api.openai.com/auth": {
+          chatgpt_account_id: "workspace-from-exchange",
+          user_id: "user-from-exchange",
+        },
+      });
+      const svc = new AccountImportService(pool, makeScheduler(), makeDeps({
+        refreshToken: async () => ({
+          access_token: accountless,
+          refresh_token: "rotated_rt",
+          id_token: exchangedIdToken,
+        }),
+      }));
+
+      const result = await svc.importMany([{ refreshToken: "old_rt" }]);
+
+      expect(result).toMatchObject({ added: 1, failed: 0 });
+      expect(pool.getAllEntries()[0]).toMatchObject({
+        accountId: "workspace-from-exchange",
+        accountIdSource: "id_token",
+        userId: "user-from-exchange",
+      });
+    });
+
+    it("deduplicates rotating accountId-less tokens by organizationId + userId", async () => {
+      const pool = makePool();
+      let generation = 0;
+      const svc = new AccountImportService(pool, makeScheduler(), makeDeps({
+        refreshToken: async () => ({
+          access_token: createJwt({
+            exp: Math.floor(Date.now() / 1000) + 3600 + generation++,
+            jti: `generation-${generation}`,
+            "https://api.openai.com/auth": {
+              poid: "org-stable",
+              user_id: "user-stable",
+            },
+          }),
+          refresh_token: `rotated-${generation}`,
+        }),
+      }));
+
+      const first = await svc.importMany([{ refreshToken: "rt-one" }]);
+      const second = await svc.importMany([{ refreshToken: "rt-two" }]);
+
+      expect(first.added).toBe(1);
+      expect(second.updated).toBe(1);
+      expect(second.added).toBe(0);
+      expect(pool.getAccounts()).toHaveLength(1);
+    });
+
+    it("does not merge two known workspace IDs just because organization + user match", () => {
+      const pool = makePool();
+      const tokenOne = createValidJwt({ accountId: "workspace-one", userId: "same-user" });
+      const tokenTwo = createValidJwt({ accountId: "workspace-two", userId: "same-user" });
+
+      pool.addAccount(tokenOne, null, { organizationId: "same-org" });
+      pool.addAccount(tokenTwo, null, { organizationId: "same-org" });
+
+      expect(pool.getAccounts()).toHaveLength(2);
     });
 
     it("prefers new refresh token from exchange over original", async () => {
@@ -163,6 +397,25 @@ describe("AccountImportService", () => {
 
       expect(result.failed).toBe(1);
       expect(result.errors[0]).toContain("network error");
+    });
+
+    it("redacts credentials from import errors returned to the UI", async () => {
+      const leaked = "eyJaaaaaaaaaa.bbbbbbbbbb.cccccccccc";
+      const svc = new AccountImportService(
+        makePool(),
+        makeScheduler(),
+        makeDeps({
+          refreshToken: async () => {
+            throw new Error(`upstream echoed ${leaked} oaistb_rt_secretvalue123`);
+          },
+        }),
+      );
+
+      const result = await svc.importMany([{ refreshToken: "rt_input_secret123" }]);
+
+      expect(result.errors[0]).toContain("[REDACTED_JWT]");
+      expect(result.errors[0]).toContain("[REDACTED_REFRESH_TOKEN]");
+      expect(result.errors[0]).not.toContain("secretvalue123");
     });
 
     it("sets label when provided", async () => {

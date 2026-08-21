@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { validateManualToken } from "@src/auth/chatgpt-oauth.js";
+import { validateManualToken, validateTokenStructure } from "@src/auth/chatgpt-oauth.js";
 import { createValidJwt, createExpiredJwt, createJwt } from "@helpers/jwt.js";
 
 describe("validateManualToken", () => {
@@ -37,5 +37,21 @@ describe("validateManualToken", () => {
     const result = validateManualToken("not-a-jwt");
     expect(result.valid).toBe(false);
     expect(result.error).toContain("Invalid JWT");
+  });
+
+  it("structural validation accepts an unexpired token without accountId", () => {
+    const token = createJwt({ exp: Math.floor(Date.now() / 1000) + 3600 });
+    expect(validateTokenStructure(token)).toEqual({ valid: true });
+    expect(validateManualToken(token)).toMatchObject({
+      valid: false,
+      error: expect.stringContaining("chatgpt_account_id"),
+    });
+  });
+
+  it("structural validation rejects a token without numeric exp", () => {
+    expect(validateTokenStructure(createJwt({}))).toMatchObject({
+      valid: false,
+      error: expect.stringContaining("exp"),
+    });
   });
 });

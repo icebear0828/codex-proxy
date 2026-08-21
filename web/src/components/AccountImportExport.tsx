@@ -40,16 +40,22 @@ export function AccountImportExport({ onExport, onImport, selectedIds }: Account
     setResult(null);
     try {
       let totalAdded = 0, totalUpdated = 0, totalFailed = 0;
+      const errors: string[] = [];
       for (const file of files) {
         const res = await onImport(file);
         totalAdded += res.added;
         totalUpdated += res.updated;
         totalFailed += res.failed;
+        errors.push(...(res.errors ?? []));
       }
-      const msg = t("accountImportResult")
+      let msg = t("accountImportResult")
         .replace("{added}", String(totalAdded))
         .replace("{updated}", String(totalUpdated))
         .replace("{failed}", String(totalFailed));
+      if (errors.length > 0) {
+        const first = errors[0].replace(/\s+/g, " ").slice(0, 180);
+        msg += ` — ${first}${errors.length > 1 ? ` (+${errors.length - 1})` : ""}`;
+      }
       setResult(msg);
     } catch {
       setResult(t("accountImportError"));
