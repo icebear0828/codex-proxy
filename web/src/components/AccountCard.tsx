@@ -94,9 +94,10 @@ interface AccountCardProps {
   onToggleStatus?: (id: string, currentStatus: string) => Promise<string | null>;
   onUpdateLabel?: (id: string, label: string | null) => Promise<string | null>;
   onUpdateCodexFingerprintMode?: (id: string, mode: "off" | "session") => Promise<string | null>;
+  onConsumeResetCredit?: (id: string) => Promise<string | null>;
 }
 
-export function AccountCard({ account, index, onDelete, proxies, onProxyChange, selected, onToggleSelect, onRefreshQuota, onToggleStatus, onUpdateLabel, onUpdateCodexFingerprintMode }: AccountCardProps) {
+export function AccountCard({ account, index, onDelete, proxies, onProxyChange, selected, onToggleSelect, onRefreshQuota, onToggleStatus, onUpdateLabel, onUpdateCodexFingerprintMode, onConsumeResetCredit }: AccountCardProps) {
   const t = useT();
   const { lang } = useI18n();
   const email = account.email || "Unknown";
@@ -210,6 +211,39 @@ export function AccountCard({ account, index, onDelete, proxies, onProxyChange, 
       setQuotaRefreshing(false);
     }
   }, [account.id, onRefreshQuota]);
+
+  const [resetCreditConsuming, setResetCreditConsuming] = useState(false);
+  const resetCreditsCount = account.quota?.reset_credits_available;
+  const showResetCredits = typeof resetCreditsCount === "number" && resetCreditsCount > 0;
+
+  const handleConsumeResetCredit = useCallback(async () => {
+    if (!confirm(t("confirmUseResetCredit"))) return;
+    setResetCreditConsuming(true);
+    try {
+      if (onConsumeResetCredit) {
+        const err = await onConsumeResetCredit(account.id);
+        if (err) alert(err);
+      } else {
+        const resp = await fetch(`/auth/accounts/${encodeURIComponent(account.id)}/reset-credits/consume`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+        });
+        if (!resp.ok) {
+          const data: unknown = await resp.json().catch(() => ({}));
+          const errMsg = (data && typeof data === "object" && "error" in data && typeof data.error === "string")
+            ? data.error
+            : "Failed to consume reset credit";
+          alert(errMsg);
+        } else {
+          await onRefreshQuota?.(account.id);
+        }
+      }
+    } catch (err) {
+      alert("Network error: " + (err instanceof Error ? err.message : String(err)));
+    } finally {
+      setResetCreditConsuming(false);
+    }
+  }, [account.id, onConsumeResetCredit, onRefreshQuota, t]);
 
   const handleToggle = useCallback(() => {
     onToggleSelect?.(account.id);
@@ -515,6 +549,30 @@ export function AccountCard({ account, index, onDelete, proxies, onProxyChange, 
                   {t("resetsAt")} {sResetAt}
                 </p>
               )}
+            </div>
+          )}
+
+          {/* Rate limit reset credits */}
+          {showResetCredits && (
+            <div data-testid="reset-credits" class="flex items-center justify-between text-[0.78rem] bg-indigo-50/50 dark:bg-indigo-950/20 p-2 rounded-lg border border-indigo-100 dark:border-indigo-900/30">
+              <div class="flex items-center gap-1.5 text-indigo-700 dark:text-indigo-300">
+                <svg class="size-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path stroke-linecap="round" stroke-linejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0 3.181 3.183a8.25 8.25 0 0 0 13.803-3.7M4.031 9.865a8.25 8.25 0 0 1 13.803-3.7l3.181 3.182m0-4.991v4.99" />
+                </svg>
+                <span class="font-medium">{t("resetCredits")}</span>
+                <span class="text-xs bg-indigo-100 dark:bg-indigo-900/50 px-1.5 py-0.5 rounded font-semibold text-indigo-800 dark:text-indigo-200">
+                  {resetCreditsCount}
+                </span>
+              </div>
+              <button
+                type="button"
+                onClick={handleConsumeResetCredit}
+                disabled={resetCreditConsuming || account.status !== "active"}
+                class="px-2.5 py-1 text-xs font-medium rounded-md bg-indigo-600 hover:bg-indigo-700 text-white disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                title={t("useResetCredit")}
+              >
+                {resetCreditConsuming ? t("usingResetCredit") : t("useResetCredit")}
+              </button>
             </div>
           )}
 

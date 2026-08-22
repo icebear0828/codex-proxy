@@ -29,7 +29,7 @@ import {
 
 export type { WsPoolContext };
 import { parseSSEBlock, parseSSEStream } from "./codex-sse.js";
-import { fetchUsage } from "./codex-usage.js";
+import { fetchUsage, fetchResetCredits, consumeResetCredit } from "./codex-usage.js";
 import { fetchModels, probeEndpoint as probeEndpointFn } from "./codex-models.js";
 import type { CookieJar } from "./cookie-jar.js";
 import type { BackendModelEntry } from "../models/model-store.js";
@@ -54,6 +54,9 @@ export type {
   CodexUsageCredits,
   CodexUsageSpendControl,
   CodexUsageRateLimitReachedType,
+  CodexResetCreditItem,
+  CodexResetCreditsResponse,
+  CodexRateLimitResetCreditsUsageInfo,
 } from "./codex-types.js";
 
 // Re-export SSE utilities for consumers that used them via CodexApi
@@ -67,6 +70,7 @@ import {
   type CodexCompactResponse,
   type CodexSSEEvent,
   type CodexUsageResponse,
+  type CodexResetCreditsResponse,
 } from "./codex-types.js";
 
 export interface CodexApiOptions {
@@ -186,7 +190,23 @@ export class CodexApi {
     const headers = this.applyHeaders(
       buildHeaders(this.token, this.accountId),
     );
-    return fetchUsage(headers, this.proxyUrl);
+    return fetchUsage(headers, this.proxyUrl, this.baseUrl, this.transport);
+  }
+
+  /** Query official Codex rate-limit reset credits snapshot. */
+  async getResetCredits(): Promise<CodexResetCreditsResponse> {
+    const headers = this.applyHeaders(
+      buildHeaders(this.token, this.accountId),
+    );
+    return fetchResetCredits(headers, this.proxyUrl, this.baseUrl, this.transport);
+  }
+
+  /** Consume 1 rate-limit reset credit to refresh the 5-hour limit window. */
+  async consumeResetCredit(redeemRequestId?: string): Promise<void> {
+    const headers = this.applyHeaders(
+      buildHeadersWithContentType(this.token, this.accountId),
+    );
+    return consumeResetCredit(headers, redeemRequestId, this.proxyUrl, this.baseUrl, this.transport);
   }
 
   /**

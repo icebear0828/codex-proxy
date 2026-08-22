@@ -232,6 +232,57 @@ export function createAccountRoutes(pool: AccountPool, scheduler: RefreshSchedul
     }
   });
 
+  app.get("/auth/accounts/:id/reset-credits", async (c) => {
+    const id = c.req.param("id");
+    const entry = pool.getEntry(id);
+    if (!entry) { c.status(404); return c.json({ error: "Account not found" }); }
+    if (entry.status !== "active") { c.status(409); return c.json({ error: `Account is ${entry.status}, cannot query reset credits` }); }
+    try {
+      const api = new CodexApi(entry.token, entry.accountId, cookieJar, id, proxyPool?.resolveProxyUrl(id));
+      const resetCredits = await api.getResetCredits();
+      return c.json(resetCredits);
+    } catch (err) {
+      if (isTokenInvalidError(err)) {
+        pool.markStatus(id, "expired");
+      } else if (isBanError(err)) {
+        pool.markStatus(id, "banned");
+      }
+      const detail = err instanceof Error ? err.message : String(err);
+      c.status(502);
+      return c.json({ error: "Failed to fetch reset credits from Codex API", detail });
+    }
+  });
+
+  app.post("/auth/accounts/:id/reset-credits/consume", async (c) => {
+    const id = c.req.param("id");
+    const entry = pool.getEntry(id);
+    if (!entry) { c.status(404); return c.json({ error: "Account not found" }); }
+    if (entry.status !== "active") { c.status(409); return c.json({ error: `Account is ${entry.status}, cannot consume reset credits` }); }
+    let body: { redeem_request_id?: string } | undefined;
+    try {
+      body = await c.req.json<{ redeem_request_id?: string }>();
+    } catch {
+      body = undefined;
+    }
+    try {
+      const api = new CodexApi(entry.token, entry.accountId, cookieJar, id, proxyPool?.resolveProxyUrl(id));
+      await api.consumeResetCredit(body?.redeem_request_id);
+      const usage = await api.getUsage();
+      const quota = toQuota(usage);
+      pool.updateCachedQuota(id, quota);
+      return c.json({ success: true, quota, raw: usage });
+    } catch (err) {
+      if (isTokenInvalidError(err)) {
+        pool.markStatus(id, "expired");
+      } else if (isBanError(err)) {
+        pool.markStatus(id, "banned");
+      }
+      const detail = err instanceof Error ? err.message : String(err);
+      c.status(502);
+      return c.json({ error: "Failed to consume reset credit from Codex API", detail });
+    }
+  });
+
   app.get("/auth/accounts/:id/cookies", (c) => {
     const id = c.req.param("id");
     if (!pool.getEntry(id)) { c.status(404); return c.json({ error: "Account not found" }); }

@@ -138,6 +138,7 @@ export interface CodexQuota {
     reset_at: number | null;
     limit_window_seconds: number | null;
   } | null;
+  reset_credits_available?: number | null;
   /** Credit accounting (Pro / PAYG only — null for Plus). */
   credits?: CodexQuotaCredits | null;
   /** All metered quota buckets returned by Codex app's /wham/usage additional_rate_limits. */

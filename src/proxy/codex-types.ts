@@ -181,11 +181,32 @@ export interface CodexUsageRateLimitReachedType {
   details: string | null;
 }
 
+export interface CodexRateLimitResetCreditsUsageInfo {
+  available_count?: number | null;
+}
+
+export interface CodexResetCreditItem {
+  id?: string;
+  status?: string;
+  reset_type?: string;
+  granted_at?: number | null;
+  expires_at?: number | null;
+  redeemed_at?: number | null;
+  raw_status?: string;
+}
+
+export interface CodexResetCreditsResponse {
+  available_count?: number | null;
+  credits: CodexResetCreditItem[];
+  next_expires_at?: number | null;
+}
+
 export interface CodexUsageResponse {
   plan_type: string;
   rate_limit: CodexUsageRateLimit;
   code_review_rate_limit: CodexUsageRateLimit | null;
   additional_rate_limits?: CodexUsageAdditionalRateLimit[] | null;
+  rate_limit_reset_credits?: CodexRateLimitResetCreditsUsageInfo | null;
   credits?: CodexUsageCredits | null;
   spend_control?: CodexUsageSpendControl | null;
   rate_limit_reached_type?: CodexUsageRateLimitReachedType | null;

@@ -19,6 +19,7 @@ export interface AccountQuota {
   rate_limit?: AccountQuotaWindow;
   secondary_rate_limit?: AccountQuotaWindow | null;
   code_review_rate_limit?: (AccountQuotaWindow & { allowed?: boolean }) | null;
+  reset_credits_available?: number | null;
   rate_limits_by_limit_id?: Record<string, AccountQuotaWindow & {
     limit_id?: string;
     limit_name?: string | null;

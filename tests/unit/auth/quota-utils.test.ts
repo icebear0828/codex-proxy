@@ -292,6 +292,25 @@ describe("toQuota", () => {
       expect(quota.credits?.unlimited).toBe(true);
       expect(quota.credits?.overage_limit_reached).toBe(true);
     });
+
+    it("parses rate_limit_reset_credits available_count when present", () => {
+      const quota = toQuota(makeUsageResponse({
+        rate_limit_reset_credits: {
+          available_count: 3,
+        },
+      }));
+      expect(quota.reset_credits_available).toBe(3);
+    });
+
+    it("handles missing or invalid rate_limit_reset_credits", () => {
+      const quota1 = toQuota(makeUsageResponse());
+      expect(quota1.reset_credits_available).toBeNull();
+
+      const quota2 = toQuota(makeUsageResponse({
+        rate_limit_reset_credits: null,
+      }));
+      expect(quota2.reset_credits_available).toBeNull();
+    });
   });
 
   describe("getRateLimitIdForModel", () => {

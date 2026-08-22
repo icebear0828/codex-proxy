@@ -58,10 +58,72 @@ describe("AccountCard Codex fingerprint control", () => {
       />,
     );
     const control = screen.getByRole("checkbox", { name: "codexSessionConvergence" }) as HTMLInputElement;
-
     fireEvent.click(control);
 
     expect(control.checked).toBe(false);
     expect(update).not.toHaveBeenCalled();
   });
 });
+
+describe("AccountCard Rate Limit Reset Credits", () => {
+  afterEach(() => cleanup());
+
+  it("renders reset credits widget when available count > 0", () => {
+    const acct: Account = {
+      ...account(),
+      quota: {
+        rate_limit: { used_percent: 100, limit_reached: true },
+        reset_credits_available: 2,
+      },
+    };
+
+    render(<AccountCard account={acct} index={0} onDelete={vi.fn(async () => null)} />);
+
+    const widget = screen.getByTestId("reset-credits");
+    expect(widget).toBeTruthy();
+    expect(widget.textContent).toContain("2");
+    expect(screen.getByRole("button", { name: "useResetCredit" })).toBeTruthy();
+  });
+
+  it("does not render reset credits widget when count is 0 or undefined", () => {
+    const acct: Account = {
+      ...account(),
+      quota: {
+        rate_limit: { used_percent: 50, limit_reached: false },
+        reset_credits_available: 0,
+      },
+    };
+
+    render(<AccountCard account={acct} index={0} onDelete={vi.fn(async () => null)} />);
+
+    expect(screen.queryByTestId("reset-credits")).toBeNull();
+  });
+
+  it("triggers onConsumeResetCredit when clicking use button and confirmed", async () => {
+    const onConsume = vi.fn(async () => null);
+    vi.spyOn(window, "confirm").mockReturnValue(true);
+
+    const acct: Account = {
+      ...account(),
+      quota: {
+        rate_limit: { used_percent: 100, limit_reached: true },
+        reset_credits_available: 1,
+      },
+    };
+
+    render(
+      <AccountCard
+        account={acct}
+        index={0}
+        onDelete={vi.fn(async () => null)}
+        onConsumeResetCredit={onConsume}
+      />,
+    );
+
+    const btn = screen.getByRole("button", { name: "useResetCredit" });
+    fireEvent.click(btn);
+
+    await waitFor(() => expect(onConsume).toHaveBeenCalledWith("account-1"));
+  });
+});
+
