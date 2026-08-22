@@ -305,7 +305,7 @@ export const ClientKeysPage: FunctionalComponent<ClientKeysPageProps> = ({
         ) : keys.length === 0 ? (
           <div class="p-12 text-center text-slate-500 dark:text-text-dim space-y-3">
             <div class="text-3xl">📭</div>
-            <div class="font-medium text-slate-700 dark:text-slate-300">{t("noAccounts")}</div>
+            <div class="font-medium text-slate-700 dark:text-slate-300">{t("noClientKeys")}</div>
           </div>
         ) : (
           <div class="overflow-x-auto">

@@ -79,10 +79,13 @@ describe("electron build (esbuild)", () => {
   it("server.mjs banner exposes a real require so __require resolves Node builtins", () => {
     buildOnce();
     const serverMjs = resolve(DIST, "server.mjs");
-    const head = readFileSync(serverMjs, "utf-8").slice(0, 500);
+    const head = readFileSync(serverMjs, "utf-8").slice(0, 800);
     expect(head).toContain('from "module"');
     expect(head).toContain("createRequire");
+    expect(head).toContain("__filename");
+    expect(head).toContain("__dirname");
   });
+
 
   // Runtime regression: the banner-string assertion above is necessary
   // but not sufficient. esbuild could change `__require`'s shim shape,

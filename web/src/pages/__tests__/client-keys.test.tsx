@@ -90,4 +90,26 @@ describe("ClientKeysPage Component", () => {
 
     expect(screen.getByPlaceholderText(/Frontend Dev Team/i)).toBeTruthy();
   });
+
+  it("renders noClientKeys empty state when keys list is empty", () => {
+    mockUseClientKeys.useClientKeys.mockReturnValue({
+      keys: [],
+      totalCostUsd: 0,
+      totalRequests: 0,
+      isLoading: false,
+      error: null,
+      fetchKeys: vi.fn(),
+      createKey: vi.fn(),
+      updateKey: vi.fn(),
+      toggleStatus: vi.fn(),
+      resetUsage: vi.fn(),
+      deleteKey: vi.fn(),
+    });
+
+    render(<ClientKeysPage />);
+
+    expect(screen.getByText(translations.en.noClientKeys)).toBeTruthy();
+    expect(screen.queryByText(translations.en.noAccounts)).toBeNull();
+  });
 });
+

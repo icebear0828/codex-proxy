@@ -101,4 +101,20 @@ describe("ClientKeyPersistence", () => {
     const persistence = new ClientKeyPersistence(invalidSqlite, invalidJson);
     expect(() => persistence.save([sampleKey])).toThrow();
   });
+
+  it("falls back to json persistence when sqlite is unavailable during save", () => {
+    // A directory blocking SQLite path creation
+    const blockingDir = join(tempDir, "blocking_sqlite_dir.sqlite");
+    writeFileSync(blockingDir, "not a directory");
+
+    const persistence = new ClientKeyPersistence(join(blockingDir, "nested.sqlite"), jsonPath);
+    // Should save to JSON without throwing
+    persistence.save([sampleKey]);
+
+    expect(existsSync(jsonPath)).toBe(true);
+    const loaded = persistence.load();
+    expect(loaded).toHaveLength(1);
+    expect(loaded[0].id).toBe(sampleKey.id);
+  });
 });
+

@@ -1,8 +1,53 @@
-import Database from "better-sqlite3";
 import { readFileSync, writeFileSync, existsSync, mkdirSync } from "fs";
 import { dirname } from "path";
+import { createRequire } from "module";
 import { getDataDir } from "../paths.js";
 import type { ClientKeyEntry } from "./client-key-types.js";
+
+const require = createRequire(import.meta.url);
+
+interface SqliteStatement {
+  all(...params: unknown[]): unknown[];
+  run(...params: unknown[]): { changes: number; lastInsertRowid: number | bigint };
+}
+
+interface SqliteDatabase {
+  exec(sql: string): void;
+  prepare(sql: string): SqliteStatement;
+  close(): void;
+}
+
+type SqliteDatabaseConstructor = new (filename: string) => SqliteDatabase;
+
+function isNodeSqliteModule(value: unknown): value is { DatabaseSync: SqliteDatabaseConstructor } {
+  return (
+    value !== null &&
+    typeof value === "object" &&
+    typeof (value as { DatabaseSync?: unknown }).DatabaseSync === "function"
+  );
+}
+
+function loadSqliteConstructor(): SqliteDatabaseConstructor | null {
+  try {
+    const loaded = require("node:sqlite") as unknown;
+    if (isNodeSqliteModule(loaded)) {
+      return loaded.DatabaseSync;
+    }
+  } catch {
+    // node:sqlite not available, try better-sqlite3
+  }
+
+  try {
+    const loaded = require("better-sqlite3") as unknown;
+    if (typeof loaded === "function") {
+      return loaded as SqliteDatabaseConstructor;
+    }
+  } catch {
+    // better-sqlite3 not available
+  }
+
+  return null;
+}
 
 interface ClientKeyRow {
   id: string;
@@ -26,7 +71,8 @@ interface ClientKeyRow {
 export class ClientKeyPersistence {
   private sqlitePath: string;
   private jsonPath: string;
-  private db: Database.Database | null = null;
+  private db: SqliteDatabase | null = null;
+  private sqliteFailed = false;
 
   constructor(sqlitePath?: string, jsonPath?: string) {
     const dataDir = getDataDir();
@@ -41,52 +87,71 @@ export class ClientKeyPersistence {
     }
   }
 
-  private initSqlite(): Database.Database {
+  private initSqlite(): SqliteDatabase | null {
+    if (this.sqliteFailed) return null;
     if (this.db) return this.db;
-    this.ensureDir(this.sqlitePath);
-    const db = new Database(this.sqlitePath);
-    db.pragma("journal_mode = WAL");
-    db.pragma("synchronous = NORMAL");
 
-    db.exec(`
-      CREATE TABLE IF NOT EXISTS client_keys (
-        id TEXT PRIMARY KEY,
-        name TEXT NOT NULL,
-        key TEXT UNIQUE NOT NULL,
-        status TEXT NOT NULL,
-        expires_at TEXT,
-        max_budget_usd REAL,
-        used_cost_usd REAL NOT NULL DEFAULT 0,
-        max_tokens INTEGER,
-        used_tokens INTEGER NOT NULL DEFAULT 0,
-        max_concurrency INTEGER,
-        allowed_models TEXT,
-        default_tools TEXT,
-        request_count INTEGER NOT NULL DEFAULT 0,
-        last_used_at TEXT,
-        created_at TEXT NOT NULL,
-        updated_at TEXT NOT NULL
-      );
-      CREATE INDEX IF NOT EXISTS idx_client_keys_key ON client_keys(key);
-      CREATE INDEX IF NOT EXISTS idx_client_keys_status ON client_keys(status);
-    `);
-
-    try {
-      db.exec("ALTER TABLE client_keys ADD COLUMN default_tools TEXT");
-    } catch {
-      // Column already exists
+    const SqliteCtor = loadSqliteConstructor();
+    if (!SqliteCtor) {
+      this.sqliteFailed = true;
+      return null;
     }
 
-    this.db = db;
-    return db;
+    try {
+      this.ensureDir(this.sqlitePath);
+      const db = new SqliteCtor(this.sqlitePath);
+      try {
+        db.exec("PRAGMA journal_mode = WAL; PRAGMA synchronous = NORMAL;");
+      } catch {
+        // pragma might be unsupported in certain drivers
+      }
+
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS client_keys (
+          id TEXT PRIMARY KEY,
+          name TEXT NOT NULL,
+          key TEXT UNIQUE NOT NULL,
+          status TEXT NOT NULL,
+          expires_at TEXT,
+          max_budget_usd REAL,
+          used_cost_usd REAL NOT NULL DEFAULT 0,
+          max_tokens INTEGER,
+          used_tokens INTEGER NOT NULL DEFAULT 0,
+          max_concurrency INTEGER,
+          allowed_models TEXT,
+          default_tools TEXT,
+          request_count INTEGER NOT NULL DEFAULT 0,
+          last_used_at TEXT,
+          created_at TEXT NOT NULL,
+          updated_at TEXT NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_client_keys_key ON client_keys(key);
+        CREATE INDEX IF NOT EXISTS idx_client_keys_status ON client_keys(status);
+      `);
+
+      try {
+        db.exec("ALTER TABLE client_keys ADD COLUMN default_tools TEXT");
+      } catch {
+        // Column already exists
+      }
+
+      this.db = db;
+      return db;
+    } catch (err) {
+      this.sqliteFailed = true;
+      console.warn(`[ClientKeyPersistence] Failed to initialize SQLite database: ${err}`);
+      return null;
+    }
   }
 
   public load(): ClientKeyEntry[] {
     // 1. Try SQLite
     try {
       const db = this.initSqlite();
-      const rows = db.prepare("SELECT * FROM client_keys").all() as ClientKeyRow[];
-      return rows.map((r) => this.rowToEntry(r));
+      if (db) {
+        const rows = db.prepare("SELECT * FROM client_keys").all() as ClientKeyRow[];
+        return rows.map((r) => this.rowToEntry(r));
+      }
     } catch (sqliteErr) {
       console.warn(`[ClientKeyPersistence] SQLite load failed, attempting JSON fallback: ${sqliteErr}`);
     }
@@ -109,33 +174,69 @@ export class ClientKeyPersistence {
   }
 
   public save(keys: ClientKeyEntry[]): void {
-    // Save to SQLite transaction
-    const db = this.initSqlite();
-    const deleteStmt = db.prepare("DELETE FROM client_keys");
-    const insertStmt = db.prepare(`
-      INSERT INTO client_keys (
-        id, name, key, status, expires_at, max_budget_usd, used_cost_usd,
-        max_tokens, used_tokens, max_concurrency, allowed_models, default_tools,
-        request_count, last_used_at, created_at, updated_at
-      ) VALUES (
-        @id, @name, @key, @status, @expires_at, @max_budget_usd, @used_cost_usd,
-        @max_tokens, @used_tokens, @max_concurrency, @allowed_models, @default_tools,
-        @request_count, @last_used_at, @created_at, @updated_at
-      )
-    `);
+    // 1. Try SQLite transaction
+    let sqliteSaved = false;
+    try {
+      const db = this.initSqlite();
+      if (db) {
+        const deleteStmt = db.prepare("DELETE FROM client_keys");
+        const insertStmt = db.prepare(`
+          INSERT INTO client_keys (
+            id, name, key, status, expires_at, max_budget_usd, used_cost_usd,
+            max_tokens, used_tokens, max_concurrency, allowed_models, default_tools,
+            request_count, last_used_at, created_at, updated_at
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `);
 
-    const saveTx = db.transaction((entries: ClientKeyEntry[]) => {
-      deleteStmt.run();
-      for (const entry of entries) {
-        insertStmt.run(this.entryToRow(entry));
+        db.exec("BEGIN IMMEDIATE");
+        try {
+          deleteStmt.run();
+          for (const entry of keys) {
+            const row = this.entryToRow(entry);
+            insertStmt.run(
+              row.id,
+              row.name,
+              row.key,
+              row.status,
+              row.expires_at,
+              row.max_budget_usd,
+              row.used_cost_usd,
+              row.max_tokens,
+              row.used_tokens,
+              row.max_concurrency,
+              row.allowed_models,
+              row.default_tools,
+              row.request_count,
+              row.last_used_at,
+              row.created_at,
+              row.updated_at,
+            );
+          }
+          db.exec("COMMIT");
+          sqliteSaved = true;
+        } catch (txErr) {
+          try {
+            db.exec("ROLLBACK");
+          } catch {
+            // ignore rollback error
+          }
+          throw txErr;
+        }
       }
-    });
+    } catch (sqliteErr) {
+      console.warn(`[ClientKeyPersistence] SQLite save failed, falling back to JSON: ${sqliteErr}`);
+    }
 
-    saveTx(keys);
-
-    // Save JSON mirror backup
-    this.ensureDir(this.jsonPath);
-    writeFileSync(this.jsonPath, JSON.stringify(keys, null, 2), "utf-8");
+    // 2. Save JSON mirror backup (or primary store if SQLite failed)
+    try {
+      this.ensureDir(this.jsonPath);
+      writeFileSync(this.jsonPath, JSON.stringify(keys, null, 2), "utf-8");
+    } catch (jsonErr) {
+      if (!sqliteSaved) {
+        throw new Error(`Failed to save client keys to both SQLite and JSON: ${jsonErr}`);
+      }
+      console.error(`[ClientKeyPersistence] JSON mirror backup save failed: ${jsonErr}`);
+    }
   }
 
   private rowToEntry(row: ClientKeyRow): ClientKeyEntry {
@@ -180,3 +281,4 @@ export class ClientKeyPersistence {
     };
   }
 }
+
