@@ -60,7 +60,7 @@
 
 ---
 
-**Codex Proxy** 是一个轻量级本地中转服务，将 [Codex Desktop](https://openai.com/codex) 的 Responses API 转换为多种标准协议接口（OpenAI `/v1/chat/completions`、Anthropic `/v1/messages`、Gemini、Codex `/v1/responses` 直通，以及可选 Ollama `/api/chat` 兼容桥接）。通过本项目，您可以在 Cursor、Claude Code、Continue 等任何兼容上述协议的客户端中直接使用 Codex 编程模型。
+**Codex Proxy** 是一个轻量级本地中转服务，将 [Codex Desktop](https://openai.com/codex) 的 Responses API 转换为多种标准协议接口（OpenAI `/v1/chat/completions`、Anthropic `/v1/messages`、Gemini、Codex `/v1/responses` 直通，以及可选 Ollama `/api/chat` 兼容桥接）。通过本项目，您可以在 Cursor、Claude Code、Continue、Pi 等任何兼容上述协议的客户端中直接使用 Codex 编程模型。
 
 只需一个 ChatGPT 账号（或接入第三方 API 中转站），配合本代理即可在本地搭建一个专属的 AI 编程助手网关。
 
@@ -443,6 +443,94 @@ aider --model openai/gpt-5.4
 3. **API 地址**: `http://localhost:8080/v1`
 4. **API Key**: 你的 API Key
 5. 添加模型 `gpt-5.4`
+
+### Pi Coding Agent (pi)
+
+[Pi Coding Agent](https://github.com/earendil-works/pi) (`@earendil-works/pi-coding-agent`) 可通过 `~/.pi/agent/models.json` 配置自定义 Provider 接入 Codex Proxy。
+
+#### 方式一：OpenAI Completions 协议（推荐）
+
+编辑 `~/.pi/agent/models.json`：
+```json
+{
+  "providers": {
+    "codex-proxy": {
+      "baseUrl": "http://localhost:8080/v1",
+      "api": "openai-completions",
+      "apiKey": "your-api-key",
+      "models": [
+        {
+          "id": "gpt-5.4",
+          "name": "Codex GPT-5.4",
+          "contextWindow": 200000,
+          "maxTokens": 8192,
+          "input": ["text", "image"]
+        },
+        {
+          "id": "gpt-5.5",
+          "name": "Codex GPT-5.5",
+          "contextWindow": 200000,
+          "maxTokens": 8192,
+          "input": ["text", "image"]
+        }
+      ]
+    }
+  }
+}
+```
+
+> 💡 `apiKey` 也可配置为 `"$PROXY_API_KEY"`，并在运行终端中通过 `export PROXY_API_KEY=your-api-key` 注入。
+
+#### 方式二：Anthropic Messages 协议
+
+```json
+{
+  "providers": {
+    "codex-proxy-anthropic": {
+      "baseUrl": "http://localhost:8080",
+      "api": "anthropic-messages",
+      "apiKey": "your-api-key",
+      "models": [
+        {
+          "id": "gpt-5.4",
+          "name": "Codex GPT-5.4",
+          "contextWindow": 200000,
+          "maxTokens": 8192,
+          "input": ["text", "image"]
+        }
+      ]
+    }
+  }
+}
+```
+
+#### 方式三：Codex Responses 协议（直通）
+
+```json
+{
+  "providers": {
+    "codex-proxy-responses": {
+      "baseUrl": "http://localhost:8080/v1",
+      "api": "openai-responses",
+      "apiKey": "your-api-key",
+      "models": [
+        {
+          "id": "gpt-5.4",
+          "name": "Codex GPT-5.4",
+          "contextWindow": 200000,
+          "maxTokens": 8192,
+          "input": ["text", "image"]
+        }
+      ]
+    }
+  }
+}
+```
+
+启动运行：
+```bash
+pi --provider codex-proxy --model gpt-5.4
+```
 
 ### Ollama 兼容客户端
 
@@ -909,11 +997,15 @@ curl -X POST http://localhost:8080/auth/accounts/import \
 
 ## 🙏 贡献致谢
 
-Codex Proxy 主要由个人维护，但一路上收到了很多社区帮助。特别感谢这些通过代码、文档、修复或 PR 参与建设的贡献者：
+Codex Proxy 最初只是一个个人自用项目，一路走来收获了超乎预期的关注与支持。
+
+特别感谢所有通过代码、文档、修复或 PR 参与建设的贡献者：
 
 [@SsuJojo](https://github.com/SsuJojo) · [@TutuchanXD](https://github.com/TutuchanXD) · [@kanweiwei](https://github.com/kanweiwei) · [@et2010](https://github.com/et2010) · [@d-demand-priv](https://github.com/d-demand-priv) · [@hangox](https://github.com/hangox) · [@jarvisluk](https://github.com/jarvisluk) · [@jeasonstudio](https://github.com/jeasonstudio) · [@JPClaw12](https://github.com/JPClaw12) · [@lezi-fun](https://github.com/lezi-fun) · [@lookvincent](https://github.com/lookvincent) · [@pocper1](https://github.com/pocper1) · [@woai66](https://github.com/woai66) · [@xsShuang](https://github.com/xsShuang) · [@yuwei5380](https://github.com/yuwei5380) · [@aeltorio](https://github.com/aeltorio) · [@williamjameshandley](https://github.com/williamjameshandley) · [@FlavienKlr](https://github.com/FlavienKlr) · [@zyycn](https://github.com/zyycn)
 
-也感谢所有在 [Issues](https://github.com/icebear0828/codex-proxy/issues) 里提交 bug 复现、日志、兼容性反馈和功能建议的用户。这些反馈直接推动了账号轮换、代理兼容、Dashboard、Ollama Bridge、模型兼容和错误观测等能力的迭代。
+感谢所有在 [Issues](https://github.com/icebear0828/codex-proxy/issues) 里提交 bug 复现、日志、兼容性反馈和功能建议的用户。这些反馈直接推动了账号轮换、代理兼容、Dashboard、Ollama Bridge、模型兼容和错误观测等能力的迭代。
+
+**更要由衷感谢所有默默使用、关注和支持本项目的开发者朋友们。正是你们的认可与喜爱，让我一直坚持维护和迭代到现在。很高兴有这么多人喜欢 Codex Proxy！** ❤️
 
 ## ⭐ Star History
 

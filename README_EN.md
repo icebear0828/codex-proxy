@@ -45,7 +45,7 @@
 
 ---
 
-**Codex Proxy** is a lightweight local gateway that translates the [Codex Desktop](https://openai.com/codex) Responses API into multiple standard protocol endpoints — OpenAI `/v1/chat/completions`, Anthropic `/v1/messages`, Gemini, Codex `/v1/responses` passthrough, and an optional Ollama-compatible `/api/chat` bridge. Use Codex coding models directly in Cursor, Claude Code, Continue, or any compatible client.
+**Codex Proxy** is a lightweight local gateway that translates the [Codex Desktop](https://openai.com/codex) Responses API into multiple standard protocol endpoints — OpenAI `/v1/chat/completions`, Anthropic `/v1/messages`, Gemini, Codex `/v1/responses` passthrough, and an optional Ollama-compatible `/api/chat` bridge. Use Codex coding models directly in Cursor, Claude Code, Continue, Pi, or any compatible client.
 
 Just a ChatGPT account (or a third-party API key provider) and this proxy — your own personal AI coding assistant gateway, running locally.
 
@@ -400,6 +400,94 @@ aider --openai-api-base http://localhost:8080/v1 \
 3. **API URL**: `http://localhost:8080/v1`
 4. **API Key**: your API key
 5. Add model `gpt-5.4`
+
+### Pi Coding Agent (pi)
+
+[Pi Coding Agent](https://github.com/earendil-works/pi) (`@earendil-works/pi-coding-agent`) can be configured via `~/.pi/agent/models.json` to connect to Codex Proxy.
+
+#### Option 1: OpenAI Completions Protocol (Recommended)
+
+Edit `~/.pi/agent/models.json`:
+```json
+{
+  "providers": {
+    "codex-proxy": {
+      "baseUrl": "http://localhost:8080/v1",
+      "api": "openai-completions",
+      "apiKey": "your-api-key",
+      "models": [
+        {
+          "id": "gpt-5.4",
+          "name": "Codex GPT-5.4",
+          "contextWindow": 200000,
+          "maxTokens": 8192,
+          "input": ["text", "image"]
+        },
+        {
+          "id": "gpt-5.5",
+          "name": "Codex GPT-5.5",
+          "contextWindow": 200000,
+          "maxTokens": 8192,
+          "input": ["text", "image"]
+        }
+      ]
+    }
+  }
+}
+```
+
+> 💡 `apiKey` can also be set to `"$PROXY_API_KEY"`, then supplied via `export PROXY_API_KEY=your-api-key` in your shell.
+
+#### Option 2: Anthropic Messages Protocol
+
+```json
+{
+  "providers": {
+    "codex-proxy-anthropic": {
+      "baseUrl": "http://localhost:8080",
+      "api": "anthropic-messages",
+      "apiKey": "your-api-key",
+      "models": [
+        {
+          "id": "gpt-5.4",
+          "name": "Codex GPT-5.4",
+          "contextWindow": 200000,
+          "maxTokens": 8192,
+          "input": ["text", "image"]
+        }
+      ]
+    }
+  }
+}
+```
+
+#### Option 3: Codex Responses Protocol (Passthrough)
+
+```json
+{
+  "providers": {
+    "codex-proxy-responses": {
+      "baseUrl": "http://localhost:8080/v1",
+      "api": "openai-responses",
+      "apiKey": "your-api-key",
+      "models": [
+        {
+          "id": "gpt-5.4",
+          "name": "Codex GPT-5.4",
+          "contextWindow": 200000,
+          "maxTokens": 8192,
+          "input": ["text", "image"]
+        }
+      ]
+    }
+  }
+}
+```
+
+Run Pi:
+```bash
+pi --provider codex-proxy --model gpt-5.4
+```
 
 ### Ollama-Compatible Clients
 
@@ -775,11 +863,15 @@ curl -X POST http://localhost:8080/auth/accounts/import \
 
 ## 🙏 Acknowledgements
 
-Codex Proxy is primarily maintained by one person, but it has been improved by a lot of community help. Special thanks to these contributors who submitted code, documentation, fixes, or PRs:
+Codex Proxy started as a personal project to scratch my own itch, and it has grown with far more support and warmth than I ever anticipated.
 
-[@SsuJojo](https://github.com/SsuJojo) · [@TutuchanXD](https://github.com/TutuchanXD) · [@kanweiwei](https://github.com/kanweiwei) · [@et2010](https://github.com/et2010) · [@d-demand-priv](https://github.com/d-demand-priv) · [@hangox](https://github.com/hangox) · [@jarvisluk](https://github.com/jarvisluk) · [@jeasonstudio](https://github.com/jeasonstudio) · [@JPClaw12](https://github.com/JPClaw12) · [@lezi-fun](https://github.com/lezi-fun) · [@lookvincent](https://github.com/lookvincent) · [@pocper1](https://github.com/pocper1) · [@woai66](https://github.com/woai66) · [@xsShuang](https://github.com/xsShuang) · [@yuwei5380](https://github.com/yuwei5380) · [@aeltorio](https://github.com/aeltorio) · [@williamjameshandley](https://github.com/williamjameshandley) · [@FlavienKlr](https://github.com/FlavienKlr)
+Special thanks to all contributors who submitted code, documentation, fixes, or PRs:
 
-Thanks as well to everyone who opened [Issues](https://github.com/icebear0828/codex-proxy/issues) with bug reproductions, logs, compatibility reports, and feature suggestions. Those reports directly shaped account rotation, proxy compatibility, the Dashboard, Ollama Bridge, model compatibility, and error observability.
+[@SsuJojo](https://github.com/SsuJojo) · [@TutuchanXD](https://github.com/TutuchanXD) · [@kanweiwei](https://github.com/kanweiwei) · [@et2010](https://github.com/et2010) · [@d-demand-priv](https://github.com/d-demand-priv) · [@hangox](https://github.com/hangox) · [@jarvisluk](https://github.com/jarvisluk) · [@jeasonstudio](https://github.com/jeasonstudio) · [@JPClaw12](https://github.com/JPClaw12) · [@lezi-fun](https://github.com/lezi-fun) · [@lookvincent](https://github.com/lookvincent) · [@pocper1](https://github.com/pocper1) · [@woai66](https://github.com/woai66) · [@xsShuang](https://github.com/xsShuang) · [@yuwei5380](https://github.com/yuwei5380) · [@aeltorio](https://github.com/aeltorio) · [@williamjameshandley](https://github.com/williamjameshandley) · [@FlavienKlr](https://github.com/FlavienKlr) · [@zyycn](https://github.com/zyycn)
+
+Thanks as well to everyone who opened [Issues](https://github.com/icebear0828/codex-proxy/issues) with bug reproductions, logs, compatibility reports, and feature suggestions. Those reports directly shaped our proxy engine, account rotation, Dashboard, Ollama Bridge, and observability features.
+
+**Most of all, heartfelt thanks to every developer who silently uses, stars, and supports this project. Your continued love and support is what has kept me going and iterating to this day. I'm truly thrilled and grateful that so many people enjoy Codex Proxy!** ❤️
 
 ## 📄 License
 
