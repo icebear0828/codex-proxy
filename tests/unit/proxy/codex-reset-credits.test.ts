@@ -182,6 +182,38 @@ describe("consumeResetCredit", () => {
     expect(JSON.parse(body)).toEqual({ redeem_request_id: "test-uuid-1234" });
   });
 
+  it("falls back to next URL when first candidate returns 404", async () => {
+    const simplePostMock = vi
+      .fn()
+      .mockResolvedValueOnce({
+        status: 404,
+        body: "Not Found",
+      })
+      .mockResolvedValueOnce({
+        status: 200,
+        body: JSON.stringify({ status: "success" }),
+      });
+
+    const mockTransport: TlsTransport = {
+      isImpersonate: () => false,
+      post: vi.fn(),
+      simplePost: simplePostMock,
+      get: vi.fn(),
+    };
+
+    await expect(
+      consumeResetCredit(
+        { Authorization: "Bearer test" },
+        "test-uuid-1234",
+        null,
+        "https://chatgpt.com/backend-api",
+        mockTransport,
+      ),
+    ).resolves.toBeUndefined();
+
+    expect(simplePostMock).toHaveBeenCalledTimes(2);
+  });
+
   it("throws CodexApiError when consume endpoint returns error", async () => {
     const mockTransport: TlsTransport = {
       isImpersonate: () => false,

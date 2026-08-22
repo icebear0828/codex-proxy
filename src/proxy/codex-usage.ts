@@ -234,6 +234,9 @@ export async function consumeResetCredit(
     }
 
     lastError = `HTTP ${status}: ${body.slice(0, 200)}`;
+    if (status === 404) {
+      continue;
+    }
     throw new CodexApiError(status, body);
   }
 
