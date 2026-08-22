@@ -34,6 +34,7 @@ const sampleKey: ClientKeyPublicSummary = {
   used_tokens: 250000,
   max_concurrency: 5,
   allowed_models: ["gpt-5.4", "gpt-5.3-codex"],
+  default_tools: null,
   request_count: 42,
   last_used_at: "2026-08-19T10:00:00.000Z",
   created_at: "2026-08-01T00:00:00.000Z",

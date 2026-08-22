@@ -150,13 +150,35 @@ export class ClientKeyPersistence {
       const db = this.initSqlite();
       if (db) {
         const rows = db.prepare("SELECT * FROM client_keys").all() as ClientKeyRow[];
-        return rows.map((r) => this.rowToEntry(r));
+        if (rows.length > 0) {
+          return rows.map((r) => this.rowToEntry(r));
+        }
+
+        // If SQLite is empty, check if we have existing keys in JSON backup to migrate
+        if (existsSync(this.jsonPath)) {
+          const jsonEntries = this.loadJsonFallback();
+          if (jsonEntries.length > 0) {
+            console.log(`[ClientKeyPersistence] Migrating ${jsonEntries.length} client key(s) from JSON to SQLite`);
+            try {
+              this.save(jsonEntries);
+            } catch (saveErr) {
+              console.warn(`[ClientKeyPersistence] Failed to seed SQLite from JSON: ${saveErr}`);
+            }
+            return jsonEntries;
+          }
+        }
+
+        return [];
       }
     } catch (sqliteErr) {
       console.warn(`[ClientKeyPersistence] SQLite load failed, attempting JSON fallback: ${sqliteErr}`);
     }
 
     // 2. Try JSON fallback
+    return this.loadJsonFallback();
+  }
+
+  private loadJsonFallback(): ClientKeyEntry[] {
     try {
       if (existsSync(this.jsonPath)) {
         const raw = readFileSync(this.jsonPath, "utf-8");
@@ -169,7 +191,6 @@ export class ClientKeyPersistence {
     } catch (jsonErr) {
       console.error(`[ClientKeyPersistence] JSON fallback load failed: ${jsonErr}`);
     }
-
     return [];
   }
 
@@ -224,6 +245,8 @@ export class ClientKeyPersistence {
         }
       }
     } catch (sqliteErr) {
+      this.sqliteFailed = true;
+      this.db = null;
       console.warn(`[ClientKeyPersistence] SQLite save failed, falling back to JSON: ${sqliteErr}`);
     }
 
@@ -239,6 +262,15 @@ export class ClientKeyPersistence {
     }
   }
 
+  private safeJsonParse<T>(val: string | null): T | null {
+    if (!val) return null;
+    try {
+      return JSON.parse(val) as T;
+    } catch {
+      return null;
+    }
+  }
+
   private rowToEntry(row: ClientKeyRow): ClientKeyEntry {
     return {
       id: row.id,
@@ -251,8 +283,8 @@ export class ClientKeyPersistence {
       max_tokens: row.max_tokens,
       used_tokens: row.used_tokens,
       max_concurrency: row.max_concurrency,
-      allowed_models: row.allowed_models ? (JSON.parse(row.allowed_models) as string[]) : null,
-      default_tools: row.default_tools ? (JSON.parse(row.default_tools) as string[]) : null,
+      allowed_models: this.safeJsonParse<string[]>(row.allowed_models),
+      default_tools: this.safeJsonParse<string[]>(row.default_tools),
       request_count: row.request_count,
       last_used_at: row.last_used_at,
       created_at: row.created_at,

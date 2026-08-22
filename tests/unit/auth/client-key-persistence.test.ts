@@ -116,5 +116,41 @@ describe("ClientKeyPersistence", () => {
     expect(loaded).toHaveLength(1);
     expect(loaded[0].id).toBe(sampleKey.id);
   });
+
+  it("migrates existing json keys when sqlite database is newly initialized and empty", () => {
+    // Write pre-existing keys to JSON file before SQLite exists
+    writeFileSync(jsonPath, JSON.stringify([sampleKey], null, 2), "utf-8");
+
+    const persistence = new ClientKeyPersistence(sqlitePath, jsonPath);
+    const loaded = persistence.load();
+
+    expect(loaded).toHaveLength(1);
+    expect(loaded[0].id).toBe(sampleKey.id);
+
+    // Verify it was persisted to SQLite as well
+    const persistenceAfter = new ClientKeyPersistence(sqlitePath, jsonPath);
+    const loadedFromSqlite = persistenceAfter.load();
+    expect(loadedFromSqlite).toHaveLength(1);
+    expect(loadedFromSqlite[0].id).toBe(sampleKey.id);
+  });
+
+  it("recovers from json on subsequent load after sqlite save failure", () => {
+    const persistence = new ClientKeyPersistence(sqlitePath, jsonPath);
+    persistence.save([sampleKey]);
+
+    // Force SQLite to fail by making SQLite path a directory or invalid
+    // Save a new key which will fallback to JSON
+    const newKey: ClientKeyEntry = { ...sampleKey, id: "ck_new456", name: "New Key" };
+    // Simulate SQLite becoming corrupt/unwritable
+    writeFileSync(sqlitePath, "CORRUPT SQLITE NOT A DB HEADER");
+
+    // Recreate persistence to test recovery
+    const persistence2 = new ClientKeyPersistence(sqlitePath, jsonPath);
+    persistence2.save([newKey]);
+
+    const loaded = persistence2.load();
+    expect(loaded).toHaveLength(1);
+    expect(loaded[0].id).toBe("ck_new456");
+  });
 });
 
