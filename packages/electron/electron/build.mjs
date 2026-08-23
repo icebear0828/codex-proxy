@@ -47,7 +47,7 @@ await build({
   // Mark .node files as external (native addons)
   loader: { ".node": "empty" },
   banner: {
-    js: `import { createRequire as __cpCreateRequire } from "module";\nconst require = __cpCreateRequire(import.meta.url);`,
+    js: `import { createRequire as __cpCreateRequire } from "module";\nimport { fileURLToPath as __cpFileURLToPath } from "url";\nimport { dirname as __cpDirname } from "path";\nconst require = __cpCreateRequire(import.meta.url);\nconst __filename = __cpFileURLToPath(import.meta.url);\nconst __dirname = __cpDirname(__filename);`,
   },
 });
 

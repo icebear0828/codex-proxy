@@ -69,7 +69,9 @@ describe("electron build (esbuild)", () => {
     const mod = await import(serverMjs);
     expect(typeof mod.setPaths).toBe("function");
     expect(typeof mod.startServer).toBe("function");
-  });
+    // Importing the ~2.4MB ESM bundle can exceed vitest's 5s default timeout
+    // on slower machines, so give it a generous window.
+  }, 60_000);
 
   // Regression: bundled CJS deps (e.g. `ws`) emit `__require("events")`
   // calls. In an ESM .mjs module `require` is undefined, so without a
@@ -82,6 +84,8 @@ describe("electron build (esbuild)", () => {
     const head = readFileSync(serverMjs, "utf-8").slice(0, 500);
     expect(head).toContain('from "module"');
     expect(head).toContain("createRequire");
+    expect(head).toContain("__filename");
+    expect(head).toContain("__dirname");
   });
 
   // Runtime regression: the banner-string assertion above is necessary
