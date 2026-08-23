@@ -5,18 +5,9 @@ export type DashboardAuthStatus = "loading" | "login" | "authenticated";
 /** Custom event fired when any fetch receives a 401 from dashboard endpoints. */
 export const AUTH_EXPIRED_EVENT = "codex:auth-expired";
 
-/** Paths or route patterns that are not dashboard-gate session expirations. */
-export function isNonDashboardSessionEndpoint(url: string): boolean {
-  return (
-    url.includes("/v1/") ||
-    url.includes("/v1beta/") ||
-    url.includes("/gemini/") ||
-    url.includes("/responses") ||
-    url.includes("/official-agent/") ||
-    url.includes("/auth/dashboard-login") ||
-    url.includes("/auth/dashboard-status") ||
-    url.includes("/auth/api-keys/models")
-  );
+/** Check whether a response indicates an expired dashboard session. */
+export function isDashboardAuthExpiredResponse(resp: Response): boolean {
+  return resp.status === 401 && resp.headers.get("x-dashboard-auth") === "required";
 }
 
 /**
@@ -31,14 +22,8 @@ export function installFetchInterceptor(): void {
   const originalFetch = window.fetch.bind(window);
   window.fetch = async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
     const resp = await originalFetch(input, init);
-    if (resp.status === 401) {
-      const isDashboardAuthRequired = resp.headers.get("x-dashboard-auth") === "required";
-      const url = typeof input === "string" ? input : input instanceof URL ? input.pathname : (input as Request).url;
-      const isNonDashboard = isNonDashboardSessionEndpoint(url);
-
-      if (isDashboardAuthRequired || !isNonDashboard) {
-        window.dispatchEvent(new Event(AUTH_EXPIRED_EVENT));
-      }
+    if (isDashboardAuthExpiredResponse(resp)) {
+      window.dispatchEvent(new Event(AUTH_EXPIRED_EVENT));
     }
     return resp;
   };

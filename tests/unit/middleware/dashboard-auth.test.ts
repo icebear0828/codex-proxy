@@ -119,6 +119,7 @@ describe("dashboard-auth middleware", () => {
     const res = await app.request("/auth/accounts");
     expect(res.status).toBe(401);
     expect(res.headers.get("x-dashboard-auth")).toBe("required");
+    expect(res.headers.get("access-control-expose-headers")).toBe("X-Dashboard-Auth");
     const body = await res.json();
     expect(body.error).toBeTruthy();
   });

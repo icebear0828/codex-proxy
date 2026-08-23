@@ -1,7 +1,8 @@
 function fallbackCopy(text: string): boolean {
   const ta = document.createElement("textarea");
   ta.value = text;
-  ta.style.cssText = "position:fixed;top:0;left:0;width:2em;height:2em;padding:0;border:none;outline:none;box-shadow:none;background:transparent;opacity:0";
+  ta.readOnly = true;
+  ta.style.cssText = "position:fixed;top:0;left:0;width:2em;height:2em;padding:0;border:none;outline:none;box-shadow:none;background:transparent;opacity:0;font-size:16px";
   document.body.appendChild(ta);
   ta.focus();
   ta.select();

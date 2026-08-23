@@ -22,6 +22,8 @@ describe("clipboardCopy", () => {
         createElement: vi.fn(() => ({
           style: {},
           value: "",
+          readOnly: false,
+          setAttribute: vi.fn(),
           focus: vi.fn(),
           select: vi.fn(),
           setSelectionRange: vi.fn(),

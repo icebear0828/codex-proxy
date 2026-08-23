@@ -18,9 +18,7 @@
 - 重构：抽象路由层的 JSON 拦截与 API Key 校验（提取统一的 API Key 提取器 `extractProxyApiKey`；由全局 `errorHandler` 统一拦截 SyntaxError 带来的 JSON 解析失败并返回 400）
 - 更新 `README_EN.md` 中过时的模型推荐说明以匹配最新的模型别名映射（`README_EN.md`）
 
-### Fixed
-
-- 修复局域网/非 HTTPS 环境下分发密钥创建后复制报错与第三方 API Key 探测误退出的问题：`ClientKeysPage` / `LogsPage` / `UpdateModal` 统一接入 `clipboardCopy` 安全剪贴板降级，解决 `navigator.clipboard` 在 non-secure context 下为 `undefined` 导致的 `TypeError: Cannot read properties of undefined (reading 'writeText')`；`dashboardAuth` 中间件注入 `X-Dashboard-Auth: required` 响应头，`use-dashboard-auth` 排除 `/auth/api-keys/models` 与 `/auth/dashboard-login` 等非会话过期 401 响应，避免添加第三方 Key 时被误踢回登录页。（`src/middleware/dashboard-auth.ts`、`shared/hooks/use-dashboard-auth.ts`、`web/src/pages/ClientKeysPage.tsx`、`web/src/pages/LogsPage.tsx`、`web/src/components/UpdateModal.tsx`）
+- 修复局域网/非 HTTPS 环境下分发密钥创建后复制报错与第三方 API Key 探测误退出的问题：`ClientKeysPage` / `LogsPage` / `UpdateModal` 统一接入 `clipboardCopy` 安全剪贴板降级（含 `readOnly` 与字号保护适配移动端），解决 `navigator.clipboard` 在 non-secure context 下为 `undefined` 导致的 `TypeError: Cannot read properties of undefined (reading 'writeText')`；`dashboardAuth` 中间件注入并暴露 `X-Dashboard-Auth: required` 响应头，`use-dashboard-auth` 精确基于该响应头判定会话过期，彻底杜绝添加第三方 Key 或非会话 401 响应时被误踢回登录页。（`src/middleware/dashboard-auth.ts`、`shared/hooks/use-dashboard-auth.ts`、`shared/utils/clipboard.ts`、`web/src/pages/ClientKeysPage.tsx`、`web/src/pages/LogsPage.tsx`、`web/src/components/UpdateModal.tsx`）
 - 修复分发 Key（Client Access Keys）页面创建与编辑弹窗背景透明问题：修正非标准 Tailwind 类名（`bg-surface-light`、`bg-surface-dark`、`border-border-light` 等），采用标准 `bg-white dark:bg-card-dark` 与 `border-slate-200 dark:border-border-dark` 确保弹窗遮罩及背景不透明显示。（`web/src/pages/ClientKeysPage.tsx`）
 
 ### Added

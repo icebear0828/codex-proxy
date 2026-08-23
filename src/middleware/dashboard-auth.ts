@@ -69,5 +69,6 @@ export async function dashboardAuth(c: Context, next: Next): Promise<Response | 
   // Not authenticated — reject
   c.status(401);
   c.header("X-Dashboard-Auth", "required");
+  c.header("Access-Control-Expose-Headers", "X-Dashboard-Auth");
   return c.json({ error: "Dashboard login required" });
 }

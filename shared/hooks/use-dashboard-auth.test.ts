@@ -1,22 +1,33 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { isNonDashboardSessionEndpoint } from "./use-dashboard-auth.js";
+import { isDashboardAuthExpiredResponse } from "./use-dashboard-auth.js";
 
-describe("isNonDashboardSessionEndpoint", () => {
-  it("recognizes proxy routes and third-party validation routes as non-dashboard session endpoints", () => {
-    expect(isNonDashboardSessionEndpoint("/auth/api-keys/models")).toBe(true);
-    expect(isNonDashboardSessionEndpoint("http://localhost:8080/auth/api-keys/models")).toBe(true);
-    expect(isNonDashboardSessionEndpoint("/auth/dashboard-login")).toBe(true);
-    expect(isNonDashboardSessionEndpoint("/auth/dashboard-status")).toBe(true);
-    expect(isNonDashboardSessionEndpoint("/v1/chat/completions")).toBe(true);
-    expect(isNonDashboardSessionEndpoint("/v1beta/models")).toBe(true);
-    expect(isNonDashboardSessionEndpoint("/responses")).toBe(true);
+describe("isDashboardAuthExpiredResponse", () => {
+  it("identifies 401 with x-dashboard-auth: required as expired", () => {
+    const expiredResp = new Response(JSON.stringify({ error: "Dashboard login required" }), {
+      status: 401,
+      headers: { "x-dashboard-auth": "required" },
+    });
+    expect(isDashboardAuthExpiredResponse(expiredResp)).toBe(true);
   });
 
-  it("does not classify dashboard protected endpoints as non-dashboard session endpoints", () => {
-    expect(isNonDashboardSessionEndpoint("/auth/accounts")).toBe(false);
-    expect(isNonDashboardSessionEndpoint("/auth/status")).toBe(false);
-    expect(isNonDashboardSessionEndpoint("/admin/rotation-settings")).toBe(false);
-    expect(isNonDashboardSessionEndpoint("/admin/client-keys")).toBe(false);
+  it("does not classify 401 without x-dashboard-auth header as expired", () => {
+    const provider401 = new Response(JSON.stringify({ error: "Unauthorized" }), {
+      status: 401,
+    });
+    expect(isDashboardAuthExpiredResponse(provider401)).toBe(false);
+  });
+
+  it("does not classify non-401 responses as expired", () => {
+    const okResp = new Response("{}", {
+      status: 200,
+      headers: { "x-dashboard-auth": "required" },
+    });
+    expect(isDashboardAuthExpiredResponse(okResp)).toBe(false);
+
+    const forbiddenResp = new Response("{}", {
+      status: 403,
+    });
+    expect(isDashboardAuthExpiredResponse(forbiddenResp)).toBe(false);
   });
 });
 
