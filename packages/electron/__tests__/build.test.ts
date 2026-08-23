@@ -148,4 +148,120 @@ describe("electron build (esbuild)", () => {
     expect(exitCode, `subprocess exited ${exitCode}\nstderr:\n${stderr}`).toBe(0);
     expect(stdout.trim()).toMatch(/^OK:.*WebSocket$/);
   });
+
+  it("server.mjs starts up, serves models, accounts, and client-keys via SQLite, and shuts down cleanly in native Node subprocess", () => {
+    buildOnce();
+    const serverMjs = resolve(DIST, "server.mjs");
+    const monorepoRoot = resolve(PKG_DIR, "..", "..");
+
+    const script = `
+      import { mkdtempSync, rmSync, existsSync } from "node:fs";
+      import { tmpdir } from "node:os";
+      import { join, resolve } from "node:path";
+      import { pathToFileURL } from "node:url";
+
+      const serverMjs = ${JSON.stringify(serverMjs)};
+      const monorepoRoot = ${JSON.stringify(monorepoRoot)};
+      const tempDir = mkdtempSync(join(tmpdir(), "cp-bundle-smoke-"));
+
+      try {
+        const mod = await import(pathToFileURL(serverMjs).href);
+        if (typeof mod.setPaths !== "function" || typeof mod.startServer !== "function") {
+          console.error("setPaths or startServer export missing from server.mjs");
+          process.exit(2);
+        }
+
+        mod.setPaths({
+          rootDir: monorepoRoot,
+          configDir: resolve(monorepoRoot, "config"),
+          dataDir: tempDir,
+          binDir: resolve(monorepoRoot, "bin"),
+          publicDir: resolve(monorepoRoot, "public"),
+        });
+
+        const server = await mod.startServer({ host: "127.0.0.1", port: 0 });
+        if (!server || typeof server.port !== "number" || typeof server.close !== "function") {
+          console.error("startServer did not return a valid ServerHandle");
+          process.exit(3);
+        }
+
+        const baseUrl = "http://127.0.0.1:" + server.port;
+
+        // 1. Verify models endpoint & model catalog loading
+        const modelsRes = await fetch(baseUrl + "/v1/models");
+        if (!modelsRes.ok) {
+          console.error("/v1/models returned HTTP " + modelsRes.status);
+          process.exit(4);
+        }
+        const modelsData = await modelsRes.json();
+        if (!modelsData || !Array.isArray(modelsData.data)) {
+          console.error("/v1/models returned invalid data shape");
+          process.exit(5);
+        }
+
+        // 2. Verify accounts endpoint (triggers AccountPersistence + SQLite table creation/query)
+        const accountsRes = await fetch(baseUrl + "/auth/accounts");
+        if (!accountsRes.ok) {
+          console.error("/auth/accounts returned HTTP " + accountsRes.status);
+          process.exit(6);
+        }
+        const accountsData = await accountsRes.json();
+        if (!accountsData || typeof accountsData !== "object") {
+          console.error("/auth/accounts returned invalid data shape");
+          process.exit(7);
+        }
+
+        // 3. Verify client-keys endpoint (triggers ClientKeyPersistence + SQLite table creation/query)
+        const cfg = mod.getConfig();
+        const masterKey = cfg?.server?.proxy_api_key;
+        const headers = masterKey ? { Authorization: "Bearer " + masterKey } : {};
+        const keysRes = await fetch(baseUrl + "/admin/client-keys", { headers });
+        if (!keysRes.ok) {
+          console.error("/admin/client-keys returned HTTP " + keysRes.status);
+          process.exit(8);
+        }
+        const keysData = await keysRes.json();
+        if (!keysData || !Array.isArray(keysData.keys)) {
+          console.error("/admin/client-keys returned invalid data shape");
+          process.exit(9);
+        }
+
+        await server.close();
+        console.log("OK:SERVER_LIFECYCLE");
+      } catch (err) {
+        console.error("Subprocess runtime error:", err);
+        process.exit(10);
+      } finally {
+        try {
+          if (existsSync(tempDir)) {
+            rmSync(tempDir, { recursive: true, force: true });
+          }
+        } catch {
+          // ignore cleanup failure in test scratchpad
+        }
+      }
+    `;
+
+    let stdout = "";
+    let stderr = "";
+    let exitCode = 0;
+    try {
+      stdout = execFileSync(
+        "node",
+        ["--input-type=module", "-e", script],
+        { cwd: PKG_DIR, timeout: 30_000, encoding: "utf-8", stdio: ["ignore", "pipe", "pipe"] },
+      );
+    } catch (err: unknown) {
+      const e = err as { stdout?: string; stderr?: string; status?: number; message?: string };
+      stdout = e.stdout ?? "";
+      stderr = e.stderr ?? e.message ?? "";
+      exitCode = e.status ?? -1;
+    }
+
+    expect(stderr, `subprocess stderr:\n${stderr}\nstdout:\n${stdout}`).not.toMatch(
+      /ReferenceError|Dynamic require of|TypeError/,
+    );
+    expect(exitCode, `subprocess exited ${exitCode}\nstderr:\n${stderr}`).toBe(0);
+    expect(stdout).toContain("OK:SERVER_LIFECYCLE");
+  });
 });
