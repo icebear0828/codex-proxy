@@ -17,6 +17,24 @@ describe("ClientKeysPage Web Component", () => {
     expect(source).toContain("createdSecretKey");
     expect(source).toContain("totalCostUsd");
     expect(source).toContain("totalRequests");
+    expect(source).toContain("clipboardCopy");
+    expect(source).not.toContain("navigator.clipboard.writeText");
+  });
+
+  it("ensures LogsPage and UpdateModal use clipboardCopy instead of raw navigator.clipboard", () => {
+    const logsSource = readFileSync(
+      resolve(__dirname, "../../../web/src/pages/LogsPage.tsx"),
+      "utf-8",
+    );
+    expect(logsSource).toContain("clipboardCopy");
+    expect(logsSource).not.toContain("navigator.clipboard.writeText");
+
+    const updateModalSource = readFileSync(
+      resolve(__dirname, "../../../web/src/components/UpdateModal.tsx"),
+      "utf-8",
+    );
+    expect(updateModalSource).toContain("clipboardCopy");
+    expect(updateModalSource).not.toContain("navigator.clipboard.writeText");
   });
 
   it("is registered in App.tsx navigation and main switch", () => {

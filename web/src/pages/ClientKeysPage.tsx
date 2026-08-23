@@ -2,6 +2,7 @@ import { useState } from "preact/hooks";
 import type { FunctionalComponent, JSX } from "preact";
 import { useClientKeys } from "../../../shared/hooks/use-client-keys";
 import { useT } from "../../../shared/i18n/context";
+import { clipboardCopy } from "../../../shared/utils/clipboard";
 import type {
   ClientKeyPublicSummary,
   CreateClientKeyInput,
@@ -238,9 +239,9 @@ export const ClientKeysPage: FunctionalComponent<ClientKeysPageProps> = ({
     }
   };
 
-  const handleCopySecret = () => {
+  const handleCopySecret = async () => {
     if (createdSecretKey) {
-      navigator.clipboard.writeText(createdSecretKey);
+      await clipboardCopy(createdSecretKey);
       setCopiedKey(true);
       setTimeout(() => setCopiedKey(false), 2000);
     }

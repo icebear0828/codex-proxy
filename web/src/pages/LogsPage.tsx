@@ -3,6 +3,7 @@ import { useT } from "../../../shared/i18n/context";
 import { useLogs, type LogRecord } from "../../../shared/hooks/use-logs";
 import { useSettings } from "../../../shared/hooks/use-settings";
 import { useGeneralSettings } from "../../../shared/hooks/use-general-settings";
+import { clipboardCopy } from "../../../shared/utils/clipboard";
 import { CopyButton } from "../components/CopyButton";
 
 function formatDuration(ms?: number | null): string {
@@ -40,7 +41,7 @@ export function LogsPage({ embedded = false }: { embedded?: boolean }) {
   const copyDetailsJson = useCallback(async () => {
     if (!logs.selected) return;
     try {
-      await navigator.clipboard.writeText(JSON.stringify(logs.selected, null, 2));
+      await clipboardCopy(JSON.stringify(logs.selected, null, 2));
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     } catch { /* ignore */ }
