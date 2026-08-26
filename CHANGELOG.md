@@ -10,6 +10,7 @@
 
 ### Changed
 
+- Dashboard 日志页面完善深色模式适配，补齐筛选控件、统计卡片、详情抽屉和 JSON 代码块的深色状态；复制 JSON 成功后改为绿色反馈（`web/src/pages/LogsPage.tsx`）。
 - 账号持久化从 `accounts.json` 主存储迁移到 `accounts.sqlite`，启动时自动从旧 JSON 迁移并继续保留 `accounts.json` 镜像用于降级/回滚；批量导入改为持久化批处理，避免每个账号同步重写整份 JSON 导致大批量导入卡死。（#657）
 - 重构：消除类型守卫 `isRecord` 的多处重复声明（收拢翻译层与路由层到 `shared-utils.ts`）
 - 重构：合并推理预算映射表 `REASONING_EFFORT_BUDGET`（提取为 `shared-utils.ts` 的公共常量）
