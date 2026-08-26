@@ -1,6 +1,6 @@
 /** @vitest-environment jsdom */
 import { describe, it, expect, vi, afterEach } from "vitest";
-import { render, screen, fireEvent, cleanup } from "@testing-library/preact";
+import { render, screen, fireEvent, cleanup, waitFor } from "@testing-library/preact";
 import { I18nProvider } from "../../../../shared/i18n/context";
 
 const mockLogs = vi.hoisted(() => ({
@@ -15,6 +15,10 @@ const mockGeneralSettings = vi.hoisted(() => ({
   useGeneralSettings: vi.fn(),
 }));
 
+const mockClipboard = vi.hoisted(() => ({
+  clipboardCopy: vi.fn(async () => true),
+}));
+
 vi.mock("../../../../shared/hooks/use-logs", () => ({
   useLogs: mockLogs.useLogs,
 }));
@@ -25,6 +29,10 @@ vi.mock("../../../../shared/hooks/use-settings", () => ({
 
 vi.mock("../../../../shared/hooks/use-general-settings", () => ({
   useGeneralSettings: mockGeneralSettings.useGeneralSettings,
+}));
+
+vi.mock("../../../../shared/utils/clipboard", () => ({
+  clipboardCopy: mockClipboard.clipboardCopy,
 }));
 
 import { LogsPage } from "../LogsPage";
@@ -152,6 +160,34 @@ describe("LogsPage", () => {
       </I18nProvider>,
     );
     expect(screen.queryByText("Details")).toBeNull();
+  });
+
+  it("shows a green success state after copying JSON", async () => {
+    mockGeneralSettings.useGeneralSettings.mockReturnValue(makeGeneralSettings());
+    mockLogs.useLogs.mockReturnValue(
+      makeLogsState({
+        selected: {
+          id: "1",
+          requestId: "r1",
+          direction: "ingress",
+          ts: "2026-04-15T00:00:01.000Z",
+          method: "POST",
+          path: "/v1/messages",
+          model: "gpt-5.5",
+        },
+      }),
+    );
+
+    renderLogsPage();
+    const copyButton = screen.getByText("Copy JSON").closest("button");
+    expect(copyButton).toBeTruthy();
+    fireEvent.click(copyButton!);
+
+    await waitFor(() => {
+      expect(screen.getByText("Copied!")).toBeTruthy();
+      expect(copyButton?.className).toContain("text-green-700");
+    });
+    expect(mockClipboard.clipboardCopy).toHaveBeenCalledTimes(1);
   });
 
   it("renders zero latency as 0ms", () => {

@@ -143,7 +143,9 @@ export function LogsPage({ embedded = false }: { embedded?: boolean }) {
       <div class="flex items-center gap-3 flex-wrap">
         <button
           class={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
-            logs.state?.enabled ? "bg-primary-container text-primary" : "bg-slate-200 text-slate-600"
+            logs.state?.enabled
+              ? "bg-primary-container text-primary"
+              : "bg-slate-200 dark:bg-border-dark text-slate-600 dark:text-text-dim"
           }`}
           onClick={() => logs.setLogState({ enabled: !logs.state?.enabled })}
         >
@@ -153,10 +155,10 @@ export function LogsPage({ embedded = false }: { embedded?: boolean }) {
         <button
           class={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
             !logs.state?.enabled
-              ? "bg-slate-100 text-slate-400 cursor-not-allowed"
+              ? "bg-slate-100 dark:bg-border-dark/60 text-slate-400 dark:text-text-dim cursor-not-allowed"
               : logs.state?.paused
                 ? "bg-warning-container text-warning"
-                : "bg-slate-200 text-slate-600"
+                : "bg-slate-200 dark:bg-border-dark text-slate-600 dark:text-text-dim"
           }`}
           onClick={() => logs.state?.enabled && logs.setLogState({ paused: !logs.state?.paused })}
           disabled={!logs.state?.enabled}
@@ -171,7 +173,7 @@ export function LogsPage({ embedded = false }: { embedded?: boolean }) {
               class={`px-2.5 py-1 rounded-md text-xs font-medium transition-colors ${
                 logs.direction === dir
                   ? "bg-primary-action text-white shadow-sm"
-                  : "text-slate-600 dark:text-text-dim hover:text-slate-900"
+                  : "text-slate-600 dark:text-text-dim hover:text-slate-900 dark:hover:text-text-main"
               }`}
               onClick={() => logs.setDirection(dir)}
             >
@@ -196,14 +198,14 @@ export function LogsPage({ embedded = false }: { embedded?: boolean }) {
         />
 
         <button
-          class="px-3 py-1.5 rounded-lg text-xs font-medium bg-rose-50 dark:bg-rose-950/40 text-rose-600 dark:text-rose-400 border border-rose-200/60 dark:border-rose-800 hover:bg-rose-100 transition-colors"
+          class="px-3 py-1.5 rounded-lg text-xs font-medium bg-rose-50 dark:bg-rose-950/40 text-rose-600 dark:text-rose-400 border border-rose-200/60 dark:border-rose-800 hover:bg-rose-100 dark:hover:bg-rose-900/60 transition-colors"
           onClick={() => void logs.clearLogs()}
           title={t("logsClear")}
         >
           {t("logsClear")}
         </button>
 
-        <div class="text-xs text-slate-500 font-medium ml-auto">
+        <div class="text-xs text-slate-500 dark:text-text-dim font-medium ml-auto">
           {t("logsCount", { count: logs.total })}
         </div>
       </div>
@@ -211,46 +213,46 @@ export function LogsPage({ embedded = false }: { embedded?: boolean }) {
       {/* Observability Metrics Banner */}
       <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
         <div class="p-3 bg-white dark:bg-bg-dark border border-slate-200 dark:border-border-dark rounded-lg shadow-sm">
-          <div class="text-[11px] text-slate-500 font-medium">{t("logsAvgTtft")}</div>
+          <div class="text-[11px] text-slate-500 dark:text-text-dim font-medium">{t("logsAvgTtft")}</div>
           <div class="text-lg font-semibold text-slate-800 dark:text-white mt-1">
             {formatDuration(stats.avgTtft)}
           </div>
         </div>
 
         <div class="p-3 bg-white dark:bg-bg-dark border border-slate-200 dark:border-border-dark rounded-lg shadow-sm">
-          <div class="text-[11px] text-slate-500 font-medium">{t("logsAvgSpeed")}</div>
+          <div class="text-[11px] text-slate-500 dark:text-text-dim font-medium">{t("logsAvgSpeed")}</div>
           <div class="text-lg font-semibold text-emerald-600 dark:text-emerald-400 mt-1">
             {formatSpeed(stats.avgSpeed)}
           </div>
         </div>
 
         <div class="p-3 bg-white dark:bg-bg-dark border border-slate-200 dark:border-border-dark rounded-lg shadow-sm">
-          <div class="text-[11px] text-slate-500 font-medium">{t("logsAvgLatency")}</div>
+          <div class="text-[11px] text-slate-500 dark:text-text-dim font-medium">{t("logsAvgLatency")}</div>
           <div class="text-lg font-semibold text-slate-800 dark:text-white mt-1">
             {formatDuration(stats.avgLatency)}
           </div>
         </div>
 
         <div class="p-3 bg-white dark:bg-bg-dark border border-slate-200 dark:border-border-dark rounded-lg shadow-sm">
-          <div class="text-[11px] text-slate-500 font-medium">{t("logsTotalCost")}</div>
+          <div class="text-[11px] text-slate-500 dark:text-text-dim font-medium">{t("logsTotalCost")}</div>
           <div class="text-lg font-semibold text-amber-600 dark:text-amber-400 mt-1">
             {stats.totalCost > 0 ? `$${stats.totalCost.toFixed(4)}` : "$0.00"}
           </div>
         </div>
 
         <div class="p-3 bg-white dark:bg-bg-dark border border-slate-200 dark:border-border-dark rounded-lg shadow-sm">
-          <div class="text-[11px] text-slate-500 font-medium">{t("logsTokens")}</div>
+          <div class="text-[11px] text-slate-500 dark:text-text-dim font-medium">{t("logsTokens")}</div>
           <div class="text-lg font-semibold text-slate-800 dark:text-white mt-1">
             {formatTokens(stats.totalInputTokens + stats.totalOutputTokens)}
           </div>
-          <div class="text-[10px] text-slate-400">
+          <div class="text-[10px] text-slate-400 dark:text-text-dim">
             {formatTokens(stats.totalInputTokens)} in / {formatTokens(stats.totalOutputTokens)} out
           </div>
         </div>
 
         <div class="p-3 bg-white dark:bg-bg-dark border border-slate-200 dark:border-border-dark rounded-lg shadow-sm">
-          <div class="text-[11px] text-slate-500 font-medium">{t("logsSuccessRate")}</div>
-          <div class={`text-lg font-semibold mt-1 ${stats.successRate >= 95 ? "text-green-600" : "text-amber-500"}`}>
+          <div class="text-[11px] text-slate-500 dark:text-text-dim font-medium">{t("logsSuccessRate")}</div>
+          <div class={`text-lg font-semibold mt-1 ${stats.successRate >= 95 ? "text-green-600 dark:text-green-400" : "text-amber-500 dark:text-amber-400"}`}>
             {stats.successRate}%
           </div>
         </div>
@@ -262,7 +264,7 @@ export function LogsPage({ embedded = false }: { embedded?: boolean }) {
         <div class="flex-1 min-w-0">
           <div class="border border-slate-200 dark:border-border-dark rounded-lg overflow-hidden bg-white dark:bg-bg-dark shadow-sm">
             <div class="w-full">
-              <div class="flex items-center text-xs text-slate-500 font-medium px-3 py-2.5 bg-slate-50 dark:bg-bg-dark border-b border-slate-200 dark:border-border-dark gap-2">
+              <div class="flex items-center text-xs text-slate-500 dark:text-text-dim font-medium px-3 py-2.5 bg-slate-50 dark:bg-bg-dark border-b border-slate-200 dark:border-border-dark gap-2">
                 <div class="w-[68px] shrink-0">{t("logsTime")}</div>
                 <div class="w-[38px] shrink-0 text-center">{t("logsStatus")}</div>
                 <div class="w-[42px] shrink-0 text-center">{t("logsDirection")}</div>
@@ -274,10 +276,10 @@ export function LogsPage({ embedded = false }: { embedded?: boolean }) {
               </div>
 
               {logs.loading && (
-                <div class="p-6 text-center text-xs text-slate-500">{t("logsLoading")}</div>
+                <div class="p-6 text-center text-xs text-slate-500 dark:text-text-dim">{t("logsLoading")}</div>
               )}
               {!logs.loading && list.length === 0 && (
-                <div class="p-6 text-center text-xs text-slate-500">{t("logsEmpty")}</div>
+                <div class="p-6 text-center text-xs text-slate-500 dark:text-text-dim">{t("logsEmpty")}</div>
               )}
 
               <div class="max-h-[520px] overflow-y-auto divide-y divide-slate-100 dark:divide-border-dark">
@@ -299,7 +301,7 @@ export function LogsPage({ embedded = false }: { embedded?: boolean }) {
                       }`}
                       onClick={() => logs.selectLog(logs.selected?.id === row.id ? null : row.id)}
                     >
-                      <div class="w-[68px] shrink-0 text-slate-500 font-mono text-[11px] truncate">{row.time}</div>
+                      <div class="w-[68px] shrink-0 text-slate-500 dark:text-text-dim font-mono text-[11px] truncate">{row.time}</div>
                       <div class="w-[38px] shrink-0 text-center">
                         <span class={`inline-block px-1.5 py-0.5 rounded text-[10px] font-mono font-medium ${statusClass}`}>
                           {row.status ?? "-"}
@@ -321,7 +323,7 @@ export function LogsPage({ embedded = false }: { embedded?: boolean }) {
                           {row.model || row.path}
                         </div>
                         {row.model && (
-                          <div class="text-[10px] text-slate-400 truncate">{row.path}</div>
+                          <div class="text-[10px] text-slate-400 dark:text-text-dim truncate">{row.path}</div>
                         )}
                       </div>
                       <div class="w-[58px] shrink-0 font-mono text-right text-slate-600 dark:text-slate-300 text-[11px]">
@@ -343,7 +345,7 @@ export function LogsPage({ embedded = false }: { embedded?: boolean }) {
 
                 <div class="flex items-center justify-between px-3 py-2.5 border-t border-slate-200 dark:border-border-dark text-xs text-slate-500 bg-slate-50 dark:bg-bg-dark">
                   <button
-                    class="px-2.5 py-1 rounded bg-white dark:bg-border-dark border border-slate-200 dark:border-border-dark disabled:opacity-40 disabled:cursor-not-allowed hover:bg-slate-50 transition-colors"
+                      class="px-2.5 py-1 rounded bg-white dark:bg-border-dark text-slate-600 dark:text-text-dim border border-slate-200 dark:border-border-dark disabled:opacity-40 disabled:cursor-not-allowed hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors"
                     disabled={!logs.hasPrev}
                     onClick={logs.prevPage}
                   >
@@ -351,7 +353,7 @@ export function LogsPage({ embedded = false }: { embedded?: boolean }) {
                   </button>
                   <span class="font-medium">{t("logsPageSummary", { total: logs.total, range: pageInfo })}</span>
                   <button
-                    class="px-2.5 py-1 rounded bg-white dark:bg-border-dark border border-slate-200 dark:border-border-dark disabled:opacity-40 disabled:cursor-not-allowed hover:bg-slate-50 transition-colors"
+                      class="px-2.5 py-1 rounded bg-white dark:bg-border-dark text-slate-600 dark:text-text-dim border border-slate-200 dark:border-border-dark disabled:opacity-40 disabled:cursor-not-allowed hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors"
                     disabled={!logs.hasNext}
                     onClick={logs.nextPage}
                   >
@@ -382,7 +384,7 @@ export function LogsPage({ embedded = false }: { embedded?: boolean }) {
                       class={`px-2 py-0.5 text-[11px] rounded font-medium transition-colors ${
                         detailTab === "formatted"
                           ? "bg-white dark:bg-bg-dark text-primary shadow-sm"
-                          : "text-slate-500 hover:text-slate-900"
+                          : "text-slate-500 dark:text-text-dim hover:text-slate-900 dark:hover:text-text-main"
                       }`}
                       onClick={() => setDetailTab("formatted")}
                     >
@@ -392,7 +394,7 @@ export function LogsPage({ embedded = false }: { embedded?: boolean }) {
                       class={`px-2 py-0.5 text-[11px] rounded font-medium transition-colors ${
                         detailTab === "raw"
                           ? "bg-white dark:bg-bg-dark text-primary shadow-sm"
-                          : "text-slate-500 hover:text-slate-900"
+                          : "text-slate-500 dark:text-text-dim hover:text-slate-900 dark:hover:text-text-main"
                       }`}
                       onClick={() => setDetailTab("raw")}
                     >
@@ -401,7 +403,11 @@ export function LogsPage({ embedded = false }: { embedded?: boolean }) {
                   </div>
 
                   <button
-                    class="px-2 py-1 rounded bg-slate-100 dark:bg-border-dark hover:bg-slate-200 text-slate-600 dark:text-text-dim text-[11px] font-medium transition-colors"
+                    class={`px-2 py-1 rounded text-[11px] font-medium transition-colors ${
+                      copied
+                        ? "bg-green-50 dark:bg-green-900/30 text-green-700 dark:text-green-300 border border-green-200 dark:border-green-800"
+                        : "bg-slate-100 dark:bg-border-dark text-slate-600 dark:text-text-dim hover:bg-slate-200 dark:hover:bg-slate-700"
+                    }`}
                     onClick={copyDetailsJson}
                   >
                     {copied ? t("logsCopied") : t("logsCopyJson")}
@@ -425,28 +431,28 @@ export function LogsPage({ embedded = false }: { embedded?: boolean }) {
                     {/* KPI 4-Card Grid */}
                     <div class="grid grid-cols-2 gap-2">
                       <div class="p-2.5 rounded-lg bg-slate-50 dark:bg-border-dark/30 border border-slate-200/60 dark:border-border-dark">
-                        <div class="text-[10px] text-slate-400 font-medium">{t("logsTtft")}</div>
+                        <div class="text-[10px] text-slate-400 dark:text-text-dim font-medium">{t("logsTtft")}</div>
                         <div class="text-base font-semibold font-mono text-slate-800 dark:text-white mt-0.5">
                           {formatDuration(logs.selected.ttftMs)}
                         </div>
                       </div>
 
                       <div class="p-2.5 rounded-lg bg-slate-50 dark:bg-border-dark/30 border border-slate-200/60 dark:border-border-dark">
-                        <div class="text-[10px] text-slate-400 font-medium">{t("logsSpeed")}</div>
+                        <div class="text-[10px] text-slate-400 dark:text-text-dim font-medium">{t("logsSpeed")}</div>
                         <div class="text-base font-semibold font-mono text-emerald-600 dark:text-emerald-400 mt-0.5">
                           {formatSpeed(logs.selected.tokensPerSecond)}
                         </div>
                       </div>
 
                       <div class="p-2.5 rounded-lg bg-slate-50 dark:bg-border-dark/30 border border-slate-200/60 dark:border-border-dark">
-                        <div class="text-[10px] text-slate-400 font-medium">{t("logsCost")}</div>
+                        <div class="text-[10px] text-slate-400 dark:text-text-dim font-medium">{t("logsCost")}</div>
                         <div class="text-base font-semibold font-mono text-amber-600 dark:text-amber-400 mt-0.5">
                           {formatCost(logs.selected.costUsd)}
                         </div>
                       </div>
 
                       <div class="p-2.5 rounded-lg bg-slate-50 dark:bg-border-dark/30 border border-slate-200/60 dark:border-border-dark">
-                        <div class="text-[10px] text-slate-400 font-medium">{t("logsLatency")}</div>
+                        <div class="text-[10px] text-slate-400 dark:text-text-dim font-medium">{t("logsLatency")}</div>
                         <div class="text-base font-semibold font-mono text-slate-800 dark:text-white mt-0.5">
                           {logs.selected.latencyMs != null ? `${logs.selected.latencyMs}ms` : "-"}
                         </div>
@@ -461,20 +467,20 @@ export function LogsPage({ embedded = false }: { embedded?: boolean }) {
                         </div>
                         <div class="grid grid-cols-2 gap-2 text-[11px]">
                           <div>
-                            <span class="text-slate-400">{t("logsPromptTokens")}:</span>{" "}
+                            <span class="text-slate-400 dark:text-text-dim">{t("logsPromptTokens")}:</span>{" "}
                             <span class="font-mono font-medium">{logs.selected.usage.input_tokens ?? 0}</span>
                           </div>
                           <div>
-                            <span class="text-slate-400">{t("logsCompletionTokens")}:</span>{" "}
+                            <span class="text-slate-400 dark:text-text-dim">{t("logsCompletionTokens")}:</span>{" "}
                             <span class="font-mono font-medium">{logs.selected.usage.output_tokens ?? 0}</span>
                           </div>
                           {logs.selected.usage.cached_tokens != null && logs.selected.usage.cached_tokens > 0 && (
                             <div class="col-span-2">
-                              <span class="text-slate-400">{t("logsCachedTokens")}:</span>{" "}
+                              <span class="text-slate-400 dark:text-text-dim">{t("logsCachedTokens")}:</span>{" "}
                               <span class="font-mono font-medium text-primary">
                                 {logs.selected.usage.cached_tokens}
                                 {logs.selected.usage.input_tokens > 0 && (
-                                  <span class="text-xs text-slate-400 ml-1">
+                                  <span class="text-xs text-slate-400 dark:text-text-dim ml-1">
                                     ({((logs.selected.usage.cached_tokens / logs.selected.usage.input_tokens) * 100).toFixed(1)}%)
                                   </span>
                                 )}
@@ -483,7 +489,7 @@ export function LogsPage({ embedded = false }: { embedded?: boolean }) {
                           )}
                           {logs.selected.usage.reasoning_tokens != null && logs.selected.usage.reasoning_tokens > 0 && (
                             <div class="col-span-2">
-                              <span class="text-slate-400">{t("logsReasoningTokens")}:</span>{" "}
+                              <span class="text-slate-400 dark:text-text-dim">{t("logsReasoningTokens")}:</span>{" "}
                               <span class="font-mono font-medium text-indigo-600 dark:text-indigo-400">
                                 {logs.selected.usage.reasoning_tokens}
                               </span>
@@ -499,28 +505,28 @@ export function LogsPage({ embedded = false }: { embedded?: boolean }) {
                         {t("logsMetadata")}
                       </div>
                       <div class="flex justify-between py-0.5 border-b border-slate-100 dark:border-border-dark">
-                        <span class="text-slate-400">{t("logsRequestId")}</span>
+                        <span class="text-slate-400 dark:text-text-dim">{t("logsRequestId")}</span>
                         <span class="font-mono text-slate-700 dark:text-slate-200 select-all">{logs.selected.requestId}</span>
                       </div>
                       {logs.selected.model && (
                         <div class="flex justify-between py-0.5 border-b border-slate-100 dark:border-border-dark">
-                          <span class="text-slate-400">{t("logsModel")}</span>
+                          <span class="text-slate-400 dark:text-text-dim">{t("logsModel")}</span>
                           <span class="font-medium text-slate-700 dark:text-slate-200">{logs.selected.model}</span>
                         </div>
                       )}
                       {logs.selected.provider && (
                         <div class="flex justify-between py-0.5 border-b border-slate-100 dark:border-border-dark">
-                          <span class="text-slate-400">{t("logsProvider")}</span>
+                          <span class="text-slate-400 dark:text-text-dim">{t("logsProvider")}</span>
                           <span class="text-slate-700 dark:text-slate-200">{logs.selected.provider}</span>
                         </div>
                       )}
                       <div class="flex justify-between py-0.5 border-b border-slate-100 dark:border-border-dark">
-                        <span class="text-slate-400">{t("logsPath")}</span>
+                        <span class="text-slate-400 dark:text-text-dim">{t("logsPath")}</span>
                         <span class="font-mono text-slate-700 dark:text-slate-200">{logs.selected.method} {logs.selected.path}</span>
                       </div>
                       {logs.selected.stream !== undefined && (
                         <div class="flex justify-between py-0.5">
-                          <span class="text-slate-400">{t("logsStreaming")}</span>
+                          <span class="text-slate-400 dark:text-text-dim">{t("logsStreaming")}</span>
                           <span class="text-slate-700 dark:text-slate-200">
                             {logs.selected.stream ? t("logsStreaming") : t("logsNonStreaming")}
                           </span>
@@ -534,7 +540,7 @@ export function LogsPage({ embedded = false }: { embedded?: boolean }) {
                         <div class="px-3 py-1.5 bg-slate-50 dark:bg-border-dark/50 text-[11px] font-semibold text-slate-700 dark:text-slate-200 border-b border-slate-200 dark:border-border-dark flex justify-between items-center">
                           <span>{t("logsRequestPayload")}</span>
                         </div>
-                        <pre class="p-3 bg-slate-900 text-slate-100 text-[11px] font-mono whitespace-pre-wrap overflow-x-auto max-h-48">
+                        <pre class="p-3 bg-slate-900 dark:bg-[#0b1220] text-slate-100 text-[11px] font-mono whitespace-pre-wrap overflow-x-auto max-h-48">
                           {JSON.stringify(logs.selected.request, null, 2)}
                         </pre>
                       </div>
@@ -546,7 +552,7 @@ export function LogsPage({ embedded = false }: { embedded?: boolean }) {
                         <div class="px-3 py-1.5 bg-slate-50 dark:bg-border-dark/50 text-[11px] font-semibold text-slate-700 dark:text-slate-200 border-b border-slate-200 dark:border-border-dark">
                           <span>{t("logsResponsePayload")}</span>
                         </div>
-                        <pre class="p-3 bg-slate-900 text-slate-100 text-[11px] font-mono whitespace-pre-wrap overflow-x-auto max-h-48">
+                        <pre class="p-3 bg-slate-900 dark:bg-[#0b1220] text-slate-100 text-[11px] font-mono whitespace-pre-wrap overflow-x-auto max-h-48">
                           {logs.selected.error
                             ? logs.selected.error
                             : JSON.stringify(logs.selected.response, null, 2)}
@@ -555,7 +561,7 @@ export function LogsPage({ embedded = false }: { embedded?: boolean }) {
                     )}
                   </div>
                 ) : (
-                  <pre class="bg-slate-900 text-slate-100 p-3 rounded-lg text-[11px] font-mono whitespace-pre-wrap overflow-auto max-h-[520px]">
+                  <pre class="bg-slate-900 dark:bg-[#0b1220] text-slate-100 p-3 rounded-lg text-[11px] font-mono whitespace-pre-wrap overflow-auto max-h-[520px]">
                     {JSON.stringify(logs.selected, null, 2)}
                   </pre>
                 )}
