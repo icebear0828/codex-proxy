@@ -3,6 +3,10 @@ import { useT } from "../../../shared/i18n/context";
 import { useGeneralSettings } from "../../../shared/hooks/use-general-settings";
 import { useSettings } from "../../../shared/hooks/use-settings";
 
+interface ModelAliasSettingsProps {
+  models: string[];
+}
+
 interface AliasRow {
   alias: string;
   target: string;
@@ -37,7 +41,7 @@ function rowsToAliases(rows: AliasRow[]): {
   return { aliases, error: null };
 }
 
-export function ModelAliasSettings() {
+export function ModelAliasSettings({ models }: ModelAliasSettingsProps) {
   const t = useT();
   const settings = useSettings();
   const gs = useGeneralSettings(settings.apiKey);
@@ -93,6 +97,14 @@ export function ModelAliasSettings() {
         <div class="px-5 pb-5 border-t border-slate-100 dark:border-border-dark pt-4 space-y-4">
           <p class="text-xs text-slate-400 dark:text-text-dim">{t("modelAliasSettingsHint")}</p>
 
+          {models && models.length > 0 && (
+            <datalist id="model-target-options">
+              {models.map((m) => (
+                <option key={m} value={m}>{m}</option>
+              ))}
+            </datalist>
+          )}
+
           <div class="space-y-2">
             <div class="hidden sm:grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)_40px] gap-2 text-[0.7rem] font-semibold uppercase text-slate-400 dark:text-text-dim">
               <span>{t("modelAliasName")}</span>
@@ -105,7 +117,7 @@ export function ModelAliasSettings() {
               </div>
             )}
             {rows.map((row, idx) => (
-              <div key={`${idx}-${row.alias}`} class="grid grid-cols-1 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_40px] gap-2">
+              <div key={idx} class="grid grid-cols-1 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_40px] gap-2">
                 <input
                   class={inputCls}
                   value={row.alias}
@@ -122,6 +134,7 @@ export function ModelAliasSettings() {
                     itemIdx === idx ? { ...item, target: (e.target as HTMLInputElement).value } : item
                   )))}
                   placeholder="gpt-5.5 or openai:gpt-4o"
+                  list="model-target-options"
                   aria-label={t("modelAliasTarget")}
                 />
                 <button

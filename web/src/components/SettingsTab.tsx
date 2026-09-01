@@ -31,7 +31,7 @@ export function SettingsTab(props: SettingsTabProps) {
   return (
     <div class="flex flex-col gap-6">
       <GeneralSettings layoutMode={props.layoutMode} onLayoutModeChange={props.onLayoutModeChange} />
-      <ModelAliasSettings />
+      <ModelAliasSettings models={props.models} />
       <LogsSettings />
       <QuotaSettings />
       <RotationSettings />

@@ -43,7 +43,7 @@ describe("ModelAliasSettings", () => {
 
     render(
       <I18nProvider>
-        <ModelAliasSettings />
+        <ModelAliasSettings models={["gpt-5.5", "openai:gpt-4o", "sonnet-local"]} />
       </I18nProvider>,
     );
 

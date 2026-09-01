@@ -61,6 +61,7 @@ interface HeaderProps {
 export function Header({ onAddAccount, onCheckUpdate, onOpenUpdateModal, checking, updateStatusMsg, updateStatusColor, version, commit, hasUpdate, onLogout, unreadErrors, showBrand = true, onOpenSidebar }: HeaderProps) {
   const { lang, setLang, t } = useI18n();
   const { isDark, toggle: toggleTheme } = useTheme();
+  const [fabOpen, setFabOpen] = useState(false);
   const [langMenuOpen, setLangMenuOpen] = useState(false);
   const langMenuRef = useRef<HTMLDivElement>(null);
 
@@ -80,13 +81,13 @@ export function Header({ onAddAccount, onCheckUpdate, onOpenUpdateModal, checkin
       <div class={`${showBrand ? "px-4 md:px-8 lg:px-40" : "px-4 md:px-8 lg:px-10"} flex h-16 items-center justify-center`}>
         <div class={`flex w-full ${showBrand ? "max-w-[960px] justify-between" : "max-w-none justify-between lg:justify-end"} items-center gap-4`}>
           {/* Logo & Title */}
-          {showBrand ? <div class="flex items-center gap-3">
+          {showBrand ? <div class="flex min-w-0 items-center gap-3">
             <div class="flex items-center justify-center size-8 rounded-full bg-primary-container text-primary border border-primary/20">
               <svg class="size-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                 <path stroke-linecap="round" stroke-linejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
               </svg>
             </div>
-            <h1 class="text-[0.9rem] font-bold tracking-tight">Codex Proxy</h1>
+            <h1 class="text-[0.9rem] font-bold tracking-tight whitespace-nowrap overflow-hidden text-ellipsis min-w-0">Codex Proxy</h1>
           </div> : <div class="flex items-center gap-2 lg:hidden">
             {onOpenSidebar && <button onClick={onOpenSidebar} class="rounded-lg p-2 text-slate-500 hover:bg-slate-100 dark:text-text-dim dark:hover:bg-border-dark" aria-label={t("openSidebar")}>
               <svg class="size-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round">
@@ -170,18 +171,18 @@ export function Header({ onAddAccount, onCheckUpdate, onOpenUpdateModal, checkin
                 <span class="hidden sm:inline"><StableText tKey="dashboardLogout" class="text-xs font-semibold">{t("dashboardLogout")}</StableText></span>
               </button>
             )}
-            {/* Language Selector Dropdown */}
-            <div ref={langMenuRef} class="relative">
+            {/* Language Selector Dropdown — hidden on mobile, available via FAB */}
+            <div ref={langMenuRef} class="relative hidden sm:block">
               <button
                 onClick={() => setLangMenuOpen(!langMenuOpen)}
                 class="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-gray-200 dark:border-border-dark text-slate-600 dark:text-text-dim hover:bg-slate-50 dark:hover:bg-border-dark text-xs font-semibold transition-colors"
-                aria-label="Language Selector"
+                aria-label={t("language")}
                 aria-expanded={langMenuOpen}
               >
                 <svg class="size-3.5 text-slate-500 dark:text-text-dim shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
                   <path stroke-linecap="round" stroke-linejoin="round" d="M12 21a9.004 9.004 0 0 0 8.716-6.747M12 21a9.004 9.004 0 0 1-8.716-6.747M12 21c2.485 0 4.5-4.03 4.5-9S14.485 3 12 3m0 18c-2.485 0-4.5-4.03-4.5-9S9.515 3 12 3m0 0a8.997 8.997 0 0 1 7.843 4.582M12 3a8.997 8.997 0 0 0-7.843 4.582m15.686 0A11.953 11.953 0 0 1 12 10.5c-2.998 0-5.74-1.1-7.843-2.918m15.686 0A8.959 8.959 0 0 1 21 12c0 .778-.099 1.533-.284 2.253m0 0A17.919 17.919 0 0 1 12 16.5c-3.162 0-6.133-.815-8.716-2.247m0 0A9.015 9.015 0 0 1 3 12c0-1.605.42-3.113 1.157-4.418" />
                 </svg>
-                <span>{LANG_OPTIONS.find((o) => o.id === lang)?.label ?? "Language"}</span>
+                <span>{LANG_OPTIONS.find((o) => o.id === lang)?.label ?? t("language")}</span>
                 <svg class={`size-3 text-slate-400 transition-transform ${langMenuOpen ? "rotate-180" : ""}`} viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                   <path stroke-linecap="round" stroke-linejoin="round" d="M19.5 8.25l-7.5 7.5-7.5-7.5" />
                 </svg>
@@ -213,23 +214,87 @@ export function Header({ onAddAccount, onCheckUpdate, onOpenUpdateModal, checkin
                 </div>
               )}
             </div>
-            {/* Theme Toggle */}
+            {/* Theme Toggle — hidden on mobile, available via FAB */}
             <button
               onClick={toggleTheme}
-              class="p-2 rounded-lg text-slate-500 dark:text-text-dim hover:bg-slate-100 dark:hover:bg-border-dark transition-colors"
+              class="hidden sm:flex items-center gap-1.5 p-2 rounded-lg text-slate-500 dark:text-text-dim hover:bg-slate-100 dark:hover:bg-border-dark transition-colors"
               title={t("toggleTheme")}
             >
               {isDark ? SVG_SUN : SVG_MOON}
             </button>
+            {/* Add Account — hidden on mobile, available via FAB */}
             <button
               onClick={onAddAccount}
-              class="flex items-center gap-2 px-4 py-2 bg-primary-action hover:bg-primary-action-hover text-white text-xs font-semibold rounded-lg transition-colors shadow-sm active:scale-95"
+              class="hidden sm:flex items-center gap-2 px-4 py-2 bg-primary-action hover:bg-primary-action-hover text-white text-xs font-semibold rounded-lg transition-colors shadow-sm active:scale-95"
             >
               <svg class="size-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
                 <path stroke-linecap="round" stroke-linejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
               </svg>
               <StableText tKey="addAccount">{t("addAccount")}</StableText>
             </button>
+
+            {/* Mobile FAB — language + theme + add account, floating bottom-right */}
+            <div class="sm:hidden">
+              <button
+                onClick={() => setFabOpen((v) => !v)}
+                aria-label={t("moreActions")}
+                aria-expanded={fabOpen}
+                class="fixed right-4 bottom-4 z-50 flex size-14 items-center justify-center rounded-full bg-primary-action text-white shadow-lg hover:bg-primary-action-hover transition-colors"
+              >
+                <svg class="size-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path stroke-linecap="round" stroke-linejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
+                </svg>
+              </button>
+              {fabOpen && (
+                <>
+                  <div
+                    class="fixed inset-0 z-40 bg-black/20"
+                    onClick={() => setFabOpen(false)}
+                  />
+                  <div class="fixed right-4 bottom-20 z-50 flex max-h-[70vh] w-56 flex-col overflow-y-auto rounded-2xl border border-gray-200 dark:border-border-dark bg-white dark:bg-card-dark shadow-xl">
+                    <span class="px-4 pt-3 pb-1 text-[0.7rem] font-semibold uppercase tracking-wide text-slate-400 dark:text-text-dim">
+                      {t("language")}
+                    </span>
+                    {LANG_OPTIONS.map((opt) => (
+                      <button
+                        key={opt.id}
+                        onClick={() => { setLang(opt.id); setFabOpen(false); }}
+                        class={`flex items-center gap-3 px-4 py-2.5 text-sm font-medium text-left transition-colors ${
+                          lang === opt.id
+                            ? "text-primary"
+                            : "text-slate-700 dark:text-text-main hover:bg-slate-100 dark:hover:bg-border-dark"
+                        }`}
+                      >
+                        <span class="flex-1">{opt.label}</span>
+                        {lang === opt.id && (
+                          <svg class="size-4 text-primary" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M4.5 12.75l6 6 9-13.5" />
+                          </svg>
+                        )}
+                      </button>
+                    ))}
+                    <div class="h-px bg-gray-200 dark:bg-border-dark" />
+                    <button
+                      onClick={() => { toggleTheme(); setFabOpen(false); }}
+                      class="flex items-center gap-3 px-4 py-3 text-sm font-medium text-slate-700 dark:text-text-main hover:bg-slate-100 dark:hover:bg-border-dark"
+                    >
+                      {isDark ? SVG_SUN : SVG_MOON}
+                      <span>{isDark ? t("lightMode") : t("darkMode")}</span>
+                    </button>
+                    <div class="h-px bg-gray-200 dark:bg-border-dark" />
+                    <button
+                      onClick={() => { onAddAccount(); setFabOpen(false); }}
+                      class="flex items-center gap-3 px-4 py-3 text-sm font-semibold text-white bg-primary-action hover:bg-primary-action-hover"
+                    >
+                      <svg class="size-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
+                      </svg>
+                      <span>{t("addAccount")}</span>
+                    </button>
+                  </div>
+                </>
+              )}
+            </div>
           </div>
         </div>
       </div>
