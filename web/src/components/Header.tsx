@@ -82,9 +82,10 @@ export function Header({ onAddAccount, onCheckUpdate, onOpenUpdateModal, checkin
         <div class={`flex w-full ${showBrand ? "max-w-[960px] justify-between" : "max-w-none justify-between lg:justify-end"} items-center gap-4`}>
           {/* Logo & Title */}
           {showBrand ? <div class="flex min-w-0 items-center gap-3">
-            <div class="flex items-center justify-center size-8 rounded-full bg-primary-container text-primary border border-primary/20">
-              <svg class="size-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <path stroke-linecap="round" stroke-linejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+            <div class="flex size-8 shrink-0 items-center justify-center rounded-lg bg-primary-action text-white shadow-sm shadow-primary/20">
+              <svg class="size-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" aria-hidden="true">
+                <path d="m12 2.75 7.5 4.3v9.9L12 21.25l-7.5-4.3v-9.9L12 2.75Z" />
+                <path d="m8.5 9.25 3.5 2 3.5-2M8.5 14.75l3.5-2 3.5 2M12 11.25v4" />
               </svg>
             </div>
             <h1 class="text-[0.9rem] font-bold tracking-tight whitespace-nowrap overflow-hidden text-ellipsis min-w-0">Codex Proxy</h1>
@@ -94,7 +95,7 @@ export function Header({ onAddAccount, onCheckUpdate, onOpenUpdateModal, checkin
                 <path d="M4 6h16M4 12h16M4 18h16" />
               </svg>
             </button>}
-            <div class="flex size-8 items-center justify-center rounded-lg bg-primary-action text-white">
+            <div class="flex size-8 items-center justify-center rounded-lg bg-primary-action text-white shadow-sm shadow-primary/20">
               <svg class="size-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" aria-hidden="true">
                 <path d="m12 2.75 7.5 4.3v9.9L12 21.25l-7.5-4.3v-9.9L12 2.75Z" />
                 <path d="m8.5 9.25 3.5 2 3.5-2M8.5 14.75l3.5-2 3.5 2M12 11.25v4" />
@@ -120,13 +121,6 @@ export function Header({ onAddAccount, onCheckUpdate, onOpenUpdateModal, checkin
                 </span>
               </a>
             )}
-            <div class="hidden sm:flex items-center gap-2 px-3 py-1.5 rounded-full bg-primary-container border border-primary/20">
-              <span class="relative flex h-2.5 w-2.5">
-                <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-primary opacity-75" />
-                <span class="relative inline-flex rounded-full h-2.5 w-2.5 bg-primary" />
-              </span>
-              <StableText tKey="serverOnline" class="text-xs font-semibold text-primary">{t("serverOnline")}</StableText>
-            </div>
             {/* Star on GitHub */}
             <a
               href="https://github.com/icebear0828/codex-proxy"
