@@ -300,6 +300,9 @@ export function createAccountRoutes(pool: AccountPool, scheduler: RefreshSchedul
     try {
       const api = new CodexApi(entry.token, entry.accountId, cookieJar, id, proxyPool?.resolveProxyUrl(id));
       const resetCredits = await api.getResetCredits();
+      if (typeof resetCredits.available_count === "number" && entry.cachedQuota) {
+        pool.updateCachedQuota(id, { ...entry.cachedQuota, reset_credits_available: resetCredits.available_count });
+      }
       return c.json(resetCredits);
     } catch (err) {
       if (isTokenInvalidError(err)) {
@@ -363,6 +366,11 @@ export function createAccountRoutes(pool: AccountPool, scheduler: RefreshSchedul
         pool.updateCachedQuota(id, quota);
       } catch {
         // quota cache not updated — caller can refresh manually via GET /auth/accounts/:id/quota
+        const currentQuota = pool.getEntry(id)?.cachedQuota;
+        if (currentQuota?.reset_credits_available && currentQuota.reset_credits_available > 0) {
+          quota = { ...currentQuota, reset_credits_available: currentQuota.reset_credits_available - 1 };
+          pool.updateCachedQuota(id, quota);
+        }
       }
       return c.json({ success: true, quota });
     } catch (err) {

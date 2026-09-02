@@ -570,15 +570,18 @@ export class AccountRegistry {
   updateCachedQuota(entryId: string, quota: CodexQuota): void {
     const entry = this.accounts.get(entryId);
     if (!entry) return;
-    // Preserve previously known credits when the incoming quota lacks them.
+    // Preserve previously known credits and reset credits when the incoming quota lacks them.
     // The passive header-driven path (rateLimitToQuota in proxy-rate-limit.ts)
-    // does not carry credit balance — only /codex/usage body (toQuota) does.
-    // Without this merge, every /codex/responses call would wipe credits.
+    // does not carry credit balance or rate limit reset credits — only /codex/usage body (toQuota) does.
+    // Without this merge, every /codex/responses call would wipe credits and reset credits.
+    let mergedQuota: CodexQuota = { ...quota };
     if (quota.credits == null && entry.cachedQuota?.credits != null) {
-      entry.cachedQuota = { ...quota, credits: entry.cachedQuota.credits };
-    } else {
-      entry.cachedQuota = quota;
+      mergedQuota.credits = entry.cachedQuota.credits;
     }
+    if (quota.reset_credits_available == null && entry.cachedQuota?.reset_credits_available != null) {
+      mergedQuota.reset_credits_available = entry.cachedQuota.reset_credits_available;
+    }
+    entry.cachedQuota = mergedQuota;
     entry.quotaFetchedAt = new Date().toISOString();
     entry.quotaVerifyRequired = false; // Reset the dirty flag on fresh update
     this.schedulePersist();
