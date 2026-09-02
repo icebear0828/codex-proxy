@@ -2,7 +2,10 @@ name: Bump version + release
 
 on:
   schedule:
-    - cron: "0 16 * * *"   # UTC 16:00 = 北京时间 00:00，每天最多一个版本
+    - cron: "0 16 * * *"   # UTC 16:00 = 北京时间 00:00，每天兜底一次（即使没有 push）
+  push:
+    branches:
+      - master   # dev 被手动合并到 master 时立即 bump + 发版，无需等定时
   workflow_dispatch:
 
 concurrency:
