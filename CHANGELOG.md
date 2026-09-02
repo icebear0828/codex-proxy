@@ -21,6 +21,7 @@
 ### Fixed
 
 - 修复速率限制重置卡（Reset Cards）在请求转发后从控制台消失的问题：被动响应头更新 quota 时保留已知的 `reset_credits_available`，并在重置卡查询与消耗逻辑中同步更新账号配额缓存（`src/auth/account-registry.ts`、`src/auth/active-quota-refresher.ts`、`src/routes/accounts.ts`）。
+- 修复 Dashboard 顶部导航栏与侧栏「Codex Proxy」左侧品牌图标错误的问题：将手绘六边形 SVG 替换为官方 Logo 图片（`web/public/icon.png`），与桌面端 / Web 应用图标保持一致。（`web/src/components/Header.tsx`、`web/src/components/Sidebar.tsx`）
 - 修复并统一桌面端与 Web 端应用图标与 Logo：生成包含 Windows 完整多分辨率的 `icon.ico`、Web `favicon.ico` / `icon.png`，Electron 主进程窗口配置中注入应用图标并移除 `electron-builder` 的 `signAndEditExecutable: false` 以确保可执行文件与任务栏/桌面快捷方式正确嵌入图标；统一 Dashboard 顶部导航栏 Logo 为品牌立方体图标。（`packages/electron/`、`web/`、`scripts/build/generate-ico.ps1`）
 - 移除 Dashboard 顶部导航栏与侧栏重复展示的「服务运行中」状态徽标（`web/src/components/Header.tsx`）。
 - 修复 `/v1/responses` 与 `/v1/responses/compact` 在客户端指定未收录模型时静默回退默认模型、响应 `model` 字段误报为默认模型的问题：与 `/v1/chat/completions` 行为一致，未识别模型返回 `404 model_not_found`；`codex` 哨兵与配置默认模型仍正常回退默认。（`src/routes/responses.ts`、`src/routes/responses-compact.ts`、`src/models/model-store.ts`，关联 issue #660）

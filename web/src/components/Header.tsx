@@ -82,12 +82,7 @@ export function Header({ onAddAccount, onCheckUpdate, onOpenUpdateModal, checkin
         <div class={`flex w-full ${showBrand ? "max-w-[960px] justify-between" : "max-w-none justify-between lg:justify-end"} items-center gap-4`}>
           {/* Logo & Title */}
           {showBrand ? <div class="flex min-w-0 items-center gap-3">
-            <div class="flex size-8 shrink-0 items-center justify-center rounded-lg bg-primary-action text-white shadow-sm shadow-primary/20">
-              <svg class="size-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" aria-hidden="true">
-                <path d="m12 2.75 7.5 4.3v9.9L12 21.25l-7.5-4.3v-9.9L12 2.75Z" />
-                <path d="m8.5 9.25 3.5 2 3.5-2M8.5 14.75l3.5-2 3.5 2M12 11.25v4" />
-              </svg>
-            </div>
+            <img src="/icon.png" alt="Codex Proxy" class="size-8 shrink-0 object-contain" />
             <h1 class="text-[0.9rem] font-bold tracking-tight whitespace-nowrap overflow-hidden text-ellipsis min-w-0">Codex Proxy</h1>
           </div> : <div class="flex items-center gap-2 lg:hidden">
             {onOpenSidebar && <button onClick={onOpenSidebar} class="rounded-lg p-2 text-slate-500 hover:bg-slate-100 dark:text-text-dim dark:hover:bg-border-dark" aria-label={t("openSidebar")}>
@@ -95,12 +90,7 @@ export function Header({ onAddAccount, onCheckUpdate, onOpenUpdateModal, checkin
                 <path d="M4 6h16M4 12h16M4 18h16" />
               </svg>
             </button>}
-            <div class="flex size-8 items-center justify-center rounded-lg bg-primary-action text-white shadow-sm shadow-primary/20">
-              <svg class="size-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" aria-hidden="true">
-                <path d="m12 2.75 7.5 4.3v9.9L12 21.25l-7.5-4.3v-9.9L12 2.75Z" />
-                <path d="m8.5 9.25 3.5 2 3.5-2M8.5 14.75l3.5-2 3.5 2M12 11.25v4" />
-              </svg>
-            </div>
+            <img src="/icon.png" alt="Codex Proxy" class="size-8 shrink-0 object-contain" />
             <span class="text-sm font-bold tracking-tight">Codex Proxy</span>
           </div>}
           {/* Actions */}
