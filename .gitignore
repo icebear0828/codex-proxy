@@ -4,7 +4,7 @@ dist-electron/
 release/
 public-desktop/
 data/
-public/
+/public/
 docs/*
 !docs/MULTI_AGENT_WORKFLOW.md
 bin/*

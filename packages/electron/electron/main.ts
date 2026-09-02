@@ -184,6 +184,19 @@ app.on("ready", async () => {
   }
 });
 
+function getAppIconPath(): string {
+  const baseDir = app.isPackaged
+    ? join(app.getAppPath(), "electron", "assets")
+    : join(__dirname, "..", "electron", "assets");
+  if (process.platform === "win32") {
+    const icoPath = join(baseDir, "icon.ico");
+    if (existsSync(icoPath)) return icoPath;
+  }
+  const pngPath = join(baseDir, "icon.png");
+  if (existsSync(pngPath)) return pngPath;
+  return "";
+}
+
 // ── Window ───────────────────────────────────────────────────────────
 
 function createWindow(): void {
@@ -195,12 +208,15 @@ function createWindow(): void {
     return;
   }
 
+  const iconPath = getAppIconPath();
+
   mainWindow = new BrowserWindow({
     width: 1100,
     height: 750,
     minWidth: 800,
     minHeight: 500,
     title: "Codex Proxy",
+    ...(iconPath ? { icon: iconPath } : {}),
     // macOS: native hidden titlebar with traffic lights inset into content
     ...(IS_MAC
       ? {
@@ -334,12 +350,8 @@ function rebuildTrayMenu(): void {
 }
 
 function createTray(): void {
-  // In packaged mode: icon is inside asar at {app.asar}/electron/assets/icon.png
-  // In dev mode: relative to dist-electron/ → ../electron/assets/icon.png
-  const iconPath = app.isPackaged
-    ? join(app.getAppPath(), "electron", "assets", "icon.png")
-    : join(__dirname, "..", "electron", "assets", "icon.png");
-  let icon = existsSync(iconPath)
+  const iconPath = getAppIconPath();
+  let icon = iconPath && existsSync(iconPath)
     ? nativeImage.createFromPath(iconPath)
     : nativeImage.createEmpty();
 
