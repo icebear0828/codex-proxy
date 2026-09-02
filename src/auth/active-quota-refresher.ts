@@ -177,6 +177,13 @@ export function preserveLearnedLocks(
 
   const merged: CodexQuota = { ...fresh };
 
+  if (fresh.credits == null && existing?.credits != null) {
+    merged.credits = existing.credits;
+  }
+  if (fresh.reset_credits_available == null && existing?.reset_credits_available != null) {
+    merged.reset_credits_available = existing.reset_credits_available;
+  }
+
   if (isFutureLock(existing?.rate_limit) && !fresh.rate_limit.limit_reached) {
     merged.rate_limit = {
       ...fresh.rate_limit,
