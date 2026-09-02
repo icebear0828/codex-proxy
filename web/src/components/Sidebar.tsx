@@ -24,12 +24,7 @@ function NavIcon({ name }: { name: IconName }) {
 
 function BrandMark() {
   return (
-    <div class="flex size-9 shrink-0 items-center justify-center rounded-xl bg-primary-action text-white shadow-sm shadow-primary/20">
-      <svg class="size-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" aria-hidden="true">
-        <path d="m12 2.75 7.5 4.3v9.9L12 21.25l-7.5-4.3v-9.9L12 2.75Z" />
-        <path d="m8.5 9.25 3.5 2 3.5-2M8.5 14.75l3.5-2 3.5 2M12 11.25v4" />
-      </svg>
-    </div>
+    <img src="/icon.png" alt="Codex Proxy" class="size-9 shrink-0 object-contain" />
   );
 }
 
