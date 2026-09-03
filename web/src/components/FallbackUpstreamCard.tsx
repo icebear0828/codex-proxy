@@ -6,13 +6,16 @@ interface FallbackUpstreamCardProps {
   config: FallbackUpstreamPublic;
   onUpdate: (baseUrl: string, apiKey: string) => Promise<string | null>;
   onDelete: () => Promise<string | null>;
+  /** True while requests are currently being served by a fallback (backup
+   *  account retry or fallback upstream). Lights up + pulses the card. */
+  active?: boolean;
 }
 
 /**
  * Full-width card for the single last-resort "upstream apikey" account.
  * Rendered at the very end of the account list, spanning the whole row.
  */
-export function FallbackUpstreamCard({ config, onUpdate, onDelete }: FallbackUpstreamCardProps) {
+export function FallbackUpstreamCard({ config, onUpdate, onDelete, active = false }: FallbackUpstreamCardProps) {
   const t = useT();
   const [editing, setEditing] = useState(false);
   const [baseUrl, setBaseUrl] = useState(config.baseUrl);
@@ -50,10 +53,20 @@ export function FallbackUpstreamCard({ config, onUpdate, onDelete }: FallbackUps
   }, [onDelete, t]);
 
   return (
-    <div class="md:col-span-2 bg-white dark:bg-card-dark border border-gray-200 dark:border-border-dark rounded-xl p-4 shadow-sm transition-colors">
+    <div
+      class={`md:col-span-2 bg-white dark:bg-card-dark border rounded-xl p-4 transition-colors ${
+        active
+          ? "border-orange-400 dark:border-orange-500/70 ring-2 ring-orange-300/40 dark:ring-orange-500/20 shadow-lg animate-pulse"
+          : "border-gray-200 dark:border-border-dark shadow-sm"
+      }`}
+    >
       <div class="flex flex-wrap justify-between items-start gap-2 mb-3">
         <div class="flex items-center gap-3 min-w-0 flex-1">
-          <div class="size-10 rounded-full bg-cyan-50 dark:bg-cyan-900/30 text-cyan-600 dark:text-cyan-300 flex items-center justify-center font-bold text-lg shrink-0">
+          <div class={`size-10 rounded-full flex items-center justify-center font-bold text-lg shrink-0 ${
+            active
+              ? "bg-orange-100 dark:bg-orange-900/40 text-orange-600 dark:text-orange-300"
+              : "bg-cyan-50 dark:bg-cyan-900/30 text-cyan-600 dark:text-cyan-300"
+          }`}>
             <svg class="size-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
               <path stroke-linecap="round" stroke-linejoin="round" d="M9 12.75 11.25 15 15 9.75m-3-7.036A11.959 11.959 0 0 1 3.598 6 11.99 11.99 0 0 0 3 9.749c0 5.592 3.824 10.29 9 11.623 5.176-1.332 9-6.03 9-11.622 0-1.31-.21-2.571-.598-3.751h-.152c-3.196 0-6.1-1.248-8.25-3.285Z" />
             </svg>
@@ -64,6 +77,11 @@ export function FallbackUpstreamCard({ config, onUpdate, onDelete }: FallbackUps
           </div>
         </div>
         <div class="flex items-center gap-2 shrink-0 flex-wrap">
+          {active && (
+            <span class="px-2.5 py-1 rounded-full bg-orange-500 text-white border border-orange-400 text-xs font-semibold">
+              {t("fallbackActiveBadge")}
+            </span>
+          )}
           <span class="px-2.5 py-1 rounded-full bg-cyan-50 dark:bg-cyan-900/20 text-cyan-700 dark:text-cyan-300 border border-cyan-200 dark:border-cyan-800/30 text-xs font-medium">
             {t("fallbackInterface")}
           </span>

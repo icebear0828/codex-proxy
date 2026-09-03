@@ -15,6 +15,8 @@
   - 全局优化浅色与深色色彩体系及统一系统/等宽字体层级渲染（`web/src/index.css`、`web/tailwind.config.ts`）。
   - 新增独立「信息」Tab 页（`#/info`），归拢 API 配置、Anthropic SDK 配置、代码示例及连通性测试只读卡片（`web/src/pages/InfoPage.tsx`、`web/src/navigation.ts`、`shared/i18n/`）。
   - 改版设置界面（`#/settings`）：重新组织分类设置项，升级为项级即时生效机制（修改后行内显示 `✅` 保存按钮，点击转圈加载，生效后平滑淡出，需重启项显示 `🔄 等待重启` 徽章），移除底部全局保存按钮（`web/src/components/`）。
+- 请求日志新增「账号 / 后备」列：展示每条请求实际服务的账号（label / 邮箱 / ID 短标识），走了后备（备用账号重试或后备上游 apikey）时显示橙色「后备」徽章；详情抽屉同步展示账号信息（`src/logs/`、`src/routes/shared/proxy-*.ts`、`shared/hooks/use-logs.ts`、`web/src/pages/LogsPage.tsx`、`shared/i18n/`）。
+- 首页「后备上游 (API Key)」卡片新增运行状态指示：请求切到后备（备用账号或后备上游）时卡片橙色高亮并脉冲闪动，显示「后备中」徽章；停止走后约 60 秒内自动恢复（`src/auth/fallback-state.ts`、`src/routes/accounts.ts`、`shared/hooks/use-accounts.ts`、`web/src/components/FallbackUpstreamCard.tsx`）。
 
 - 通用设置新增「更新到测试版 (Beta)」选项（默认关闭）：开启后自动更新检查将包含测试版（GitHub Releases 预发布版本与 Docker `-beta.` 标签），Electron 客户端同步开启测试版通道（`config/default.yaml`、`src/routes/admin/`、`src/self-update.ts`、`web/src/components/GeneralSettings.tsx`、`shared/i18n/`）。
 

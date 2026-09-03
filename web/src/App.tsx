@@ -196,6 +196,7 @@ function Dashboard() {
                 onUpdateLabel={accounts.updateLabel}
                 onUpdateCodexFingerprintMode={accounts.updateCodexFingerprintMode}
                 fallbackUpstream={accounts.fallbackUpstream}
+                fallbackActive={accounts.fallbackActive}
                 onUpdateFallbackUpstream={accounts.updateFallbackUpstream}
                 onDeleteFallbackUpstream={accounts.deleteFallbackUpstream}
               />

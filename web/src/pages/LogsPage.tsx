@@ -268,6 +268,7 @@ export function LogsPage({ embedded = false }: { embedded?: boolean }) {
                 <div class="w-[68px] shrink-0">{t("logsTime")}</div>
                 <div class="w-[38px] shrink-0 text-center">{t("logsStatus")}</div>
                 <div class="w-[42px] shrink-0 text-center">{t("logsDirection")}</div>
+                <div class="w-[84px] shrink-0">{t("logsAccount")}</div>
                 <div class="flex-1 min-w-0">{t("logsPath")} / {t("logsModel")}</div>
                 <div class="w-[58px] shrink-0 text-right">{t("logsTtft")}</div>
                 <div class="w-[62px] shrink-0 text-right">{t("logsSpeed")}</div>
@@ -317,6 +318,22 @@ export function LogsPage({ embedded = false }: { embedded?: boolean }) {
                         >
                           {t(`logsFilter.${row.direction}`)}
                         </span>
+                      </div>
+                      <div class="w-[84px] shrink-0 text-left pr-1">
+                        {row.fallback ? (
+                          <span
+                            class="inline-block px-1.5 py-0.5 rounded text-[10px] font-medium bg-orange-50 text-orange-600 dark:bg-orange-950/40 dark:text-orange-400"
+                            title={row.account ?? undefined}
+                          >
+                            {t("logsFallback")}
+                          </span>
+                        ) : row.account ? (
+                          <span class="block truncate text-slate-600 dark:text-slate-300" title={row.account}>
+                            {row.account}
+                          </span>
+                        ) : (
+                          <span class="text-slate-400 dark:text-text-dim">-</span>
+                        )}
                       </div>
                       <div class="flex-1 min-w-0 pr-1">
                         <div class="font-medium text-slate-800 dark:text-white truncate">
@@ -518,6 +535,14 @@ export function LogsPage({ embedded = false }: { embedded?: boolean }) {
                         <div class="flex justify-between py-0.5 border-b border-slate-100 dark:border-border-dark">
                           <span class="text-slate-400 dark:text-text-dim">{t("logsProvider")}</span>
                           <span class="text-slate-700 dark:text-slate-200">{logs.selected.provider}</span>
+                        </div>
+                      )}
+                      {(logs.selected.account || logs.selected.fallback) && (
+                        <div class="flex justify-between py-0.5 border-b border-slate-100 dark:border-border-dark">
+                          <span class="text-slate-400 dark:text-text-dim">{t("logsAccount")}</span>
+                          <span class={`${logs.selected.fallback ? "text-orange-600 dark:text-orange-400" : "text-slate-700 dark:text-slate-200"}`}>
+                            {logs.selected.fallback ? t("logsFallback") : logs.selected.account}
+                          </span>
                         </div>
                       )}
                       <div class="flex justify-between py-0.5 border-b border-slate-100 dark:border-border-dark">

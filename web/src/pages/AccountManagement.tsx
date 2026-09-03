@@ -21,7 +21,7 @@ const statusOrder: Array<{ key: string; label: TranslationKey }> = [
 
 export function AccountManagement({ embedded }: { embedded?: boolean } = {}) {
   const t = useT();
-  const { list, loading: listLoading, batchDelete, batchSetStatus, toggleStatus, exportAccounts, importAccounts, persistenceHealth, fallbackUpstream, updateFallbackUpstream, deleteFallbackUpstream } = useAccounts();
+  const { list, loading: listLoading, batchDelete, batchSetStatus, toggleStatus, exportAccounts, importAccounts, persistenceHealth, fallbackUpstream, fallbackActive, updateFallbackUpstream, deleteFallbackUpstream } = useAccounts();
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [statusFilter, setStatusFilter] = useState("all");
   const [message, setMessage] = useState<{ text: string; error?: boolean } | null>(null);
@@ -195,6 +195,7 @@ export function AccountManagement({ embedded }: { embedded?: boolean } = {}) {
           config={fallbackUpstream}
           onUpdate={updateFallbackUpstream}
           onDelete={deleteFallbackUpstream}
+          active={fallbackActive}
         />
       )}
     </>
