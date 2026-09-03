@@ -205,6 +205,7 @@ export async function* streamPassthrough(
           model: streamContext?.model ?? model,
           accountEntryId: streamContext?.accountEntryId,
           variantHash: streamContext?.variantHash,
+          fallback: streamContext?.fallback,
           responseId,
           detail,
         });
@@ -241,6 +242,7 @@ export async function* streamPassthrough(
           model: streamContext?.model ?? model,
           accountEntryId: streamContext?.accountEntryId,
           variantHash: streamContext?.variantHash,
+          fallback: streamContext?.fallback,
           responseId,
           detail: `${raw.event}: ${err.code}: ${err.message}`,
         });
@@ -358,6 +360,7 @@ export async function* streamPassthrough(
       model: streamContext?.model ?? model,
       accountEntryId: streamContext?.accountEntryId,
       variantHash: streamContext?.variantHash,
+      fallback: streamContext?.fallback,
       responseId,
     });
     onResponseMetadata?.({ prematureClose: true });

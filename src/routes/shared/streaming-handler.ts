@@ -44,6 +44,10 @@ export interface HandleStreamingOptions {
    *  retry performs a full-input replay instead of resending the same dead
    *  delta. */
   implicitResumeActive?: boolean;
+  /** True when the stream is being served by a fallback account (entryId !==
+   *  initialEntryId). Used to badge the client-abort close event consistent
+   *  with the main egress line. */
+  fallback?: boolean;
 }
 
 export function handleStreaming(options: HandleStreamingOptions): Response {
@@ -65,6 +69,7 @@ export function handleStreaming(options: HandleStreamingOptions): Response {
     variantHash,
     chainAdvanceTicket,
     implicitResumeActive = false,
+    fallback = false,
   } = options;
 
   c.header("Content-Type", "text/event-stream");
@@ -106,6 +111,7 @@ export function handleStreaming(options: HandleStreamingOptions): Response {
         accountEntryId: capturedEntryId,
         variantHash,
         responseId: capturedResponseId ?? null,
+        fallback,
       });
       abortController.abort();
     });
@@ -181,6 +187,7 @@ export function handleStreaming(options: HandleStreamingOptions): Response {
           path: "/codex/responses",
           accountEntryId: capturedEntryId,
           variantHash,
+          fallback,
           abortSignal: abortController.signal,
         },
       });

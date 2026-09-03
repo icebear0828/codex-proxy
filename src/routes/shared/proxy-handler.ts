@@ -370,6 +370,7 @@ export async function handleProxyRequest(options: HandleProxyRequestOptions): Pr
           variantHash: sessionContext.variantHash,
           chainAdvanceTicket,
           implicitResumeActive: implicitResume.isActive(),
+          fallback: entryId !== initialEntryId,
         });
       }
 

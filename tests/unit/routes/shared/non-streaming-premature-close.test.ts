@@ -78,6 +78,7 @@ describe("handleNonStreamingPrematureClose", () => {
       eventCount: 1920,
       hadReasoning: true,
       detail: err.message,
+      fallback: false,
     });
     expect(accountPool.release).toHaveBeenCalledWith("entry-1", undefined);
     expect(released.has("entry-1")).toBe(true);
