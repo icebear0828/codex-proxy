@@ -154,3 +154,30 @@ describe("AccountCard Rate Limit Reset Credits", () => {
   });
 });
 
+describe("AccountCard window estimated cost", () => {
+  afterEach(() => cleanup());
+
+  it("renders the current primary-window amount below the rate limit", () => {
+    const acct: Account = {
+      ...account(),
+      usage: { window_estimated_cost_usd: 0.0064 },
+      quota: {
+        rate_limit: { used_percent: 25, limit_reached: false },
+      },
+    };
+
+    render(<AccountCard account={acct} index={0} onDelete={vi.fn(async () => null)} />);
+
+    const amount = screen.getByTestId("window-estimated-cost");
+    expect(amount.textContent).toContain("windowEstimatedCost");
+    expect(amount.textContent).toContain("$0.0064");
+    expect(amount.getAttribute("title")).toBe("estimatedApiCostHint");
+  });
+
+  it("renders a missing window amount as zero", () => {
+    render(<AccountCard account={account()} index={0} onDelete={vi.fn(async () => null)} />);
+
+    expect(screen.getByTestId("window-estimated-cost").textContent).toContain("$0.00");
+  });
+});
+

@@ -581,6 +581,13 @@ export class AccountRegistry {
     if (quota.reset_credits_available == null && entry.cachedQuota?.reset_credits_available != null) {
       mergedQuota.reset_credits_available = entry.cachedQuota.reset_credits_available;
     }
+    // Keep local per-window counters aligned for every quota source (passive
+    // headers, manual refreshes, background refreshes, and reset credits).
+    this.syncRateLimitWindow(
+      entryId,
+      mergedQuota.rate_limit.reset_at,
+      mergedQuota.rate_limit.limit_window_seconds,
+    );
     entry.cachedQuota = mergedQuota;
     entry.quotaFetchedAt = new Date().toISOString();
     entry.quotaVerifyRequired = false; // Reset the dirty flag on fresh update
@@ -597,6 +604,13 @@ export class AccountRegistry {
     if (!entry) return;
 
     const oldResetAt = entry.usage.window_reset_at;
+    const oldWindowSec = entry.usage.limit_window_seconds;
+    if (
+      oldResetAt === newResetAt &&
+      (limitWindowSeconds == null || oldWindowSec === limitWindowSeconds)
+    ) {
+      return;
+    }
     if (oldResetAt != null && oldResetAt !== newResetAt) {
       const drift = Math.abs(newResetAt - oldResetAt);
       const windowSec = limitWindowSeconds ?? entry.usage.limit_window_seconds ?? 0;

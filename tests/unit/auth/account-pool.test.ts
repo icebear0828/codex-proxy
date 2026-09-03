@@ -239,6 +239,49 @@ describe("AccountPool", () => {
       expect(accounts[0].usage.window_estimated_cost_usd).toBe(0);
     });
 
+    it("clears window cost when a cached quota update reports a new primary window", () => {
+      const id = pool.addAccount("token-aaa");
+      const firstResetAt = Math.floor(Date.now() / 1000) + 18_000;
+      const quota = (resetAt: number) => ({
+        plan_type: "plus",
+        rate_limit: {
+          used_percent: 25,
+          remaining_percent: 75,
+          reset_at: resetAt,
+          limit_window_seconds: 18_000,
+          limit_reached: false,
+        },
+        secondary_rate_limit: null,
+        code_review_rate_limit: null,
+      });
+
+      const acquired = pool.acquire()!;
+      pool.release(acquired.entryId, { estimated_cost_usd: 0.2 });
+      expect(pool.getAccounts()[0].usage.window_estimated_cost_usd).toBeCloseTo(0.2);
+
+      // The first observed reset establishes an anchor and must not discard
+      // usage already recorded during the current process lifetime.
+      pool.updateCachedQuota(id, quota(firstResetAt));
+      expect(pool.getAccounts()[0].usage.window_estimated_cost_usd).toBeCloseTo(0.2);
+
+      pool.updateCachedQuota(id, quota(firstResetAt + 60));
+      expect(pool.getAccounts()[0].usage.window_estimated_cost_usd).toBeCloseTo(0.2);
+
+      pool.updateCachedQuota(id, quota(firstResetAt + 18_000));
+      expect(pool.getAccounts()[0].usage.window_estimated_cost_usd).toBe(0);
+    });
+
+    it("clears window cost when the locally tracked primary window expires", () => {
+      const id = pool.addAccount("token-aaa");
+      const acquired = pool.acquire()!;
+      pool.release(acquired.entryId, { estimated_cost_usd: 0.2 });
+      const entry = pool.getEntry(id)!;
+      entry.usage.window_reset_at = Math.floor(Date.now() / 1000) - 1;
+      entry.usage.limit_window_seconds = 3_600;
+
+      expect(pool.getAccounts()[0].usage.window_estimated_cost_usd).toBe(0);
+    });
+
     it("counts image_request_count on attempted+succeeded release", () => {
       pool.addAccount("token-aaa");
       const a = pool.acquire()!;

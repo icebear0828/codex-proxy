@@ -55,6 +55,8 @@ export interface Account {
         window_request_count?: number;
         window_input_tokens?: number;
         window_output_tokens?: number;
+        /** Estimated equivalent API cost for the current primary rate-limit window. */
+        window_estimated_cost_usd?: number;
         window_image_input_tokens?: number;
         window_image_output_tokens?: number;
         window_image_request_count?: number;

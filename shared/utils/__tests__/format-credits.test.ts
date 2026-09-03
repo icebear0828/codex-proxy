@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { formatCredits, creditsToUsd, formatUsd, formatWindowDuration, formatResetTime } from "../format";
+import { formatAdaptiveUsd, formatCredits, creditsToUsd, formatUsd, formatWindowDuration, formatResetTime } from "../format";
 
 describe("formatCredits", () => {
   it("renders zero as plain '0'", () => {
@@ -57,6 +57,17 @@ describe("formatUsd", () => {
 
   it("handles negatives", () => {
     expect(formatUsd(-12.34)).toBe("-$12.34");
+  });
+});
+
+describe("formatAdaptiveUsd", () => {
+  it("retains four decimal places for positive amounts below one cent", () => {
+    expect(formatAdaptiveUsd(0.0064)).toBe("$0.0064");
+  });
+
+  it("uses the standard USD format for zero and amounts of at least one cent", () => {
+    expect(formatAdaptiveUsd(0)).toBe("$0.00");
+    expect(formatAdaptiveUsd(12.345)).toBe("$12.35");
   });
 });
 

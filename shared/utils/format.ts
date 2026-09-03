@@ -33,6 +33,16 @@ export function formatUsd(usd: number): string {
   return sign + "$" + abs.toFixed(2);
 }
 
+/** Format USD while retaining useful precision for small metered amounts. */
+export function formatAdaptiveUsd(usd: number): string {
+  if (!Number.isFinite(usd)) return "$0";
+  const abs = Math.abs(usd);
+  if (abs > 0 && abs < 0.01) {
+    return `${usd < 0 ? "-" : ""}$${abs.toFixed(4)}`;
+  }
+  return formatUsd(usd);
+}
+
 export function formatWindowDuration(seconds: number, lang?: LangCode | boolean): string {
   const isZhSimp = lang === "zh" || lang === true;
   const isZhTrad = lang === "zh-TW" || lang === "zh-HK";

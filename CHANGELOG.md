@@ -10,6 +10,7 @@
 
 ### Added
 
+- 概览页“已连接账户”卡片在主速率限制下方新增“本周期金额”，按现有模型价格表展示本周期预估 API 等价成本；所有上游额度刷新入口统一同步主窗口，窗口明确换期或到期后金额自动归零。
 - 重构 Dashboard UI 视觉体系与设置交互逻辑：
   - 移除窗口顶部菜单栏，并将窗口标题统一为「Codex Proxy」（`packages/electron/electron/main.ts`、`web/index.html`）。
   - 全局优化浅色与深色色彩体系及统一系统/等宽字体层级渲染（`web/src/index.css`、`web/tailwind.config.ts`）。
