@@ -134,9 +134,9 @@ OpenAI-compatible embeddings endpoint.
 
 ---
 
-### Codex Responses API-Key Auxiliary Endpoints
+### Codex Auxiliary Endpoints
 
-When the requested model resolves to an API-key provider with `wire=codex-responses`, the proxy also supports these non-streaming JSON endpoints:
+`POST /v1/alpha/search` supports regular Codex models backed by the ChatGPT OAuth account pool and forwards them to `/backend-api/codex/alpha/search`. When the requested model instead resolves to an API-key provider with `wire=codex-responses`, the proxy supports all of these non-streaming JSON endpoints:
 
 | Endpoint | Upstream target | Purpose |
 |---|---|---|
@@ -145,7 +145,9 @@ When the requested model resolves to an API-key provider with `wire=codex-respon
 | `POST /v1/images/generations` | `<baseUrl>/images/generations` | Codex JSON image generation |
 | `POST /v1/images/edits` | `<baseUrl>/images/edits` | Codex JSON image editing |
 
-Each endpoint requires a non-empty `model` in its JSON body and uses the existing model router to select the API-key entry. The proxy replaces local authentication with the configured provider key. Apart from configured model-alias resolution and stripping an internal provider prefix, it leaves the JSON body unchanged and preserves the upstream status, Content-Type, and response body. Paths outside the exact allowlist are not forwarded. Local aliases without `/v1` are accepted as well. See the public [OpenAI Responses compact API](https://developers.openai.com/api/reference/resources/responses/methods/compact/) and the [Codex CLI 0.147.0 search endpoint source](https://github.com/openai/codex/blob/rust-v0.147.0/codex-rs/codex-api/src/endpoint/search.rs#L31-L45).
+Each endpoint requires a non-empty `model` in its JSON body and uses the existing model router. OAuth search reuses the account pool's cookies, proxy selection, retry/rotation, and Codex request context. API-key routes replace local authentication with the configured provider key. Apart from configured model-alias resolution, stripping an internal provider prefix, and the Responses Lite normalization described below, the proxy leaves JSON bodies unchanged and preserves the upstream status, Content-Type, and response body. Paths outside the exact allowlist are not forwarded. Local aliases without `/v1` are accepted as well. See the public [OpenAI Responses compact API](https://developers.openai.com/api/reference/resources/responses/methods/compact/) and the [Codex CLI 0.147.0 search endpoint source](https://github.com/openai/codex/blob/rust-v0.147.0/codex-rs/codex-api/src/endpoint/search.rs#L31-L45).
+
+For Responses generation and compact requests, when `x-openai-internal-codex-responses-lite: true` is present, or the equivalent WebSocket marker appears in `client_metadata`, the proxy applies the complete Responses Lite contract: `reasoning.context` is forced to `all_turns` and `parallel_tool_calls` to `false`. This can increase retained context/token usage and serializes tool calls, but prevents the Lite marker and request body from becoming inconsistent.
 
 #### image_generation tool
 

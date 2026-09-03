@@ -24,6 +24,7 @@ export type CodexAuxiliaryRequestContext = Partial<Pick<
   | "includeTimingMetrics"
   | "codexWindowId"
   | "parentThreadId"
+  | "useResponsesLite"
   | "client_metadata"
 >>;
 

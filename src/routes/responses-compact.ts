@@ -24,6 +24,14 @@ import { PASSTHROUGH_FORMAT } from "./responses-passthrough.js";
 import { isRecord } from "../translation/shared-utils.js";
 import { annotateUsageCost } from "./shared/proxy-handler-utils.js";
 import { handleCodexAuxiliaryJson } from "./codex-auxiliary.js";
+import {
+  applyResponsesLiteContract,
+  isResponsesLiteRequest,
+  parseReasoningContext,
+  RESPONSES_LITE_HEADER,
+  responsesLiteBody,
+} from "../proxy/responses-lite.js";
+import { sanitizeClientMetadata } from "../proxy/openai-subagent.js";
 
 // ── Helpers ───────────────────────────────────────────────────────
 
@@ -60,6 +68,10 @@ export async function handleCompact(
   upstreamRouter?: UpstreamRouter,
 ): Promise<Response> {
   const rawModel = typeof body.model === "string" ? body.model : "codex";
+  const useResponsesLite = isResponsesLiteRequest(
+    c.req.header(RESPONSES_LITE_HEADER),
+    sanitizeClientMetadata(body.client_metadata),
+  );
   const compactRouteMatch = upstreamRouter?.resolveMatch(rawModel);
   if (
     (compactRouteMatch?.kind === "api-key" || compactRouteMatch?.kind === "adapter")
@@ -70,7 +82,10 @@ export async function handleCompact(
       c,
       upstream: compactRouteMatch.adapter,
       path: "responses/compact",
-      body: directModel === rawModel ? body : { ...body, model: directModel },
+      body: responsesLiteBody(
+        directModel === rawModel ? body : { ...body, model: directModel },
+        useResponsesLite,
+      ),
       model: directModel,
     });
   }
@@ -100,6 +115,7 @@ export async function handleCompact(
     input: Array.isArray(body.input) ? sanitizeCodexInputItems(body.input) : [],
     instructions: typeof body.instructions === "string" ? body.instructions : "",
   };
+  compactRequest.useResponsesLite = useResponsesLite;
   if (Array.isArray(body.tools) && body.tools.length > 0) {
     compactRequest.tools = body.tools;
   }
@@ -115,8 +131,11 @@ export async function handleCompact(
     const r: Record<string, string> = {};
     if (typeof body.reasoning.effort === "string") r.effort = body.reasoning.effort;
     if (typeof body.reasoning.summary === "string") r.summary = body.reasoning.summary;
+    const context = parseReasoningContext(body.reasoning.context);
+    if (context) r.context = context;
     if (Object.keys(r).length > 0) compactRequest.reasoning = r;
   }
+  applyResponsesLiteContract(compactRequest);
   if (
     isRecord(body.text) &&
     isRecord(body.text.format) &&
@@ -146,6 +165,7 @@ export async function handleCompact(
           ? { parallel_tool_calls: compactRequest.parallel_tool_calls }
           : {}),
         ...(compactRequest.reasoning ? { reasoning: compactRequest.reasoning } : {}),
+        ...(compactRequest.useResponsesLite ? { useResponsesLite: true } : {}),
         ...(compactRequest.text ? { text: compactRequest.text } : {}),
       },
       model: directModel,

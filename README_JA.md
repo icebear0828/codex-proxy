@@ -923,7 +923,7 @@ curl -N http://localhost:8080/official-agent/threads/{threadId}/turns \
 | `/v1/chat/completions` | POST | OpenAI 形式チャット補全 |
 | `/v1/responses` | POST | Codex Responses API 直通 |
 | `/v1/responses/compact` | POST | Codex リモート compact レスポンスプロキシ |
-| `/v1/alpha/search` | POST | Codex スタンドアロン Web Search（`codex-responses` API-key wire） |
+| `/v1/alpha/search` | POST | Codex スタンドアロン Web Search（ChatGPT OAuth アカウントプールまたは `codex-responses` API-key wire） |
 | `/v1/images/generations` | POST | Codex JSON 画像生成直通（`codex-responses` API-key wire） |
 | `/v1/images/edits` | POST | Codex JSON 画像編集直通（`codex-responses` API-key wire） |
 | `/v1/messages` | POST | Anthropic 形式チャット補全 |

@@ -41,6 +41,13 @@ import {
   type CodexAuxiliaryJsonPath,
 } from "../proxy/upstream-adapter.js";
 import { resolveDefaultTools, mergeDefaultTools } from "./shared/default-tools.js";
+import {
+  applyResponsesLiteContract,
+  isResponsesLiteRequest,
+  parseReasoningContext,
+  RESPONSES_LITE_HEADER,
+} from "../proxy/responses-lite.js";
+import { handleOAuthCodexSearch } from "./responses-search.js";
 
 // Re-export for downstream consumers
 export { extractResponseUsage, extractImageGenUsage, streamPassthrough, collectPassthrough } from "./responses-passthrough.js";
@@ -185,6 +192,10 @@ export function createResponsesRoutes(
     if (Object.keys(clientMetadata).length > 0) {
       codexRequest.client_metadata = clientMetadata;
     }
+    codexRequest.useResponsesLite = isResponsesLiteRequest(
+      c.req.header(RESPONSES_LITE_HEADER),
+      clientMetadata,
+    );
     if (typeof body.previous_response_id === "string") {
       codexRequest.previous_response_id = body.previous_response_id;
     }
@@ -228,7 +239,12 @@ export function createResponsesRoutes(
         clientReasoningRecord && typeof clientReasoningRecord.summary === "string"
           ? clientReasoningRecord.summary
           : "auto";
-      codexRequest.reasoning = { summary, ...(effort ? { effort } : {}) };
+      const context = parseReasoningContext(clientReasoningRecord?.context);
+      codexRequest.reasoning = {
+        summary,
+        ...(effort ? { effort } : {}),
+        ...(context ? { context } : {}),
+      };
     }
 
     // Service tier
@@ -254,6 +270,7 @@ export function createResponsesRoutes(
     if (typeof body.parallel_tool_calls === "boolean") {
       codexRequest.parallel_tool_calls = body.parallel_tool_calls;
     }
+    applyResponsesLiteContract(codexRequest);
 
     const expectsImageGen = Array.isArray(codexRequest.tools)
       && codexRequest.tools.some((tool) => isRecord(tool) && tool.type === "image_generation");
@@ -396,10 +413,44 @@ export function createResponsesRoutes(
       });
     }
 
-    const routeMatch = upstreamRouter?.resolveMatch(rawModel);
-    const allowUnauthenticated = routeMatch?.kind === "api-key" || routeMatch?.kind === "adapter";
+    const routeMatch = upstreamRouter?.resolveMatch(rawModel)
+      ?? (isRequestableModel(rawModel)
+        ? { kind: "codex" as const }
+        : { kind: "not-found" as const });
+    const allowUnauthenticated = routeMatch.kind === "api-key" || routeMatch.kind === "adapter";
     const authErr = checkAuth(c, accountPool, allowUnauthenticated);
     if (authErr) return authErr;
+
+    if (routeMatch.kind === "not-found") {
+      c.status(404);
+      return c.json({
+        error: {
+          message: `Model '${rawModel}' not found`,
+          type: "invalid_request_error",
+          code: "model_not_found",
+          param: "model",
+        },
+      });
+    }
+
+    if (path === "alpha/search" && routeMatch.kind === "codex") {
+      const parsed = parseModelName(rawModel);
+      const model = resolveModelId(parsed.modelId);
+      const response = await handleOAuthCodexSearch({
+        c,
+        accountPool,
+        cookieJar,
+        proxyPool,
+        body: model === rawModel ? body : { ...body, model },
+        model,
+      });
+      if (response.ok) {
+        // Search responses do not expose token usage, but still count the
+        // successful request for client-key quotas and audit statistics.
+        recordClientKeyUsage(c, rawModel);
+      }
+      return response;
+    }
 
     if (
       (routeMatch?.kind !== "api-key" && routeMatch?.kind !== "adapter")

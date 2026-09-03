@@ -17,7 +17,7 @@
  * `Dynamic require of "X" is not supported` at runtime.
  */
 
-import type { CodexInputItem } from "./codex-api.js";
+import type { CodexInputItem, CodexReasoning } from "./codex-api.js";
 import type { ParsedRateLimit } from "./rate-limit-headers.js";
 import { parseRateLimitsEvent } from "./rate-limit-headers.js";
 import { CodexApiError, PreviousResponseWebSocketError } from "./codex-types.js";
@@ -134,7 +134,7 @@ export interface WsCreateRequest {
   store: false;
   stream: true;
   previous_response_id?: string;
-  reasoning?: { effort?: string; summary?: string };
+  reasoning?: CodexReasoning;
   tools?: unknown[];
   tool_choice?: string | { type: string; name?: string };
   parallel_tool_calls?: boolean;

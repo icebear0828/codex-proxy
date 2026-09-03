@@ -268,6 +268,45 @@ describe("/v1/responses — optional instructions", () => {
     expect(req.version).toBe("26.318.11754");
   });
 
+  it("applies the complete Responses Lite contract from WebSocket metadata", async () => {
+    await app.request("/v1/responses", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        model: "codex",
+        input: [{ role: "user", content: "Hello" }],
+        reasoning: { effort: "high", summary: "auto", context: "current_turn" },
+        parallel_tool_calls: true,
+        client_metadata: {
+          ws_request_header_x_openai_internal_codex_responses_lite: "true",
+        },
+      }),
+    });
+
+    const req = capturedCodexRequest as Record<string, unknown>;
+    expect(req.useResponsesLite).toBe(true);
+    expect(req.reasoning).toEqual({ effort: "high", summary: "auto", context: "all_turns" });
+    expect(req.parallel_tool_calls).toBe(false);
+  });
+
+  it("preserves explicit reasoning context for non-Lite requests", async () => {
+    await app.request("/v1/responses", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        model: "codex",
+        input: [],
+        reasoning: { context: "current_turn" },
+        parallel_tool_calls: true,
+      }),
+    });
+
+    const req = capturedCodexRequest as Record<string, unknown>;
+    expect(req.useResponsesLite).toBe(false);
+    expect(req.reasoning).toEqual({ summary: "auto", context: "current_turn" });
+    expect(req.parallel_tool_calls).toBe(true);
+  });
+
   it("sanitizes reasoning input items before proxy forwarding", async () => {
     await app.request("/v1/responses", {
       method: "POST",

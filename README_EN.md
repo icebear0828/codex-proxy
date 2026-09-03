@@ -728,7 +728,7 @@ On first startup, if `data/local.yaml` is missing, Codex Proxy creates it with `
 | `/v1/chat/completions` | POST | OpenAI format chat completions |
 | `/v1/responses` | POST | Codex Responses API passthrough |
 | `/v1/responses/compact` | POST | Codex remote compact response proxy |
-| `/v1/alpha/search` | POST | Codex standalone Web Search (`codex-responses` API-key wire) |
+| `/v1/alpha/search` | POST | Codex standalone Web Search (ChatGPT OAuth account pool or `codex-responses` API-key wire) |
 | `/v1/images/generations` | POST | Codex JSON image generation passthrough (`codex-responses` API-key wire) |
 | `/v1/images/edits` | POST | Codex JSON image edit passthrough (`codex-responses` API-key wire) |
 | `/v1/messages` | POST | Anthropic format chat completions |

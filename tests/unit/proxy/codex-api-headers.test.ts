@@ -35,18 +35,21 @@ vi.mock("@src/proxy/ws-transport.js", () => ({
 }));
 
 function makeTransport(): TlsTransport & {
+  lastUrl: string | null;
   lastHeaders: Record<string, string> | null;
   lastBody: string | null;
 } {
   const t = {
+    lastUrl: null as string | null,
     lastHeaders: null as Record<string, string> | null,
     lastBody: null as string | null,
     post: vi.fn(
       async (
-        _url: string,
+        url: string,
         headers: Record<string, string>,
         body: string,
       ): Promise<TlsTransportResponse> => {
+        t.lastUrl = url;
         t.lastHeaders = headers;
         t.lastBody = body;
         const encoder = new TextEncoder();
@@ -106,6 +109,30 @@ describe("codex-api headers", () => {
   }
 
   describe("HTTP SSE path", () => {
+    it("forwards OAuth search to the Codex search endpoint with request context", async () => {
+      const api = await createApi();
+      const searchBody = {
+        model: "gpt-5.4",
+        commands: { search_query: [{ q: "OpenAI docs" }] },
+      };
+
+      const response = await api.createSearchResponse(searchBody, {
+        turnState: "search-turn-state",
+        turnMetadata: "{\"thread_id\":\"thread-1\"}",
+      });
+
+      expect(response.status).toBe(200);
+      expect(transport.lastUrl).toBe("https://test.example/codex/alpha/search");
+      expect(transport.lastHeaders).toMatchObject({
+        Authorization: "Bearer test-token",
+        Accept: "application/json",
+        "x-codex-turn-state": "search-turn-state",
+        "x-codex-turn-metadata": "{\"thread_id\":\"thread-1\"}",
+      });
+      expect(transport.lastHeaders?.["x-openai-internal-codex-responses-lite"]).toBeUndefined();
+      expect(JSON.parse(transport.lastBody!)).toEqual(searchBody);
+    });
+
     it("sends x-openai-internal-codex-residency: us", async () => {
       const api = await createApi();
       await api.createResponse(makeRequest());
@@ -147,6 +174,20 @@ describe("codex-api headers", () => {
       await api.createResponse(makeRequest({ service_tier: "flex" }));
       const body = JSON.parse(transport.lastBody!) as Record<string, unknown>;
       expect(body.service_tier).toBe("flex");
+    });
+
+    it("sends the Responses Lite HTTP header without leaking the internal flag", async () => {
+      const api = await createApi();
+      await api.createResponse(makeRequest({
+        useResponsesLite: true,
+        reasoning: { context: "current_turn" },
+        parallel_tool_calls: true,
+      }));
+      const body = JSON.parse(transport.lastBody!) as Record<string, unknown>;
+      expect(transport.lastHeaders!["x-openai-internal-codex-responses-lite"]).toBe("true");
+      expect(body.reasoning).toEqual({ context: "all_turns" });
+      expect(body.parallel_tool_calls).toBe(false);
+      expect(body.useResponsesLite).toBeUndefined();
     });
 
     it("sends x-codex-installation-id header and inside body.client_metadata", async () => {
@@ -284,6 +325,29 @@ describe("codex-api headers", () => {
   });
 
   describe("WebSocket path", () => {
+    it("sends the Responses Lite marker per response.create frame", async () => {
+      mockCreateWebSocketResponse.mockResolvedValue(new Response("data: {}\n\n"));
+      const api = await createApi();
+      await api.createResponse(makeRequest({
+        useWebSocket: true,
+        useResponsesLite: true,
+        reasoning: { context: "current_turn" },
+        parallel_tool_calls: true,
+      }));
+
+      const headers = mockCreateWebSocketResponse.mock.calls[0][1] as Record<string, string>;
+      const wsRequest = mockCreateWebSocketResponse.mock.calls[0][2] as {
+        reasoning?: Record<string, unknown>;
+        parallel_tool_calls?: boolean;
+        client_metadata?: Record<string, string>;
+      };
+      expect(headers["x-openai-internal-codex-responses-lite"]).toBeUndefined();
+      expect(wsRequest.reasoning).toEqual({ context: "all_turns" });
+      expect(wsRequest.parallel_tool_calls).toBe(false);
+      expect(wsRequest.client_metadata?.ws_request_header_x_openai_internal_codex_responses_lite)
+        .toBe("true");
+    });
+
     it("sends residency, request-id, and turn-state headers", async () => {
       mockCreateWebSocketResponse.mockResolvedValue(
         new Response("data: {}\n\n", {

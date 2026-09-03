@@ -3,6 +3,14 @@
  * Extracted from codex-api.ts for consumers that only need types.
  */
 
+export type CodexReasoningContext = "auto" | "current_turn" | "all_turns";
+
+export interface CodexReasoning {
+  effort?: string;
+  summary?: string;
+  context?: CodexReasoningContext;
+}
+
 export interface CodexResponsesRequest {
   model: string;
   instructions?: string | null;
@@ -10,7 +18,7 @@ export interface CodexResponsesRequest {
   stream: true;
   store: false;
   /** Optional: reasoning effort + summary mode */
-  reasoning?: { effort?: string; summary?: string };
+  reasoning?: CodexReasoning;
   /** Optional: service tier ("fast" / "flex") */
   service_tier?: string | null;
   /** Optional: tools available to the model */
@@ -40,6 +48,8 @@ export interface CodexResponsesRequest {
   include?: string[];
   /** When true, use WebSocket transport (enables previous_response_id and server-side storage). */
   useWebSocket?: boolean;
+  /** Internal transport hint for the Responses Lite wire contract. */
+  useResponsesLite?: boolean;
   /** Upstream turn-state token for sticky routing (not serialized to body). */
   turnState?: string;
   /** Codex per-turn metadata JSON, forwarded as a header and WS client_metadata. */
@@ -66,7 +76,9 @@ export interface CodexCompactRequest {
   instructions: string;
   tools?: unknown[];
   parallel_tool_calls?: boolean;
-  reasoning?: { effort?: string; summary?: string };
+  reasoning?: CodexReasoning;
+  /** Internal transport hint; never serialized into the request body. */
+  useResponsesLite?: boolean;
   text?: {
     format: {
       type: "text" | "json_object" | "json_schema";

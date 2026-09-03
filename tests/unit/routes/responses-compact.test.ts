@@ -92,8 +92,11 @@ vi.mock("@src/routes/shared/direct-request-handler.js", () => ({
 
 // Capture compact requests by mocking CodexApi
 let capturedCompactRequest: unknown = null;
+let capturedSearchRequest: unknown = null;
 let mockCompactResponse: unknown = { output: [{ role: "user", content: "compacted" }] };
 let mockCompactThrow: (() => never) | null = null;
+let mockSearchThrow: (() => never) | null = null;
+let mockSearchTransientFailures = 0;
 
 vi.mock("@src/proxy/codex-api.js", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@src/proxy/codex-api.js")>();
@@ -104,6 +107,21 @@ vi.mock("@src/proxy/codex-api.js", async (importOriginal) => {
         capturedCompactRequest = req;
         if (mockCompactThrow) mockCompactThrow();
         return mockCompactResponse;
+      }),
+      createSearchResponse: vi.fn(async (req: unknown) => {
+        capturedSearchRequest = req;
+        if (mockSearchThrow) mockSearchThrow();
+        if (mockSearchTransientFailures > 0) {
+          mockSearchTransientFailures--;
+          throw new CodexApiError(
+            503,
+            '{"error":{"code":"server_is_overloaded","message":"The server is overloaded"}}',
+          );
+        }
+        return new Response(JSON.stringify({ output: "search result" }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        });
       }),
       createResponse: vi.fn(),
       parseStream: vi.fn(),
@@ -127,8 +145,11 @@ describe("POST /v1/responses/compact", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     capturedCompactRequest = null;
+    capturedSearchRequest = null;
     mockCompactResponse = { output: [{ role: "user", content: "compacted" }] };
     mockCompactThrow = null;
+    mockSearchThrow = null;
+    mockSearchTransientFailures = 0;
     mockConfig.server.proxy_api_key = null;
     mockHandleDirectRequest.mockImplementation(async (options: HandleDirectRequestOptions) => options.c.json({ ok: true }));
     loadStaticModels();
@@ -247,6 +268,130 @@ describe("POST /v1/responses/compact", () => {
     );
     expect(mockHandleDirectRequest).not.toHaveBeenCalled();
     expect(capturedCompactRequest).toBeNull();
+  });
+
+  it("applies the Lite compact body contract before API-key auxiliary forwarding", async () => {
+    const forwardCodexJsonRequest = vi.fn(async () => new Response(
+      JSON.stringify({ output: [] }),
+      { status: 200, headers: { "Content-Type": "application/json" } },
+    ));
+    const upstreamRouter = {
+      resolveMatch: vi.fn(() => ({
+        kind: "adapter",
+        adapter: { tag: "codex-responses", forwardCodexJsonRequest },
+      })),
+    };
+    app = createResponsesRoutes(pool, undefined, undefined, upstreamRouter as never);
+
+    const res = await app.request("/v1/responses/compact", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-openai-internal-codex-responses-lite": "true",
+      },
+      body: JSON.stringify({
+        model: "my-custom-model",
+        input: [],
+        reasoning: { effort: "high", context: "current_turn" },
+        parallel_tool_calls: true,
+      }),
+    });
+
+    expect(res.status).toBe(200);
+    expect(forwardCodexJsonRequest).toHaveBeenCalledWith(
+      "responses/compact",
+      expect.objectContaining({
+        reasoning: { effort: "high", context: "all_turns" },
+        parallel_tool_calls: false,
+      }),
+      expect.any(AbortSignal),
+      expect.objectContaining({ useResponsesLite: true }),
+    );
+  });
+
+  it("routes standalone search through the OAuth account pool", async () => {
+    const res = await app.request("/v1/alpha/search", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        id: "search-session",
+        model: "codex",
+        commands: { search_query: [{ q: "OpenAI docs" }] },
+      }),
+    });
+
+    expect(res.status).toBe(200);
+    await expect(res.json()).resolves.toEqual({ output: "search result" });
+    expect(capturedSearchRequest).toEqual({
+      id: "search-session",
+      model: "gpt-5.3-codex",
+      commands: { search_query: [{ q: "OpenAI docs" }] },
+    });
+  });
+
+  it("preserves terminal OAuth search errors and safe response headers", async () => {
+    mockSearchThrow = () => {
+      throw new CodexApiError(
+        400,
+        JSON.stringify({ error: { message: "invalid search request" } }),
+        new Headers({
+          "Content-Type": "application/json",
+          "x-request-id": "search-request-id",
+          "Set-Cookie": "secret=hidden",
+        }),
+      );
+    };
+
+    const res = await app.request("/v1/alpha/search", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ model: "codex", id: "search-session" }),
+    });
+
+    expect(res.status).toBe(400);
+    expect(res.headers.get("x-request-id")).toBe("search-request-id");
+    expect(res.headers.get("set-cookie")).toBeNull();
+    await expect(res.json()).resolves.toEqual({
+      error: { message: "invalid search request" },
+    });
+  });
+
+  it("rotates OAuth search to another account after a transient upstream error", async () => {
+    pool.addAccount("test-token-2");
+    mockSearchTransientFailures = 1;
+
+    const res = await app.request("/v1/alpha/search", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ model: "codex", id: "search-session" }),
+    });
+
+    expect(res.status).toBe(200);
+    await expect(res.json()).resolves.toEqual({ output: "search result" });
+    expect(mockSearchTransientFailures).toBe(0);
+  });
+
+  it("applies the Responses Lite contract to OAuth compact requests", async () => {
+    const res = await app.request("/v1/responses/compact", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-openai-internal-codex-responses-lite": "true",
+      },
+      body: JSON.stringify({
+        model: "codex",
+        input: [],
+        reasoning: { effort: "high", context: "current_turn" },
+        parallel_tool_calls: true,
+      }),
+    });
+
+    expect(res.status).toBe(200);
+    expect(capturedCompactRequest).toMatchObject({
+      useResponsesLite: true,
+      reasoning: { effort: "high", context: "all_turns" },
+      parallel_tool_calls: false,
+    });
   });
 
   it.each([

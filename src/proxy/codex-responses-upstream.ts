@@ -33,6 +33,7 @@ import type {
   CodexAuxiliaryRequestContext,
   UpstreamAdapter,
 } from "./upstream-adapter.js";
+import { applyResponsesLiteContract, applyResponsesLiteHeader } from "./responses-lite.js";
 
 const MAX_ERROR_BODY = 1024 * 1024;
 const CODEX_AUXILIARY_JSON_PATHS = new Set<CodexAuxiliaryJsonPath>([
@@ -143,6 +144,7 @@ export class CodexResponsesUpstream implements UpstreamAdapter {
     headers["thread-id"] = identity.conversationId;
     headers[X_CODEX_WINDOW_ID_HEADER] = identity.windowId;
     applyCodexContextHeaders(headers, request);
+    applyResponsesLiteHeader(headers, request.useResponsesLite);
 
     // The explicit Version header must describe the same engine version as
     // the Codex User-Agent, even if the downstream caller sent another value.
@@ -160,6 +162,7 @@ export class CodexResponsesUpstream implements UpstreamAdapter {
     request: CodexResponsesRequest,
     signal: AbortSignal,
   ): Promise<Response> {
+    applyResponsesLiteContract(request);
     const { headers, identity, installationId } = this.buildClientHeaders(
       request,
       "text/event-stream",

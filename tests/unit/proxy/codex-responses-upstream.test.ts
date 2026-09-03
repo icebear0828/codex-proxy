@@ -183,6 +183,37 @@ describe("CodexResponsesUpstream", () => {
     expect(passesStrictCodexClientMatrix(headers, JSON.parse(rawBody))).toBe(true);
   });
 
+  it("forwards the complete Responses Lite contract on API-key wires", async () => {
+    const upstream = new CodexResponsesUpstream(
+      "sk-vendor",
+      "https://provider.example.com/v1",
+      "entry-1",
+    );
+    const request: CodexResponsesRequest = {
+      model: "gpt-5.6-sol",
+      input: [],
+      stream: true,
+      store: false,
+      useResponsesLite: true,
+      reasoning: { effort: "high", context: "current_turn" },
+      parallel_tool_calls: true,
+    };
+
+    await upstream.createResponse(request, new AbortController().signal);
+
+    const [, headers, rawBody] = postMock.mock.calls[0] as [
+      string,
+      Record<string, string>,
+      string,
+    ];
+    expect(headers["x-openai-internal-codex-responses-lite"]).toBe("true");
+    expect(JSON.parse(rawBody)).toMatchObject({
+      reasoning: { effort: "high", context: "all_turns" },
+      parallel_tool_calls: false,
+    });
+    expect(JSON.parse(rawBody)).not.toHaveProperty("useResponsesLite");
+  });
+
   it.each([
     "alpha/search",
     "responses/compact",

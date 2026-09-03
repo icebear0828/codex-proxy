@@ -134,9 +134,9 @@ OpenAI 相容的文本向量嵌入（Embeddings）介面。
 
 ---
 
-### Codex Responses API-Key 輔助端點
+### Codex 輔助端點
 
-當請求模型路由到 `wire=codex-responses` 的 API-key provider 時，代理亦支援以下非串流 JSON 端點：
+`POST /v1/alpha/search` 支援由 ChatGPT OAuth 帳號池承載的一般 Codex 模型，並將請求轉送至 `/backend-api/codex/alpha/search`。當請求模型路由到 `wire=codex-responses` 的 API-key provider 時，代理亦支援下列全部非串流 JSON 端點：
 
 | 端點 | 上游目標 | 用途 |
 |---|---|---|
@@ -145,7 +145,9 @@ OpenAI 相容的文本向量嵌入（Embeddings）介面。
 | `POST /v1/images/generations` | `<baseUrl>/images/generations` | Codex JSON 圖片生成 |
 | `POST /v1/images/edits` | `<baseUrl>/images/edits` | Codex JSON 圖片編輯 |
 
-所有端點均要求 body 含非空 `model`，並使用現有模型路由選擇 API-key entry。代理以供應商 API Key 替換本地代理鑑權；除套用已設定的模型別名/內部 provider 前綴解析外，不改寫 JSON body，並原樣回傳上游狀態碼、Content-Type 與回應主體。未列入白名單的路徑不會被轉發。亦接受不帶 `/v1` 的本地別名。遠端壓縮的公開合約見 [OpenAI Responses compact API](https://developers.openai.com/api/reference/resources/responses/methods/compact/)；獨立搜尋路徑來自 [Codex CLI 0.147.0 官方原始碼](https://github.com/openai/codex/blob/rust-v0.147.0/codex-rs/codex-api/src/endpoint/search.rs#L31-L45)。
+所有端點均要求 body 含非空 `model`，並使用現有模型路由。OAuth 搜尋會重用帳號池的 Cookie、代理選擇、重試/輪替和 Codex 請求上下文；API-key 路由則以供應商 API Key 替換本地代理鑑權。除已設定的模型別名、內部 provider 前綴解析及下述 Responses Lite 正規化外，不改寫 JSON body，並原樣回傳上游狀態碼、Content-Type 與回應主體。未列入白名單的路徑不會被轉發。亦接受不帶 `/v1` 的本地別名。遠端壓縮的公開合約見 [OpenAI Responses compact API](https://developers.openai.com/api/reference/resources/responses/methods/compact/)；獨立搜尋路徑來自 [Codex CLI 0.147.0 官方原始碼](https://github.com/openai/codex/blob/rust-v0.147.0/codex-rs/codex-api/src/endpoint/search.rs#L31-L45)。
+
+對於 Responses 生成及 compact 請求，當請求含 `x-openai-internal-codex-responses-lite: true`，或 `client_metadata` 內含等效 WebSocket 標記時，代理會套用完整 Responses Lite 合約：強制 `reasoning.context=all_turns`、`parallel_tool_calls=false`。這可能增加保留上下文及 token 用量，並使工具呼叫依序執行，但可避免 Lite 標記與請求 body 不一致而被上游拒絕。
 
 #### image_generation 工具
 

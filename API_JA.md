@@ -134,9 +134,9 @@ OpenAI 互換の埋め込み（Embeddings）インターフェース。
 
 ---
 
-### Codex Responses API キー補助エンドポイント
+### Codex 補助エンドポイント
 
-リクエストモデルが `wire=codex-responses` を持つ API キープロバイダーに解決される場合、プロキシは以下の非ストリーミング JSON エンドポイントもサポートします：
+`POST /v1/alpha/search` は ChatGPT OAuth アカウントプールで提供される通常の Codex モデルをサポートし、リクエストを `/backend-api/codex/alpha/search` に転送します。リクエストモデルが `wire=codex-responses` を持つ API キープロバイダーに解決される場合、プロキシは以下の非ストリーミング JSON エンドポイントもすべてサポートします：
 
 | エンドポイント | アップストリーム先 | 用途 |
 |---|---|---|
@@ -145,7 +145,9 @@ OpenAI 互換の埋め込み（Embeddings）インターフェース。
 | `POST /v1/images/generations` | `<baseUrl>/images/generations` | Codex JSON 画像生成 |
 | `POST /v1/images/edits` | `<baseUrl>/images/edits` | Codex JSON 画像編集 |
 
-各エンドポイントは JSON ボディに空でない `model` を必要とし、既存のモデルルーターを使用して API キーエントリを選択します。プロキシはローカルプロキシ認証を設定されたプロバイダーキーに置き換えます。設定されたモデルエイリアス解決および内部プロバイダープレフィックスの削除を除き、JSON ボディは変更されず、アップストリームのステータス、Content-Type、レスポンスボディがそのまま返されます。ホワイトリスト外のパスは転送されません。`v1` なしのローカルエイリアスも受け入れられます。詳細は [OpenAI Responses compact API](https://developers.openai.com/api/reference/resources/responses/methods/compact/) および [Codex CLI 0.147.0 検索エンドポイントソース](https://github.com/openai/codex/blob/rust-v0.147.0/codex-rs/codex-api/src/endpoint/search.rs#L31-L45) を参照してください。
+各エンドポイントは JSON ボディに空でない `model` を必要とし、既存のモデルルーターを使用します。OAuth 検索はアカウントプールの Cookie、プロキシ選択、再試行・ローテーション、Codex リクエストコンテキストを再利用します。API キールートではローカル認証を設定済みプロバイダーキーに置き換えます。設定されたモデルエイリアス解決、内部プロバイダープレフィックスの削除、および後述の Responses Lite 正規化を除き、JSON ボディは変更されず、アップストリームのステータス、Content-Type、レスポンスボディがそのまま返されます。ホワイトリスト外のパスは転送されません。`v1` なしのローカルエイリアスも受け入れられます。詳細は [OpenAI Responses compact API](https://developers.openai.com/api/reference/resources/responses/methods/compact/) および [Codex CLI 0.147.0 検索エンドポイントソース](https://github.com/openai/codex/blob/rust-v0.147.0/codex-rs/codex-api/src/endpoint/search.rs#L31-L45) を参照してください。
+
+Responses の生成および compact リクエストでは、`x-openai-internal-codex-responses-lite: true`、または同等の WebSocket マーカーが `client_metadata` に含まれる場合、プロキシは完全な Responses Lite 契約を適用し、`reasoning.context=all_turns` と `parallel_tool_calls=false` を強制します。保持されるコンテキストと token 使用量が増え、ツール呼び出しが直列化される可能性がありますが、Lite マーカーとリクエストボディの不整合によるアップストリーム拒否を防ぎます。
 
 #### image_generation ツール
 

@@ -28,6 +28,8 @@
 
 ### Fixed
 
+- 修复 Codex Responses Lite 请求只转发内部标记、却丢失 `reasoning.context=all_turns` 的问题：HTTP、WebSocket、compact 及 `codex-responses` API-key wire 现在统一应用完整 Lite 合同，同时强制 `parallel_tool_calls=false`，避免上游以 `unsupported_value` 拒绝请求并导致 WebSocket 以 1012 提前关闭。
+- 修复 `/v1/alpha/search` 仅支持 `codex-responses` API-key wire、使用 ChatGPT OAuth/Codex 模型时固定返回 400 的问题：搜索请求现在可通过账号池转发至 `/backend-api/codex/alpha/search`，并复用 Cookie、代理、请求上下文、账号轮换及安全响应头过滤。
 - 修复速率限制重置卡（Reset Cards）在请求转发后从控制台消失的问题：被动响应头更新 quota 时保留已知的 `reset_credits_available`，并在重置卡查询与消耗逻辑中同步更新账号配额缓存（`src/auth/account-registry.ts`、`src/auth/active-quota-refresher.ts`、`src/routes/accounts.ts`）。
 - 修复 Dashboard 顶部导航栏与侧栏「Codex Proxy」左侧品牌图标错误的问题：将手绘六边形 SVG 替换为官方 Logo 图片（`web/public/icon.png`），与桌面端 / Web 应用图标保持一致。（`web/src/components/Header.tsx`、`web/src/components/Sidebar.tsx`）
 - 修复并统一桌面端与 Web 端应用图标与 Logo：生成包含 Windows 完整多分辨率的 `icon.ico`、Web `favicon.ico` / `icon.png`，Electron 主进程窗口配置中注入应用图标并移除 `electron-builder` 的 `signAndEditExecutable: false` 以确保可执行文件与任务栏/桌面快捷方式正确嵌入图标；统一 Dashboard 顶部导航栏 Logo 为品牌立方体图标。（`packages/electron/`、`web/`、`scripts/build/generate-ico.ps1`）

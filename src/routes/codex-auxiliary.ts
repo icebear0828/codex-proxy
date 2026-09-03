@@ -14,7 +14,12 @@ import {
   X_CODEX_WINDOW_ID_HEADER,
   X_RESPONSESAPI_INCLUDE_TIMING_METRICS_HEADER,
 } from "../proxy/codex-request-context.js";
-import { OPENAI_SUBAGENT_HEADER } from "../proxy/openai-subagent.js";
+import { OPENAI_SUBAGENT_HEADER, sanitizeClientMetadata } from "../proxy/openai-subagent.js";
+import {
+  isResponsesLiteRequest,
+  RESPONSES_LITE_HEADER,
+  WS_RESPONSES_LITE_METADATA_KEY,
+} from "../proxy/responses-lite.js";
 
 const NO_BODY_STATUSES = new Set([204, 205, 304]);
 const SAFE_RESPONSE_HEADERS = new Set([
@@ -44,7 +49,7 @@ export interface HandleCodexAuxiliaryJsonOptions {
   model: string;
 }
 
-function responseHeaders(upstreamHeaders: Headers): Headers {
+export function codexAuxiliaryResponseHeaders(upstreamHeaders: Headers): Headers {
   const headers = new Headers();
   upstreamHeaders.forEach((value, name) => {
     const normalized = name.toLowerCase();
@@ -75,8 +80,18 @@ function nonEmptyHeader(c: Context, name: string): string | undefined {
   return value || undefined;
 }
 
-function requestContext(c: Context): CodexAuxiliaryRequestContext {
+export function codexAuxiliaryRequestContext(
+  c: Context,
+  body?: Record<string, unknown>,
+  supportsResponsesLite = false,
+): CodexAuxiliaryRequestContext {
   const openAiSubagent = nonEmptyHeader(c, OPENAI_SUBAGENT_HEADER);
+  const wsLiteMarker = nonEmptyHeader(c, WS_RESPONSES_LITE_METADATA_KEY);
+  const clientMetadata = {
+    ...sanitizeClientMetadata(body?.client_metadata),
+    ...(openAiSubagent ? { [OPENAI_SUBAGENT_HEADER]: openAiSubagent } : {}),
+    ...(wsLiteMarker ? { [WS_RESPONSES_LITE_METADATA_KEY]: wsLiteMarker } : {}),
+  };
   return {
     turnState: nonEmptyHeader(c, "x-codex-turn-state"),
     turnMetadata: nonEmptyHeader(c, X_CODEX_TURN_METADATA_HEADER),
@@ -85,9 +100,9 @@ function requestContext(c: Context): CodexAuxiliaryRequestContext {
     includeTimingMetrics: nonEmptyHeader(c, X_RESPONSESAPI_INCLUDE_TIMING_METRICS_HEADER),
     codexWindowId: nonEmptyHeader(c, X_CODEX_WINDOW_ID_HEADER),
     parentThreadId: nonEmptyHeader(c, X_CODEX_PARENT_THREAD_ID_HEADER),
-    ...(openAiSubagent
-      ? { client_metadata: { [OPENAI_SUBAGENT_HEADER]: openAiSubagent } }
-      : {}),
+    useResponsesLite: supportsResponsesLite
+      && isResponsesLiteRequest(nonEmptyHeader(c, RESPONSES_LITE_HEADER), clientMetadata),
+    ...(Object.keys(clientMetadata).length > 0 ? { client_metadata: clientMetadata } : {}),
   };
 }
 
@@ -104,7 +119,7 @@ export async function handleCodexAuxiliaryJson(
       path,
       body,
       c.req.raw.signal,
-      requestContext(c),
+      codexAuxiliaryRequestContext(c, body, path === "responses/compact"),
     );
   } catch (error) {
     const message = error instanceof Error ? error.message : "Upstream request failed";
@@ -145,7 +160,7 @@ export async function handleCodexAuxiliaryJson(
     {
       status: rawResponse.status,
       statusText: rawResponse.statusText,
-      headers: responseHeaders(rawResponse.headers),
+      headers: codexAuxiliaryResponseHeaders(rawResponse.headers),
     },
   );
 }

@@ -26,6 +26,11 @@ import {
   buildCodexClientMetadata,
   firstCodexRequestString,
 } from "./codex-request-context.js";
+import {
+  applyResponsesLiteContract,
+  applyResponsesLiteHeader,
+  applyResponsesLiteWsMetadata,
+} from "./responses-lite.js";
 
 export type { WsPoolContext };
 import { parseSSEBlock, parseSSEStream } from "./codex-sse.js";
@@ -34,6 +39,7 @@ import { fetchModels, probeEndpoint as probeEndpointFn } from "./codex-models.js
 import type { CookieJar } from "./cookie-jar.js";
 import type { BackendModelEntry } from "../models/model-store.js";
 import type { CodexFingerprintMode } from "../auth/types.js";
+import type { CodexAuxiliaryRequestContext } from "./upstream-adapter.js";
 
 function normalizeServiceTierForUpstream(serviceTier: string | null | undefined): string | undefined {
   if (!serviceTier) return undefined;
@@ -43,6 +49,7 @@ function normalizeServiceTierForUpstream(serviceTier: string | null | undefined)
 // Re-export types from codex-types.ts for backward compatibility
 export type {
   CodexResponsesRequest,
+  CodexReasoning,
   CodexCompactRequest,
   CodexCompactResponse,
   CodexContentPart,
@@ -271,6 +278,7 @@ export class CodexApi {
     onRateLimits?: (rl: ParsedRateLimit) => void,
     poolCtx?: WsPoolContext,
   ): Promise<Response> {
+    applyResponsesLiteContract(request);
     if (request.useWebSocket) {
       try {
         return await this.createResponseViaWebSocket(request, signal, onRateLimits, poolCtx);
@@ -355,6 +363,7 @@ export class CodexApi {
       identity.sessionId,
       identity.windowId,
     );
+    applyResponsesLiteWsMetadata(wsRequest.client_metadata, request.useResponsesLite);
 
     return createWebSocketResponse(wsUrl, headers, wsRequest, signal, this.proxyUrl, onRateLimits, poolCtx);
   }
@@ -388,6 +397,7 @@ export class CodexApi {
     if (identity.sessionId) headers["session_id"] = identity.sessionId;
     if (identity.windowId) headers["x-codex-window-id"] = identity.windowId;
     applyCodexContextHeaders(headers, request);
+    applyResponsesLiteHeader(headers, request.useResponsesLite);
     const openAiSubagent = normalizeOpenAISubagent(request.client_metadata?.[OPENAI_SUBAGENT_HEADER]);
     if (openAiSubagent) headers[OPENAI_SUBAGENT_HEADER] = openAiSubagent;
 
@@ -401,6 +411,7 @@ export class CodexApi {
       includeTimingMetrics: _timing,
       codexWindowId: _window,
       parentThreadId: _parent,
+      useResponsesLite: _lite,
       service_tier,
       ...bodyFields
     } = request;
@@ -467,6 +478,7 @@ export class CodexApi {
     request: CodexCompactRequest,
     signal?: AbortSignal,
   ): Promise<CodexCompactResponse> {
+    applyResponsesLiteContract(request);
     const transport = this.resolveTransport();
     const baseUrl = this.resolveBaseUrl();
     const url = `${baseUrl}/codex/responses/compact`;
@@ -479,8 +491,10 @@ export class CodexApi {
     headers["x-openai-internal-codex-residency"] = "us";
     headers["x-client-request-id"] = crypto.randomUUID();
     headers["x-codex-installation-id"] = getInstallationId(this.entryId ?? this.accountId);
+    applyResponsesLiteHeader(headers, request.useResponsesLite);
 
-    const body = JSON.stringify(request);
+    const { useResponsesLite: _lite, ...bodyFields } = request;
+    const body = JSON.stringify(bodyFields);
 
     let transportRes;
     try {
@@ -513,6 +527,51 @@ export class CodexApi {
     }
   }
 
+  /** Forward the standalone Codex Web Search request for ChatGPT OAuth accounts. */
+  async createSearchResponse(
+    body: Record<string, unknown>,
+    context: CodexAuxiliaryRequestContext = {},
+    signal?: AbortSignal,
+  ): Promise<Response> {
+    const transport = this.resolveTransport();
+    const url = `${this.resolveBaseUrl()}/codex/alpha/search`;
+    const headers = this.applyHeaders(buildHeadersWithContentType(this.token, this.accountId));
+    headers.Accept = "application/json";
+
+    const model = typeof body.model === "string" && body.model.trim()
+      ? body.model.trim()
+      : "codex";
+    const contextRequest: CodexResponsesRequest = {
+      model,
+      input: [],
+      stream: true,
+      store: false,
+      ...context,
+    };
+    applyCodexContextHeaders(headers, contextRequest);
+
+    let transportRes;
+    try {
+      transportRes = await transport.post(url, headers, JSON.stringify(body), signal, undefined, this.proxyUrl);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      throw new CodexApiError(0, message);
+    }
+    this.captureCookies(transportRes.setCookieHeaders);
+
+    if (transportRes.status < 200 || transportRes.status >= 300) {
+      throw new CodexApiError(
+        transportRes.status,
+        await readTransportBody(transportRes.body, 1024 * 1024),
+        transportRes.headers,
+      );
+    }
+    return new Response(transportRes.body, {
+      status: transportRes.status,
+      headers: transportRes.headers,
+    });
+  }
+
   /**
    * Parse SSE stream from a Codex Responses API response.
    * Delegates to the standalone parseSSEStream() function.
@@ -524,3 +583,29 @@ export class CodexApi {
 
 // Re-export CodexApiError for backward compatibility
 export { CodexApiError, PreviousResponseWebSocketError } from "./codex-types.js";
+
+async function readTransportBody(
+  stream: ReadableStream<Uint8Array>,
+  maxBytes = Number.POSITIVE_INFINITY,
+): Promise<string> {
+  const reader = stream.getReader();
+  const chunks: Uint8Array[] = [];
+  let totalSize = 0;
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    const remaining = maxBytes - totalSize;
+    if (remaining <= 0) {
+      await reader.cancel();
+      break;
+    }
+    const chunk = value.byteLength <= remaining ? value : value.subarray(0, remaining);
+    chunks.push(chunk);
+    totalSize += chunk.byteLength;
+    if (chunk.byteLength < value.byteLength) {
+      await reader.cancel();
+      break;
+    }
+  }
+  return Buffer.concat(chunks).toString("utf-8");
+}
