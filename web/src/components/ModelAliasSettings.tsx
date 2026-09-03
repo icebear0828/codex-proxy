@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState, useEffect, useRef } from "preact/hooks";
+import { useCallback, useMemo, useState, useEffect } from "preact/hooks";
 import { useT } from "../../../shared/i18n/context";
 import { useGeneralSettings } from "../../../shared/hooks/use-general-settings";
 import { useSettings } from "../../../shared/hooks/use-settings";
@@ -55,7 +55,6 @@ export function ModelAliasSettings({ models }: ModelAliasSettingsProps) {
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [isFading, setIsFading] = useState(false);
-  const fadeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const rows = draftRows ?? currentRows;
   const isDirty = draftRows !== null;
@@ -63,7 +62,6 @@ export function ModelAliasSettings({ models }: ModelAliasSettingsProps) {
   useEffect(() => {
     if (saved) {
       setIsFading(false);
-      if (fadeTimerRef.current) clearTimeout(fadeTimerRef.current);
       const timer = setTimeout(() => {
         setIsFading(true);
       }, 1800);

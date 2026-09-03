@@ -53,8 +53,17 @@ describe("SettingItemControl", () => {
     expect(screen.getByTitle("Saving...")).not.toBeNull();
   });
 
-  it("shows restart badge when requiresRestart is true and saved", () => {
-    render(
+  it("shows restart badge when requiresRestart is true and saved edge fires", () => {
+    const { rerender } = render(
+      <I18nProvider>
+        <SettingItemControl label="Test Setting" saved={false} requiresRestart={true}>
+          <input type="text" value="8080" />
+        </SettingItemControl>
+      </I18nProvider>
+    );
+
+    // Simulate a real save: parent flips saved false->true.
+    rerender(
       <I18nProvider>
         <SettingItemControl label="Test Setting" saved={true} requiresRestart={true}>
           <input type="text" value="8080" />
@@ -65,8 +74,31 @@ describe("SettingItemControl", () => {
     expect(screen.getByText("Restart required")).not.toBeNull();
   });
 
-  it("shows saved badge when saved is true without restart", () => {
+  it("does not show saved badge on initial mount even when saved is already true", () => {
     render(
+      <I18nProvider>
+        <SettingItemControl label="Test Setting" saved={true} requiresRestart={false}>
+          <input type="text" value="model-name" />
+        </SettingItemControl>
+      </I18nProvider>
+    );
+
+    // A sticky `saved` prop is not a save; the badge must only appear after the
+    // actual save edge so reverting an edit does not show a false "Saved".
+    expect(screen.queryByText("Saved")).toBeNull();
+  });
+
+  it("shows saved badge when saved edge fires without restart", () => {
+    const { rerender } = render(
+      <I18nProvider>
+        <SettingItemControl label="Test Setting" saved={false} requiresRestart={false}>
+          <input type="text" value="model-name" />
+        </SettingItemControl>
+      </I18nProvider>
+    );
+
+    // Simulate a real save: parent flips saved false->true.
+    rerender(
       <I18nProvider>
         <SettingItemControl label="Test Setting" saved={true} requiresRestart={false}>
           <input type="text" value="model-name" />

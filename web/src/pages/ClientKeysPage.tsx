@@ -145,7 +145,7 @@ export const ClientKeysPage: FunctionalComponent<ClientKeysPageProps> = ({
 
     try {
       const res = await createKey(input);
-      setCreatedSecretKey(res.secret_key);
+      setCreatedSecretKey(res.key);
     } catch (err) {
       setFormError(err instanceof Error ? err.message : String(err));
     } finally {

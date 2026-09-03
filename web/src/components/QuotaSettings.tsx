@@ -14,7 +14,7 @@ export function QuotaSettings() {
   const [draftSecondary, setDraftSecondary] = useState<string | null>(null);
   const [draftSkip, setDraftSkip] = useState<boolean | null>(null);
 
-  const [savingField, setSavingField] = useState<string | null>(null);
+  const [savingFields, setSavingFields] = useState<Record<string, boolean>>({});
   const [savedFields, setSavedFields] = useState<Record<string, boolean>>({});
   const [fieldErrors, setFieldErrors] = useState<Record<string, string | null>>({});
 
@@ -37,7 +37,7 @@ export function QuotaSettings() {
   };
 
   const saveSingleField = useCallback(async (fieldName: string, patch: Record<string, unknown>, resetDraft: () => void) => {
-    setSavingField(fieldName);
+    setSavingFields((prev) => ({ ...prev, [fieldName]: true }));
     setFieldErrors((prev) => ({ ...prev, [fieldName]: null }));
     try {
       await qs.save(patch);
@@ -46,7 +46,11 @@ export function QuotaSettings() {
     } catch (err: unknown) {
       setFieldErrors((prev) => ({ ...prev, [fieldName]: err instanceof Error ? err.message : String(err) }));
     } finally {
-      setSavingField(null);
+      setSavingFields((prev) => {
+        const next = { ...prev };
+        delete next[fieldName];
+        return next;
+      });
     }
   }, [qs]);
 
@@ -54,33 +58,33 @@ export function QuotaSettings() {
     if (draftInterval === null) return;
     const val = parseInt(draftInterval, 10);
     if (isNaN(val) || val < 0) {
-      setFieldErrors((prev) => ({ ...prev, interval: "Invalid interval" }));
+      setFieldErrors((prev) => ({ ...prev, interval: t("settingErrorInterval") }));
       return;
     }
     saveSingleField("interval", { refresh_interval_minutes: val }, () => setDraftInterval(null));
-  }, [draftInterval, saveSingleField]);
+  }, [draftInterval, saveSingleField, t]);
 
   const handleSavePrimary = useCallback(() => {
     if (draftPrimary === null) return;
     const parsed = parseThresholds(draftPrimary);
     if (!parsed) {
-      setFieldErrors((prev) => ({ ...prev, primary: "Invalid thresholds (1-100)" }));
+      setFieldErrors((prev) => ({ ...prev, primary: t("settingErrorThresholds") }));
       return;
     }
     const currentTh = qs.data?.warning_thresholds ?? { primary: [80, 90], secondary: [80, 90] };
     saveSingleField("primary", { warning_thresholds: { ...currentTh, primary: parsed } }, () => setDraftPrimary(null));
-  }, [draftPrimary, qs.data?.warning_thresholds, saveSingleField]);
+  }, [draftPrimary, qs.data?.warning_thresholds, saveSingleField, t]);
 
   const handleSaveSecondary = useCallback(() => {
     if (draftSecondary === null) return;
     const parsed = parseThresholds(draftSecondary);
     if (!parsed) {
-      setFieldErrors((prev) => ({ ...prev, secondary: "Invalid thresholds (1-100)" }));
+      setFieldErrors((prev) => ({ ...prev, secondary: t("settingErrorThresholds") }));
       return;
     }
     const currentTh = qs.data?.warning_thresholds ?? { primary: [80, 90], secondary: [80, 90] };
     saveSingleField("secondary", { warning_thresholds: { ...currentTh, secondary: parsed } }, () => setDraftSecondary(null));
-  }, [draftSecondary, qs.data?.warning_thresholds, saveSingleField]);
+  }, [draftSecondary, qs.data?.warning_thresholds, saveSingleField, t]);
 
   const handleSaveSkip = useCallback(() => {
     if (draftSkip === null) return;
@@ -109,7 +113,7 @@ export function QuotaSettings() {
           label={t("quotaRefreshInterval")}
           hint={t("quotaRefreshIntervalHint")}
           isDirty={draftInterval !== null && draftInterval !== String(currentInterval)}
-          saving={savingField === "interval"}
+          saving={!!savingFields.interval}
           saved={savedFields.interval}
           error={fieldErrors.interval}
           requiresRestart={false}
@@ -132,7 +136,7 @@ export function QuotaSettings() {
         <SettingItemControl
           label={t("quotaSkipExhausted")}
           isDirty={draftSkip !== null && draftSkip !== currentSkip}
-          saving={savingField === "skip"}
+          saving={!!savingFields.skip}
           saved={savedFields.skip}
           error={fieldErrors.skip}
           requiresRestart={false}
@@ -156,7 +160,7 @@ export function QuotaSettings() {
           label={t("quotaPrimaryThresholds")}
           hint={t("quotaThresholdsHint")}
           isDirty={draftPrimary !== null && draftPrimary !== currentPrimary.join(", ")}
-          saving={savingField === "primary"}
+          saving={!!savingFields.primary}
           saved={savedFields.primary}
           error={fieldErrors.primary}
           requiresRestart={false}
@@ -176,7 +180,7 @@ export function QuotaSettings() {
         <SettingItemControl
           label={t("quotaSecondaryThresholds")}
           isDirty={draftSecondary !== null && draftSecondary !== currentSecondary.join(", ")}
-          saving={savingField === "secondary"}
+          saving={!!savingFields.secondary}
           saved={savedFields.secondary}
           error={fieldErrors.secondary}
           requiresRestart={false}

@@ -16,7 +16,7 @@ export function OllamaBridgeSettings() {
   const [draftVersion, setDraftVersion] = useState<string | null>(null);
   const [draftDisableVision, setDraftDisableVision] = useState<boolean | null>(null);
 
-  const [savingField, setSavingField] = useState<string | null>(null);
+  const [savingFields, setSavingFields] = useState<Record<string, boolean>>({});
   const [savedFields, setSavedFields] = useState<Record<string, boolean>>({});
   const [fieldErrors, setFieldErrors] = useState<Record<string, string | null>>({});
 
@@ -35,7 +35,7 @@ export function OllamaBridgeSettings() {
   const exposesNetwork = isNetworkExposedHost(displayHost);
 
   const saveSingleField = useCallback(async (fieldName: string, patch: Record<string, unknown>, resetDraft: () => void) => {
-    setSavingField(fieldName);
+    setSavingFields((prev) => ({ ...prev, [fieldName]: true }));
     setFieldErrors((prev) => ({ ...prev, [fieldName]: null }));
     try {
       await ollama.save(patch);
@@ -44,7 +44,11 @@ export function OllamaBridgeSettings() {
     } catch (err: unknown) {
       setFieldErrors((prev) => ({ ...prev, [fieldName]: err instanceof Error ? err.message : String(err) }));
     } finally {
-      setSavingField(null);
+      setSavingFields((prev) => {
+        const next = { ...prev };
+        delete next[fieldName];
+        return next;
+      });
     }
   }, [ollama]);
 
@@ -62,11 +66,11 @@ export function OllamaBridgeSettings() {
     if (draftPort === null) return;
     const val = parseInt(draftPort, 10);
     if (isNaN(val) || val < 1 || val > 65535) {
-      setFieldErrors((prev) => ({ ...prev, port: "Invalid port number (1-65535)" }));
+      setFieldErrors((prev) => ({ ...prev, port: t("settingErrorPort") }));
       return;
     }
     saveSingleField("port", { port: val }, () => setDraftPort(null));
-  }, [draftPort, saveSingleField]);
+  }, [draftPort, saveSingleField, t]);
 
   const handleSaveVersion = useCallback(() => {
     if (draftVersion === null) return;
@@ -140,7 +144,7 @@ export function OllamaBridgeSettings() {
           label={t("ollamaBridgeEnabled")}
           hint={t("ollamaBridgeEnabledHint")}
           isDirty={draftEnabled !== null && draftEnabled !== currentEnabled}
-          saving={savingField === "enabled"}
+          saving={!!savingFields.enabled}
           saved={savedFields.enabled}
           error={fieldErrors.enabled}
           requiresRestart={true}
@@ -164,7 +168,7 @@ export function OllamaBridgeSettings() {
           label={t("ollamaBridgeHost")}
           hint={t("ollamaBridgeHostHint")}
           isDirty={draftHost !== null && draftHost !== currentHost}
-          saving={savingField === "host"}
+          saving={!!savingFields.host}
           saved={savedFields.host}
           error={fieldErrors.host}
           requiresRestart={true}
@@ -191,7 +195,7 @@ export function OllamaBridgeSettings() {
           label={t("ollamaBridgePort")}
           hint={t("ollamaBridgePortHint")}
           isDirty={draftPort !== null && draftPort !== String(currentPort)}
-          saving={savingField === "port"}
+          saving={!!savingFields.port}
           saved={savedFields.port}
           error={fieldErrors.port}
           requiresRestart={true}
@@ -213,7 +217,7 @@ export function OllamaBridgeSettings() {
           label={t("ollamaBridgeVersion")}
           hint={t("ollamaBridgeVersionHint")}
           isDirty={draftVersion !== null && draftVersion !== currentVersion}
-          saving={savingField === "version"}
+          saving={!!savingFields.version}
           saved={savedFields.version}
           error={fieldErrors.version}
           requiresRestart={false}
@@ -233,7 +237,7 @@ export function OllamaBridgeSettings() {
           label={t("ollamaBridgeDisableVision")}
           hint={t("ollamaBridgeDisableVisionHint")}
           isDirty={draftDisableVision !== null && draftDisableVision !== currentDisableVision}
-          saving={savingField === "disable_vision"}
+          saving={!!savingFields.disable_vision}
           saved={savedFields.disable_vision}
           error={fieldErrors.disable_vision}
           requiresRestart={false}

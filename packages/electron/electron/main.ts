@@ -236,7 +236,6 @@ function createWindow(): void {
   });
 
   if (!IS_MAC) {
-    mainWindow.removeMenu();
     mainWindow.setMenu(null);
   }
 

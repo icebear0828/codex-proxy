@@ -14,7 +14,7 @@ export function LogsSettings() {
   const [draftLogsCaptureBody, setDraftLogsCaptureBody] = useState<boolean | null>(null);
   const [draftLogsLlmOnly, setDraftLogsLlmOnly] = useState<boolean | null>(null);
 
-  const [savingField, setSavingField] = useState<string | null>(null);
+  const [savingFields, setSavingFields] = useState<Record<string, boolean>>({});
   const [savedFields, setSavedFields] = useState<Record<string, boolean>>({});
   const [fieldErrors, setFieldErrors] = useState<Record<string, string | null>>({});
 
@@ -29,7 +29,7 @@ export function LogsSettings() {
   const displayLogsLlmOnly = draftLogsLlmOnly ?? currentLogsLlmOnly;
 
   const saveSingleField = useCallback(async (fieldName: string, patch: Record<string, unknown>, resetDraft: () => void) => {
-    setSavingField(fieldName);
+    setSavingFields((prev) => ({ ...prev, [fieldName]: true }));
     setFieldErrors((prev) => ({ ...prev, [fieldName]: null }));
     try {
       await gs.save(patch);
@@ -38,7 +38,11 @@ export function LogsSettings() {
     } catch (err: unknown) {
       setFieldErrors((prev) => ({ ...prev, [fieldName]: err instanceof Error ? err.message : String(err) }));
     } finally {
-      setSavingField(null);
+      setSavingFields((prev) => {
+        const next = { ...prev };
+        delete next[fieldName];
+        return next;
+      });
     }
   }, [gs]);
 
@@ -51,11 +55,11 @@ export function LogsSettings() {
     if (draftLogsCapacity === null) return;
     const val = parseInt(draftLogsCapacity, 10);
     if (isNaN(val) || val < 1) {
-      setFieldErrors((prev) => ({ ...prev, logs_capacity: "Invalid capacity" }));
+      setFieldErrors((prev) => ({ ...prev, logs_capacity: t("settingErrorCapacity") }));
       return;
     }
     saveSingleField("logs_capacity", { logs_capacity: val }, () => setDraftLogsCapacity(null));
-  }, [draftLogsCapacity, saveSingleField]);
+  }, [draftLogsCapacity, saveSingleField, t]);
 
   const handleSaveLogsCaptureBody = useCallback(() => {
     if (draftLogsCaptureBody === null) return;
@@ -89,7 +93,7 @@ export function LogsSettings() {
           label={t("logsEnable")}
           hint={t("logsEnabledHint")}
           isDirty={draftLogsEnabled !== null && draftLogsEnabled !== currentLogsEnabled}
-          saving={savingField === "logs_enabled"}
+          saving={!!savingFields.logs_enabled}
           saved={savedFields.logs_enabled}
           error={fieldErrors.logs_enabled}
           requiresRestart={false}
@@ -113,7 +117,7 @@ export function LogsSettings() {
           label={t("logsCapacity")}
           hint={t("logsCapacityHint")}
           isDirty={draftLogsCapacity !== null && draftLogsCapacity !== String(currentLogsCapacity)}
-          saving={savingField === "logs_capacity"}
+          saving={!!savingFields.logs_capacity}
           saved={savedFields.logs_capacity}
           error={fieldErrors.logs_capacity}
           requiresRestart={false}
@@ -134,7 +138,7 @@ export function LogsSettings() {
           label={t("logsCaptureBody")}
           hint={t("logsCaptureBodyHint")}
           isDirty={draftLogsCaptureBody !== null && draftLogsCaptureBody !== currentLogsCaptureBody}
-          saving={savingField === "logs_capture_body"}
+          saving={!!savingFields.logs_capture_body}
           saved={savedFields.logs_capture_body}
           error={fieldErrors.logs_capture_body}
           requiresRestart={false}
@@ -158,7 +162,7 @@ export function LogsSettings() {
           label={t("logsLlmOnly")}
           hint={t("logsLlmOnlyHint")}
           isDirty={draftLogsLlmOnly !== null && draftLogsLlmOnly !== currentLogsLlmOnly}
-          saving={savingField === "logs_llm_only"}
+          saving={!!savingFields.logs_llm_only}
           saved={savedFields.logs_llm_only}
           error={fieldErrors.logs_llm_only}
           requiresRestart={false}

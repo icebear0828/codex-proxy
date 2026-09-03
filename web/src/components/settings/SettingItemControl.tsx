@@ -32,34 +32,63 @@ export function SettingItemControl({
   const t = useT();
   const [showSavedBadge, setShowSavedBadge] = useState(false);
   const [isFading, setIsFading] = useState(false);
-  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // A badge must only appear after a *successful* save, not when the user merely
+  // reverts an edit back to the committed value (which also flips isDirty true->false).
+  // We detect a real save two ways:
+  //   1. the Save button was clicked (lastSaveClickRef), or
+  //   2. the parent externally flipped `saved` false->true (savedRising), used by
+  //      fields like layoutMode that have no Save button and signal the badge via
+  //      the `saved` prop.
+  const lastSaveClickRef = useRef(false);
+  const prevSavedRef = useRef(saved);
+  const fadeTimersRef = useRef<ReturnType<typeof setTimeout>[]>([]);
+  const clearFadeTimers = () => {
+    fadeTimersRef.current.forEach((t) => clearTimeout(t));
+    fadeTimersRef.current = [];
+  };
+
+  // Cancel in-flight fades only on unmount — do NOT cancel them when `saved` flips
+  // false (e.g. layoutMode resets `saved` at 2s), otherwise the remove timer is lost.
+  useEffect(() => clearFadeTimers, []);
 
   useEffect(() => {
-    if (saved) {
-      setShowSavedBadge(true);
-      setIsFading(false);
-      if (timerRef.current) clearTimeout(timerRef.current);
+    if (isDirty) {
+      // Editing invalidates any pending badge/save signal.
+      lastSaveClickRef.current = false;
+      prevSavedRef.current = saved;
+      return;
+    }
 
-      if (!requiresRestart) {
-        // Start fading after 1.8s, completely remove after 2.5s
-        const fadeTimer = setTimeout(() => {
+    const savedRising = saved && !prevSavedRef.current;
+    prevSavedRef.current = saved;
+
+    const shouldShow = saved && (savedRising || lastSaveClickRef.current);
+    lastSaveClickRef.current = false;
+    if (!shouldShow) return;
+
+    clearFadeTimers();
+    setShowSavedBadge(true);
+    setIsFading(false);
+
+    if (!requiresRestart) {
+      // requiresRestart badges must persist until the app is restarted.
+      fadeTimersRef.current.push(
+        setTimeout(() => {
           setIsFading(true);
-        }, 1800);
-        const removeTimer = setTimeout(() => {
+        }, 1800),
+        setTimeout(() => {
           setShowSavedBadge(false);
           setIsFading(false);
-        }, 2500);
-        return () => {
-          clearTimeout(fadeTimer);
-          clearTimeout(removeTimer);
-        };
-      }
+        }, 2500),
+      );
     }
-  }, [saved, requiresRestart]);
+  }, [saved, isDirty, requiresRestart]);
 
   const handleSave = async (e?: Event) => {
     if (e) e.preventDefault();
     if (!onSave || saving || disabled) return;
+    lastSaveClickRef.current = true;
     await onSave();
   };
 

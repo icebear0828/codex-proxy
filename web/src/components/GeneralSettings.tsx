@@ -1,4 +1,4 @@
-import { useState, useCallback } from "preact/hooks";
+import { useState, useCallback, useRef, useEffect } from "preact/hooks";
 import { useT } from "../../../shared/i18n/context";
 import { useGeneralSettings, type SystemPromptStrategy } from "../../../shared/hooks/use-general-settings";
 import { useSettings } from "../../../shared/hooks/use-settings";
@@ -38,10 +38,18 @@ export function GeneralSettings({ layoutMode, onLayoutModeChange }: GeneralSetti
   const [localLayoutMode, setLocalLayoutMode] = useState<LayoutMode>(() => getLayoutMode());
   const [collapsed, setCollapsed] = useState(true);
 
-  // Field-level saving / saved states
-  const [savingField, setSavingField] = useState<string | null>(null);
+  // Field-level saving / saved states. savingFields is keyed by field name so
+  // concurrent saves on different fields each keep their own spinner.
+  const [savingFields, setSavingFields] = useState<Record<string, boolean>>({});
   const [savedFields, setSavedFields] = useState<Record<string, boolean>>({});
   const [fieldErrors, setFieldErrors] = useState<Record<string, string | null>>({});
+
+  const mountedRef = useRef(true);
+  useEffect(() => {
+    return () => {
+      mountedRef.current = false;
+    };
+  }, []);
 
   const currentPort = gs.data?.port ?? 8080;
   const currentProxyUrl = gs.data?.proxy_url ?? "";
@@ -94,12 +102,15 @@ export function GeneralSettings({ layoutMode, onLayoutModeChange }: GeneralSetti
     onLayoutModeChange?.(mode);
     setSavedFields((prev) => ({ ...prev, layoutMode: true }));
     setTimeout(() => {
-      setSavedFields((prev) => ({ ...prev, layoutMode: false }));
+      // Reset after the badge fades so the next change re-triggers it.
+      if (mountedRef.current) {
+        setSavedFields((prev) => ({ ...prev, layoutMode: false }));
+      }
     }, 2000);
   };
 
   const saveSingleField = useCallback(async (fieldName: string, patch: Record<string, unknown>, resetDraft: () => void) => {
-    setSavingField(fieldName);
+    setSavingFields((prev) => ({ ...prev, [fieldName]: true }));
     setFieldErrors((prev) => ({ ...prev, [fieldName]: null }));
     try {
       await gs.save(patch);
@@ -108,7 +119,11 @@ export function GeneralSettings({ layoutMode, onLayoutModeChange }: GeneralSetti
     } catch (err: unknown) {
       setFieldErrors((prev) => ({ ...prev, [fieldName]: err instanceof Error ? err.message : String(err) }));
     } finally {
-      setSavingField(null);
+      setSavingFields((prev) => {
+        const next = { ...prev };
+        delete next[fieldName];
+        return next;
+      });
     }
   }, [gs]);
 
@@ -116,11 +131,11 @@ export function GeneralSettings({ layoutMode, onLayoutModeChange }: GeneralSetti
     if (draftPort === null) return;
     const val = parseInt(draftPort, 10);
     if (isNaN(val) || val < 1 || val > 65535) {
-      setFieldErrors((prev) => ({ ...prev, port: "Invalid port number (1-65535)" }));
+      setFieldErrors((prev) => ({ ...prev, port: t("settingErrorPort") }));
       return;
     }
     saveSingleField("port", { port: val }, () => setDraftPort(null));
-  }, [draftPort, saveSingleField]);
+  }, [draftPort, saveSingleField, t]);
 
   const handleSaveProxyUrl = useCallback(() => {
     if (draftProxyUrl === null) return;
@@ -175,38 +190,53 @@ export function GeneralSettings({ layoutMode, onLayoutModeChange }: GeneralSetti
   const handleSaveRefreshMargin = useCallback(() => {
     if (draftRefreshMargin === null) return;
     const val = parseInt(draftRefreshMargin, 10);
-    if (isNaN(val) || val < 0) return;
+    if (isNaN(val) || val < 0) {
+      setFieldErrors((prev) => ({ ...prev, refresh_margin_seconds: t("settingErrorInvalidNumber") }));
+      return;
+    }
     saveSingleField("refresh_margin_seconds", { refresh_margin_seconds: val }, () => setDraftRefreshMargin(null));
-  }, [draftRefreshMargin, saveSingleField]);
+  }, [draftRefreshMargin, saveSingleField, t]);
 
   const handleSaveRefreshConcurrency = useCallback(() => {
     if (draftRefreshConcurrency === null) return;
     const val = parseInt(draftRefreshConcurrency, 10);
-    if (isNaN(val) || val < 1) return;
+    if (isNaN(val) || val < 1) {
+      setFieldErrors((prev) => ({ ...prev, refresh_concurrency: t("settingErrorInvalidNumber") }));
+      return;
+    }
     saveSingleField("refresh_concurrency", { refresh_concurrency: val }, () => setDraftRefreshConcurrency(null));
-  }, [draftRefreshConcurrency, saveSingleField]);
+  }, [draftRefreshConcurrency, saveSingleField, t]);
 
   const handleSaveMaxConcurrent = useCallback(() => {
     if (draftMaxConcurrent === null) return;
     const val = parseInt(draftMaxConcurrent, 10);
-    if (isNaN(val) || val < 1) return;
+    if (isNaN(val) || val < 1) {
+      setFieldErrors((prev) => ({ ...prev, max_concurrent_per_account: t("settingErrorInvalidNumber") }));
+      return;
+    }
     saveSingleField("max_concurrent_per_account", { max_concurrent_per_account: val }, () => setDraftMaxConcurrent(null));
-  }, [draftMaxConcurrent, saveSingleField]);
+  }, [draftMaxConcurrent, saveSingleField, t]);
 
   const handleSaveRequestInterval = useCallback(() => {
     if (draftRequestInterval === null) return;
     const val = parseInt(draftRequestInterval, 10);
-    if (isNaN(val) || val < 0) return;
+    if (isNaN(val) || val < 0) {
+      setFieldErrors((prev) => ({ ...prev, request_interval_ms: t("settingErrorInvalidNumber") }));
+      return;
+    }
     saveSingleField("request_interval_ms", { request_interval_ms: val }, () => setDraftRequestInterval(null));
-  }, [draftRequestInterval, saveSingleField]);
+  }, [draftRequestInterval, saveSingleField, t]);
 
   const handleSaveUsageHistoryRetention = useCallback(() => {
     if (draftUsageHistoryRetention === null) return;
     const trimmed = draftUsageHistoryRetention.trim();
     const val = trimmed === "" ? null : Number(trimmed);
-    if (val !== null && (!Number.isInteger(val) || val < 1)) return;
+    if (val !== null && (!Number.isInteger(val) || val < 1)) {
+      setFieldErrors((prev) => ({ ...prev, usage_history_retention_days: t("settingErrorInvalidNumber") }));
+      return;
+    }
     saveSingleField("usage_history_retention_days", { usage_history_retention_days: val }, () => setDraftUsageHistoryRetention(null));
-  }, [draftUsageHistoryRetention, saveSingleField]);
+  }, [draftUsageHistoryRetention, saveSingleField, t]);
 
   const handleSaveAutoUpdate = useCallback(() => {
     if (draftAutoUpdate === null) return;
@@ -252,7 +282,7 @@ export function GeneralSettings({ layoutMode, onLayoutModeChange }: GeneralSetti
             label={t("generalSettingsPort")}
             hint={t("generalSettingsPortHint")}
             isDirty={draftPort !== null && draftPort !== String(currentPort)}
-            saving={savingField === "port"}
+            saving={!!savingFields.port}
             saved={savedFields.port}
             error={fieldErrors.port}
             requiresRestart={true}
@@ -274,7 +304,7 @@ export function GeneralSettings({ layoutMode, onLayoutModeChange }: GeneralSetti
             label={t("generalSettingsProxyUrl")}
             hint={t("generalSettingsProxyUrlHint")}
             isDirty={draftProxyUrl !== null && draftProxyUrl !== currentProxyUrl}
-            saving={savingField === "proxy_url"}
+            saving={!!savingFields.proxy_url}
             saved={savedFields.proxy_url}
             error={fieldErrors.proxy_url}
             requiresRestart={true}
@@ -295,7 +325,7 @@ export function GeneralSettings({ layoutMode, onLayoutModeChange }: GeneralSetti
             label={t("generalSettingsForceHttp11")}
             hint={t("generalSettingsForceHttp11Hint")}
             isDirty={draftForceHttp11 !== null && draftForceHttp11 !== currentForceHttp11}
-            saving={savingField === "force_http11"}
+            saving={!!savingFields.force_http11}
             saved={savedFields.force_http11}
             error={fieldErrors.force_http11}
             requiresRestart={true}
@@ -335,7 +365,7 @@ export function GeneralSettings({ layoutMode, onLayoutModeChange }: GeneralSetti
             label={t("generalSettingsDefaultModel")}
             hint={t("generalSettingsDefaultModelHint")}
             isDirty={draftDefaultModel !== null && draftDefaultModel !== currentDefaultModel}
-            saving={savingField === "default_model"}
+            saving={!!savingFields.default_model}
             saved={savedFields.default_model}
             error={fieldErrors.default_model}
             requiresRestart={false}
@@ -356,7 +386,7 @@ export function GeneralSettings({ layoutMode, onLayoutModeChange }: GeneralSetti
             label={t("generalSettingsImageHostModel")}
             hint={t("generalSettingsImageHostModelHint")}
             isDirty={draftImageHostModel !== null && draftImageHostModel !== currentImageHostModel}
-            saving={savingField === "image_host_model"}
+            saving={!!savingFields.image_host_model}
             saved={savedFields.image_host_model}
             error={fieldErrors.image_host_model}
             requiresRestart={false}
@@ -382,7 +412,7 @@ export function GeneralSettings({ layoutMode, onLayoutModeChange }: GeneralSetti
             label={t("generalSettingsReasoningEffort")}
             hint={t("generalSettingsReasoningEffortHint")}
             isDirty={draftReasoningEffort !== null && draftReasoningEffort !== currentReasoningEffort}
-            saving={savingField === "default_reasoning_effort"}
+            saving={!!savingFields.default_reasoning_effort}
             saved={savedFields.default_reasoning_effort}
             error={fieldErrors.default_reasoning_effort}
             requiresRestart={false}
@@ -406,7 +436,7 @@ export function GeneralSettings({ layoutMode, onLayoutModeChange }: GeneralSetti
             label={t("generalSettingsAllowSystemPromptStrategy")}
             hint={t("generalSettingsAllowSystemPromptStrategyHint")}
             isDirty={draftAllowSystemPromptStrategy !== null && draftAllowSystemPromptStrategy !== currentAllowSystemPromptStrategy}
-            saving={savingField === "allow_client_system_prompt_strategy"}
+            saving={!!savingFields.allow_client_system_prompt_strategy}
             saved={savedFields.allow_client_system_prompt_strategy}
             error={fieldErrors.allow_client_system_prompt_strategy}
             requiresRestart={false}
@@ -439,7 +469,7 @@ export function GeneralSettings({ layoutMode, onLayoutModeChange }: GeneralSetti
               </div>
             }
             isDirty={draftSystemPromptStrategy !== null && draftSystemPromptStrategy !== currentSystemPromptStrategy}
-            saving={savingField === "system_prompt_strategy"}
+            saving={!!savingFields.system_prompt_strategy}
             saved={savedFields.system_prompt_strategy}
             error={fieldErrors.system_prompt_strategy}
             requiresRestart={false}
@@ -463,7 +493,7 @@ export function GeneralSettings({ layoutMode, onLayoutModeChange }: GeneralSetti
             label={t("generalSettingsInjectContext")}
             hint={t("generalSettingsInjectContextHint")}
             isDirty={draftInjectContext !== null && draftInjectContext !== currentInjectContext}
-            saving={savingField === "inject_desktop_context"}
+            saving={!!savingFields.inject_desktop_context}
             saved={savedFields.inject_desktop_context}
             error={fieldErrors.inject_desktop_context}
             requiresRestart={false}
@@ -487,7 +517,7 @@ export function GeneralSettings({ layoutMode, onLayoutModeChange }: GeneralSetti
             label={t("generalSettingsSuppressDirectives")}
             hint={t("generalSettingsSuppressDirectivesHint")}
             isDirty={draftSuppressDirectives !== null && draftSuppressDirectives !== currentSuppressDirectives}
-            saving={savingField === "suppress_desktop_directives"}
+            saving={!!savingFields.suppress_desktop_directives}
             saved={savedFields.suppress_desktop_directives}
             error={fieldErrors.suppress_desktop_directives}
             requiresRestart={false}
@@ -531,7 +561,7 @@ export function GeneralSettings({ layoutMode, onLayoutModeChange }: GeneralSetti
             label={t("generalSettingsRefreshEnabled")}
             hint={t("generalSettingsRefreshEnabledHint")}
             isDirty={draftRefreshEnabled !== null && draftRefreshEnabled !== currentRefreshEnabled}
-            saving={savingField === "refresh_enabled"}
+            saving={!!savingFields.refresh_enabled}
             saved={savedFields.refresh_enabled}
             error={fieldErrors.refresh_enabled}
             requiresRestart={false}
@@ -555,7 +585,7 @@ export function GeneralSettings({ layoutMode, onLayoutModeChange }: GeneralSetti
             label={t("generalSettingsRefreshMargin")}
             hint={t("generalSettingsRefreshMarginHint")}
             isDirty={draftRefreshMargin !== null && draftRefreshMargin !== String(currentRefreshMargin)}
-            saving={savingField === "refresh_margin_seconds"}
+            saving={!!savingFields.refresh_margin_seconds}
             saved={savedFields.refresh_margin_seconds}
             error={fieldErrors.refresh_margin_seconds}
             requiresRestart={false}
@@ -579,7 +609,7 @@ export function GeneralSettings({ layoutMode, onLayoutModeChange }: GeneralSetti
             label={t("generalSettingsRefreshConcurrency")}
             hint={t("generalSettingsRefreshConcurrencyHint")}
             isDirty={draftRefreshConcurrency !== null && draftRefreshConcurrency !== String(currentRefreshConcurrency)}
-            saving={savingField === "refresh_concurrency"}
+            saving={!!savingFields.refresh_concurrency}
             saved={savedFields.refresh_concurrency}
             error={fieldErrors.refresh_concurrency}
             requiresRestart={false}
@@ -600,7 +630,7 @@ export function GeneralSettings({ layoutMode, onLayoutModeChange }: GeneralSetti
             label={t("generalSettingsMaxConcurrent")}
             hint={t("generalSettingsMaxConcurrentHint")}
             isDirty={draftMaxConcurrent !== null && draftMaxConcurrent !== String(currentMaxConcurrent)}
-            saving={savingField === "max_concurrent_per_account"}
+            saving={!!savingFields.max_concurrent_per_account}
             saved={savedFields.max_concurrent_per_account}
             error={fieldErrors.max_concurrent_per_account}
             requiresRestart={false}
@@ -621,7 +651,7 @@ export function GeneralSettings({ layoutMode, onLayoutModeChange }: GeneralSetti
             label={t("generalSettingsRequestInterval")}
             hint={t("generalSettingsRequestIntervalHint")}
             isDirty={draftRequestInterval !== null && draftRequestInterval !== String(currentRequestInterval)}
-            saving={savingField === "request_interval_ms"}
+            saving={!!savingFields.request_interval_ms}
             saved={savedFields.request_interval_ms}
             error={fieldErrors.request_interval_ms}
             requiresRestart={false}
@@ -645,7 +675,7 @@ export function GeneralSettings({ layoutMode, onLayoutModeChange }: GeneralSetti
             label={t("generalSettingsUsageHistoryRetention")}
             hint={t("generalSettingsUsageHistoryRetentionHint")}
             isDirty={draftUsageHistoryRetention !== null && draftUsageHistoryRetention !== (currentUsageHistoryRetention === null ? "" : String(currentUsageHistoryRetention))}
-            saving={savingField === "usage_history_retention_days"}
+            saving={!!savingFields.usage_history_retention_days}
             saved={savedFields.usage_history_retention_days}
             error={fieldErrors.usage_history_retention_days}
             requiresRestart={false}
@@ -710,7 +740,7 @@ export function GeneralSettings({ layoutMode, onLayoutModeChange }: GeneralSetti
               label={t("generalSettingsAutoUpdate")}
               hint={t("generalSettingsAutoUpdateHint")}
               isDirty={draftAutoUpdate !== null && draftAutoUpdate !== currentAutoUpdate}
-              saving={savingField === "auto_update"}
+              saving={!!savingFields.auto_update}
               saved={savedFields.auto_update}
               error={fieldErrors.auto_update}
               requiresRestart={false}
@@ -734,7 +764,7 @@ export function GeneralSettings({ layoutMode, onLayoutModeChange }: GeneralSetti
               label={t("generalSettingsAutoDownload")}
               hint={t("generalSettingsAutoDownloadHint")}
               isDirty={draftAutoDownload !== null && draftAutoDownload !== currentAutoDownload}
-              saving={savingField === "auto_download"}
+              saving={!!savingFields.auto_download}
               saved={savedFields.auto_download}
               error={fieldErrors.auto_download}
               requiresRestart={false}
@@ -762,7 +792,7 @@ export function GeneralSettings({ layoutMode, onLayoutModeChange }: GeneralSetti
               label={t("generalSettingsAllowPrerelease")}
               hint={t("generalSettingsAllowPrereleaseHint")}
               isDirty={draftAllowPrerelease !== null && draftAllowPrerelease !== currentAllowPrerelease}
-              saving={savingField === "allow_prerelease"}
+              saving={!!savingFields.allow_prerelease}
               saved={savedFields.allow_prerelease}
               error={fieldErrors.allow_prerelease}
               requiresRestart={false}
@@ -786,7 +816,7 @@ export function GeneralSettings({ layoutMode, onLayoutModeChange }: GeneralSetti
               label={t("generalSettingsShowUpdateDialog")}
               hint={t("generalSettingsShowUpdateDialogHint")}
               isDirty={draftShowUpdateDialog !== null && draftShowUpdateDialog !== currentShowUpdateDialog}
-              saving={savingField === "show_update_dialog"}
+              saving={!!savingFields.show_update_dialog}
               saved={savedFields.show_update_dialog}
               error={fieldErrors.show_update_dialog}
               requiresRestart={false}
