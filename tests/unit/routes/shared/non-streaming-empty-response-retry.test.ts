@@ -140,7 +140,7 @@ describe("retryNonStreamingEmptyResponse", () => {
       request,
       status: 203,
       startMs: 1_000,
-      account: "entry-2",
+      account: "old@example.test",
       fallback: true,
     });
     expect(pool.release).toHaveBeenCalledTimes(1);
@@ -213,7 +213,7 @@ describe("retryNonStreamingEmptyResponse", () => {
       status: 422,
       error: err.message,
       startMs: 2_000,
-      account: "entry-2",
+      account: "old@example.test",
       fallback: true,
     });
   });
@@ -250,7 +250,7 @@ describe("retryNonStreamingEmptyResponse", () => {
       status: null,
       error: "transport exploded",
       startMs: 3_000,
-      account: "entry-2",
+      account: "old@example.test",
       fallback: true,
     });
   });

@@ -315,6 +315,15 @@ export async function retryNonStreamingEmptyResponse(
   // 60 秒内保持点亮，见 fallback-state.markFallbackUsed 的语义说明）。
   markFallbackUsed(nowMs());
 
+  // 与主 egress 行（proxy-handler 的 accountDisplayName）保持一致的账号展示格式：
+  // label → email → 短 id，避免同一 requestId 下不同行展示格式不一致。
+  const displayName = (id: string): string | null => {
+    const entry = accountPool.getEntry(id);
+    if (entry?.label) return entry.label;
+    if (entry?.email) return entry.email;
+    return id.slice(0, 8);
+  };
+
   const retryStartMs = nowMs();
   try {
     const rawResponse = await withRetry(
@@ -326,7 +335,7 @@ export async function retryNonStreamingEmptyResponse(
       request: req,
       status: rawResponse.status,
       startMs: retryStartMs,
-      account: acquired.entryId.slice(0, 8),
+      account: displayName(acquired.entryId),
       fallback: true,
     });
     return {
@@ -344,7 +353,7 @@ export async function retryNonStreamingEmptyResponse(
       status: retryErr instanceof CodexApiError ? retryErr.status : null,
       error: msg,
       startMs: retryStartMs,
-      account: acquired.entryId.slice(0, 8),
+      account: displayName(acquired.entryId),
       fallback: true,
     });
     if (retryErr instanceof CodexApiError) {
