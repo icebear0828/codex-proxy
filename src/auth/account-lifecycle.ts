@@ -23,6 +23,11 @@ export interface AccountCapacitySummary {
   available_slots: number;
 }
 
+export interface AccountConcurrencySnapshot {
+  used: number;
+  limit: number;
+}
+
 export class AccountLifecycle {
   /** Per-account active slot timestamps. Each entry = one in-flight request. */
   private acquireLocks: Map<string, number[]> = new Map();
@@ -271,5 +276,33 @@ export class AccountLifecycle {
       used_slots: usedSlots,
       available_slots: availableSlots,
     };
+  }
+
+  /** Snapshot of each account's local in-flight slots and configured limit. */
+  getAccountConcurrencySnapshot(): Map<string, AccountConcurrencySnapshot> {
+    const nowMs = Date.now();
+    let maxConcurrent = 3;
+    try {
+      maxConcurrent = getConfig().auth.max_concurrent_per_account ?? 3;
+    } catch (error) {
+      // AccountPool supports fully injected construction in tests and tools,
+      // where the global config singleton is intentionally not loaded.
+      if (!(error instanceof Error) || !error.message.startsWith("Config not loaded")) {
+        throw error;
+      }
+    }
+    this.cleanupStaleSlots(nowMs);
+
+    return new Map(
+      this.registry.getAllEntries().map((entry) => [
+        entry.id,
+        {
+          // Keep the real count visible when a hot-reloaded limit drops below
+          // the number of requests that were already in flight.
+          used: this.slotCount(entry.id),
+          limit: maxConcurrent,
+        },
+      ]),
+    );
   }
 }

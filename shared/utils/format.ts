@@ -33,14 +33,12 @@ export function formatUsd(usd: number): string {
   return sign + "$" + abs.toFixed(2);
 }
 
-/** Format USD while retaining useful precision for small metered amounts. */
-export function formatAdaptiveUsd(usd: number): string {
-  if (!Number.isFinite(usd)) return "$0";
-  const abs = Math.abs(usd);
-  if (abs > 0 && abs < 0.01) {
-    return `${usd < 0 ? "-" : ""}$${abs.toFixed(4)}`;
-  }
-  return formatUsd(usd);
+/** Format a full USD amount by truncating, rather than rounding, to two decimals. */
+export function formatTruncatedUsd(usd: number, includeSymbol = true): string {
+  if (!Number.isFinite(usd)) return includeSymbol ? "$0.00" : "0.00";
+  const truncated = Math.trunc(Math.abs(usd) * 100) / 100;
+  const sign = usd < 0 ? "-" : "";
+  return `${sign}${includeSymbol ? "$" : ""}${truncated.toFixed(2)}`;
 }
 
 export function formatWindowDuration(seconds: number, lang?: LangCode | boolean): string {

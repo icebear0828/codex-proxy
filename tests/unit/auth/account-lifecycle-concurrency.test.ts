@@ -140,6 +140,21 @@ describe("per-account concurrent request slots", () => {
       expect(pool.getCapacitySummary().available_slots).toBe(6);
     });
 
+    it("exposes per-account runtime concurrency without persisting it", () => {
+      const { pool } = createPool(1);
+
+      expect(pool.getAccounts()[0].concurrency).toEqual({ used: 0, limit: 3 });
+      const first = pool.acquire({})!;
+      const second = pool.acquire({})!;
+      expect(pool.getAccounts()[0].concurrency).toEqual({ used: 2, limit: 3 });
+      expect(pool.getAllEntries()[0]).not.toHaveProperty("concurrency");
+
+      pool.release(first.entryId);
+      expect(pool.getAccounts()[0].concurrency).toEqual({ used: 1, limit: 3 });
+      pool.release(second.entryId);
+      expect(pool.getAccounts()[0].concurrency).toEqual({ used: 0, limit: 3 });
+    });
+
     it("release frees exactly one slot", () => {
       const { pool } = createPool(1);
       const acquired = [];
@@ -225,6 +240,9 @@ describe("per-account concurrent request slots", () => {
       // Hot-reload: lower to 1
       setConfigForTesting(createMockConfig({ auth: { max_concurrent_per_account: 1 } }));
 
+      // Preserve the real number of existing in-flight requests in the UI snapshot.
+      expect(pool.getAccounts()[0].concurrency).toEqual({ used: 3, limit: 1 });
+
       // New acquire blocked (3 in-flight > new limit of 1)
       expect(pool.acquire({})).toBeNull();
 
@@ -297,10 +315,8 @@ describe("per-account concurrent request slots", () => {
 
       vi.advanceTimersByTime(6 * 60 * 1000);
 
-      expect(pool.getCapacitySummary()).toMatchObject({
-        used_slots: 0,
-        available_slots: 3,
-      });
+      expect(pool.getAccounts()[0].concurrency).toEqual({ used: 0, limit: 3 });
+      expect(pool.getCapacitySummary()).toMatchObject({ used_slots: 0, available_slots: 3 });
 
       vi.useRealTimers();
     });

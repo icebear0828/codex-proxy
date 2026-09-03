@@ -261,7 +261,11 @@ export class AccountPool {
   // ── Query ─────────────────────────────────────────────────────────
 
   getAccounts(): AccountInfo[] {
-    return this.registry.getAccounts();
+    const concurrencyByAccount = this.lifecycle.getAccountConcurrencySnapshot();
+    return this.registry.getAccounts().map((account) => ({
+      ...account,
+      concurrency: concurrencyByAccount.get(account.id),
+    }));
   }
 
   getEntry(entryId: string): AccountEntry | undefined {

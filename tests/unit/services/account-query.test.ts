@@ -41,6 +41,7 @@ describe("AccountQueryService", () => {
       expect(result[0].email).toBe("a@test.com");
       expect(result[0].proxyId).toBe("proxy-" + result[0].id);
       expect(result[0].proxyName).toBe("Proxy " + result[0].id);
+      expect(result[0].concurrency).toEqual({ used: 0, limit: 3 });
     });
 
     it("defaults to 'global' when no proxyResolver", () => {

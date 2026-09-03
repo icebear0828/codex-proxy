@@ -92,6 +92,53 @@ describe("AccountCard proxy selector", () => {
   });
 });
 
+describe("AccountCard concurrency", () => {
+  afterEach(() => cleanup());
+
+  it("renders local used and total concurrency in the stats area", () => {
+    render(
+      <AccountCard
+        account={{ ...account(), concurrency: { used: 1, limit: 3 } }}
+        index={0}
+        onDelete={vi.fn(async () => null)}
+      />,
+    );
+
+    expect(screen.getByTestId("account-concurrency").textContent).toContain("concurrency");
+    expect(screen.getByTestId("account-concurrency").textContent).toContain("1 / 3");
+  });
+
+  it("keeps the real usage visible when a hot-reloaded limit is lower", () => {
+    render(
+      <AccountCard
+        account={{ ...account(), concurrency: { used: 2, limit: 1 } }}
+        index={0}
+        onDelete={vi.fn(async () => null)}
+      />,
+    );
+
+    expect(screen.getByTestId("account-concurrency").textContent).toContain("2 / 1");
+  });
+
+  it("renders zero active requests", () => {
+    render(
+      <AccountCard
+        account={{ ...account(), concurrency: { used: 0, limit: 3 } }}
+        index={0}
+        onDelete={vi.fn(async () => null)}
+      />,
+    );
+
+    expect(screen.getByTestId("account-concurrency").textContent).toContain("0 / 3");
+  });
+
+  it("hides the row for responses from an older backend", () => {
+    render(<AccountCard account={account()} index={0} onDelete={vi.fn(async () => null)} />);
+
+    expect(screen.queryByTestId("account-concurrency")).toBeNull();
+  });
+});
+
 describe("AccountCard Rate Limit Reset Credits", () => {
   afterEach(() => cleanup());
 
@@ -160,9 +207,9 @@ describe("AccountCard window estimated cost", () => {
   it("renders the current primary-window amount below the rate limit", () => {
     const acct: Account = {
       ...account(),
-      usage: { window_estimated_cost_usd: 0.0064 },
+      usage: { window_estimated_cost_usd: 745.659 },
       quota: {
-        rate_limit: { used_percent: 25, limit_reached: false },
+        rate_limit: { used_percent: 18.67, limit_reached: false },
       },
     };
 
@@ -170,14 +217,26 @@ describe("AccountCard window estimated cost", () => {
 
     const amount = screen.getByTestId("window-estimated-cost");
     expect(amount.textContent).toContain("windowEstimatedCost");
-    expect(amount.textContent).toContain("$0.0064");
-    expect(amount.getAttribute("title")).toBe("estimatedApiCostHint");
+    expect(amount.textContent).toContain("($745.65 / 3993.88)");
+    expect(amount.getAttribute("title")).toBe("projectedWindowTotalHint");
   });
 
-  it("renders a missing window amount as zero", () => {
+  it("renders a missing window amount as zero and omits projection at zero percent", () => {
     render(<AccountCard account={account()} index={0} onDelete={vi.fn(async () => null)} />);
 
-    expect(screen.getByTestId("window-estimated-cost").textContent).toContain("$0.00");
+    expect(screen.getByTestId("window-estimated-cost").textContent).toContain("($0.00 / —)");
+  });
+
+  it("uses the unrounded upstream percentage for the projected total", () => {
+    const acct: Account = {
+      ...account(),
+      usage: { window_estimated_cost_usd: 1 },
+      quota: { rate_limit: { used_percent: 12.5, limit_reached: false } },
+    };
+
+    render(<AccountCard account={acct} index={0} onDelete={vi.fn(async () => null)} />);
+
+    expect(screen.getByTestId("window-estimated-cost").textContent).toContain("($1.00 / 8.00)");
   });
 });
 

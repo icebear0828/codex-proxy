@@ -106,6 +106,11 @@ export interface AccountInfo {
   quota?: CodexQuota;
   quotaFetchedAt?: string | null;
   quotaVerifyRequired?: boolean;
+  /** Runtime-only local proxy concurrency snapshot; never persisted or exported. */
+  concurrency?: {
+    used: number;
+    limit: number;
+  };
 }
 
 /** A single rate limit window (primary or secondary). */

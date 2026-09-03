@@ -66,6 +66,11 @@ export interface Account {
     window_image_request_count?: number;
     window_image_request_failed_count?: number;
   };
+  /** Local proxy in-flight requests and configured per-account limit. */
+  concurrency?: {
+    used: number;
+    limit: number;
+  };
   quota?: AccountQuota;
   quotaFetchedAt?: string | null;
   proxyId?: string;

@@ -3,10 +3,10 @@ import { useT, useI18n } from "../../../shared/i18n/context";
 import type { TranslationKey } from "../../../shared/i18n/translations";
 import {
   creditsToUsd,
-  formatAdaptiveUsd,
   formatCredits,
   formatNumber,
   formatResetTime,
+  formatTruncatedUsd,
   formatUsd,
   formatWindowDuration,
 } from "../../../shared/utils/format";
@@ -136,6 +136,14 @@ export function AccountCard({ account, index, onDelete, proxies, onProxyChange, 
   const pct = rl?.limit_reached ? 100
     : rl?.used_percent != null ? Math.round(rl.used_percent)
     : (account.status === "active" ? 0 : null);
+  const rawUsedPercent = rl?.limit_reached
+    ? 100
+    : typeof rl?.used_percent === "number" && Number.isFinite(rl.used_percent) && rl.used_percent > 0
+      ? rl.used_percent
+      : null;
+  const projectedWindowTotal = rawUsedPercent == null
+    ? null
+    : winEstimatedCost / rawUsedPercent * 100;
   const barColor =
     pct == null ? "bg-primary-action" : pct >= 90 ? "bg-red-500" : pct >= 60 ? "bg-amber-500" : "bg-primary-action";
   const pctColor =
@@ -419,6 +427,14 @@ export function AccountCard({ account, index, onDelete, proxies, onProxyChange, 
           <span class="text-slate-500 dark:text-text-dim">{t("windowTokens")}</span>
           <span class="font-medium">{formatNumber(winTokens)}</span>
         </div>
+        {account.concurrency && (
+          <div data-testid="account-concurrency" class="flex justify-between text-[0.78rem]">
+            <span class="text-slate-500 dark:text-text-dim">{t("concurrency")}</span>
+            <span class="font-medium">
+              {formatNumber(account.concurrency.used)} / {formatNumber(account.concurrency.limit)}
+            </span>
+          </div>
+        )}
         {hasImageActivity && (
           <>
             <div class="flex justify-between text-[0.78rem]">
@@ -518,12 +534,14 @@ export function AccountCard({ account, index, onDelete, proxies, onProxyChange, 
               )}
               <div
                 data-testid="window-estimated-cost"
-                title={t("estimatedApiCostHint")}
+                title={t("projectedWindowTotalHint")}
                 class="flex justify-between text-[0.78rem] mt-2"
               >
                 <span class="text-slate-500 dark:text-text-dim">{t("windowEstimatedCost")}</span>
                 <span class="font-medium text-amber-600 dark:text-amber-400">
-                  {formatAdaptiveUsd(winEstimatedCost)}
+                  ({formatTruncatedUsd(winEstimatedCost)} / {projectedWindowTotal == null
+                    ? "—"
+                    : formatTruncatedUsd(projectedWindowTotal, false)})
                 </span>
               </div>
             </div>
