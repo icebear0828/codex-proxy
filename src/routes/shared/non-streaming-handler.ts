@@ -183,6 +183,7 @@ export async function handleNonStreaming(options: HandleNonStreamingOptions): Pr
           requestId,
           released,
           variantHash,
+          fallback: currentEntryId !== initialEntryId,
         });
         c.status(responsePlan.status);
         return c.json(fmt.formatError(responsePlan.status, responsePlan.message));
