@@ -119,6 +119,7 @@ export async function handleDirectRequest(options: HandleDirectRequestOptions): 
           provider: upstream.tag,
           path: "/v1/responses",
           model: req.model,
+          fallback: isFallback,
         });
         abortController.abort();
       });
@@ -143,6 +144,7 @@ export async function handleDirectRequest(options: HandleDirectRequestOptions): 
             tag: fmt.tag,
             provider: upstream.tag,
             path: "/v1/responses",
+            fallback: isFallback,
             abortSignal: abortController.signal,
           },
         });

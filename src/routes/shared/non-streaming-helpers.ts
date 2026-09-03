@@ -3,6 +3,7 @@ import type { StatusCode } from "hono/utils/http-status";
 import type { ChainAdvanceTicket, SessionAffinityMap } from "../../auth/session-affinity.js";
 import type { AccountPool } from "../../auth/account-pool.js";
 import { clearCfChallengeCooldown } from "../../auth/cf-challenge-cooldown.js";
+import { markFallbackUsed } from "../../auth/fallback-state.js";
 import { annotateUsageCost } from "./proxy-handler-utils.js";
 import type { CodexApi, WsPoolContext } from "../../proxy/codex-api.js";
 import { CodexApiError } from "../../proxy/codex-api.js";
@@ -309,6 +310,11 @@ export async function retryNonStreamingEmptyResponse(
   );
   setActiveAccount?.(acquired.entryId, nextApi);
 
+  // 从当前空响应账号切到 acquireAccount 取得的候选账号，属于“备用账号重试”这一
+  // 后备形态：取得后备账号即点亮后备指示灯（即使后续重试仍失败，指示灯也会在约
+  // 60 秒内保持点亮，见 fallback-state.markFallbackUsed 的语义说明）。
+  markFallbackUsed(nowMs());
+
   const retryStartMs = nowMs();
   try {
     const rawResponse = await withRetry(
@@ -320,6 +326,8 @@ export async function retryNonStreamingEmptyResponse(
       request: req,
       status: rawResponse.status,
       startMs: retryStartMs,
+      account: acquired.entryId.slice(0, 8),
+      fallback: true,
     });
     return {
       action: "retry",
@@ -336,6 +344,8 @@ export async function retryNonStreamingEmptyResponse(
       status: retryErr instanceof CodexApiError ? retryErr.status : null,
       error: msg,
       startMs: retryStartMs,
+      account: acquired.entryId.slice(0, 8),
+      fallback: true,
     });
     if (retryErr instanceof CodexApiError) {
       const code = toErrorStatus(retryErr.status);
@@ -364,6 +374,9 @@ export interface HandleNonStreamingPrematureCloseOptions {
   requestId: string;
   released: Set<string>;
   variantHash?: string;
+  /** True when this request is being served by a fallback account
+   *  (entryId !== the initial entryId acquired for the request). */
+  fallback?: boolean;
   logWarn?: (message: string) => void;
 }
 
@@ -379,6 +392,7 @@ export function handleNonStreamingPrematureClose(
     requestId,
     released,
     variantHash,
+    fallback = false,
     logWarn = (message) => console.warn(message),
   } = options;
 
@@ -397,6 +411,7 @@ export function handleNonStreamingPrematureClose(
     eventCount: err.eventCount,
     hadReasoning: err.hadReasoning,
     detail: err.message,
+    fallback,
   });
   releaseAccount(accountPool, entryId, annotateImageGenOutcome(undefined, req.expectsImageGen), released);
 
