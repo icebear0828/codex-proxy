@@ -119,6 +119,7 @@ export function recordStreamCloseEvent(evt: StreamCloseEvent): void {
     path: evt.path ?? "/codex/responses",
     model: evt.model ?? null,
     provider: evt.provider ?? "codex",
+    account: evt.accountEntryId ? evt.accountEntryId.slice(0, 8) : undefined,
     status: numericStatus,
     stream: true,
     error: message,
