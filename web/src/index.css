@@ -3,16 +3,16 @@
 @tailwind utilities;
 
 :root {
-  --primary: 5 150 105;
-  --primary-hover: 4 120 87;
-  --primary-action: 5 150 105;
-  --primary-action-hover: 4 120 87;
+  --primary: 4 120 87;
+  --primary-hover: 6 95 70;
+  --primary-action: 4 120 87;
+  --primary-action-hover: 6 95 70;
   --primary-container: 236 253 245;
-  --success: 5 150 105;
+  --success: 4 120 87;
   --success-container: 236 253 245;
-  --warning: 217 119 6;
+  --warning: 146 64 14;
   --warning-container: 254 243 199;
-  --danger: 220 38 38;
+  --danger: 185 28 28;
   --danger-container: 254 226 226;
   --info: 37 99 235;
   --info-container: 239 246 255;
@@ -22,7 +22,7 @@
   --avatar-amber-bg: 254 243 199;
   --avatar-blue-text: 29 78 216;
   --avatar-blue-bg: 219 234 254;
-  --avatar-emerald-text: 5 150 105;
+  --avatar-emerald-text: 4 120 87;
   --avatar-emerald-bg: 236 253 245;
   --avatar-red-text: 220 38 38;
   --avatar-red-bg: 254 226 226;
@@ -36,8 +36,8 @@
 .dark {
   --primary: 52 211 153;
   --primary-hover: 16 185 129;
-  --primary-action: 5 150 105;
-  --primary-action-hover: 4 120 87;
+  --primary-action: 4 120 87;
+  --primary-action-hover: 6 95 70;
   --primary-container: 6 78 59;
   --success: 52 211 153;
   --success-container: 6 78 59;
