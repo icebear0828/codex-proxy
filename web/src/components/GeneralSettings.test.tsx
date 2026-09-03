@@ -88,9 +88,9 @@ describe("GeneralSettings - allow_prerelease", () => {
     fireEvent.click(checkbox);
     expect(checkbox.checked).toBe(true);
 
-    const submitButton = screen.getByText("submit");
-    expect(submitButton).not.toBeNull();
-    fireEvent.click(submitButton);
+    const saveButton = screen.getByTitle("settingSave");
+    expect(saveButton).not.toBeNull();
+    fireEvent.click(saveButton);
 
     await waitFor(() => {
       expect(mockSave).toHaveBeenCalledWith({ allow_prerelease: true });

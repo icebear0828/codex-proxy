@@ -2,6 +2,7 @@ import { useState, useCallback } from "preact/hooks";
 import { useT } from "../../../shared/i18n/context";
 import { useGeneralSettings } from "../../../shared/hooks/use-general-settings";
 import { useSettings } from "../../../shared/hooks/use-settings";
+import { SettingItemControl } from "./settings/SettingItemControl";
 
 export function LogsSettings() {
   const t = useT();
@@ -12,7 +13,10 @@ export function LogsSettings() {
   const [draftLogsCapacity, setDraftLogsCapacity] = useState<string | null>(null);
   const [draftLogsCaptureBody, setDraftLogsCaptureBody] = useState<boolean | null>(null);
   const [draftLogsLlmOnly, setDraftLogsLlmOnly] = useState<boolean | null>(null);
-  const [collapsed, setCollapsed] = useState(true);
+
+  const [savingFields, setSavingFields] = useState<Record<string, boolean>>({});
+  const [savedFields, setSavedFields] = useState<Record<string, boolean>>({});
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string | null>>({});
 
   const currentLogsEnabled = gs.data?.logs_enabled ?? false;
   const currentLogsCapacity = gs.data?.logs_capacity ?? 2000;
@@ -24,145 +28,159 @@ export function LogsSettings() {
   const displayLogsCaptureBody = draftLogsCaptureBody ?? currentLogsCaptureBody;
   const displayLogsLlmOnly = draftLogsLlmOnly ?? currentLogsLlmOnly;
 
-  const isDirty =
-    draftLogsEnabled !== null ||
-    draftLogsCapacity !== null ||
-    draftLogsCaptureBody !== null ||
-    draftLogsLlmOnly !== null;
-
-  const handleSave = useCallback(async () => {
-    const patch: Record<string, unknown> = {};
-
-    if (draftLogsEnabled !== null) {
-      patch.logs_enabled = draftLogsEnabled;
+  const saveSingleField = useCallback(async (fieldName: string, patch: Record<string, unknown>, resetDraft: () => void) => {
+    setSavingFields((prev) => ({ ...prev, [fieldName]: true }));
+    setFieldErrors((prev) => ({ ...prev, [fieldName]: null }));
+    try {
+      await gs.save(patch);
+      resetDraft();
+      setSavedFields((prev) => ({ ...prev, [fieldName]: true }));
+    } catch (err: unknown) {
+      setFieldErrors((prev) => ({ ...prev, [fieldName]: err instanceof Error ? err.message : String(err) }));
+    } finally {
+      setSavingFields((prev) => {
+        const next = { ...prev };
+        delete next[fieldName];
+        return next;
+      });
     }
+  }, [gs]);
 
-    if (draftLogsCapacity !== null) {
-      const val = parseInt(draftLogsCapacity, 10);
-      if (isNaN(val) || val < 1) return;
-      patch.logs_capacity = val;
+  const handleSaveLogsEnabled = useCallback(() => {
+    if (draftLogsEnabled === null) return;
+    saveSingleField("logs_enabled", { logs_enabled: draftLogsEnabled }, () => setDraftLogsEnabled(null));
+  }, [draftLogsEnabled, saveSingleField]);
+
+  const handleSaveLogsCapacity = useCallback(() => {
+    if (draftLogsCapacity === null) return;
+    const val = parseInt(draftLogsCapacity, 10);
+    if (isNaN(val) || val < 1) {
+      setFieldErrors((prev) => ({ ...prev, logs_capacity: t("settingErrorCapacity") }));
+      return;
     }
+    saveSingleField("logs_capacity", { logs_capacity: val }, () => setDraftLogsCapacity(null));
+  }, [draftLogsCapacity, saveSingleField, t]);
 
-    if (draftLogsCaptureBody !== null) {
-      patch.logs_capture_body = draftLogsCaptureBody;
-    }
+  const handleSaveLogsCaptureBody = useCallback(() => {
+    if (draftLogsCaptureBody === null) return;
+    saveSingleField("logs_capture_body", { logs_capture_body: draftLogsCaptureBody }, () => setDraftLogsCaptureBody(null));
+  }, [draftLogsCaptureBody, saveSingleField]);
 
-    if (draftLogsLlmOnly !== null) {
-      patch.logs_llm_only = draftLogsLlmOnly;
-    }
-
-    await gs.save(patch);
-    setDraftLogsEnabled(null);
-    setDraftLogsCapacity(null);
-    setDraftLogsCaptureBody(null);
-    setDraftLogsLlmOnly(null);
-  }, [draftLogsEnabled, draftLogsCapacity, draftLogsCaptureBody, draftLogsLlmOnly, gs]);
+  const handleSaveLogsLlmOnly = useCallback(() => {
+    if (draftLogsLlmOnly === null) return;
+    saveSingleField("logs_llm_only", { logs_llm_only: draftLogsLlmOnly }, () => setDraftLogsLlmOnly(null));
+  }, [draftLogsLlmOnly, saveSingleField]);
 
   const inputCls =
     "w-full px-3 py-2 bg-white dark:bg-bg-dark border border-gray-200 dark:border-border-dark rounded-lg text-[0.78rem] font-mono text-slate-700 dark:text-text-main outline-none focus:ring-1 focus:ring-primary";
 
   return (
-    <section class="bg-white dark:bg-card-dark border border-gray-200 dark:border-border-dark rounded-xl shadow-sm transition-colors">
-      <button
-        onClick={() => setCollapsed(!collapsed)}
-        class="w-full flex items-center justify-between p-5 cursor-pointer select-none"
-      >
-        <div class="flex items-center gap-2">
-          <svg class="size-5 text-primary" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-            <path stroke-linecap="round" stroke-linejoin="round" d="M3 3.75A.75.75 0 013.75 3h16.5a.75.75 0 01.75.75v4.5a.75.75 0 01-.75.75H3.75A.75.75 0 013 8.25v-4.5zM3 15.75a.75.75 0 01.75-.75h16.5a.75.75 0 01.75.75v4.5a.75.75 0 01-.75.75H3.75a.75.75 0 01-.75-.75v-4.5zM6.75 6h.008v.008H6.75V6zm0 12h.008v.008H6.75V18zm3 0h7.5" />
-          </svg>
-          <h2 class="text-[0.95rem] font-bold">{t("logsSettings")}</h2>
+    <section class="bg-white dark:bg-card-dark border border-gray-200 dark:border-border-dark rounded-xl shadow-sm overflow-hidden transition-colors">
+      <div class="px-5 py-4 border-b border-gray-100 dark:border-border-dark flex items-center justify-between">
+        <div class="flex items-center gap-2.5">
+          <div class="flex size-7 items-center justify-center rounded-lg bg-primary-container text-primary">
+            <svg class="size-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M3 3.75A.75.75 0 013.75 3h16.5a.75.75 0 01.75.75v4.5a.75.75 0 01-.75.75H3.75A.75.75 0 013 8.25v-4.5zM3 15.75a.75.75 0 01.75-.75h16.5a.75.75 0 01.75.75v4.5a.75.75 0 01-.75.75H3.75a.75.75 0 01-.75-.75v-4.5zM6.75 6h.008v.008H6.75V6zm0 12h.008v.008H6.75V18zm3 0h7.5" />
+            </svg>
+          </div>
+          <h2 class="text-sm font-bold text-slate-800 dark:text-text-main">{t("logsSettings")}</h2>
         </div>
-        <svg class={`size-5 text-slate-400 dark:text-text-dim transition-transform ${collapsed ? "" : "rotate-180"}`} viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <path stroke-linecap="round" stroke-linejoin="round" d="M19.5 8.25l-7.5 7.5-7.5-7.5" />
-        </svg>
-      </button>
+      </div>
 
-      {!collapsed && (
-        <div class="px-5 pb-5 border-t border-slate-100 dark:border-border-dark pt-4 space-y-4">
-          <div class="space-y-1">
-            <div class="flex items-center gap-2">
-              <input
-                type="checkbox"
-                id="logs-enabled"
-                checked={displayLogsEnabled}
-                onChange={(e) => setDraftLogsEnabled((e.target as HTMLInputElement).checked)}
-                class="w-4 h-4 rounded border-gray-300 dark:border-border-dark text-primary focus:ring-primary cursor-pointer"
-              />
-              <label for="logs-enabled" class="text-xs font-semibold text-slate-700 dark:text-text-main cursor-pointer">
-                {t("logsEnable")}
-              </label>
-            </div>
-            <p class="text-xs text-slate-400 dark:text-text-dim ml-6">{t("logsEnabledHint")}</p>
-          </div>
+      <div class="px-5 py-2">
+        {/* Enable Logs */}
+        <SettingItemControl
+          label={t("logsEnable")}
+          hint={t("logsEnabledHint")}
+          isDirty={draftLogsEnabled !== null && draftLogsEnabled !== currentLogsEnabled}
+          saving={!!savingFields.logs_enabled}
+          saved={savedFields.logs_enabled}
+          error={fieldErrors.logs_enabled}
+          requiresRestart={false}
+          layout="inline"
+          onSave={handleSaveLogsEnabled}
+        >
+          <input
+            type="checkbox"
+            id="logs-enabled"
+            checked={displayLogsEnabled}
+            onChange={(e) => setDraftLogsEnabled((e.target as HTMLInputElement).checked)}
+            class="w-4 h-4 rounded border-gray-300 dark:border-border-dark text-primary focus:ring-primary cursor-pointer"
+          />
+          <label for="logs-enabled" class="text-xs font-semibold text-slate-700 dark:text-text-main cursor-pointer">
+            {t("logsEnable")}
+          </label>
+        </SettingItemControl>
 
-          <div class="space-y-1.5">
-            <label class="text-xs font-semibold text-slate-700 dark:text-text-main">
-              {t("logsCapacity")}
-            </label>
-            <p class="text-xs text-slate-400 dark:text-text-dim">{t("logsCapacityHint")}</p>
-            <input
-              type="number"
-              min="1"
-              class={`${inputCls} max-w-[160px]`}
-              value={displayLogsCapacity}
-              onInput={(e) => setDraftLogsCapacity((e.target as HTMLInputElement).value)}
-            />
-          </div>
+        {/* Log Capacity */}
+        <SettingItemControl
+          label={t("logsCapacity")}
+          hint={t("logsCapacityHint")}
+          isDirty={draftLogsCapacity !== null && draftLogsCapacity !== String(currentLogsCapacity)}
+          saving={!!savingFields.logs_capacity}
+          saved={savedFields.logs_capacity}
+          error={fieldErrors.logs_capacity}
+          requiresRestart={false}
+          onSave={handleSaveLogsCapacity}
+        >
+          <input
+            type="number"
+            min="1"
+            class={`${inputCls} max-w-[160px]`}
+            value={displayLogsCapacity}
+            onInput={(e) => setDraftLogsCapacity((e.target as HTMLInputElement).value)}
+            onKeyDown={(e) => { if (e.key === "Enter") handleSaveLogsCapacity(); }}
+          />
+        </SettingItemControl>
 
-          <div class="space-y-1">
-            <div class="flex items-center gap-2">
-              <input
-                type="checkbox"
-                id="logs-capture-body"
-                checked={displayLogsCaptureBody}
-                onChange={(e) => setDraftLogsCaptureBody((e.target as HTMLInputElement).checked)}
-                class="w-4 h-4 rounded border-gray-300 dark:border-border-dark text-primary focus:ring-primary cursor-pointer"
-              />
-              <label for="logs-capture-body" class="text-xs font-semibold text-slate-700 dark:text-text-main cursor-pointer">
-                {t("logsCaptureBody")}
-              </label>
-            </div>
-            <p class="text-xs text-slate-400 dark:text-text-dim ml-6">{t("logsCaptureBodyHint")}</p>
-          </div>
+        {/* Capture Body */}
+        <SettingItemControl
+          label={t("logsCaptureBody")}
+          hint={t("logsCaptureBodyHint")}
+          isDirty={draftLogsCaptureBody !== null && draftLogsCaptureBody !== currentLogsCaptureBody}
+          saving={!!savingFields.logs_capture_body}
+          saved={savedFields.logs_capture_body}
+          error={fieldErrors.logs_capture_body}
+          requiresRestart={false}
+          layout="inline"
+          onSave={handleSaveLogsCaptureBody}
+        >
+          <input
+            type="checkbox"
+            id="logs-capture-body"
+            checked={displayLogsCaptureBody}
+            onChange={(e) => setDraftLogsCaptureBody((e.target as HTMLInputElement).checked)}
+            class="w-4 h-4 rounded border-gray-300 dark:border-border-dark text-primary focus:ring-primary cursor-pointer"
+          />
+          <label for="logs-capture-body" class="text-xs font-semibold text-slate-700 dark:text-text-main cursor-pointer">
+            {t("logsCaptureBody")}
+          </label>
+        </SettingItemControl>
 
-          <div class="space-y-1">
-            <div class="flex items-center gap-2">
-              <input
-                type="checkbox"
-                id="logs-llm-only"
-                checked={displayLogsLlmOnly}
-                onChange={(e) => setDraftLogsLlmOnly((e.target as HTMLInputElement).checked)}
-                class="w-4 h-4 rounded border-gray-300 dark:border-border-dark text-primary focus:ring-primary cursor-pointer"
-              />
-              <label for="logs-llm-only" class="text-xs font-semibold text-slate-700 dark:text-text-main cursor-pointer">
-                {t("logsLlmOnly")}
-              </label>
-            </div>
-            <p class="text-xs text-slate-400 dark:text-text-dim ml-6">{t("logsLlmOnlyHint")}</p>
-          </div>
-
-          <div class="flex items-center gap-3">
-            <button
-              onClick={handleSave}
-              disabled={gs.saving || !isDirty}
-              class={`px-4 py-2 text-sm font-medium rounded-lg transition-colors whitespace-nowrap ${
-                isDirty && !gs.saving
-                  ? "bg-primary-action text-white hover:bg-primary-action-hover cursor-pointer"
-                  : "bg-slate-100 dark:bg-[#21262d] text-slate-400 dark:text-text-dim cursor-not-allowed"
-              }`}
-            >
-              {gs.saving ? "..." : t("submit")}
-            </button>
-            {gs.saved && (
-              <span class="text-xs font-medium text-green-600 dark:text-green-400">{t("quotaSaved")}</span>
-            )}
-            {gs.error && (
-              <span class="text-xs font-medium text-red-500">{gs.error}</span>
-            )}
-          </div>
-        </div>
-      )}
+        {/* LLM Only */}
+        <SettingItemControl
+          label={t("logsLlmOnly")}
+          hint={t("logsLlmOnlyHint")}
+          isDirty={draftLogsLlmOnly !== null && draftLogsLlmOnly !== currentLogsLlmOnly}
+          saving={!!savingFields.logs_llm_only}
+          saved={savedFields.logs_llm_only}
+          error={fieldErrors.logs_llm_only}
+          requiresRestart={false}
+          layout="inline"
+          onSave={handleSaveLogsLlmOnly}
+        >
+          <input
+            type="checkbox"
+            id="logs-llm-only"
+            checked={displayLogsLlmOnly}
+            onChange={(e) => setDraftLogsLlmOnly((e.target as HTMLInputElement).checked)}
+            class="w-4 h-4 rounded border-gray-300 dark:border-border-dark text-primary focus:ring-primary cursor-pointer"
+          />
+          <label for="logs-llm-only" class="text-xs font-semibold text-slate-700 dark:text-text-main cursor-pointer">
+            {t("logsLlmOnly")}
+          </label>
+        </SettingItemControl>
+      </div>
     </section>
   );
 }
