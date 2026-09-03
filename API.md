@@ -136,7 +136,7 @@ OpenAI-compatible embeddings endpoint.
 
 ### Codex Auxiliary Endpoints
 
-`POST /v1/alpha/search` supports regular Codex models backed by the ChatGPT OAuth account pool and forwards them to `/backend-api/codex/alpha/search`. When the requested model instead resolves to an API-key provider with `wire=codex-responses`, the proxy supports all of these non-streaming JSON endpoints:
+`POST /v1/alpha/search` supports regular Codex models backed by the ChatGPT OAuth account pool and forwards them to `/backend-api/codex/alpha/search`. For OAuth Search, ordinary 4xx responses other than 401/429 are returned without changing account health or clearing cookies; positively identified Cloudflare challenges still use the safe cooldown-and-retry path. When the requested model instead resolves to an API-key provider with `wire=codex-responses`, the proxy supports all of these non-streaming JSON endpoints:
 
 | Endpoint | Upstream target | Purpose |
 |---|---|---|

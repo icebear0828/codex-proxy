@@ -136,7 +136,7 @@ OpenAI 兼容的文本向量嵌入接口。
 
 ### Codex 辅助端点
 
-`POST /v1/alpha/search` 支持由 ChatGPT OAuth 账号池承载的普通 Codex 模型，并将请求转发至 `/backend-api/codex/alpha/search`。当请求模型路由到 `wire=codex-responses` 的 API-key provider 时，代理还支持下列全部非流式 JSON 端点：
+`POST /v1/alpha/search` 支持由 ChatGPT OAuth 账号池承载的普通 Codex 模型，并将请求转发至 `/backend-api/codex/alpha/search`。对于 OAuth Search，除 401/429 外的普通 4xx 会直接返回，不改变账号健康状态，也不清理 Cookie；只有明确识别出的 Cloudflare challenge 才会进入安全的冷却换号流程。当请求模型路由到 `wire=codex-responses` 的 API-key provider 时，代理还支持下列全部非流式 JSON 端点：
 
 | 端点 | 上游目标 | 用途 |
 |---|---|---|

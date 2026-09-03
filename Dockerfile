@@ -65,8 +65,9 @@ RUN cd web && npm run build && cd .. && npx tsc
 # 6) Stamp build time for update-checker (COPY . invalidates cache, so this is always fresh)
 RUN date -u +%Y-%m-%dT%H:%M:%SZ > /app/.docker-build-time
 
-# 7) Prune dev deps, re-add tsx (needed at runtime by update-checker fork())
-RUN npm prune --omit=dev && npm install --no-save tsx
+# 7) Prune dev deps. tsx is a production dependency because update-checker
+# forks TypeScript maintenance scripts at runtime.
+RUN npm prune --omit=dev
 
 EXPOSE 8080 11434
 

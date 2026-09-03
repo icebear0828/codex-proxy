@@ -97,6 +97,8 @@ let mockCompactResponse: unknown = { output: [{ role: "user", content: "compacte
 let mockCompactThrow: (() => never) | null = null;
 let mockSearchThrow: (() => never) | null = null;
 let mockSearchTransientFailures = 0;
+let mockSearchErrors: CodexApiError[] = [];
+let searchCallCount = 0;
 
 vi.mock("@src/proxy/codex-api.js", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@src/proxy/codex-api.js")>();
@@ -109,8 +111,11 @@ vi.mock("@src/proxy/codex-api.js", async (importOriginal) => {
         return mockCompactResponse;
       }),
       createSearchResponse: vi.fn(async (req: unknown) => {
+        searchCallCount++;
         capturedSearchRequest = req;
         if (mockSearchThrow) mockSearchThrow();
+        const queuedError = mockSearchErrors.shift();
+        if (queuedError) throw queuedError;
         if (mockSearchTransientFailures > 0) {
           mockSearchTransientFailures--;
           throw new CodexApiError(
@@ -150,6 +155,8 @@ describe("POST /v1/responses/compact", () => {
     mockCompactThrow = null;
     mockSearchThrow = null;
     mockSearchTransientFailures = 0;
+    mockSearchErrors = [];
+    searchCallCount = 0;
     mockConfig.server.proxy_api_key = null;
     mockHandleDirectRequest.mockImplementation(async (options: HandleDirectRequestOptions) => options.c.json({ ok: true }));
     loadStaticModels();
@@ -369,6 +376,108 @@ describe("POST /v1/responses/compact", () => {
     expect(res.status).toBe(200);
     await expect(res.json()).resolves.toEqual({ output: "search result" });
     expect(mockSearchTransientFailures).toBe(0);
+    expect(searchCallCount).toBe(2);
+  });
+
+  it.each([
+    [402, '{"error":{"message":"payment required"}}'],
+    [403, '{"error":{"message":"forbidden"}}'],
+    [404, ""],
+  ] as const)("keeps OAuth search HTTP %s local without mutating account health", async (status, errorBody) => {
+    pool.addAccount("test-token-2");
+    const releaseSpy = vi.spyOn(pool, "release");
+    const clear = vi.fn();
+    app = createResponsesRoutes(pool, { clear } as never);
+    mockSearchErrors = [new CodexApiError(status, errorBody)];
+
+    const res = await app.request("/v1/alpha/search", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ model: "codex", id: "search-session" }),
+    });
+
+    expect(res.status).toBe(status);
+    expect(searchCallCount).toBe(1);
+    expect(releaseSpy).toHaveBeenCalledTimes(1);
+    expect(clear).not.toHaveBeenCalled();
+    expect(pool.getAllEntries().map((entry) => entry.status)).toEqual(["active", "active"]);
+    expect(await res.text()).toBe(errorBody);
+  });
+
+  it("still rotates OAuth search after an explicit Cloudflare challenge", async () => {
+    pool.addAccount("test-token-2");
+    mockSearchErrors = [new CodexApiError(
+      403,
+      "<!doctype html><html><title>Just a moment...</title></html>",
+      new Headers({ "cf-mitigated": "challenge" }),
+    )];
+
+    const res = await app.request("/v1/alpha/search", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ model: "codex", id: "search-session" }),
+    });
+
+    expect(res.status).toBe(200);
+    expect(searchCallCount).toBe(2);
+    expect(pool.getAllEntries().map((entry) => entry.status)).toEqual(["active", "active"]);
+  });
+
+  it("keeps account-wide OAuth search 401 handling and rotates accounts", async () => {
+    pool.addAccount("test-token-2");
+    mockSearchErrors = [new CodexApiError(
+      401,
+      '{"error":{"message":"token invalidated"}}',
+    )];
+
+    const res = await app.request("/v1/alpha/search", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ model: "codex", id: "search-session" }),
+    });
+
+    expect(res.status).toBe(200);
+    expect(searchCallCount).toBe(2);
+    expect(pool.getAllEntries().map((entry) => entry.status).sort()).toEqual(["active", "expired"]);
+  });
+
+  it("keeps account-wide OAuth search 429 handling and rotates accounts", async () => {
+    pool.addAccount("test-token-2");
+    mockSearchErrors = [new CodexApiError(
+      429,
+      '{"error":{"message":"rate limited","resets_in_seconds":60}}',
+    )];
+
+    const res = await app.request("/v1/alpha/search", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ model: "codex", id: "search-session" }),
+    });
+
+    expect(res.status).toBe(200);
+    expect(searchCallCount).toBe(2);
+    expect(pool.getAllEntries().every((entry) => entry.status === "active")).toBe(true);
+  });
+
+  it("retries an early OAuth search 500 only once", async () => {
+    pool.addAccount("test-token-2");
+    pool.addAccount("test-token-3");
+    const earlyErrorBody = '{"error":{"code":"server_error","message":"temporary failure"}}';
+    mockSearchErrors = [
+      new CodexApiError(500, earlyErrorBody),
+      new CodexApiError(500, earlyErrorBody),
+    ];
+
+    const res = await app.request("/v1/alpha/search", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ model: "codex", id: "search-session" }),
+    });
+
+    expect(res.status).toBe(500);
+    expect(searchCallCount).toBe(2);
+    expect(await res.text()).toBe(earlyErrorBody);
+    expect(pool.getAllEntries().every((entry) => entry.status === "active")).toBe(true);
   });
 
   it("applies the Responses Lite contract to OAuth compact requests", async () => {

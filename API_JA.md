@@ -136,7 +136,7 @@ OpenAI 互換の埋め込み（Embeddings）インターフェース。
 
 ### Codex 補助エンドポイント
 
-`POST /v1/alpha/search` は ChatGPT OAuth アカウントプールで提供される通常の Codex モデルをサポートし、リクエストを `/backend-api/codex/alpha/search` に転送します。リクエストモデルが `wire=codex-responses` を持つ API キープロバイダーに解決される場合、プロキシは以下の非ストリーミング JSON エンドポイントもすべてサポートします：
+`POST /v1/alpha/search` は ChatGPT OAuth アカウントプールで提供される通常の Codex モデルをサポートし、リクエストを `/backend-api/codex/alpha/search` に転送します。OAuth Search では、401/429 以外の通常の 4xx はアカウント状態の変更や Cookie の消去を行わず、そのまま返します。明確に識別された Cloudflare challenge だけが安全なクールダウン・アカウント切替処理に進みます。リクエストモデルが `wire=codex-responses` を持つ API キープロバイダーに解決される場合、プロキシは以下の非ストリーミング JSON エンドポイントもすべてサポートします：
 
 | エンドポイント | アップストリーム先 | 用途 |
 |---|---|---|

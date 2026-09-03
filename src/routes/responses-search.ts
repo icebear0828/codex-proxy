@@ -5,6 +5,7 @@ import type { AccountPool } from "../auth/account-pool.js";
 import type { CookieJar } from "../proxy/cookie-jar.js";
 import type { ProxyPool } from "../proxy/proxy-pool.js";
 import { CodexApiError } from "../proxy/codex-types.js";
+import { isCfChallengeError } from "../proxy/error-classification.js";
 import { enqueueLogEntry } from "../logs/entry.js";
 import { acquireAccount, releaseAccount } from "./shared/account-acquisition.js";
 import { buildCodexApi } from "./shared/proxy-handler-utils.js";
@@ -40,6 +41,24 @@ function rawErrorResponse(error: CodexApiError, fallbackStatus: number): Respons
   return new Response(error.body, { status, headers });
 }
 
+/**
+ * Search has a different error contract from /codex/responses. In particular,
+ * a normal Search 402/403/404 describes this request or this still-evolving
+ * endpoint; it is not reliable evidence that the OAuth account is exhausted,
+ * banned, or Cloudflare path-blocked. Keep those client errors local so the
+ * shared account-health classifier cannot mutate the pool or clear cookies.
+ *
+ * A positively identified Cloudflare challenge remains safe to classify and
+ * retry, as do 401 and 429 which have account-wide meaning.
+ */
+function isTerminalSearchClientError(error: CodexApiError): boolean {
+  return error.status >= 400
+    && error.status < 500
+    && error.status !== 401
+    && error.status !== 429
+    && !isCfChallengeError(error);
+}
+
 export async function handleOAuthCodexSearch(options: {
   c: Context;
   accountPool: AccountPool;
@@ -54,6 +73,7 @@ export async function handleOAuthCodexSearch(options: {
   const startMs = Date.now();
   const triedEntryIds: string[] = [];
   const released = new Set<string>();
+  let earlyServerErrorRetried = false;
   let acquired = acquireAccount(accountPool, model, undefined, tag);
   if (!acquired) {
     return searchError(c, 503, "No available accounts. All accounts are expired or rate-limited.");
@@ -104,7 +124,36 @@ export async function handleOAuthCodexSearch(options: {
         throw error;
       }
       lastError = error;
-      const decision = handleCodexApiError(error, accountPool, entryId, model, tag, false, cookieJar);
+
+      if (isTerminalSearchClientError(error)) {
+        releaseAccount(accountPool, entryId, undefined, released);
+        enqueueLogEntry({
+          requestId,
+          direction: "egress",
+          method: "POST",
+          path: "/v1/alpha/search",
+          model,
+          provider: "codex",
+          account: accountPool.getEntry(entryId)?.label ?? accountPool.getEntry(entryId)?.email ?? entryId.slice(0, 8),
+          status: error.status,
+          latencyMs: Date.now() - startMs,
+          stream: false,
+          error: error.message,
+          request: { model, endpoint: "alpha/search" },
+        });
+        return rawErrorResponse(error, error.status);
+      }
+
+      const decision = handleCodexApiError(
+        error,
+        accountPool,
+        entryId,
+        model,
+        tag,
+        false,
+        cookieJar,
+        earlyServerErrorRetried,
+      );
       if (decision.action === "respond") {
         releaseAccount(accountPool, entryId, undefined, released);
         enqueueLogEntry({
@@ -125,6 +174,9 @@ export async function handleOAuthCodexSearch(options: {
       }
       if (decision.releaseBeforeRetry) {
         releaseAccount(accountPool, entryId, undefined, released);
+      }
+      if (decision.markEarlyServerErrorRetried) {
+        earlyServerErrorRetried = true;
       }
       if (attempt === 7) {
         return rawErrorResponse(error, decision.status);
