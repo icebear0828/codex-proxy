@@ -10,6 +10,7 @@
 
 ### Added
 
+- 支持 OpenAI GPT-6 Astra 系列（`gpt-6-astra`、`gpt-6-astra-aeon` 及别名 `gpt-6`）与 GPT-Reserve（`gpt-reserve`）：内置静态模型元数据与推理级别定义（`/v1/models/catalog` 可见），`gpt-6` 别名解析到 `gpt-6-astra`，可路由性已由 #776 的名称形态放行覆盖；同步适配 1,050,000 上下文窗口、Ollama 桥接架构系列识别与官方定价估算（`src/models/model-store.ts`、`src/ollama/bridge.ts`、`config/model-pricing.yaml`、`README.md`）。
 - 重构 Dashboard UI 视觉体系与设置交互逻辑：
   - 移除窗口顶部菜单栏，并将窗口标题统一为「Codex Proxy」（`packages/electron/electron/main.ts`、`web/index.html`）。
   - 全局优化浅色与深色色彩体系及统一系统/等宽字体层级渲染（`web/src/index.css`、`web/tailwind.config.ts`）。

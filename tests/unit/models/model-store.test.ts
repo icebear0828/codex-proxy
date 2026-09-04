@@ -66,6 +66,7 @@ import {
   getModelAliases,
   applyBackendModels,
   getModelPlanTypes,
+  KNOWN_OFFICIAL_MODELS,
   applyBackendModelsForPlan,
 } from "@src/models/model-store.js";
 
@@ -147,7 +148,7 @@ describe("ModelStore", () => {
   describe("loadStaticModels", () => {
     it("loads models from YAML", () => {
       const catalog = getModelCatalog();
-      expect(catalog.length).toBe(4);
+      expect(catalog.length).toBe(4 + KNOWN_OFFICIAL_MODELS.size);
       expect(catalog[0].id).toBe("gpt-5.4");
     });
 
@@ -204,7 +205,7 @@ aliases:
 
       loadStaticModels("/tmp/test-config");
 
-      expect(getModelCatalog().map((m) => m.id)).toEqual(["cached-only"]);
+      expect(getModelCatalog().map((m) => m.id)).toEqual(["cached-only", ...KNOWN_OFFICIAL_MODELS.keys()]);
       expect(getModelInfo("auto")).toBeUndefined();
       expect(getModelAliases()).toEqual({});
       expect(getModelInfo("cached-only")!.source).toBe("backend");
@@ -500,6 +501,17 @@ aliases: {}
       expect(isRecognizedModelName("local-simple-high-fast")).toBe(true);
     });
 
+    it("accepts known official models (gpt-6-astra, gpt-reserve) and aliases", () => {
+      expect(isRecognizedModelName("gpt-6-astra")).toBe(true);
+      expect(isRecognizedModelName("gpt-6-astra-aeon")).toBe(true);
+      expect(isRecognizedModelName("gpt-6-astra-high")).toBe(true);
+      expect(isRecognizedModelName("gpt-6-astra-ultra-fast")).toBe(true);
+      expect(isRecognizedModelName("gpt-6")).toBe(true);
+      expect(isRecognizedModelName("gpt-6-fast")).toBe(true);
+      expect(isRecognizedModelName("gpt-reserve")).toBe(true);
+      expect(isRecognizedModelName("gpt-reserve-high")).toBe(true);
+    });
+
     it("rejects unknown model names even with valid-looking suffixes", () => {
       expect(isRecognizedModelName("totally-unknown")).toBe(false);
       expect(isRecognizedModelName("totally-unknown-low")).toBe(false);
@@ -564,6 +576,13 @@ aliases: {}
   });
 
   describe("getModelInfo", () => {
+    it("returns model info for known official model gpt-6-astra", () => {
+      const info = getModelInfo("gpt-6-astra");
+      expect(info).toBeDefined();
+      expect(info!.displayName).toBe("GPT-6 Astra");
+      expect(info!.contextWindow).toBe(1_050_000);
+      expect(info!.maxOutputTokens).toBe(128_000);
+    });
     it("returns model info by ID", () => {
       const info = getModelInfo("gpt-5.4");
       expect(info).toBeDefined();
@@ -582,6 +601,15 @@ aliases: {}
 
     it("returns undefined for unknown ID", () => {
       expect(getModelInfo("nonexistent")).toBeUndefined();
+    });
+  });
+
+  describe("getModelCatalog", () => {
+    it("exposes static official models alongside the live catalog", () => {
+      const ids = getModelCatalog().map((m) => m.id);
+      expect(ids).toContain("gpt-6-astra");
+      expect(ids).toContain("gpt-6-astra-aeon");
+      expect(ids).toContain("gpt-reserve");
     });
   });
 

@@ -243,6 +243,9 @@ curl http://localhost:8080/v1/chat/completions \
 
 | 模型 ID              | 推理等级                                      | 当前上下文     | 最大上下文     | 最大输出    | 输出 | 说明                                    |
 | ------------------ | ----------------------------------------- | --------- | --------- | ------- | -- | ------------------------------------- |
+| `gpt-6-astra`      | low / medium / high / xhigh / max / ultra | 1,050,000 | 1,050,000 | 128,000 | 文本 | GPT-6 前沿旗舰：复杂推理与端到端 Agent 编码（`gpt-6` 为其别名） |
+| `gpt-6-astra-aeon` | low / medium / high / xhigh / max / ultra | 1,050,000 | 1,050,000 | 128,000 | 文本 | GPT-6 长程多 Agent 编排与深度推理变体            |
+| `gpt-reserve`      | low / medium / high / xhigh / max         | 272,000   | 872,000   | 128,000 | 文本 | 快速高性价比 Agent 编码模型（全计划开放）            |
 | `gpt-5.6-sol`      | low / medium / high / xhigh / max / ultra | 1,050,000 | 1,050,000 | 128,000 | 文本 | GPT-5.6 旗舰：复杂推理与编码（默认；`gpt-5.6` 为其别名） |
 | `gpt-5.6-terra`    | low / medium / high / xhigh / max / ultra | 1,050,000 | 1,050,000 | 128,000 | 文本 | GPT-5.6 智能与成本平衡                       |
 | `gpt-5.6-luna`     | low / medium / high / xhigh / max / ultra | 1,050,000 | 1,050,000 | 128,000 | 文本 | GPT-5.6 高性价比 / 高吞吐                    |
