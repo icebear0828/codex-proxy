@@ -209,6 +209,24 @@ function archiveContract(entries, extract, options) {
       "; found: " + nativeFiles.join(", "),
     );
   }
+  // The all-platforms archive must contain one native addon for every target
+  // triple the release matrix produces. A cross-platform name collision could
+  // otherwise silently overwrite one addon with another, and each CI job only
+  // checks its own platform, so a missing platform would go unnoticed.
+  const REQUIRED_NATIVE_TARGETS = [
+    ["win32", "x64"],
+    ["darwin", "arm64"],
+    ["darwin", "x64"],
+    ["linux", "x64"],
+  ];
+  for (const [targetPlatform, targetArch] of REQUIRED_NATIVE_TARGETS) {
+    const targetSuffixes = nativeCandidates(targetPlatform, targetArch);
+    assert(
+      targetSuffixes.some((suffix) => nativeFiles.some((name) => name.includes(suffix))),
+      "Portable all-platforms archive is missing native addon for " +
+        targetPlatform + "/" + targetArch + "; found: " + nativeFiles.join(", "),
+    );
+  }
 
   const hostFiles = [...files.keys()].filter(
     (name) => name.startsWith("hosts/webview2/") && name.endsWith(".exe"),
