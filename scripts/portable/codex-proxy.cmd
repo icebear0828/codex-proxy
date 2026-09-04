@@ -28,8 +28,14 @@ if /i "%~1"=="-n" (
   shift
   shift
 )
-if /i "%~1:~0,3%"=="-n=" (
-  set "NODE_BIN=%~1:~3%"
+set "FIRST_ARG="
+if not "%1"=="" set "FIRST_ARG=%~1"
+if /i "%FIRST_ARG:~0,13%"=="--node-path=" (
+  set "NODE_BIN=%FIRST_ARG:~13%"
+  shift
+)
+if /i "%FIRST_ARG:~0,3%"=="-n=" (
+  set "NODE_BIN=%FIRST_ARG:~3%"
   shift
 )
 if "%NODE_BIN%"=="" (
