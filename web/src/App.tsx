@@ -19,6 +19,7 @@ import { UsageStats } from "./pages/UsageStats";
 import { LogsPage } from "./pages/LogsPage";
 import { ErrorsPage } from "./pages/ErrorsPage";
 import { ClientKeysPage } from "./pages/ClientKeysPage";
+import { InfoPage } from "./pages/InfoPage";
 import { useAccounts } from "../../shared/hooks/use-accounts";
 import { useErrorLogsCount } from "../../shared/hooks/use-error-logs";
 import { useProxies } from "../../shared/hooks/use-proxies";
@@ -195,6 +196,7 @@ function Dashboard() {
                 onUpdateLabel={accounts.updateLabel}
                 onUpdateCodexFingerprintMode={accounts.updateCodexFingerprintMode}
                 fallbackUpstream={accounts.fallbackUpstream}
+                fallbackActive={accounts.fallbackActive}
                 onUpdateFallbackUpstream={accounts.updateFallbackUpstream}
                 onDeleteFallbackUpstream={accounts.deleteFallbackUpstream}
               />
@@ -233,8 +235,8 @@ function Dashboard() {
             <ErrorsPage />
           )}
 
-          {activeTab === "#/settings" && (
-            <SettingsTab
+          {activeTab === "#/info" && (
+            <InfoPage
               baseUrl={status.baseUrl}
               apiKey={status.apiKey}
               models={status.models}
@@ -245,6 +247,12 @@ function Dashboard() {
               onEffortChange={status.setSelectedEffort}
               selectedSpeed={status.selectedSpeed}
               onSpeedChange={status.setSelectedSpeed}
+            />
+          )}
+
+          {activeTab === "#/settings" && (
+            <SettingsTab
+              models={status.models}
               layoutMode={layoutMode}
               onLayoutModeChange={handleLayoutModeChange}
             />

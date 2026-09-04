@@ -10,6 +10,15 @@
 
 ### Added
 
+- 支持 OpenAI GPT-6 Astra 系列（`gpt-6-astra`、`gpt-6-astra-aeon` 及别名 `gpt-6`）与 GPT-Reserve（`gpt-reserve`）：内置静态模型元数据与推理级别定义（`/v1/models/catalog` 可见），`gpt-6` 别名解析到 `gpt-6-astra`，可路由性已由 #776 的名称形态放行覆盖；同步适配 1,050,000 上下文窗口、Ollama 桥接架构系列识别与官方定价估算（`src/models/model-store.ts`、`src/ollama/bridge.ts`、`config/model-pricing.yaml`、`README.md`）。
+- 重构 Dashboard UI 视觉体系与设置交互逻辑：
+  - 移除窗口顶部菜单栏，并将窗口标题统一为「Codex Proxy」（`packages/electron/electron/main.ts`、`web/index.html`）。
+  - 全局优化浅色与深色色彩体系及统一系统/等宽字体层级渲染（`web/src/index.css`、`web/tailwind.config.ts`）。
+  - 新增独立「信息」Tab 页（`#/info`），归拢 API 配置、Anthropic SDK 配置、代码示例及连通性测试只读卡片（`web/src/pages/InfoPage.tsx`、`web/src/navigation.ts`、`shared/i18n/`）。
+  - 改版设置界面（`#/settings`）：重新组织分类设置项，升级为项级即时生效机制（修改后行内显示 `✅` 保存按钮，点击转圈加载，生效后平滑淡出，需重启项显示 `🔄 等待重启` 徽章），移除底部全局保存按钮（`web/src/components/`）。
+- 请求日志新增「账号 / 后备」列：展示每条请求实际服务的账号（label / 邮箱 / ID 短标识），走了后备（备用账号重试或后备上游 apikey）时显示橙色「后备」徽章；详情抽屉同步展示账号信息（`src/logs/`、`src/routes/shared/proxy-*.ts`、`shared/hooks/use-logs.ts`、`web/src/pages/LogsPage.tsx`、`shared/i18n/`）。
+- 首页「后备上游 (API Key)」卡片新增运行状态指示：请求切到后备（备用账号或后备上游）时卡片橙色高亮并脉冲闪动，显示「后备中」徽章；停止走后约 60 秒内自动恢复（`src/auth/fallback-state.ts`、`src/routes/accounts.ts`、`shared/hooks/use-accounts.ts`、`web/src/components/FallbackUpstreamCard.tsx`）。
+
 - 通用设置新增「更新到测试版 (Beta)」选项（默认关闭）：开启后自动更新检查将包含测试版（GitHub Releases 预发布版本与 Docker `-beta.` 标签），Electron 客户端同步开启测试版通道（`config/default.yaml`、`src/routes/admin/`、`src/self-update.ts`、`web/src/components/GeneralSettings.tsx`、`shared/i18n/`）。
 
 - 控制台新增日語 (ja)、繁體中文 (台灣, zh-TW)、繁體中文 (香港, zh-HK) 完整語言字典與本地化支援，並將頂部導航列語言切換升級為多語言下拉選擇器（`shared/i18n/`、`web/src/components/Header.tsx`、`shared/utils/format.ts`）。
@@ -17,6 +26,10 @@
 - 为 `/v1/responses` 端点添加客户端 WebSocket 支持：接受 `ws://<host>:<port>/v1/responses` 的升级请求并用 Bearer 令牌鉴权，将客户端的 `response.create` 帧代理到现有上游 Codex WebSocket 并把响应事件以 JSON 流式回传；HTTP POST + SSE 仍作为回退保持不变，并在关闭路径中一并关闭该 WS 服务器。（#681）
 - 新增 E2E 测试覆盖账号 CRUD、管理员设置、Dashboard 登录三条关键 HTTP 路径（47 个新用例）：`tests/e2e/accounts.test.ts`（list / add / delete / reset-usage / label / cookies / batch-delete / batch-status / export / quota-warnings）、`tests/e2e/admin-settings.test.ts`（rotation / settings / general / quota 四组 GET+POST）、`tests/e2e/dashboard-login.test.ts`（login / logout / status + 速率限制）。（closes #376 partial）
 - Dashboard 新增侧栏导航布局，并支持在设置中切换回顶部标签栏旧版布局（`web/src/App.tsx`、`web/src/components/Sidebar.tsx`）。
+
+### Changed
+
+- 官方模型识别改为按名称形态前缀放行（`gpt*` / `codex*` / `oN*`），不再要求模型已收录于本地 catalog：当后端/账号尚未下发的新官方模型（如 `gpt-6-astra`）被客户端请求时，不再返回 `404 model_not_found` 或静默回退默认模型，而是按原名透传交由上游裁决；`resolveModelId` 对官方形态模型原样解析、不回退默认。边界保持不变：非官方形态的未知模型仍 `404`，裸 `codex` 哨兵仍解析为默认模型（`src/models/model-store.ts`）。
 
 ### Fixed
 

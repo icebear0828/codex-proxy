@@ -24,6 +24,7 @@
 
 import { CodexApi, CodexApiError, PreviousResponseWebSocketError } from "../../proxy/codex-api.js";
 import { toQuota } from "../../auth/quota-utils.js";
+import { markFallbackUsed } from "../../auth/fallback-state.js";
 import { acquireAccount, releaseAccount } from "./account-acquisition.js";
 import { handleCodexApiError } from "./proxy-error-handler.js";
 import { handleStreaming } from "./streaming-handler.js";
@@ -82,6 +83,7 @@ async function respondNoAccountOrFallback(
     console.log(
       `[${fmt.tag}] No available OAuth accounts — routing through fallback upstream apikey (${fallback.baseUrl})`,
     );
+    markFallbackUsed();
     return handleDirectRequest({
       c: options.c,
       upstream: new ResponsesUpstream("fallback", fallback.apiKey, fallback.baseUrl),
@@ -112,6 +114,7 @@ async function respondProxyErrorOrFallback(
     console.log(
       `[${fmt.tag}] Retry exhausted — routing through fallback upstream apikey (${fallback.baseUrl})`,
     );
+    markFallbackUsed();
     return handleDirectRequest({
       c: options.c,
       upstream: new ResponsesUpstream("fallback", fallback.apiKey, fallback.baseUrl),
@@ -203,6 +206,16 @@ export async function handleProxyRequest(options: HandleProxyRequestOptions): Pr
 
   if (!acquired) return respondNoAccountOrFallback(options, req, fmt);
   let { entryId } = acquired;
+  // First account this request acquired; later attempts that switch to another
+  // entry (fallback account retry) are marked as fallback in the audit log.
+  const initialEntryId = entryId;
+
+  const accountDisplayName = (id: string): string | null => {
+    const entry = accountPool.getEntry(id);
+    if (entry?.label) return entry.label;
+    if (entry?.email) return entry.email;
+    return id.slice(0, 8);
+  };
 
   // ── Session Affinity Fallback Defense (Cascading Ban Prevention) ──
   // Only strip session identifiers when the preferred account is banned/disabled.
@@ -326,6 +339,8 @@ export async function handleProxyRequest(options: HandleProxyRequestOptions): Pr
         api: codexApi,
         request: req,
         entryId,
+        account: accountDisplayName(entryId),
+        fallback: entryId !== initialEntryId,
         abortSignal: abortController.signal,
         buildPoolCtx,
         requestId,
@@ -355,6 +370,7 @@ export async function handleProxyRequest(options: HandleProxyRequestOptions): Pr
           variantHash: sessionContext.variantHash,
           chainAdvanceTicket,
           implicitResumeActive: implicitResume.isActive(),
+          fallback: entryId !== initialEntryId,
         });
       }
 

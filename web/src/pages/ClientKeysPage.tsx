@@ -99,16 +99,16 @@ export const ClientKeysPage: FunctionalComponent<ClientKeysPageProps> = ({
       input.expires_at = new Date(formExpiresAt).toISOString();
     }
     if (formMaxBudgetUsd.trim()) {
-      const val = parseFloat(formMaxBudgetUsd);
+      const val = parseFloat(formMaxBudgetUsd.trim());
       if (isNaN(val) || val <= 0) {
-        setFormError("Invalid max budget USD");
+        setFormError("Invalid max budget");
         setIsSubmitting(false);
         return;
       }
       input.max_budget_usd = val;
     }
     if (formMaxTokens.trim()) {
-      const val = parseInt(formMaxTokens, 10);
+      const val = parseInt(formMaxTokens.trim(), 10);
       if (isNaN(val) || val <= 0) {
         setFormError("Invalid max tokens");
         setIsSubmitting(false);
@@ -117,7 +117,7 @@ export const ClientKeysPage: FunctionalComponent<ClientKeysPageProps> = ({
       input.max_tokens = val;
     }
     if (formMaxConcurrency.trim()) {
-      const val = parseInt(formMaxConcurrency, 10);
+      const val = parseInt(formMaxConcurrency.trim(), 10);
       if (isNaN(val) || val <= 0) {
         setFormError("Invalid max concurrency");
         setIsSubmitting(false);
@@ -144,8 +144,8 @@ export const ClientKeysPage: FunctionalComponent<ClientKeysPageProps> = ({
     }
 
     try {
-      const created = await createKey(input);
-      setCreatedSecretKey(created.key);
+      const res = await createKey(input);
+      setCreatedSecretKey(res.key);
     } catch (err) {
       setFormError(err instanceof Error ? err.message : String(err));
     } finally {
@@ -156,11 +156,12 @@ export const ClientKeysPage: FunctionalComponent<ClientKeysPageProps> = ({
   const handleEditSubmit = async (e: JSX.TargetedEvent<HTMLFormElement, Event>) => {
     e.preventDefault();
     if (!editingKey) return;
+
     setFormError(null);
     setIsSubmitting(true);
 
     const input: UpdateClientKeyInput = {
-      name: formName.trim() || undefined,
+      name: formName.trim(),
       status: formStatus,
     };
 
@@ -171,9 +172,9 @@ export const ClientKeysPage: FunctionalComponent<ClientKeysPageProps> = ({
     }
 
     if (formMaxBudgetUsd.trim()) {
-      const val = parseFloat(formMaxBudgetUsd);
+      const val = parseFloat(formMaxBudgetUsd.trim());
       if (isNaN(val) || val <= 0) {
-        setFormError("Invalid max budget USD");
+        setFormError("Invalid max budget");
         setIsSubmitting(false);
         return;
       }
@@ -183,7 +184,7 @@ export const ClientKeysPage: FunctionalComponent<ClientKeysPageProps> = ({
     }
 
     if (formMaxTokens.trim()) {
-      const val = parseInt(formMaxTokens, 10);
+      const val = parseInt(formMaxTokens.trim(), 10);
       if (isNaN(val) || val <= 0) {
         setFormError("Invalid max tokens");
         setIsSubmitting(false);
@@ -195,7 +196,7 @@ export const ClientKeysPage: FunctionalComponent<ClientKeysPageProps> = ({
     }
 
     if (formMaxConcurrency.trim()) {
-      const val = parseInt(formMaxConcurrency, 10);
+      const val = parseInt(formMaxConcurrency.trim(), 10);
       if (isNaN(val) || val <= 0) {
         setFormError("Invalid max concurrency");
         setIsSubmitting(false);
@@ -247,10 +248,13 @@ export const ClientKeysPage: FunctionalComponent<ClientKeysPageProps> = ({
     }
   };
 
+  const inputCls =
+    "w-full px-3 py-2 bg-white dark:bg-bg-dark border border-gray-200 dark:border-border-dark rounded-lg text-xs font-mono text-slate-800 dark:text-text-main outline-none focus:ring-1 focus:ring-primary";
+
   return (
     <div class="space-y-6">
       {/* Top Header & Summary Stats */}
-      <div class="bg-white dark:bg-card-dark rounded-xl p-6 shadow-sm border border-slate-200 dark:border-border-dark flex flex-col md:flex-row md:items-center justify-between gap-4">
+      <div class="bg-white dark:bg-card-dark rounded-xl p-6 shadow-sm border border-gray-200 dark:border-border-dark flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
           <h2 class="text-xl font-bold text-slate-800 dark:text-slate-100 flex items-center gap-2">
             🔑 {t("clientKeys")}
@@ -261,7 +265,7 @@ export const ClientKeysPage: FunctionalComponent<ClientKeysPageProps> = ({
         </div>
         <button
           onClick={handleOpenCreate}
-          class="px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary/90 transition text-sm font-medium flex items-center justify-center gap-1.5 shadow-sm"
+          class="px-4 py-2 bg-primary-action hover:bg-primary-action-hover text-white rounded-lg transition-colors text-xs font-semibold flex items-center justify-center gap-1.5 shadow-sm cursor-pointer"
         >
           <span>+</span> {t("addClientKey")}
         </button>
@@ -269,23 +273,23 @@ export const ClientKeysPage: FunctionalComponent<ClientKeysPageProps> = ({
 
       {/* Global Usage Cards */}
       <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
-        <div class="bg-white dark:bg-card-dark p-4 rounded-xl border border-slate-200 dark:border-border-dark shadow-sm">
+        <div class="bg-white dark:bg-card-dark p-4 rounded-xl border border-gray-200 dark:border-border-dark shadow-sm">
           <div class="text-xs font-semibold text-slate-500 dark:text-text-dim uppercase tracking-wider">{t("totalAll")}</div>
           <div class="text-2xl font-bold text-slate-800 dark:text-slate-100 mt-1">{keys.length}</div>
         </div>
-        <div class="bg-white dark:bg-card-dark p-4 rounded-xl border border-slate-200 dark:border-border-dark shadow-sm">
+        <div class="bg-white dark:bg-card-dark p-4 rounded-xl border border-gray-200 dark:border-border-dark shadow-sm">
           <div class="text-xs font-semibold text-slate-500 dark:text-text-dim uppercase tracking-wider">{t("active")}</div>
           <div class="text-2xl font-bold text-emerald-600 dark:text-emerald-400 mt-1">
             {keys.filter((k) => k.status === "active").length}
           </div>
         </div>
-        <div class="bg-white dark:bg-card-dark p-4 rounded-xl border border-slate-200 dark:border-border-dark shadow-sm">
+        <div class="bg-white dark:bg-card-dark p-4 rounded-xl border border-gray-200 dark:border-border-dark shadow-sm">
           <div class="text-xs font-semibold text-slate-500 dark:text-text-dim uppercase tracking-wider">{t("clientKeyUsedCost")}</div>
           <div class="text-2xl font-bold text-amber-600 dark:text-amber-400 mt-1">
             ${totalCostUsd.toFixed(4)}
           </div>
         </div>
-        <div class="bg-white dark:bg-card-dark p-4 rounded-xl border border-slate-200 dark:border-border-dark shadow-sm">
+        <div class="bg-white dark:bg-card-dark p-4 rounded-xl border border-gray-200 dark:border-border-dark shadow-sm">
           <div class="text-xs font-semibold text-slate-500 dark:text-text-dim uppercase tracking-wider">{t("clientKeyRequests")}</div>
           <div class="text-2xl font-bold text-blue-600 dark:text-blue-400 mt-1">
             {totalRequests.toLocaleString()}
@@ -300,7 +304,7 @@ export const ClientKeysPage: FunctionalComponent<ClientKeysPageProps> = ({
       )}
 
       {/* Keys List */}
-      <div class="bg-white dark:bg-card-dark rounded-xl border border-slate-200 dark:border-border-dark overflow-hidden shadow-sm">
+      <div class="bg-white dark:bg-card-dark rounded-xl border border-gray-200 dark:border-border-dark overflow-hidden shadow-sm">
         {isLoading && keys.length === 0 ? (
           <div class="p-8 text-center text-slate-500 dark:text-text-dim text-sm">{t("loading")}</div>
         ) : keys.length === 0 ? (
@@ -312,7 +316,7 @@ export const ClientKeysPage: FunctionalComponent<ClientKeysPageProps> = ({
           <div class="overflow-x-auto">
             <table class="w-full text-left text-xs border-collapse">
               <thead>
-                <tr class="border-b border-slate-200 dark:border-border-dark bg-slate-50 dark:bg-slate-900/50 text-slate-500 dark:text-text-dim">
+                <tr class="border-b border-gray-200 dark:border-border-dark bg-slate-50 dark:bg-slate-900/50 text-slate-500 dark:text-text-dim">
                   <th class="py-3 px-4 font-semibold">{t("clientKeyName")}</th>
                   <th class="py-3 px-4 font-semibold">{t("clientKeySecret")}</th>
                   <th class="py-3 px-4 font-semibold">{t("clientKeyBudget")}</th>
@@ -323,7 +327,7 @@ export const ClientKeysPage: FunctionalComponent<ClientKeysPageProps> = ({
                   <th class="py-3 px-4 font-semibold text-right">Actions</th>
                 </tr>
               </thead>
-              <tbody class="divide-y divide-border-light dark:divide-border-dark">
+              <tbody class="divide-y divide-gray-100 dark:divide-border-dark/60">
                 {keys.map((k) => {
                   const isExpired = k.expires_at && new Date(k.expires_at).getTime() < Date.now();
                   const isBudgetExhausted =
@@ -337,7 +341,7 @@ export const ClientKeysPage: FunctionalComponent<ClientKeysPageProps> = ({
                       class="hover:bg-slate-50/50 dark:hover:bg-slate-800/40 transition"
                     >
                       <td class="py-3.5 px-4">
-                        <div class="font-semibold text-slate-800 dark:text-slate-200">
+                        <div class="font-semibold text-slate-800 dark:text-text-main">
                           {k.name}
                         </div>
                         {k.allowed_models && k.allowed_models.length > 0 && (
@@ -348,7 +352,7 @@ export const ClientKeysPage: FunctionalComponent<ClientKeysPageProps> = ({
                         {k.default_tools != null && (
                           <div class="text-[10px] text-slate-500 dark:text-text-dim mt-0.5">
                             {k.default_tools.length > 0 ? (
-                              <span class="text-primary dark:text-primary-light">
+                              <span class="text-primary font-medium">
                                 Tools: {k.default_tools.join(", ")}
                               </span>
                             ) : (
@@ -357,11 +361,11 @@ export const ClientKeysPage: FunctionalComponent<ClientKeysPageProps> = ({
                           </div>
                         )}
                       </td>
-                      <td class="py-3.5 px-4 font-mono text-slate-600 dark:text-slate-400">
+                      <td class="py-3.5 px-4 font-mono text-slate-600 dark:text-text-dim">
                         {k.key_masked}
                       </td>
                       <td class="py-3.5 px-4">
-                        <div class="text-slate-800 dark:text-slate-200 font-medium">
+                        <div class="text-slate-800 dark:text-text-main font-medium">
                           ${k.used_cost_usd.toFixed(4)}
                           <span class="text-slate-500 dark:text-text-dim text-[10px] font-normal">
                             {" / "}
@@ -375,7 +379,7 @@ export const ClientKeysPage: FunctionalComponent<ClientKeysPageProps> = ({
                         )}
                       </td>
                       <td class="py-3.5 px-4">
-                        <div class="text-slate-800 dark:text-slate-200 font-medium">
+                        <div class="text-slate-800 dark:text-text-main font-medium">
                           {k.used_tokens.toLocaleString()}
                           <span class="text-slate-500 dark:text-text-dim text-[10px] font-normal">
                             {" / "}
@@ -388,12 +392,12 @@ export const ClientKeysPage: FunctionalComponent<ClientKeysPageProps> = ({
                           </span>
                         )}
                       </td>
-                      <td class="py-3.5 px-4 text-slate-700 dark:text-slate-300">
+                      <td class="py-3.5 px-4 text-slate-700 dark:text-text-main">
                         {k.max_concurrency != null ? `${k.max_concurrency} max` : "∞"}
                       </td>
                       <td class="py-3.5 px-4">
                         {k.expires_at ? (
-                          <div class={isExpired ? "text-red-600 dark:text-red-400 font-medium" : "text-slate-700 dark:text-slate-300"}>
+                          <div class={isExpired ? "text-red-600 dark:text-red-400 font-medium" : "text-slate-700 dark:text-text-main"}>
                             {new Date(k.expires_at).toLocaleString()}
                             {isExpired && (
                               <div class="text-[10px] font-bold text-red-600 dark:text-red-400">
@@ -408,10 +412,10 @@ export const ClientKeysPage: FunctionalComponent<ClientKeysPageProps> = ({
                       <td class="py-3.5 px-4">
                         <button
                           onClick={() => toggleStatus(k.id)}
-                          class={`px-2 py-0.5 rounded text-[11px] font-semibold border ${
+                          class={`px-2.5 py-1 rounded-md text-[11px] font-semibold border transition-colors cursor-pointer ${
                             k.status === "active"
-                              ? "bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-300 dark:border-emerald-800"
-                              : "bg-slate-100 text-slate-600 border-slate-200 dark:bg-slate-800 dark:text-slate-400 dark:border-slate-700"
+                              ? "bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-400 dark:border-emerald-800/60 hover:bg-emerald-100 dark:hover:bg-emerald-950/60"
+                              : "bg-slate-100 text-slate-600 border-slate-200 dark:bg-slate-800 dark:text-slate-400 dark:border-slate-700 hover:bg-slate-200 dark:hover:bg-slate-700"
                           }`}
                         >
                           {k.status === "active" ? t("clientKeyStatusActive") : t("clientKeyStatusDisabled")}
@@ -420,7 +424,7 @@ export const ClientKeysPage: FunctionalComponent<ClientKeysPageProps> = ({
                       <td class="py-3.5 px-4 text-right space-x-1.5 whitespace-nowrap">
                         <button
                           onClick={() => handleOpenEdit(k)}
-                          class="px-2 py-1 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 rounded font-medium"
+                          class="px-2.5 py-1 text-slate-600 dark:text-text-main hover:bg-slate-100 dark:hover:bg-card-dark rounded-md font-semibold text-xs transition-colors cursor-pointer"
                         >
                           Edit
                         </button>
@@ -430,7 +434,7 @@ export const ClientKeysPage: FunctionalComponent<ClientKeysPageProps> = ({
                               resetUsage(k.id);
                             }
                           }}
-                          class="px-2 py-1 text-amber-600 dark:text-amber-400 hover:bg-amber-50 dark:hover:bg-amber-950/30 rounded font-medium"
+                          class="px-2.5 py-1 text-amber-600 dark:text-amber-400 hover:bg-amber-50 dark:hover:bg-amber-950/30 rounded-md font-semibold text-xs transition-colors cursor-pointer"
                         >
                           {t("clientKeyResetUsage")}
                         </button>
@@ -440,7 +444,7 @@ export const ClientKeysPage: FunctionalComponent<ClientKeysPageProps> = ({
                               deleteKey(k.id);
                             }
                           }}
-                          class="px-2 py-1 text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-950/30 rounded font-medium"
+                          class="px-2.5 py-1 text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-950/30 rounded-md font-semibold text-xs transition-colors cursor-pointer"
                         >
                           Delete
                         </button>
@@ -457,8 +461,8 @@ export const ClientKeysPage: FunctionalComponent<ClientKeysPageProps> = ({
       {/* Create / Secret Key Reveal Modal */}
       {showCreateModal && (
         <div class="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div class="bg-white dark:bg-card-dark border border-slate-200 dark:border-border-dark rounded-2xl shadow-xl max-w-lg w-full p-6 space-y-4">
-            <h3 class="text-lg font-bold text-slate-800 dark:text-slate-100">
+          <div class="bg-white dark:bg-card-dark border border-gray-200 dark:border-border-dark rounded-2xl shadow-xl max-w-lg w-full p-6 space-y-4">
+            <h3 class="text-lg font-bold text-slate-800 dark:text-text-main">
               {createdSecretKey ? t("clientKeySecret") : t("addClientKey")}
             </h3>
 
@@ -474,11 +478,11 @@ export const ClientKeysPage: FunctionalComponent<ClientKeysPageProps> = ({
                       type="text"
                       readOnly
                       value={createdSecretKey}
-                      class="flex-grow px-3 py-2 bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-border-dark rounded-lg font-mono text-xs text-slate-800 dark:text-slate-200"
+                      class="flex-grow px-3 py-2 bg-slate-100 dark:bg-slate-900 border border-gray-200 dark:border-border-dark rounded-lg font-mono text-xs text-slate-800 dark:text-text-main"
                     />
                     <button
                       onClick={handleCopySecret}
-                      class="px-3 py-2 bg-primary text-white text-xs font-medium rounded-lg hover:bg-primary/90 transition"
+                      class="px-3 py-2 bg-primary-action hover:bg-primary-action-hover text-white text-xs font-semibold rounded-lg transition-colors cursor-pointer shrink-0"
                     >
                       {copiedKey ? t("copied") : t("copy")}
                     </button>
@@ -487,7 +491,7 @@ export const ClientKeysPage: FunctionalComponent<ClientKeysPageProps> = ({
                 <div class="flex justify-end pt-2">
                   <button
                     onClick={() => setShowCreateModal(false)}
-                    class="px-4 py-2 bg-slate-800 dark:bg-slate-200 text-white dark:text-slate-900 text-xs font-medium rounded-lg"
+                    class="px-4 py-2 bg-slate-800 hover:bg-slate-700 dark:bg-slate-200 dark:hover:bg-white text-white dark:text-slate-900 text-xs font-semibold rounded-lg transition-colors cursor-pointer"
                   >
                     {t("close")}
                   </button>
@@ -496,12 +500,12 @@ export const ClientKeysPage: FunctionalComponent<ClientKeysPageProps> = ({
             ) : (
               <form onSubmit={handleCreateSubmit} class="space-y-3">
                 {formError && (
-                  <div class="p-2.5 bg-red-50 dark:bg-red-950/40 text-red-700 dark:text-red-300 rounded text-xs">
+                  <div class="p-2.5 bg-red-50 dark:bg-red-950/40 text-red-700 dark:text-red-300 rounded text-xs font-medium">
                     {formError}
                   </div>
                 )}
                 <div>
-                  <label class="block text-xs font-semibold text-slate-500 dark:text-text-dim mb-1">
+                  <label class="block text-xs font-semibold text-slate-600 dark:text-text-main mb-1">
                     {t("clientKeyName")} *
                   </label>
                   <input
@@ -510,12 +514,12 @@ export const ClientKeysPage: FunctionalComponent<ClientKeysPageProps> = ({
                     placeholder="e.g. Frontend Dev Team / Alice"
                     value={formName}
                     onInput={(e) => setFormName((e.currentTarget as HTMLInputElement).value)}
-                    class="w-full px-3 py-2 bg-bg-light dark:bg-bg-dark border border-slate-200 dark:border-border-dark rounded-lg text-xs"
+                    class={inputCls}
                   />
                 </div>
 
                 <div>
-                  <label class="block text-xs font-semibold text-slate-500 dark:text-text-dim mb-1">
+                  <label class="block text-xs font-semibold text-slate-600 dark:text-text-main mb-1">
                     {t("clientKeySecret")}
                   </label>
                   <input
@@ -523,13 +527,13 @@ export const ClientKeysPage: FunctionalComponent<ClientKeysPageProps> = ({
                     placeholder="sk-proxy-custom-secret..."
                     value={formCustomKey}
                     onInput={(e) => setFormCustomKey((e.currentTarget as HTMLInputElement).value)}
-                    class="w-full px-3 py-2 bg-bg-light dark:bg-bg-dark border border-slate-200 dark:border-border-dark rounded-lg text-xs font-mono"
+                    class={inputCls}
                   />
                 </div>
 
                 <div class="grid grid-cols-2 gap-3">
                   <div>
-                    <label class="block text-xs font-semibold text-slate-500 dark:text-text-dim mb-1">
+                    <label class="block text-xs font-semibold text-slate-600 dark:text-text-main mb-1">
                       {t("clientKeyBudget")} ($)
                     </label>
                     <input
@@ -538,11 +542,11 @@ export const ClientKeysPage: FunctionalComponent<ClientKeysPageProps> = ({
                       placeholder="e.g. 5.00"
                       value={formMaxBudgetUsd}
                       onInput={(e) => setFormMaxBudgetUsd((e.currentTarget as HTMLInputElement).value)}
-                      class="w-full px-3 py-2 bg-bg-light dark:bg-bg-dark border border-slate-200 dark:border-border-dark rounded-lg text-xs"
+                      class={inputCls}
                     />
                   </div>
                   <div>
-                    <label class="block text-xs font-semibold text-slate-500 dark:text-text-dim mb-1">
+                    <label class="block text-xs font-semibold text-slate-600 dark:text-text-main mb-1">
                       {t("clientKeyTokens")}
                     </label>
                     <input
@@ -550,14 +554,14 @@ export const ClientKeysPage: FunctionalComponent<ClientKeysPageProps> = ({
                       placeholder="e.g. 100000"
                       value={formMaxTokens}
                       onInput={(e) => setFormMaxTokens((e.currentTarget as HTMLInputElement).value)}
-                      class="w-full px-3 py-2 bg-bg-light dark:bg-bg-dark border border-slate-200 dark:border-border-dark rounded-lg text-xs"
+                      class={inputCls}
                     />
                   </div>
                 </div>
 
                 <div class="grid grid-cols-2 gap-3">
                   <div>
-                    <label class="block text-xs font-semibold text-slate-500 dark:text-text-dim mb-1">
+                    <label class="block text-xs font-semibold text-slate-600 dark:text-text-main mb-1">
                       {t("clientKeyConcurrency")}
                     </label>
                     <input
@@ -565,24 +569,24 @@ export const ClientKeysPage: FunctionalComponent<ClientKeysPageProps> = ({
                       placeholder="e.g. 2"
                       value={formMaxConcurrency}
                       onInput={(e) => setFormMaxConcurrency((e.currentTarget as HTMLInputElement).value)}
-                      class="w-full px-3 py-2 bg-bg-light dark:bg-bg-dark border border-slate-200 dark:border-border-dark rounded-lg text-xs"
+                      class={inputCls}
                     />
                   </div>
                   <div>
-                    <label class="block text-xs font-semibold text-slate-500 dark:text-text-dim mb-1">
+                    <label class="block text-xs font-semibold text-slate-600 dark:text-text-main mb-1">
                       {t("clientKeyExpiresAt")}
                     </label>
                     <input
                       type="datetime-local"
                       value={formExpiresAt}
                       onInput={(e) => setFormExpiresAt((e.currentTarget as HTMLInputElement).value)}
-                      class="w-full px-3 py-2 bg-bg-light dark:bg-bg-dark border border-slate-200 dark:border-border-dark rounded-lg text-xs"
+                      class={inputCls}
                     />
                   </div>
                 </div>
 
                 <div>
-                  <label class="block text-xs font-semibold text-slate-500 dark:text-text-dim mb-1">
+                  <label class="block text-xs font-semibold text-slate-600 dark:text-text-main mb-1">
                     {t("clientKeyAllowedModels")} ({t("clientKeyAllowedModelsHint")})
                   </label>
                   <input
@@ -590,12 +594,12 @@ export const ClientKeysPage: FunctionalComponent<ClientKeysPageProps> = ({
                     placeholder="gpt-5.4, gpt-5.3-codex"
                     value={formAllowedModels}
                     onInput={(e) => setFormAllowedModels((e.currentTarget as HTMLInputElement).value)}
-                    class="w-full px-3 py-2 bg-bg-light dark:bg-bg-dark border border-slate-200 dark:border-border-dark rounded-lg text-xs"
+                    class={inputCls}
                   />
                 </div>
 
                 <div>
-                  <label class="block text-xs font-semibold text-slate-500 dark:text-text-dim mb-1">
+                  <label class="block text-xs font-semibold text-slate-600 dark:text-text-main mb-1">
                     {t("clientKeyDefaultTools")} ({t("clientKeyDefaultToolsHint")})
                   </label>
                   <input
@@ -603,7 +607,7 @@ export const ClientKeysPage: FunctionalComponent<ClientKeysPageProps> = ({
                     placeholder="web_search, image_generation"
                     value={formDefaultTools}
                     onInput={(e) => setFormDefaultTools((e.currentTarget as HTMLInputElement).value)}
-                    class="w-full px-3 py-2 bg-bg-light dark:bg-bg-dark border border-slate-200 dark:border-border-dark rounded-lg text-xs"
+                    class={inputCls}
                   />
                 </div>
 
@@ -611,14 +615,14 @@ export const ClientKeysPage: FunctionalComponent<ClientKeysPageProps> = ({
                   <button
                     type="button"
                     onClick={() => setShowCreateModal(false)}
-                    class="px-3 py-1.5 text-xs text-slate-500 dark:text-text-dim hover:text-text-main"
+                    class="px-3 py-1.5 text-xs font-medium text-slate-600 dark:text-text-dim hover:text-slate-900 dark:hover:text-text-main transition-colors cursor-pointer"
                   >
                     {t("cancel")}
                   </button>
                   <button
                     type="submit"
                     disabled={isSubmitting}
-                    class="px-4 py-1.5 bg-primary text-white text-xs font-medium rounded-lg hover:bg-primary/90 transition disabled:opacity-50"
+                    class="px-4 py-1.5 bg-primary-action hover:bg-primary-action-hover text-white text-xs font-semibold rounded-lg transition-colors disabled:opacity-40 cursor-pointer shadow-sm"
                   >
                     {isSubmitting ? "..." : t("submit")}
                   </button>
@@ -632,19 +636,19 @@ export const ClientKeysPage: FunctionalComponent<ClientKeysPageProps> = ({
       {/* Edit Modal */}
       {editingKey && (
         <div class="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div class="bg-white dark:bg-card-dark border border-slate-200 dark:border-border-dark rounded-2xl shadow-xl max-w-lg w-full p-6 space-y-4">
-            <h3 class="text-lg font-bold text-slate-800 dark:text-slate-100">
+          <div class="bg-white dark:bg-card-dark border border-gray-200 dark:border-border-dark rounded-2xl shadow-xl max-w-lg w-full p-6 space-y-4">
+            <h3 class="text-lg font-bold text-slate-800 dark:text-text-main">
               {t("editClientKey")}
             </h3>
 
             <form onSubmit={handleEditSubmit} class="space-y-3">
               {formError && (
-                <div class="p-2.5 bg-red-50 dark:bg-red-950/40 text-red-700 dark:text-red-300 rounded text-xs">
+                <div class="p-2.5 bg-red-50 dark:bg-red-950/40 text-red-700 dark:text-red-300 rounded text-xs font-medium">
                   {formError}
                 </div>
               )}
               <div>
-                <label class="block text-xs font-semibold text-slate-500 dark:text-text-dim mb-1">
+                <label class="block text-xs font-semibold text-slate-600 dark:text-text-main mb-1">
                   {t("clientKeyName")} *
                 </label>
                 <input
@@ -652,13 +656,13 @@ export const ClientKeysPage: FunctionalComponent<ClientKeysPageProps> = ({
                   required
                   value={formName}
                   onInput={(e) => setFormName((e.currentTarget as HTMLInputElement).value)}
-                  class="w-full px-3 py-2 bg-bg-light dark:bg-bg-dark border border-slate-200 dark:border-border-dark rounded-lg text-xs"
+                  class={inputCls}
                 />
               </div>
 
               <div class="grid grid-cols-2 gap-3">
                 <div>
-                  <label class="block text-xs font-semibold text-slate-500 dark:text-text-dim mb-1">
+                  <label class="block text-xs font-semibold text-slate-600 dark:text-text-main mb-1">
                     {t("clientKeyBudget")} ($)
                   </label>
                   <input
@@ -667,11 +671,11 @@ export const ClientKeysPage: FunctionalComponent<ClientKeysPageProps> = ({
                     placeholder="Unlimited"
                     value={formMaxBudgetUsd}
                     onInput={(e) => setFormMaxBudgetUsd((e.currentTarget as HTMLInputElement).value)}
-                    class="w-full px-3 py-2 bg-bg-light dark:bg-bg-dark border border-slate-200 dark:border-border-dark rounded-lg text-xs"
+                    class={inputCls}
                   />
                 </div>
                 <div>
-                  <label class="block text-xs font-semibold text-slate-500 dark:text-text-dim mb-1">
+                  <label class="block text-xs font-semibold text-slate-600 dark:text-text-main mb-1">
                     {t("clientKeyTokens")}
                   </label>
                   <input
@@ -679,14 +683,14 @@ export const ClientKeysPage: FunctionalComponent<ClientKeysPageProps> = ({
                     placeholder="Unlimited"
                     value={formMaxTokens}
                     onInput={(e) => setFormMaxTokens((e.currentTarget as HTMLInputElement).value)}
-                    class="w-full px-3 py-2 bg-bg-light dark:bg-bg-dark border border-slate-200 dark:border-border-dark rounded-lg text-xs"
+                    class={inputCls}
                   />
                 </div>
               </div>
 
               <div class="grid grid-cols-2 gap-3">
                 <div>
-                  <label class="block text-xs font-semibold text-slate-500 dark:text-text-dim mb-1">
+                  <label class="block text-xs font-semibold text-slate-600 dark:text-text-main mb-1">
                     {t("clientKeyConcurrency")}
                   </label>
                   <input
@@ -694,24 +698,24 @@ export const ClientKeysPage: FunctionalComponent<ClientKeysPageProps> = ({
                     placeholder="Unlimited"
                     value={formMaxConcurrency}
                     onInput={(e) => setFormMaxConcurrency((e.currentTarget as HTMLInputElement).value)}
-                    class="w-full px-3 py-2 bg-bg-light dark:bg-bg-dark border border-slate-200 dark:border-border-dark rounded-lg text-xs"
+                    class={inputCls}
                   />
                 </div>
                 <div>
-                  <label class="block text-xs font-semibold text-slate-500 dark:text-text-dim mb-1">
+                  <label class="block text-xs font-semibold text-slate-600 dark:text-text-main mb-1">
                     {t("clientKeyExpiresAt")}
                   </label>
                   <input
                     type="datetime-local"
                     value={formExpiresAt}
                     onInput={(e) => setFormExpiresAt((e.currentTarget as HTMLInputElement).value)}
-                    class="w-full px-3 py-2 bg-bg-light dark:bg-bg-dark border border-slate-200 dark:border-border-dark rounded-lg text-xs"
+                    class={inputCls}
                   />
                 </div>
               </div>
 
               <div>
-                <label class="block text-xs font-semibold text-slate-500 dark:text-text-dim mb-1">
+                <label class="block text-xs font-semibold text-slate-600 dark:text-text-main mb-1">
                   {t("clientKeyAllowedModels")} ({t("clientKeyAllowedModelsHint")})
                 </label>
                 <input
@@ -719,12 +723,12 @@ export const ClientKeysPage: FunctionalComponent<ClientKeysPageProps> = ({
                   placeholder="gpt-5.4, gpt-5.3-codex"
                   value={formAllowedModels}
                   onInput={(e) => setFormAllowedModels((e.currentTarget as HTMLInputElement).value)}
-                  class="w-full px-3 py-2 bg-bg-light dark:bg-bg-dark border border-slate-200 dark:border-border-dark rounded-lg text-xs"
+                  class={inputCls}
                 />
               </div>
 
               <div>
-                <label class="block text-xs font-semibold text-slate-500 dark:text-text-dim mb-1">
+                <label class="block text-xs font-semibold text-slate-600 dark:text-text-main mb-1">
                   {t("clientKeyDefaultTools")} ({t("clientKeyDefaultToolsHint")})
                 </label>
                 <input
@@ -732,18 +736,18 @@ export const ClientKeysPage: FunctionalComponent<ClientKeysPageProps> = ({
                   placeholder="web_search, image_generation"
                   value={formDefaultTools}
                   onInput={(e) => setFormDefaultTools((e.currentTarget as HTMLInputElement).value)}
-                  class="w-full px-3 py-2 bg-bg-light dark:bg-bg-dark border border-slate-200 dark:border-border-dark rounded-lg text-xs"
+                  class={inputCls}
                 />
               </div>
 
               <div>
-                <label class="block text-xs font-semibold text-slate-500 dark:text-text-dim mb-1">
+                <label class="block text-xs font-semibold text-slate-600 dark:text-text-main mb-1">
                   Status
                 </label>
                 <select
                   value={formStatus}
                   onChange={(e) => setFormStatus((e.currentTarget as HTMLSelectElement).value as "active" | "disabled")}
-                  class="w-full px-3 py-2 bg-bg-light dark:bg-bg-dark border border-slate-200 dark:border-border-dark rounded-lg text-xs"
+                  class={inputCls}
                 >
                   <option value="active">{t("clientKeyStatusActive")}</option>
                   <option value="disabled">{t("clientKeyStatusDisabled")}</option>
@@ -754,14 +758,14 @@ export const ClientKeysPage: FunctionalComponent<ClientKeysPageProps> = ({
                 <button
                   type="button"
                   onClick={() => setEditingKey(null)}
-                  class="px-3 py-1.5 text-xs text-slate-500 dark:text-text-dim hover:text-text-main"
+                  class="px-3 py-1.5 text-xs font-medium text-slate-600 dark:text-text-dim hover:text-slate-900 dark:hover:text-text-main transition-colors cursor-pointer"
                 >
                   {t("cancel")}
                 </button>
                 <button
                   type="submit"
                   disabled={isSubmitting}
-                  class="px-4 py-1.5 bg-primary text-white text-xs font-medium rounded-lg hover:bg-primary/90 transition disabled:opacity-50"
+                  class="px-4 py-1.5 bg-primary-action hover:bg-primary-action-hover text-white text-xs font-semibold rounded-lg transition-colors disabled:opacity-40 cursor-pointer shadow-sm"
                 >
                   {isSubmitting ? "..." : t("submit")}
                 </button>

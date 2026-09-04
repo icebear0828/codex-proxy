@@ -25,6 +25,10 @@ export interface SendProxyUpstreamAttemptOptions {
   api: ProxyUpstreamAttemptApi;
   request: ProxyRequest;
   entryId: string;
+  /** Human-readable name of the account serving this attempt. */
+  account?: string | null;
+  /** True when this attempt runs on a fallback account (not the first acquired). */
+  fallback?: boolean;
   abortSignal: AbortSignal;
   buildPoolCtx: () => WsPoolContext | undefined;
   requestId: string;
@@ -52,6 +56,8 @@ export async function sendProxyUpstreamAttempt(
     api,
     request,
     entryId,
+    account,
+    fallback,
     abortSignal,
     buildPoolCtx,
     requestId,
@@ -86,6 +92,8 @@ export async function sendProxyUpstreamAttempt(
     request,
     status: rawResponse.status,
     startMs,
+    account,
+    fallback,
   });
   applyRateLimitHeaders({ accountPool, entryId, headers: rawResponse.headers });
 

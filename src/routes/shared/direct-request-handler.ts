@@ -26,6 +26,11 @@ export async function handleDirectRequest(options: HandleDirectRequestOptions): 
 
   const requestId = c.get("requestId") ?? randomUUID().slice(0, 8);
   const startMs = Date.now();
+  // The proxy routes through this direct handler when all OAuth accounts are
+  // exhausted and a fallback upstream apikey is configured. Mark those calls
+  // so the audit log can surface "fallback" instead of an account name.
+  const isFallback = upstream.tag === "fallback";
+  const accountLog = isFallback ? "fallback" : undefined;
   let rawResponse: Response;
   try {
     rawResponse = await upstream.createResponse(req.codexRequest, abortController.signal);
@@ -36,6 +41,8 @@ export async function handleDirectRequest(options: HandleDirectRequestOptions): 
       path: "/v1/responses",
       model: req.model,
       provider: upstream.tag,
+      account: accountLog,
+      fallback: isFallback,
       status: rawResponse.status,
       latencyMs: Date.now() - startMs,
       stream: req.isStreaming,
@@ -54,6 +61,8 @@ export async function handleDirectRequest(options: HandleDirectRequestOptions): 
       path: "/v1/responses",
       model: req.model,
       provider: upstream.tag,
+      account: accountLog,
+      fallback: isFallback,
       status,
       latencyMs: Date.now() - startMs,
       stream: req.isStreaming,
@@ -110,6 +119,7 @@ export async function handleDirectRequest(options: HandleDirectRequestOptions): 
           provider: upstream.tag,
           path: "/v1/responses",
           model: req.model,
+          fallback: isFallback,
         });
         abortController.abort();
       });
@@ -134,6 +144,7 @@ export async function handleDirectRequest(options: HandleDirectRequestOptions): 
             tag: fmt.tag,
             provider: upstream.tag,
             path: "/v1/responses",
+            fallback: isFallback,
             abortSignal: abortController.signal,
           },
         });
@@ -149,6 +160,8 @@ export async function handleDirectRequest(options: HandleDirectRequestOptions): 
         c.set("metrics", metrics);
         updateLogEntry(requestId, {
           status: clientAborted ? 499 : rawResponse.status,
+          account: accountLog,
+          fallback: isFallback,
           latencyMs: metrics.durationMs,
           ttftMs: metrics.ttftMs,
           durationMs: metrics.durationMs,
@@ -179,6 +192,8 @@ export async function handleDirectRequest(options: HandleDirectRequestOptions): 
     c.set("metrics", metrics);
     updateLogEntry(requestId, {
       status: rawResponse.status,
+      account: accountLog,
+      fallback: isFallback,
       latencyMs: metrics.durationMs,
       ttftMs: metrics.ttftMs,
       durationMs: metrics.durationMs,
@@ -195,6 +210,8 @@ export async function handleDirectRequest(options: HandleDirectRequestOptions): 
     c.status(code);
     updateLogEntry(requestId, {
       status: code,
+      account: accountLog,
+      fallback: isFallback,
       error: msg,
       latencyMs: Date.now() - startMs,
     });

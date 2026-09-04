@@ -50,6 +50,8 @@ export interface LogRecord {
   path: string;
   model?: string | null;
   provider?: string | null;
+  account?: string | null;
+  fallback?: boolean;
   status?: number | null;
   latencyMs?: number | null;
   stream?: boolean | null;

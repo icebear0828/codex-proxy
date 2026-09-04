@@ -2,6 +2,7 @@ import type { AccountPool } from "../../auth/account-pool.js";
 import type { CodexApi } from "../../proxy/codex-api.js";
 import type { CookieJar } from "../../proxy/cookie-jar.js";
 import type { ProxyPool } from "../../proxy/proxy-pool.js";
+import { markFallbackUsed } from "../../auth/fallback-state.js";
 import { acquireAccount } from "./account-acquisition.js";
 import { buildProxyFallbackRetryPlan } from "./proxy-fallback-retry-plan.js";
 import type { ErrorAction } from "./proxy-error-handler.js";
@@ -70,6 +71,7 @@ export function prepareProxyFallbackAccountRetry(
       ...(decision.useFormat429 ? { useFormat429: true } : {}),
     };
   }
+  markFallbackUsed();
 
   const api = buildCodexApi(
     retry.token,

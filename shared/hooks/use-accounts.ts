@@ -23,6 +23,7 @@ export function useAccounts() {
   const [addError, setAddError] = useState("");
   const [addAuthUrl, setAddAuthUrl] = useState("");
   const [fallbackUpstream, setFallbackUpstream] = useState<FallbackUpstreamPublic | null>(null);
+  const [fallbackActive, setFallbackActive] = useState(false);
   const [persistenceHealth, setPersistenceHealth] = useState<PersistenceHealth>({ ok: true });
   const addCleanupRef = useRef<(() => void) | null>(null);
 
@@ -58,6 +59,23 @@ export function useAccounts() {
     const timer = setInterval(() => loadAccounts(), 30_000);
     return () => clearInterval(timer);
   }, [loadAccounts]);
+
+  // Fast-poll the lightweight fallback status so the dashboard indicator
+  // flashes promptly when requests switch to a fallback and reverts after.
+  useEffect(() => {
+    const load = async () => {
+      try {
+        const resp = await fetch("/auth/fallback-upstream/status");
+        if (resp.ok) {
+          const data = await resp.json();
+          setFallbackActive(Boolean(data.active));
+        }
+      } catch { /* ignore */ }
+    };
+    load();
+    const timer = setInterval(load, 5000);
+    return () => clearInterval(timer);
+  }, []);
 
   // Listen for OAuth callback success
   useEffect(() => {
@@ -409,6 +427,7 @@ export function useAccounts() {
     addError,
     addAuthUrl,
     fallbackUpstream,
+    fallbackActive,
     refreshFallbackUpstream,
     addFallbackUpstream,
     updateFallbackUpstream,
