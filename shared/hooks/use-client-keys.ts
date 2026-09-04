@@ -14,6 +14,18 @@ interface ClientKeysListResponse {
   total_requests: number;
 }
 
+export function buildClientKeyHeaders(masterApiKey?: string): Record<string, string> {
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+  };
+  if (masterApiKey) {
+    // Keep Authorization available for an outer HTTP Basic Auth layer (for
+    // example, Nginx auth_basic) while sending the proxy master key separately.
+    headers["x-api-key"] = masterApiKey;
+  }
+  return headers;
+}
+
 export function useClientKeys(masterApiKey?: string) {
   const [keys, setKeys] = useState<ClientKeyPublicSummary[]>([]);
   const [totalCostUsd, setTotalCostUsd] = useState<number>(0);
@@ -22,9 +34,6 @@ export function useClientKeys(masterApiKey?: string) {
   const [error, setError] = useState<string | null>(null);
 
   const getHeaders = useCallback(async () => {
-    const headers: Record<string, string> = {
-      "Content-Type": "application/json",
-    };
     let key = masterApiKey;
     if (!key) {
       try {
@@ -37,10 +46,7 @@ export function useClientKeys(masterApiKey?: string) {
         // ignore
       }
     }
-    if (key) {
-      headers["Authorization"] = `Bearer ${key}`;
-    }
-    return headers;
+    return buildClientKeyHeaders(key);
   }, [masterApiKey]);
 
   const fetchKeys = useCallback(async () => {
