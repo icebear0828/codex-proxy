@@ -31,38 +31,21 @@
     <a href="./README_JA.md">日本語</a>
   </p>
 
-  <br>
+<br />
 
-  <a href="https://x.com/IceBearMiner"><img src="https://img.shields.io/badge/Follow-@IceBearMiner-000?style=flat-square&logo=x&logoColor=white" alt="X"></a>
-  <a href="https://github.com/icebear0828/codex-proxy/issues"><img src="https://img.shields.io/github/issues/icebear0828/codex-proxy?style=flat-square" alt="Issues"></a>
-  <a href="#-赞赏--交流"><img src="https://img.shields.io/badge/赞赏-微信-07C160?style=flat-square&logo=wechat&logoColor=white" alt="赞赏"></a>
+<a href="https://x.com/IceBearMiner"><img src="https://img.shields.io/badge/Follow-@IceBearMiner-000?style=flat-square&logo=x&logoColor=white" alt="X"></a> <a href="https://github.com/icebear0828/codex-proxy/issues"><img src="https://img.shields.io/github/issues/icebear0828/codex-proxy?style=flat-square" alt="Issues"></a> <a href="#-赞赏--交流"><img src="https://img.shields.io/badge/赞赏-微信-07C160?style=flat-square&logo=wechat&logoColor=white" alt="赞赏"></a>
 
-  <br><br>
+<br />
 
-  <table>
-    <tr>
-      <td align="center">
-        <img src="./.github/assets/donate.png" width="180" alt="微信赞赏码"><br>
-        <sub>☕ 赞赏</sub>
-      </td>
-      <td align="center">
-        <img src="./.github/assets/wechat.png" width="180" alt="微信交流群"><br>
-        <sub>💬 微信群</sub>
-      </td>
-      <td align="center">
-        <img src="./.github/assets/tgimage.png" width="180" alt="Telegram 群"><br>
-        <sub>💬 Telegram</sub>
-      </td>
-    </tr>
-  </table>
+| ☕ 赞赏   | 💬 微信群 | 💬 Telegram |
+| ------ | ------ | ----------- |
+| <br /> | <br /> | <br />      |
 
 </div>
 
----
+***
 
-
-
----
+***
 
 **Codex Proxy** 是一个轻量级本地中转服务，将 [Codex Desktop](https://openai.com/codex) 的 Responses API 转换为多种标准协议接口（OpenAI `/v1/chat/completions`、Anthropic `/v1/messages`、Gemini、Codex `/v1/responses` 直通，以及可选 Ollama `/api/chat` 兼容桥接）。通过本项目，您可以在 Cursor、Claude Code、Continue、Pi 等任何兼容上述协议的客户端中直接使用 Codex 编程模型。
 
@@ -79,11 +62,11 @@
 
 **下载安装包** — 打开 [Releases 页面](https://github.com/icebear0828/codex-proxy/releases)，根据系统下载：
 
-| 系统 | 文件 |
-|------|------|
+| 系统      | 文件                            |
+| ------- | ----------------------------- |
 | Windows | `Codex Proxy Setup x.x.x.exe` |
-| macOS | `Codex Proxy-x.x.x.dmg` |
-| Linux | `Codex Proxy-x.x.x.AppImage` |
+| macOS   | `Codex Proxy-x.x.x.dmg`       |
+| Linux   | `Codex Proxy-x.x.x.AppImage`  |
 
 安装后打开应用，点击登录按钮用 ChatGPT 账号登录。浏览器访问 `http://localhost:8080` 即可看到控制面板。
 
@@ -120,12 +103,14 @@ npm run dev                        # 开发模式（热重载）
 ```
 
 > **需要 Rust 工具链**（用于编译 TLS native addon）：
+>
 > ```bash
 > # 1. 安装 Rust（如果没有的话）
 > curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
 > # 2. 编译 TLS addon
 > cd native && npm install && npm run build && cd ..
 > ```
+>
 > Docker / 桌面应用已内置编译好的 addon，无需手动编译。
 
 打开 `http://localhost:8080` 登录。
@@ -149,37 +134,63 @@ curl http://localhost:8080/v1/chat/completions \
 ## 🌟 核心功能
 
 ### 🔌 全协议兼容
+
 - 兼容 `/v1/chat/completions`（OpenAI）、`/v1/messages`（Anthropic）、Gemini 格式及 `/v1/responses`（Codex 直通）
+
 - 内置可选 Ollama 兼容桥接，默认监听 `http://127.0.0.1:11434`
+
 - SSE 流式输出，可直接对接所有 OpenAI / Anthropic SDK 和客户端
+
 - 自动完成 Chat Completions / Anthropic / Gemini ↔ Codex Responses API 双向协议转换
+
 - **Structured Outputs** — `response_format`（`json_object` / `json_schema`）和 Gemini `responseMimeType`
+
 - **Function Calling** — 原生 `function_call` / `tool_calls` 支持（所有协议）
+
 - **第三方 API Keys** — 支持 OpenAI / Anthropic / Gemini / OpenRouter / 自定义 OpenAI-compatible Provider，并按模型路由直通上游。
+
 - 📖 完整接口定义与协议说明请查阅 **[API 文档](./API_CN.md)**。
 
 ### 🔐 账号管理与智能轮换
+
 - **OAuth PKCE 登录** — 浏览器一键授权，无需手动复制 Token
+
 - **多账号轮换** — `least_used`（最少使用优先）、`round_robin`（轮询）、`sticky`（粘性）三种策略
+
 - **Plan Routing** — 不同 plan（free/plus/team/business）的账号自动路由到各自支持的模型
+
 - **Token 自动续期** — JWT 到期前自动刷新，指数退避重试
+
 - **配额采集** — 默认从上游响应头和 WebSocket rate limit 事件被动更新账号额度；用户手动查询单账号额度时会调用 `/backend-api/wham/usage`，并把 `remaining_percent = 100 - used_percent` 写入缓存。
+
 - **封禁检测** — 上游 403 自动标记 banned；401 token 吊销自动过期并切换账号
+
 - **API Key Provider 池** — 支持通过 Dashboard 管理第三方 API Key、模型列表、导入导出和启停状态。
+
 - **Web 控制面板** — 账号管理、用量统计、批量操作，中英双语；远程访问需 Dashboard 登录门
 
 ### 🌐 代理池
+
 - **Per-Account 代理路由** — 为不同账号配置不同的上游代理
+
 - **四种分配模式** — Global Default / Direct / Auto / 指定代理
+
 - **健康检查** — 定时 + 手动，通过 ipify 获取出口 IP 和延迟
+
 - **不可达自动标记** — 代理不可达时自动排除
 
 ### 🛡️ 反检测与协议伪装
+
 - **Rust Native TLS** — 内置 reqwest + rustls native addon，TLS 指纹与真实 Codex 客户端精确一致（依赖版本锁定）
+
 - **客户端 Profile 预设** — 支持 `codex_cli`（默认，官方 CLI 纯净终端头）、`codex_desktop`（Desktop 完整头）、`opencode`、`pi` 与 `custom`，CLI 模式下自动剔除浏览器特定头（`sec-ch-ua` 等）
+
 - **按账号 Device ID 隔离** — 为每个账号独立派生并持久化专属的 `x-codex-installation-id`，彻底杜绝多账号共享同一设备指纹
+
 - **完整请求头仿真** — `originator`、`User-Agent`、`x-openai-internal-codex-residency`、`x-codex-turn-state`、`x-client-request-id` 等头按选定 profile 真实模拟发送
+
 - **Cookie 持久化** — 自动捕获和回放 Cloudflare Cookie
+
 - **指纹自动更新** — 轮询 Codex 更新源，自动同步 `app_version` 和 `build_number`
 
 <details>
@@ -230,21 +241,21 @@ curl http://localhost:8080/v1/chat/completions \
 <details>
 <summary><h2>📦 可用模型</h2></summary>
 
-| 模型 ID | 推理等级 | 当前上下文 | 最大上下文 | 最大输出 | 输出 | 说明 |
-|---------|---------|------------|------------|----------|------|------|
-| `gpt-5.6-sol` | low / medium / high / xhigh / max / ultra | 1,050,000 | 1,050,000 | 128,000 | 文本 | GPT-5.6 旗舰：复杂推理与编码（默认；`gpt-5.6` 为其别名） |
-| `gpt-5.6-terra` | low / medium / high / xhigh / max / ultra | 1,050,000 | 1,050,000 | 128,000 | 文本 | GPT-5.6 智能与成本平衡 |
-| `gpt-5.6-luna` | low / medium / high / xhigh / max / ultra | 1,050,000 | 1,050,000 | 128,000 | 文本 | GPT-5.6 高性价比 / 高吞吐 |
-| `gpt-5.5` | low / medium / high / xhigh | 272,000 | 272,000 | 128,000 | 文本 | 复杂编码、研究和真实工作流 |
-| `gpt-5.4` | low / medium / high / xhigh | 272,000 | 1,000,000 | 128,000 | 文本 | 日常编码强模型 |
-| `gpt-5.4-mini` | low / medium / high / xhigh | 400,000 | — | 128,000 | 文本 | 5.4 轻量版 |
-| `gpt-5.3-codex` | low / medium / high / xhigh | 400,000 | — | 128,000 | 文本 | 5.3 编程优化模型 |
-| `gpt-5.2` | low / medium / high / xhigh | 400,000 | — | 128,000 | 文本 | 专业工作 + 长时间代理 |
-| `gpt-5-codex` | low / medium / high | 400,000 | — | 128,000 | 文本 | GPT-5 编程优化模型 |
-| `gpt-5-codex-mini` | medium / high | — | — | — | 文本 | 轻量 Codex / CLI 编程模型 |
-| `gpt-oss-120b` | low / medium / high | 131,072 | — | — | 文本 | 开源 120B 模型 |
-| `gpt-oss-20b` | low / medium / high | 131,072 | — | — | 文本 | 开源 20B 模型 |
-| `gpt-image-2` | — | — | — | — | 图像 | 图像生成工具后端（通过 `image_generation` 调用） |
+| 模型 ID              | 推理等级                                      | 当前上下文     | 最大上下文     | 最大输出    | 输出 | 说明                                    |
+| ------------------ | ----------------------------------------- | --------- | --------- | ------- | -- | ------------------------------------- |
+| `gpt-5.6-sol`      | low / medium / high / xhigh / max / ultra | 1,050,000 | 1,050,000 | 128,000 | 文本 | GPT-5.6 旗舰：复杂推理与编码（默认；`gpt-5.6` 为其别名） |
+| `gpt-5.6-terra`    | low / medium / high / xhigh / max / ultra | 1,050,000 | 1,050,000 | 128,000 | 文本 | GPT-5.6 智能与成本平衡                       |
+| `gpt-5.6-luna`     | low / medium / high / xhigh / max / ultra | 1,050,000 | 1,050,000 | 128,000 | 文本 | GPT-5.6 高性价比 / 高吞吐                    |
+| `gpt-5.5`          | low / medium / high / xhigh               | 272,000   | 272,000   | 128,000 | 文本 | 复杂编码、研究和真实工作流                         |
+| `gpt-5.4`          | low / medium / high / xhigh               | 272,000   | 1,000,000 | 128,000 | 文本 | 日常编码强模型                               |
+| `gpt-5.4-mini`     | low / medium / high / xhigh               | 400,000   | —         | 128,000 | 文本 | 5.4 轻量版                               |
+| `gpt-5.3-codex`    | low / medium / high / xhigh               | 400,000   | —         | 128,000 | 文本 | 5.3 编程优化模型                            |
+| `gpt-5.2`          | low / medium / high / xhigh               | 400,000   | —         | 128,000 | 文本 | 专业工作 + 长时间代理                          |
+| `gpt-5-codex`      | low / medium / high                       | 400,000   | —         | 128,000 | 文本 | GPT-5 编程优化模型                          |
+| `gpt-5-codex-mini` | medium / high                             | —         | —         | —       | 文本 | 轻量 Codex / CLI 编程模型                   |
+| `gpt-oss-120b`     | low / medium / high                       | 131,072   | —         | —       | 文本 | 开源 120B 模型                            |
+| `gpt-oss-20b`      | low / medium / high                       | 131,072   | —         | —       | 文本 | 开源 20B 模型                             |
+| `gpt-image-2`      | —                                         | —         | —         | —       | 图像 | 图像生成工具后端（通过 `image_generation` 调用）    |
 
 > **后缀**：任意 chat 模型名后追加 `-fast` 启用 Fast 模式，`-high`/`-low`/`-max`/`-ultra` 切换推理等级。例如：`gpt-5.6-sol-fast`、`gpt-5.6-sol-high-fast`、`gpt-5.6-sol-max`、`gpt-5.6-sol-ultra`。图像模型（`gpt-image-2`）不支持后缀。
 >
@@ -272,9 +283,9 @@ curl -N http://localhost:8080/v1/responses \
   }'
 ```
 
-常用参数：`size`（可请求 1024×1024 / 1024×1536 / 1536×1024 / 2048×2048 / 2048×3072 / 3072×2048 / 3840×2160 / `auto`）、`output_format`（`png` / `jpeg` / `webp`）、`output_compression`（jpeg / webp 可调）、`background`（`auto` / `opaque`）、`moderation`（`auto` / `low`）、`partial_images`（0–3）。一次只能出 1 张图（`n` 固定为 1）；`model` 字段不管传什么都会被上游改写为图像工具的实际模型（当前响应回显为 `gpt-image-2-codex`）。详见 [API_CN.md](./API_CN.md#image_generation-工具)。
+常用参数：`size`（可请求 1024×1024 / 1024×1536 / 1536×1024 / 2048×2048 / 2048×3072 / 3072×2048 / 3840×2160 / `auto`）、`output_format`（`png` / `jpeg` / `webp`）、`output_compression`（jpeg / webp 可调）、`background`（`auto` / `opaque`）、`moderation`（`auto` / `low`）、`partial_images`（0–3）。一次只能出 1 张图（`n` 固定为 1）；`model` 字段不管传什么都会被上游改写为图像工具的实际模型（当前响应回显为 `gpt-image-2-codex`）。详见 [API\_CN.md](./API_CN.md#image_generation-工具)。
 
-> **`size` 不是固定像素保证。** Proxy 会保留并发送客户端填写的值，但当前上游会把 `2048x2048`、`2K`、`4K` 等请求归一化为 `size: "auto"`，再自行决定实际尺寸。2026-08-10 的真实请求中，`size: "2048x2048"` 的工具配置回显为 `auto`，最终 `image_generation_call.size` 和 PNG 像素均为 `1254x1254`。因此不能依靠该字段获得原生、精确的 2K/4K 输出；请以结果 item 的 `size` 或解码后图片像素为准。若业务必须拿到精确 `2048x2048` 文件，需要在生成后使用插值或 AI 超分辨率进行后处理。
+> **`size`** **不是固定像素保证。** Proxy 会保留并发送客户端填写的值，但当前上游会把 `2048x2048`、`2K`、`4K` 等请求归一化为 `size: "auto"`，再自行决定实际尺寸。2026-08-10 的真实请求中，`size: "2048x2048"` 的工具配置回显为 `auto`，最终 `image_generation_call.size` 和 PNG 像素均为 `1254x1254`。因此不能依靠该字段获得原生、精确的 2K/4K 输出；请以结果 item 的 `size` 或解码后图片像素为准。若业务必须拿到精确 `2048x2048` 文件，需要在生成后使用插值或 AI 超分辨率进行后处理。
 
 事件流里 `image_generation_call` item 的 `result` 字段即 base64 编码的图像；`revised_prompt` 是上游改写后的最终提示词。
 
@@ -302,7 +313,7 @@ claude
 >
 > 推荐模型：Opus → `gpt-5.6-sol`，Sonnet → `gpt-5.6-terra`，Haiku → `gpt-5.6-luna`。
 >
-> ⚠️ 配置不生效？请参考 **[Claude Code 配置避坑指南](.github/guides/claude-code-setup.md)**（AUTH_TOKEN 劫持、API Key 黑名单等常见问题）。
+> ⚠️ 配置不生效？请参考 **[Claude Code 配置避坑指南](.github/guides/claude-code-setup.md)**（AUTH\_TOKEN 劫持、API Key 黑名单等常见问题）。
 
 </details>
 
@@ -310,6 +321,7 @@ claude
 <summary><h3>Codex CLI</h3></summary>
 
 `~/.codex/config.toml`:
+
 ```toml
 [model_providers.proxy_codex]
 name = "Codex Proxy"
@@ -335,11 +347,15 @@ model_provider = "proxy_codex"
 1. **开启开发者模式**：点击菜单栏 **Help** → **Troubleshooting** → **Enable Developer Mode**。
 2. **配置第三方推理**：点击菜单栏新出现的 **Developer** → **Configure Third-Party Inference...**。
 3. **填写配置**：
+
    - **Endpoint**: `http://127.0.0.1:8080`
+
    - **API Key**: 你的 API Key
+
    - **Model**: `claude-opus-4-7` / `claude-sonnet-4-6` / `claude-haiku-4-5`
 
 > 或手动修改配置文件（Windows 下路径通常在 `%APPDATA%\Claude-3p\configLibrary\` 目录下的 JSON 文件，Mac 为 `~/Library/Application Support/Claude-3p/configLibrary/`），添加如下字段：
+
 ```json
  {
    "disableDeploymentModeChooser": true,
@@ -356,6 +372,7 @@ model_provider = "proxy_codex"
 ```
 
 内置 Claude 形态模型名会映射到 Codex 模型。自定义映射请写到 `data/local.yaml`，不要改 `config/models.yaml`：
+
 ```yaml
 model:
   aliases:
@@ -369,8 +386,9 @@ model:
 alias 左边是客户端请求里填写的模型名，右边是真正发给上游的模型名。右侧可以是 Codex 模型 ID、带 provider 前缀的模型（如 `openai:gpt-4o` / `anthropic:claude-sonnet-4-5` / `gemini:gemini-2.5-pro`），也可以是已通过 `model_routing` 绑定到自定义 provider 的模型名（如 `deepseek-chat`）。别名会出现在 `/v1/models`，请求进入直连 provider 时会自动把模型名改写成映射目标。
 
 > 💡 **排查提示 (Windows)**: 如果使用 `127.0.0.1` 时 Claude Desktop 提示 `ERR_CONNECTION_REFUSED`（而使用 `localhost` 提示 URL 格式错误），说明 Node.js 在你的系统上默认只绑定了 IPv6。请进入 Codex Proxy 控制面板的设置页面，将 **Host** 修改为 `127.0.0.1`，或在 `data/local.yaml` 中添加 `server: { host: "127.0.0.1" }` 后重启代理。
-> 
+>
 > 💡 **局域网使用提示 (LAN)**: Claude Desktop 强制校验 API 地址，**只允许** `https://` 开头或 `http://127.0.0.1`。如果你将 Codex Proxy 部署在局域网另一台机器（如 `192.168.x.x`），直接填入会报错。解决方法：
+>
 > 1. **SSH 隧道 (最简单)**：在客户端机器运行 `ssh -L 8080:127.0.0.1:8080 user@192.168.x.x`，然后在 Claude 里填 `http://127.0.0.1:8080`。
 > 2. **反向代理**：使用 Caddy 或 Nginx 配置局域网 HTTPS 证书。
 
@@ -382,6 +400,7 @@ alias 左边是客户端请求里填写的模型名，右边是真正发给上�
 官方客户端与 CLI 共用配置文件，修改后需重启客户端生效。
 
 `~/.codex/config.toml`:
+
 ```toml
 [model_providers.proxy_codex]
 name = "Codex Proxy"
@@ -396,7 +415,7 @@ model = "gpt-5.6-sol"
 model_provider = "proxy_codex"
 ```
 
-> 💡 **为什么不用 `env_key`？** macOS / Windows 的 GUI 应用不读 shell 的 `~/.zshrc` / `.bashrc`，光 `export PROXY_API_KEY=...` 在终端里 GUI 进程根本看不到，启动会直接报 `Missing environment variable`。`http_headers` 把 Authorization 写在 config 里，重启 Codex 就能用，不用折腾 `launchctl setenv` 或 LaunchAgent。需要密钥从配置文件解耦时（共享机器 / 仓库提交）再换回 `env_key = "PROXY_API_KEY"` 走环境变量。
+> 💡 **为什么不用** **`env_key`？** macOS / Windows 的 GUI 应用不读 shell 的 `~/.zshrc` / `.bashrc`，光 `export PROXY_API_KEY=...` 在终端里 GUI 进程根本看不到，启动会直接报 `Missing environment variable`。`http_headers` 把 Authorization 写在 config 里，重启 Codex 就能用，不用折腾 `launchctl setenv` 或 LaunchAgent。需要密钥从配置文件解耦时（共享机器 / 仓库提交）再换回 `env_key = "PROXY_API_KEY"` 走环境变量。
 >
 > ⚠️ 如果你是通过"登录 ChatGPT 账号"方式使用的，客户端可能会忽略此配置——只要 `[model_providers.proxy_codex]` 配上、`profiles.default.model_provider = "proxy_codex"`，新会话就会走 proxy；登录会话仍可能直接走官方上游。
 
@@ -406,11 +425,15 @@ model_provider = "proxy_codex"
 <summary><h3>Claude for VSCode / JetBrains</h3></summary>
 
 打开 Claude 扩展设置，找到 **API Configuration**：
+
 - **API Provider**: 选择 Anthropic
+
 - **Base URL**: `http://localhost:8080`
+
 - **API Key**: 你的 API Key
 
 或在 VS Code `settings.json` 中添加：
+
 ```json
 {
   "claude.apiEndpoint": "http://localhost:8080",
@@ -457,6 +480,7 @@ model_provider = "proxy_codex"
 <summary><h3>Continue (VSCode 扩展)</h3></summary>
 
 `~/.continue/config.json`:
+
 ```json
 {
   "models": [{
@@ -481,6 +505,7 @@ aider --openai-api-base http://localhost:8080/v1 \
 ```
 
 或设置环境变量：
+
 ```bash
 export OPENAI_API_BASE=http://localhost:8080/v1
 export OPENAI_API_KEY=your-api-key
@@ -509,6 +534,7 @@ aider --model openai/gpt-5.6-sol
 <summary>方式一：OpenAI Completions 协议（推荐）</summary>
 
 编辑 `~/.pi/agent/models.json`：
+
 ```json
 {
   "providers": {
@@ -592,6 +618,7 @@ aider --model openai/gpt-5.6-sol
 ```
 
 启动运行：
+
 ```bash
 pi --provider codex-proxy --model gpt-5.6-sol
 ```
@@ -605,11 +632,11 @@ pi --provider codex-proxy --model gpt-5.6-sol
 
 在 Dashboard → Settings → **Ollama Bridge** 中启用后，可使用 Ollama 默认地址：
 
-| 设置项 | 值 |
-|--------|-----|
-| Base URL | `http://localhost:11434` |
-| API Key | 不需要，Bridge 内部会使用 Codex Proxy 的密钥访问主服务 |
-| Model | `gpt-5.6-sol`（或其他模型 ID） |
+| 设置项      | 值                                     |
+| -------- | ------------------------------------- |
+| Base URL | `http://localhost:11434`              |
+| API Key  | 不需要，Bridge 内部会使用 Codex Proxy 的密钥访问主服务 |
+| Model    | `gpt-5.6-sol`（或其他模型 ID）               |
 
 ```bash
 curl http://localhost:11434/api/tags
@@ -628,13 +655,14 @@ curl http://localhost:11434/api/chat \
 
 任何支持自定义 OpenAI API Base 的客户端均可接入：
 
-| 设置项 | 值 |
-|--------|-----|
+| 设置项      | 值                          |
+| -------- | -------------------------- |
 | Base URL | `http://localhost:8080/v1` |
-| API Key | 控制面板获取 |
-| Model | `gpt-5.6-sol`（或其他模型 ID） |
+| API Key  | 控制面板获取                     |
+| Model    | `gpt-5.6-sol`（或其他模型 ID）    |
 
 **Python**
+
 ```python
 from openai import OpenAI
 client = OpenAI(base_url="http://localhost:8080/v1", api_key="your-api-key")
@@ -645,6 +673,7 @@ for chunk in client.chat.completions.create(
 ```
 
 **Node.js**
+
 ```typescript
 import OpenAI from "openai";
 const client = new OpenAI({ baseURL: "http://localhost:8080/v1", apiKey: "your-api-key" });
@@ -682,18 +711,18 @@ server:
 
 默认配置位于 `config/default.yaml`：
 
-| 分类 | 关键配置 | 说明 |
-|------|---------|------|
-| `server` | `host`, `port`, `proxy_api_key` | 监听地址与 API 密钥 |
-| `api` | `base_url`, `timeout_seconds` | 上游 API 地址与超时 |
-| `client` | `profile`, `originator`, `app_version`, `build_number`, `platform`, `arch`, `chromium_version` | 客户端指纹预设（`codex_cli` / `codex_desktop` / `opencode` / `pi` / `custom`）及版本参数 |
-| `model` | `default`, `default_reasoning_effort`, `default_service_tier`, `aliases`, `custom_models`, `inject_desktop_context` | 默认模型、推理配置、模型映射与自定义模型目录 |
-| `auth` | `rotation_strategy`, `rate_limit_backoff_seconds` | 轮换策略与限流退避 |
-| `tls` | `proxy_url`, `force_http11` | TLS 代理与 HTTP 版本 |
-| `quota` | `refresh_interval_minutes`, `warning_thresholds`, `skip_exhausted` | 用量快照、阈值配置与耗尽账号跳过 |
-| `session` | `ttl_minutes`, `cleanup_interval_minutes` | Dashboard session 管理 |
-| `ollama` | `enabled`, `host`, `port`, `version`, `disable_vision` | Ollama 兼容桥接 |
-| `official_agent` | `enabled`, `api_key`, `app_server_url`, `auth` | 官方 Codex app-server 桥接，用于复用 Chrome/browser 插件 |
+| 分类               | 关键配置                                                                                                                | 说明                                                                         |
+| ---------------- | ------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------- |
+| `server`         | `host`, `port`, `proxy_api_key`                                                                                     | 监听地址与 API 密钥                                                               |
+| `api`            | `base_url`, `timeout_seconds`                                                                                       | 上游 API 地址与超时                                                               |
+| `client`         | `profile`, `originator`, `app_version`, `build_number`, `platform`, `arch`, `chromium_version`                      | 客户端指纹预设（`codex_cli` / `codex_desktop` / `opencode` / `pi` / `custom`）及版本参数 |
+| `model`          | `default`, `default_reasoning_effort`, `default_service_tier`, `aliases`, `custom_models`, `inject_desktop_context` | 默认模型、推理配置、模型映射与自定义模型目录                                                     |
+| `auth`           | `rotation_strategy`, `rate_limit_backoff_seconds`                                                                   | 轮换策略与限流退避                                                                  |
+| `tls`            | `proxy_url`, `force_http11`                                                                                         | TLS 代理与 HTTP 版本                                                            |
+| `quota`          | `refresh_interval_minutes`, `warning_thresholds`, `skip_exhausted`                                                  | 用量快照、阈值配置与耗尽账号跳过                                                           |
+| `session`        | `ttl_minutes`, `cleanup_interval_minutes`                                                                           | Dashboard session 管理                                                       |
+| `ollama`         | `enabled`, `host`, `port`, `version`, `disable_vision`                                                              | Ollama 兼容桥接                                                                |
+| `official_agent` | `enabled`, `api_key`, `app_server_url`, `auth`                                                                      | 官方 Codex app-server 桥接，用于复用 Chrome/browser 插件                              |
 
 ### 客户端 Profile 与指纹预设
 
@@ -782,11 +811,11 @@ server:
 
 Electron 桌面版的 `data/local.yaml` 路径：
 
-| 系统 | 路径 |
-|------|------|
-| macOS | `~/Library/Application Support/Codex Proxy/data/local.yaml` |
-| Windows | `%APPDATA%/Codex Proxy/data/local.yaml` |
-| Linux | `~/.config/Codex Proxy/data/local.yaml` |
+| 系统      | 路径                                                          |
+| ------- | ----------------------------------------------------------- |
+| macOS   | `~/Library/Application Support/Codex Proxy/data/local.yaml` |
+| Windows | `%APPDATA%/Codex Proxy/data/local.yaml`                     |
+| Linux   | `~/.config/Codex Proxy/data/local.yaml`                     |
 
 > ⚠️ 绑定 `0.0.0.0` 会将服务暴露到局域网，务必在 Dashboard → 密钥设置中配置强密钥。
 
@@ -823,13 +852,13 @@ ollama:
 
 支持的 Ollama 端点：
 
-| 端点 | 方法 | 说明 |
-|------|------|------|
-| `http://localhost:11434/api/version` | GET | Ollama 版本探测 |
-| `http://localhost:11434/api/tags` | GET | 模型列表 |
-| `http://localhost:11434/api/show` | POST | 模型元数据 |
-| `http://localhost:11434/api/chat` | POST | 聊天补全，支持流式 NDJSON |
-| `http://localhost:11434/v1/*` | 任意 | OpenAI `/v1` 直通 |
+| 端点                                   | 方法   | 说明               |
+| ------------------------------------ | ---- | ---------------- |
+| `http://localhost:11434/api/version` | GET  | Ollama 版本探测      |
+| `http://localhost:11434/api/tags`    | GET  | 模型列表             |
+| `http://localhost:11434/api/show`    | POST | 模型元数据            |
+| `http://localhost:11434/api/chat`    | POST | 聊天补全，支持流式 NDJSON |
+| `http://localhost:11434/v1/*`        | 任意   | OpenAI `/v1` 直通  |
 
 Docker 部署时，如果希望宿主机访问 `11434`：
 
@@ -902,18 +931,18 @@ curl -N http://localhost:8080/official-agent/threads/{threadId}/turns \
 
 ### 环境变量覆盖
 
-| 环境变量 | 覆盖配置 |
-|---------|---------|
-| `PORT` | `server.port` |
-| `CODEX_PROXY_HOST` | `server.host`（仅当 `data/local.yaml` 未显式设置 `server.host` 时生效） |
-| `CODEX_PLATFORM` | `client.platform` |
-| `CODEX_ARCH` | `client.arch` |
-| `HTTPS_PROXY` | `tls.proxy_url` |
-| `OLLAMA_BRIDGE_ENABLED` | `ollama.enabled` |
-| `OLLAMA_BRIDGE_HOST` | `ollama.host` |
-| `OLLAMA_BRIDGE_PORT` | `ollama.port` |
-| `OLLAMA_BRIDGE_VERSION` | `ollama.version` |
-| `OLLAMA_BRIDGE_DISABLE_VISION` | `ollama.disable_vision` |
+| 环境变量                           | 覆盖配置                                                        |
+| ------------------------------ | ----------------------------------------------------------- |
+| `PORT`                         | `server.port`                                               |
+| `CODEX_PROXY_HOST`             | `server.host`（仅当 `data/local.yaml` 未显式设置 `server.host` 时生效） |
+| `CODEX_PLATFORM`               | `client.platform`                                           |
+| `CODEX_ARCH`                   | `client.arch`                                               |
+| `HTTPS_PROXY`                  | `tls.proxy_url`                                             |
+| `OLLAMA_BRIDGE_ENABLED`        | `ollama.enabled`                                            |
+| `OLLAMA_BRIDGE_HOST`           | `ollama.host`                                               |
+| `OLLAMA_BRIDGE_PORT`           | `ollama.port`                                               |
+| `OLLAMA_BRIDGE_VERSION`        | `ollama.version`                                            |
+| `OLLAMA_BRIDGE_DISABLE_VISION` | `ollama.disable_vision`                                     |
 
 </details>
 
@@ -922,54 +951,54 @@ curl -N http://localhost:8080/official-agent/threads/{threadId}/turns \
 
 **协议端点**
 
-| 端点 | 方法 | 说明 |
-|------|------|------|
-| `/v1/chat/completions` | POST | OpenAI 格式聊天补全 |
-| `/v1/responses` | POST | Codex Responses API 直通 |
-| `/v1/responses/compact` | POST | Codex 远程 compact 响应代理 |
-| `/v1/alpha/search` | POST | Codex standalone Web Search（`codex-responses` API-key wire） |
-| `/v1/images/generations` | POST | Codex JSON 图片生成直通（`codex-responses` API-key wire） |
-| `/v1/images/edits` | POST | Codex JSON 图片编辑直通（`codex-responses` API-key wire） |
-| `/v1/messages` | POST | Anthropic 格式聊天补全 |
-| `/v1/models` | GET | 可用模型列表 |
-| `/v1/models/catalog` | GET | Dashboard 使用的完整模型目录 |
-| `/v1/models/:modelId/info` | GET | 单个模型的推理等级等详情 |
-| `/v1beta/models` | GET | Gemini 格式模型列表 |
-| `/v1beta/models/:modelAction` | POST | Gemini `generateContent` / `streamGenerateContent` |
-| `:11434/api/chat` | POST | Ollama 兼容聊天补全（需启用 Ollama Bridge） |
+| 端点                            | 方法   | 说明                                                          |
+| ----------------------------- | ---- | ----------------------------------------------------------- |
+| `/v1/chat/completions`        | POST | OpenAI 格式聊天补全                                               |
+| `/v1/responses`               | POST | Codex Responses API 直通                                      |
+| `/v1/responses/compact`       | POST | Codex 远程 compact 响应代理                                       |
+| `/v1/alpha/search`            | POST | Codex standalone Web Search（`codex-responses` API-key wire） |
+| `/v1/images/generations`      | POST | Codex JSON 图片生成直通（`codex-responses` API-key wire）           |
+| `/v1/images/edits`            | POST | Codex JSON 图片编辑直通（`codex-responses` API-key wire）           |
+| `/v1/messages`                | POST | Anthropic 格式聊天补全                                            |
+| `/v1/models`                  | GET  | 可用模型列表                                                      |
+| `/v1/models/catalog`          | GET  | Dashboard 使用的完整模型目录                                         |
+| `/v1/models/:modelId/info`    | GET  | 单个模型的推理等级等详情                                                |
+| `/v1beta/models`              | GET  | Gemini 格式模型列表                                               |
+| `/v1beta/models/:modelAction` | POST | Gemini `generateContent` / `streamGenerateContent`          |
+| `:11434/api/chat`             | POST | Ollama 兼容聊天补全（需启用 Ollama Bridge）                            |
 
 **账号与认证**
 
-| 端点 | 方法 | 说明 |
-|------|------|------|
-| `/auth/login` | GET | OAuth 登录入口 |
-| `/auth/accounts` | GET | 账号列表（含缓存额度） |
-| `/auth/accounts` | POST | 添加单个账号（token 或 refreshToken） |
-| `/auth/accounts/import` | POST | 批量导入账号（JSON / `text/plain` token 行） |
-| `/auth/accounts/export` | GET | 导出账号（`?format=full|minimal|cockpit_tools|sub2api|cpa`） |
-| `/auth/accounts/batch-delete` | POST | 批量删除账号 |
-| `/auth/accounts/batch-status` | POST | 批量修改账号状态 |
-| `/auth/accounts/health-check` | POST | 批量检测账号可用性 |
-| `/auth/accounts/:id/refresh` | POST | 刷新并探测单个账号 |
-| `/auth/accounts/:id/quota` | GET | 主动查询单个账号额度 |
-| `/auth/accounts/:id/cookies` | GET/POST/DELETE | 管理账号 Cloudflare cookies |
-| `/auth/quota/warnings` | GET | 当前额度预警状态 |
+| 端点                            | 方法              | 说明                                  | <br />  | <br />         | <br />  | <br /> |
+| ----------------------------- | --------------- | ----------------------------------- | :------ | :------------- | :------ | :----- |
+| `/auth/login`                 | GET             | OAuth 登录入口                          | <br />  | <br />         | <br />  | <br /> |
+| `/auth/accounts`              | GET             | 账号列表（含缓存额度）                         | <br />  | <br />         | <br />  | <br /> |
+| `/auth/accounts`              | POST            | 添加单个账号（token 或 refreshToken）        | <br />  | <br />         | <br />  | <br /> |
+| `/auth/accounts/import`       | POST            | 批量导入账号（JSON / `text/plain` token 行） | <br />  | <br />         | <br />  | <br /> |
+| `/auth/accounts/export`       | GET             | 导出账号（\`?format=full                 | minimal | cockpit\_tools | sub2api | cpa\`） |
+| `/auth/accounts/batch-delete` | POST            | 批量删除账号                              | <br />  | <br />         | <br />  | <br /> |
+| `/auth/accounts/batch-status` | POST            | 批量修改账号状态                            | <br />  | <br />         | <br />  | <br /> |
+| `/auth/accounts/health-check` | POST            | 批量检测账号可用性                           | <br />  | <br />         | <br />  | <br /> |
+| `/auth/accounts/:id/refresh`  | POST            | 刷新并探测单个账号                           | <br />  | <br />         | <br />  | <br /> |
+| `/auth/accounts/:id/quota`    | GET             | 主动查询单个账号额度                          | <br />  | <br />         | <br />  | <br /> |
+| `/auth/accounts/:id/cookies`  | GET/POST/DELETE | 管理账号 Cloudflare cookies             | <br />  | <br />         | <br />  | <br /> |
+| `/auth/quota/warnings`        | GET             | 当前额度预警状态                            | <br />  | <br />         | <br />  | <br /> |
 
 **第三方 API Keys**
 
 对于在标准 Responses API 上要求 Codex 官方客户端上下文的 API-key 上游，请在 Dashboard 中选择 `Custom` Provider 和 `Codex Responses (client context)` 协议。Base URL 应填写 API v1 根地址（例如 `https://provider.example.com/v1`，不要填写完整的 `/responses` 地址）。该协议的主 Responses 请求使用 HTTP SSE，并发送 Codex headers、installation/session/thread/window ID 与 client metadata；同时支持按请求 body 的 `model` 路由 standalone Web Search、远程 compact 和 Codex JSON 图片生成/编辑端点，不支持 Embeddings。若供应商没有提供兼容的 `/models` 接口，可在 Dashboard 中手动填写模型名。
 
-| 端点 | 方法 | 说明 |
-|------|------|------|
-| `/auth/api-keys/catalog` | GET | 内置 Provider 与推荐模型目录 |
-| `/auth/api-keys` | GET/POST | API Key 列表 / 添加 |
-| `/auth/api-keys/models` | POST | 从自定义 OpenAI-compatible Provider 拉取模型 |
-| `/auth/api-keys/export` | GET | 导出 API Key 配置 |
-| `/auth/api-keys/import` | POST | 导入 API Key 配置 |
-| `/auth/api-keys/batch-delete` | POST | 批量删除 API Key |
-| `/auth/api-keys/:id` | DELETE | 删除单个 API Key |
-| `/auth/api-keys/:id/label` | PATCH | 修改 API Key 标签 |
-| `/auth/api-keys/:id/status` | PATCH | 启用或停用 API Key |
+| 端点                            | 方法       | 说明                                   |
+| ----------------------------- | -------- | ------------------------------------ |
+| `/auth/api-keys/catalog`      | GET      | 内置 Provider 与推荐模型目录                  |
+| `/auth/api-keys`              | GET/POST | API Key 列表 / 添加                      |
+| `/auth/api-keys/models`       | POST     | 从自定义 OpenAI-compatible Provider 拉取模型 |
+| `/auth/api-keys/export`       | GET      | 导出 API Key 配置                        |
+| `/auth/api-keys/import`       | POST     | 导入 API Key 配置                        |
+| `/auth/api-keys/batch-delete` | POST     | 批量删除 API Key                         |
+| `/auth/api-keys/:id`          | DELETE   | 删除单个 API Key                         |
+| `/auth/api-keys/:id/label`    | PATCH    | 修改 API Key 标签                        |
+| `/auth/api-keys/:id/status`   | PATCH    | 启用或停用 API Key                        |
 
 **账号导入导出示例**
 
@@ -1014,50 +1043,55 @@ curl -X POST http://localhost:8080/auth/accounts/import \
 
 **管理接口**
 
-| 端点 | 方法 | 说明 |
-|------|------|------|
-| `/admin/rotation-settings` | GET/POST | 轮换策略配置 |
-| `/admin/quota-settings` | GET/POST | 额度刷新与预警配置 |
-| `/admin/ollama-settings` | GET/POST | Ollama Bridge 配置 |
-| `/admin/ollama-status` | GET | Ollama Bridge 运行状态 |
-| `/admin/refresh-models` | POST | 手动刷新模型列表 |
-| `/admin/usage-stats/summary` | GET | 用量统计汇总 |
-| `/admin/usage-stats/history` | GET | 用量时间序列 |
-| `/admin/logs` | GET | 请求日志列表 |
-| `/admin/logs/state` | GET/POST | 日志采集开关与配置 |
-| `/admin/update-status` | GET | 自更新状态 |
-| `/admin/check-update` | POST | 检查更新 |
-| `/admin/apply-update` | POST | 执行自更新 |
-| `/health` | GET | 健康检查 |
+| 端点                           | 方法       | 说明                 |
+| ---------------------------- | -------- | ------------------ |
+| `/admin/rotation-settings`   | GET/POST | 轮换策略配置             |
+| `/admin/quota-settings`      | GET/POST | 额度刷新与预警配置          |
+| `/admin/ollama-settings`     | GET/POST | Ollama Bridge 配置   |
+| `/admin/ollama-status`       | GET      | Ollama Bridge 运行状态 |
+| `/admin/refresh-models`      | POST     | 手动刷新模型列表           |
+| `/admin/usage-stats/summary` | GET      | 用量统计汇总             |
+| `/admin/usage-stats/history` | GET      | 用量时间序列             |
+| `/admin/logs`                | GET      | 请求日志列表             |
+| `/admin/logs/state`          | GET/POST | 日志采集开关与配置          |
+| `/admin/update-status`       | GET      | 自更新状态              |
+| `/admin/check-update`        | POST     | 检查更新               |
+| `/admin/apply-update`        | POST     | 执行自更新              |
+| `/health`                    | GET      | 健康检查               |
 
 **代理池**
 
-| 端点 | 方法 | 说明 |
-|------|------|------|
-| `/api/proxies` | GET/POST | 代理池列表 / 添加代理 |
-| `/api/proxies/:id` | PUT/DELETE | 更新 / 删除代理 |
-| `/api/proxies/:id/check` | POST | 健康检查单个代理 |
-| `/api/proxies/check-all` | POST | 全部代理健康检查 |
-| `/api/proxies/assign` | POST | 为账号分配代理 |
-| `/api/proxies/assignments` | GET | 查看账号代理分配 |
-| `/api/proxies/assign-bulk` | POST | 批量分配代理 |
-| `/api/proxies/assign-rule` | POST | 按规则分配代理 |
-| `/api/proxies/export` | GET | 导出代理池 YAML |
-| `/api/proxies/import` | POST | 导入代理池 YAML |
+| 端点                         | 方法         | 说明           |
+| -------------------------- | ---------- | ------------ |
+| `/api/proxies`             | GET/POST   | 代理池列表 / 添加代理 |
+| `/api/proxies/:id`         | PUT/DELETE | 更新 / 删除代理    |
+| `/api/proxies/:id/check`   | POST       | 健康检查单个代理     |
+| `/api/proxies/check-all`   | POST       | 全部代理健康检查     |
+| `/api/proxies/assign`      | POST       | 为账号分配代理      |
+| `/api/proxies/assignments` | GET        | 查看账号代理分配     |
+| `/api/proxies/assign-bulk` | POST       | 批量分配代理       |
+| `/api/proxies/assign-rule` | POST       | 按规则分配代理      |
+| `/api/proxies/export`      | GET        | 导出代理池 YAML   |
+| `/api/proxies/import`      | POST       | 导入代理池 YAML   |
 
 </details>
 
 ## 📋 系统要求
 
 - **Node.js** 18+（推荐 20+）
+
 - **Rust** — 源码运行需 Rust 工具链（编译 TLS native addon）；Docker / 桌面应用已内置
+
 - **ChatGPT 账号** — 免费账号即可
+
 - **Docker**（可选）
 
 ## ⚠️ 注意事项
 
 - Codex API 为**流式输出专用**，`stream: false` 时代理内部流式收集后返回完整 JSON
+
 - 本项目依赖 Codex Desktop 的公开接口，上游版本更新时会自动检测并更新指纹
+
 - Windows 下 native TLS addon 需 Rust 工具链编译；Docker 部署已预编译，无需额外配置
 
 ## 📝 最近更新
@@ -1074,7 +1108,27 @@ Codex Proxy 最初只是一个个人自用项目，一路走来收获了超乎�
 
 特别感谢所有通过代码、文档、修复或 PR 参与建设的贡献者：
 
-[@SsuJojo](https://github.com/SsuJojo) · [@TutuchanXD](https://github.com/TutuchanXD) · [@kanweiwei](https://github.com/kanweiwei) · [@et2010](https://github.com/et2010) · [@d-demand-priv](https://github.com/d-demand-priv) · [@hangox](https://github.com/hangox) · [@jarvisluk](https://github.com/jarvisluk) · [@jeasonstudio](https://github.com/jeasonstudio) · [@JPClaw12](https://github.com/JPClaw12) · [@lezi-fun](https://github.com/lezi-fun) · [@lookvincent](https://github.com/lookvincent) · [@pocper1](https://github.com/pocper1) · [@woai66](https://github.com/woai66) · [@xsShuang](https://github.com/xsShuang) · [@yuwei5380](https://github.com/yuwei5380) · [@aeltorio](https://github.com/aeltorio) · [@williamjameshandley](https://github.com/williamjameshandley) · [@FlavienKlr](https://github.com/FlavienKlr) · [@zyycn](https://github.com/zyycn)
+<p align="center">
+  <a href="https://github.com/SsuJojo"><img src="https://github.com/SsuJojo.png" width="50" height="50" alt="@SsuJojo" /></a>
+  <a href="https://github.com/TutuchanXD"><img src="https://github.com/TutuchanXD.png" width="50" height="50" alt="@TutuchanXD" /></a>
+  <a href="https://github.com/kanweiwei"><img src="https://github.com/kanweiwei.png" width="50" height="50" alt="@kanweiwei" /></a>
+  <a href="https://github.com/et2010"><img src="https://github.com/et2010.png" width="50" height="50" alt="@et2010" /></a>
+  <a href="https://github.com/d-demand-priv"><img src="https://github.com/d-demand-priv.png" width="50" height="50" alt="@d-demand-priv" /></a>
+  <a href="https://github.com/hangox"><img src="https://github.com/hangox.png" width="50" height="50" alt="@hangox" /></a>
+  <a href="https://github.com/jarvisluk"><img src="https://github.com/jarvisluk.png" width="50" height="50" alt="@jarvisluk" /></a>
+  <a href="https://github.com/jeasonstudio"><img src="https://github.com/jeasonstudio.png" width="50" height="50" alt="@jeasonstudio" /></a>
+  <a href="https://github.com/JPClaw12"><img src="https://github.com/JPClaw12.png" width="50" height="50" alt="@JPClaw12" /></a>
+  <a href="https://github.com/lezi-fun"><img src="https://github.com/lezi-fun.png" width="50" height="50" alt="@lezi-fun" /></a>
+  <a href="https://github.com/lookvincent"><img src="https://github.com/lookvincent.png" width="50" height="50" alt="@lookvincent" /></a>
+  <a href="https://github.com/pocper1"><img src="https://github.com/pocper1.png" width="50" height="50" alt="@pocper1" /></a>
+  <a href="https://github.com/woai66"><img src="https://github.com/woai66.png" width="50" height="50" alt="@woai66" /></a>
+  <a href="https://github.com/xsShuang"><img src="https://github.com/xsShuang.png" width="50" height="50" alt="@xsShuang" /></a>
+  <a href="https://github.com/yuwei5380"><img src="https://github.com/yuwei5380.png" width="50" height="50" alt="@yuwei5380" /></a>
+  <a href="https://github.com/aeltorio"><img src="https://github.com/aeltorio.png" width="50" height="50" alt="@aeltorio" /></a>
+  <a href="https://github.com/williamjameshandley"><img src="https://github.com/williamjameshandley.png" width="50" height="50" alt="@williamjameshandley" /></a>
+  <a href="https://github.com/FlavienKlr"><img src="https://github.com/FlavienKlr.png" width="50" height="50" alt="@FlavienKlr" /></a>
+  <a href="https://github.com/zyycn"><img src="https://github.com/zyycn.png" width="50" height="50" alt="@zyycn" /></a>
+</p>
 
 感谢所有在 [Issues](https://github.com/icebear0828/codex-proxy/issues) 里提交 bug 复现、日志、兼容性反馈和功能建议的用户。这些反馈直接推动了账号轮换、代理兼容、Dashboard、Ollama Bridge、模型兼容和错误观测等能力的迭代。
 
@@ -1082,18 +1136,19 @@ Codex Proxy 最初只是一个个人自用项目，一路走来收获了超乎�
 
 ## ⭐ Star History
 
-[![Star History Chart](https://star-history.dera.page/svg?repos=icebear0828/codex-proxy&type=Date)](https://star-history.dera.page/#icebear0828/codex-proxy&Date)
+[![Star History Chart](https://star-history.dera.page/svg?repos=icebear0828/codex-proxy\&type=Date)](https://star-history.dera.page/#icebear0828/codex-proxy\&Date)
 
 ## 📄 许可协议
 
 本项目采用 **非商业许可 (Non-Commercial)**：
 
 - **允许**：个人学习、研究、自用部署
+
 - **禁止**：任何形式的商业用途，包括但不限于出售、转售、收费代理、商业产品集成
 
 本项目与 OpenAI 无关联。使用者需自行承担风险并遵守 OpenAI 的服务条款。
 
----
+***
 
 <div align="center">
   <sub>Built with Hono + TypeScript + Rust | Powered by Codex Desktop API</sub>
