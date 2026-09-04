@@ -505,6 +505,16 @@ aliases: {}
       expect(isRecognizedModelName("totally-unknown-low")).toBe(false);
       expect(isRecognizedModelName("totally-unknown-high-fast")).toBe(false);
     });
+
+    it("accepts official-shaped models not present in the catalog (e.g. gpt-6)", () => {
+      expect(isRecognizedModelName("gpt-6-astra")).toBe(true);
+      expect(isRecognizedModelName("gpt-6-astra-high-fast")).toBe(true);
+      expect(isRecognizedModelName("gpt-6")).toBe(true);
+      expect(isRecognizedModelName("gpt-6-fast")).toBe(true);
+      expect(isRecognizedModelName("gpt-reserve")).toBe(true);
+      expect(isRecognizedModelName("gpt-reserve-high")).toBe(true);
+      expect(isRecognizedModelName("o4-mini-high")).toBe(true);
+    });
   });
 
   describe("isRequestableModel", () => {
@@ -528,11 +538,28 @@ aliases: {}
       expect(isRequestableModel("my-model-high")).toBe(true);
     });
 
-    it("rejects unknown model names", () => {
+    it("rejects empty and non-official-shaped model names", () => {
       expect(isRequestableModel("")).toBe(false);
-      expect(isRequestableModel("gpt-9999")).toBe(false);
       expect(isRequestableModel("totally-unknown-high-fast")).toBe(false);
-      expect(isRequestableModel("codex-foo")).toBe(false);
+    });
+
+    it("accepts any official-shaped model name (support decided upstream)", () => {
+      // Recognized-by-shape official models pass through to the upstream backend
+      // instead of being rejected here; support is decided at the edge.
+      expect(isRequestableModel("gpt-9999")).toBe(true);
+      expect(isRequestableModel("codex-foo")).toBe(true);
+      expect(isRequestableModel("o1")).toBe(true);
+      expect(isRequestableModel("o4-mini-high")).toBe(true);
+    });
+
+    it("accepts newly released gpt-6 family without static definitions", () => {
+      // gpt-6-astra / gpt-reserve are not in the catalog/aliases/custom, yet they
+      // must be requestable so clients aren't 404'd or silently downgraded.
+      expect(isRequestableModel("gpt-6-astra")).toBe(true);
+      expect(isRequestableModel("gpt-6-astra-high-fast")).toBe(true);
+      expect(isRequestableModel("gpt-6")).toBe(true);
+      expect(isRequestableModel("gpt-reserve")).toBe(true);
+      expect(resolveModelId("gpt-6-astra")).toBe("gpt-6-astra");
     });
   });
 
@@ -832,6 +859,7 @@ aliases: {}
 
       applyBackendModelsForPlan("team", []);
       expect(getModelPlanTypes("gpt-5.3-codex")).toEqual([]);
+      expect(isRecognizedModelName("gpt-5.3-codex")).toBe(true);
       expect(getModelInfo("gpt-5.3-codex")).toBeUndefined();
     });
   });

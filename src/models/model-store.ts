@@ -165,6 +165,22 @@ function normalizeAliases(input: Record<string, string> | undefined): Record<str
   return aliases;
 }
 
+/**
+ * Whether a model name matches the shape of an official Codex/OpenAI model,
+ * e.g. `gpt-6-astra`, `gpt-5.6-sol`, `gpt-oss-*`, `codex-mini`, `o1`/`o3`/`o4`.
+ *
+ * This is a *shape* check, not an allowlist. It lets newly released models that
+ * aren't in the local catalog yet be routed upstream without a per-model code
+ * change. Whether a given name is actually served is decided by the upstream
+ * backend. Mirrors the regex used in `UpstreamRouter#isKnownCodexModel` so both
+ * code paths agree on what is "official-looking".
+ */
+const OFFICIAL_MODEL_SHAPE = /^(?:gpt|codex|o\d[\w.-]*)/i;
+
+function isOfficialCodexShape(modelId: string): boolean {
+  return OFFICIAL_MODEL_SHAPE.test(modelId.trim());
+}
+
 // ── Class ────────────────────────────────────────────────────────────
 
 export class ModelStore {
@@ -269,6 +285,11 @@ export class ModelStore {
     const resolved = this.resolveAliasChain(trimmed);
     if (resolved !== trimmed) return resolved;
     if (this.catalog.some((m) => m.id === resolved)) return resolved;
+    // The bare `codex` sentinel means "use the default model", not a literal ID.
+    if (resolved === "codex") return this.defaultModelFn();
+    // Recognized-but-not-catalogued official models route as-is rather than
+    // silently falling back to the default model.
+    if (isOfficialCodexShape(resolved)) return resolved;
     return this.defaultModelFn();
   }
 
@@ -276,7 +297,11 @@ export class ModelStore {
     const trimmed = input.trim();
     if (!trimmed) return false;
 
-    if (this.aliases[trimmed] || this.catalog.some((m) => m.id === trimmed)) {
+    if (
+      this.aliases[trimmed]
+      || this.catalog.some((m) => m.id === trimmed)
+      || isOfficialCodexShape(trimmed)
+    ) {
       return true;
     }
 
@@ -289,13 +314,17 @@ export class ModelStore {
     }
 
     return !!this.aliases[stripped.modelName]
-      || this.catalog.some((m) => m.id === stripped.modelName);
+      || this.catalog.some((m) => m.id === stripped.modelName)
+      || isOfficialCodexShape(stripped.modelName);
   }
 
   parseModelName(input: string): ParsedModelName {
     const trimmed = input.trim();
 
-    if (this.aliases[trimmed] || this.catalog.some((m) => m.id === trimmed)) {
+    if (
+      this.aliases[trimmed]
+      || this.catalog.some((m) => m.id === trimmed)
+    ) {
       return { modelId: this.resolveModelId(trimmed), serviceTier: null, reasoningEffort: null };
     }
 
