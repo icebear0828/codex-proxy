@@ -162,7 +162,7 @@ describe("POST /v1/responses/compact", () => {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        model: "gpt-4o",
+        model: "totally-unknown",
         input: [{ role: "user", content: "Hi" }],
       }),
     });
