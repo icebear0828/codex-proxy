@@ -1108,7 +1108,7 @@ Codex Proxy 最初只是一个个人自用项目，一路走来收获了超乎�
 
 特别感谢所有通过代码、文档、修复或 PR 参与建设的贡献者：
 
-<img width="698" alt="contributors" src="./.github/assets/contributors.svg" />
+<a href="https://github.com/icebear0828/codex-proxy/graphs/contributors"><img src="https://contrib.rocks/image?repo=icebear0828/codex-proxy" alt="Contributors" /></a>
 
 感谢所有在 [Issues](https://github.com/icebear0828/codex-proxy/issues) 里提交 bug 复现、日志、兼容性反馈和功能建议的用户。这些反馈直接推动了账号轮换、代理兼容、Dashboard、Ollama Bridge、模型兼容和错误观测等能力的迭代。
 
