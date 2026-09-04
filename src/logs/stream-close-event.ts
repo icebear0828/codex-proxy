@@ -105,6 +105,7 @@ export function recordStreamCloseEvent(evt: StreamCloseEvent): void {
       accountEntryId: evt.accountEntryId,
       variantHash: evt.variantHash,
       responseId: evt.responseId,
+      fallback: evt.fallback === true ? true : undefined,
       eventCount: evt.eventCount,
       hadReasoning: evt.hadReasoning,
       closeCode: evt.closeCode,
