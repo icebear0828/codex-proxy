@@ -91,9 +91,12 @@ describe("root package boundary", () => {
 
   it("keeps codex-proxy npm entrypoints available", () => {
     expect(requireString(scripts, "test")).toBe("vitest run");
-    expect(requireString(scripts, "test:unit")).toBe("vitest run --include 'tests/unit/**/*.test.ts'");
-    expect(requireString(scripts, "test:e2e")).toBe("vitest run --include 'tests/e2e/**/*.test.ts'");
-    expect(requireString(scripts, "test:integration")).toBe("vitest run --include 'tests/integration/**/*.test.ts'");
+    expect(requireString(scripts, "test:unit")).toBe("vitest run tests/unit");
+    expect(requireString(scripts, "test:e2e")).toBe("vitest run tests/e2e");
+    expect(requireString(scripts, "test:integration")).toBe("vitest run tests/integration");
+    expect(requireString(scripts, "build:lite")).toContain("scripts/portable/build-portable.mjs");
+    expect(requireString(scripts, "pack:lite")).toBe("npm run build:lite");
+    expect(requireString(scripts, "test:lite")).toBe("node scripts/portable/test-portable.mjs");
     expect(requireString(scripts, "build:web")).toBe("cd web && npx vite build");
     expect(requireString(scripts, "build")).toBe("npm run build:web && tsc");
     expect(requireString(scripts, "typecheck:scripts")).toBe("tsc -p tsconfig.scripts.json");

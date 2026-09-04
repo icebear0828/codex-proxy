@@ -2,6 +2,7 @@ node_modules/
 dist/
 dist-electron/
 release/
+portable-release/
 public-desktop/
 data/
 /public/

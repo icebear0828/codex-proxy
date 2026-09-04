@@ -10,6 +10,7 @@
 
 ### Added
 
+- 新增可选 No-Node Lite Browser/Server 发行版：保留现有 Electron 安装包不变，额外提供 `codex-proxy-<版本>-no-node-lite-all-platforms.tar.xz`，包含后端、前端资源、各平台 native addon 和启动器，支持无图形界面的 server 模式以及浏览器模式；Windows 通过 MSYS2 MinGW 构建 x86/x64 WebView2 host，并可选携带 Evergreen Bootstrapper。（`scripts/portable/`、`.github/workflows/lite-ci.yml`、`.github/workflows/release.yml`）
 - 支持 OpenAI GPT-6 Astra 系列（`gpt-6-astra`、`gpt-6-astra-aeon` 及别名 `gpt-6`）与 GPT-Reserve（`gpt-reserve`）：内置静态模型元数据与推理级别定义（`/v1/models/catalog` 可见），`gpt-6` 别名解析到 `gpt-6-astra`，可路由性已由 #776 的名称形态放行覆盖；同步适配 1,050,000 上下文窗口、Ollama 桥接架构系列识别与官方定价估算（`src/models/model-store.ts`、`src/ollama/bridge.ts`、`config/model-pricing.yaml`、`README.md`）。
 - 重构 Dashboard UI 视觉体系与设置交互逻辑：
   - 移除窗口顶部菜单栏，并将窗口标题统一为「Codex Proxy」（`packages/electron/electron/main.ts`、`web/index.html`）。

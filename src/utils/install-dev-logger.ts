@@ -15,7 +15,11 @@ const disabled = process.env.CODEX_PROXY_FILE_LOG === "0";
 
 if (!isProduction && !isTest && !disabled) {
   try {
-    installFileLogger({ dir: join(process.cwd(), "logs") });
+    // Packaged CLI launchers select their data directory before importing the
+    // bundled backend. Keep diagnostic logs beside that data when available;
+    // source/dev runs retain the historical cwd/logs location.
+    const logRoot = process.env.CODEX_PROXY_DATA_DIR?.trim() || process.cwd();
+    installFileLogger({ dir: join(logRoot, "logs") });
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     process.stderr.write(`[dev-file-logger] failed to install: ${msg}\n`);

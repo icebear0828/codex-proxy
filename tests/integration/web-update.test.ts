@@ -228,6 +228,35 @@ describe("web update routes", () => {
       expect(body.proxy.update_available).toBe(true);
       expect(body.proxy.release.version).toBe("2.0.0");
     });
+
+    it("returns Lite mode with release info", async () => {
+      _deployMode = "lite";
+      _canSelfUpdate = false;
+      _cachedResult = {
+        commitsBehind: 0,
+        currentCommit: null,
+        latestCommit: null,
+        commits: [],
+        release: {
+          version: "2.0.0",
+          tag: "v2.0.0",
+          body: "Lite release",
+          url: "https://github.com/repo/releases/v2.0.0",
+          publishedAt: "2026-09-04T00:00:00Z",
+        },
+        updateAvailable: true,
+        mode: "lite",
+      };
+
+      const { app } = buildApp();
+      const res = await app.request("/admin/update-status");
+      const body = await res.json();
+
+      expect(body.proxy.mode).toBe("lite");
+      expect(body.proxy.can_self_update).toBe(false);
+      expect(body.proxy.update_available).toBe(true);
+      expect(body.proxy.release.version).toBe("2.0.0");
+    });
   });
 
   // ── POST /admin/check-update ────────────────────────────────────
@@ -344,6 +373,22 @@ describe("web update routes", () => {
       expect(body.mode).toBe("electron");
       expect(body.hint).toContain("automatically");
       expect(body.hint).toContain("system tray");
+    });
+
+    it("rejects Lite mode with a release replacement hint", async () => {
+      _canSelfUpdate = false;
+      _deployMode = "lite";
+
+      const { app } = buildApp();
+      const res = await app.request("/admin/apply-update", { method: "POST" });
+      expect(res.status).toBe(400);
+
+      const body = await res.json();
+      expect(body.started).toBe(false);
+      expect(body.mode).toBe("lite");
+      expect(body.hint).toContain("No-Node Lite");
+      expect(body.hint).not.toContain("docker compose");
+      expect(body.hint).not.toContain("Watchtower");
     });
 
     it("returns error from apply (SSE stream)", async () => {
