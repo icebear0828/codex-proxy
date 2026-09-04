@@ -2,7 +2,7 @@
  * Centralized path management for CLI and Electron modes.
  *
  * CLI mode (default): all paths relative to process.cwd().
- * Electron mode: paths set by setPaths() before backend imports.
+ * Electron/packaged mode: paths set by setPaths() before backend imports.
  */
 
 import { resolve } from "path";
@@ -13,12 +13,16 @@ interface PathConfig {
   dataDir: string;
   binDir: string;
   publicDir: string;
+  /** Whether this path set belongs to the Electron shell. */
+  embedded?: boolean;
+  /** Identifies the no-Node Lite distribution without affecting CLI mode. */
+  distribution?: "lite";
 }
 
 let _paths: PathConfig | null = null;
 
 /**
- * Set custom paths (called by Electron main process before importing backend).
+ * Set custom paths (called by Electron or a packaged CLI launcher).
  * Must be called before any getXxxDir() calls.
  */
 export function setPaths(config: PathConfig): void {
@@ -50,7 +54,15 @@ export function getPublicDir(): string {
   return _paths?.publicDir ?? resolve(process.cwd(), "public");
 }
 
-/** Whether running in embedded mode (Electron). */
+/** Whether running inside the Electron shell. */
 export function isEmbedded(): boolean {
-  return _paths !== null;
+  // Existing Electron callers do not pass `embedded`, so preserve their
+  // historical behavior while allowing packaged CLI launchers to set paths
+  // without being misclassified as Electron.
+  return _paths?.embedded ?? (_paths !== null);
+}
+
+/** Whether the backend is running from the No-Node Lite distribution. */
+export function isLite(): boolean {
+  return _paths?.distribution === "lite";
 }

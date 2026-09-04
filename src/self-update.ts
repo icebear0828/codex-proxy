@@ -2,14 +2,14 @@
  * Proxy self-update — detects available updates in three deployment modes:
  * - CLI (git): git fetch + commit log
  * - Docker (no .git): GHCR registry tag list (checks actual published images)
- * - Electron (embedded): GitHub Releases API
+ * - Electron (embedded) / Lite: GitHub Releases API
  */
 
 import { execFile, execFileSync, spawn } from "child_process";
 import { existsSync, openSync, readFileSync } from "fs";
 import { resolve } from "path";
 import { promisify } from "util";
-import { getRootDir, isEmbedded } from "./paths.js";
+import { getRootDir, isEmbedded, isLite } from "./paths.js";
 import { getConfig } from "./config.js";
 
 // ── Restart ─────────────────────────────────────────────────────────
@@ -100,7 +100,7 @@ export interface GitHubReleaseInfo {
   publishedAt: string;
 }
 
-export type DeployMode = "git" | "docker" | "electron";
+export type DeployMode = "git" | "docker" | "electron" | "lite";
 
 export interface ProxySelfUpdateResult {
   commitsBehind: number;
@@ -146,11 +146,19 @@ export function getProxyInfo(): ProxyInfo {
       if (tag) tagVersion = tag.startsWith("v") ? tag.slice(1) : tag;
     } catch { /* no reachable tag */ }
 
-    try {
-      const pkg = JSON.parse(readFileSync(resolve(getRootDir(), "package.json"), "utf-8")) as { version?: string };
-      const v = pkg.version;
-      if (v && v !== "1.0.0") pkgVersion = v;
-    } catch { /* ignore */ }
+    for (const metadataPath of [
+      resolve(getRootDir(), "package.json"),
+      resolve(getRootDir(), "app", "manifest.json"),
+    ]) {
+      try {
+        const metadata = JSON.parse(readFileSync(metadataPath, "utf-8")) as { version?: string };
+        const v = metadata.version;
+        if (v && v !== "1.0.0") {
+          pkgVersion = v;
+          break;
+        }
+      } catch { /* try the next package metadata location */ }
+    }
 
     // Pick whichever is higher (tag on electron branch may be unreachable from master)
     if (tagVersion && pkgVersion) {
@@ -175,7 +183,7 @@ export function getProxyInfo(): ProxyInfo {
 
 /** Whether this environment supports git-based self-update. */
 export function canSelfUpdate(): boolean {
-  if (isEmbedded()) return false;
+  if (isEmbedded() || isLite()) return false;
   if (_gitAvailable !== null) return _gitAvailable;
 
   if (!existsSync(resolve(process.cwd(), ".git"))) {
@@ -200,6 +208,7 @@ export function canSelfUpdate(): boolean {
 /** Determine deployment mode. */
 export function getDeployMode(): DeployMode {
   if (isEmbedded()) return "electron";
+  if (isLite()) return "lite";
   if (canSelfUpdate()) return "git";
   return "docker";
 }
@@ -468,7 +477,7 @@ export async function checkProxySelfUpdate(): Promise<ProxySelfUpdateResult> {
     return result;
   }
 
-  // Electron — GitHub Releases API
+  // Electron and Lite — GitHub Releases API
   const release = await checkGitHubRelease();
   let updateAvailable = release !== null
     && release.version !== currentVersion

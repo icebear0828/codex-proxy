@@ -10,6 +10,7 @@
 
 ### Added
 
+- 新增可选 No-Node Lite Browser/Server 发行版：保留现有 Electron 安装包不变，额外提供 `codex-proxy-<版本>-no-node-lite-all-platforms.tar.xz`，包含后端、前端资源、各平台 native addon 和启动器，支持无图形界面的 server 模式以及浏览器模式；Windows 通过 MSYS2 MinGW 构建 x86/x64 WebView2 host，并可选携带 Evergreen Bootstrapper。（`scripts/portable/`、`.github/workflows/lite-ci.yml`、`.github/workflows/release.yml`）
 - 重构 Dashboard UI 视觉体系与设置交互逻辑：
   - 移除窗口顶部菜单栏，并将窗口标题统一为「Codex Proxy」（`packages/electron/electron/main.ts`、`web/index.html`）。
   - 全局优化浅色与深色色彩体系及统一系统/等宽字体层级渲染（`web/src/index.css`、`web/tailwind.config.ts`）。

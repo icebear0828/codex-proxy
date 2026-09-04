@@ -126,7 +126,9 @@ export function createUpdateRoutes(): Hono {
           ? "Run: docker compose pull && docker compose up -d (or enable Watchtower for automatic updates)"
           : mode === "electron"
             ? "Updates are handled automatically by the desktop app. Check the system tray for update notifications, or restart the app to trigger a check."
-            : "Git is not available in this environment",
+            : mode === "lite"
+              ? "Download the latest No-Node Lite release, replace the extracted package, and restart the launcher."
+              : "Git is not available in this environment",
       });
     }
 

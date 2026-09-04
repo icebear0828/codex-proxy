@@ -73,7 +73,26 @@
 </details>
 
 <details>
-<summary><h3>方式二：Docker 部署</h3></summary>
+<summary><h3>方式二：No-Node Lite Browser/Server（高级用户）</h3></summary>
+
+No-Node Lite 是面向高级用户的额外发行版，不改变上面的 Electron 安装包。它保留同一套后端和前端资源，但不内置 Node.js，适合希望自行控制运行时或在没有图形界面的机器上运行服务的用户。正式制品使用 `codex-proxy-<版本>-no-node-lite-all-platforms.tar.xz`。解压后在包根目录运行对应入口：
+
+```bash
+# Windows：双击 codex-proxy.exe（无控制台并驻留托盘）；codex-proxy.cmd 始终作为脚本 fallback 保留
+# macOS/Linux：
+./codex-proxy.sh
+```
+
+Lite 默认使用与 Electron 相同的系统用户数据目录；只有显式传入
+`--portable`（简写为 `-p`）时，才使用发行包目录下的 `data/`。可以使用
+`--mode=server`（`-m server`）只启动服务、`--mode=browser` 强制使用浏览器，或在 Windows 上使用 `--mode=webview2` 强制使用 WebView2。`--host`、`--port`、`--webview2-host`、`--node-path` 的简写分别是 `-H`、`-P`、`-w`、`-n`。
+
+Windows 启动器会在 WebView2 不可用时回退到系统浏览器；原生 `codex-proxy.exe` 使用托盘运行，`codex-proxy.cmd` 作为诊断 fallback 保留。该版本要求 Node.js 20+，可通过 `--node-path PATH` 或 `-n PATH` 指定 Node。找不到 Node.js 时会显示安装指引，不会静默下载或捆绑 Node。Lite 的“检查更新”打开最新 Releases 页面，暂不自动覆盖正在运行的包。
+
+</details>
+
+<details>
+<summary><h3>方式三：Docker 部署</h3></summary>
 
 ```bash
 mkdir codex-proxy && cd codex-proxy
@@ -91,7 +110,7 @@ docker compose up -d
 </details>
 
 <details>
-<summary><h3>方式三：源码运行</h3></summary>
+<summary><h3>方式四：源码运行</h3></summary>
 
 ```bash
 git clone https://github.com/icebear0828/codex-proxy.git
@@ -811,11 +830,14 @@ server:
 
 Electron 桌面版的 `data/local.yaml` 路径：
 
-| 系统      | 路径                                                          |
-| ------- | ----------------------------------------------------------- |
-| macOS   | `~/Library/Application Support/Codex Proxy/data/local.yaml` |
-| Windows | `%APPDATA%/Codex Proxy/data/local.yaml`                     |
-| Linux   | `~/.config/Codex Proxy/data/local.yaml`                     |
+当前 Electron 构建的实际 `app.getPath("userData")` 目录名为
+`@codex-proxy/electron`；下面路径以该目录为准。
+
+| 系统 | 路径 |
+|------|------|
+| macOS | `~/Library/Application Support/@codex-proxy/electron/data/local.yaml` |
+| Windows | `%APPDATA%/@codex-proxy/electron/data/local.yaml` |
+| Linux | `~/.config/@codex-proxy/electron/data/local.yaml` |
 
 > ⚠️ 绑定 `0.0.0.0` 会将服务暴露到局域网，务必在 Dashboard → 密钥设置中配置强密钥。
 

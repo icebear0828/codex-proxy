@@ -28,6 +28,15 @@ describe("update modal auto-open policy", () => {
       showUpdateDialog: true,
     })).toBe(false);
   });
+
+  it("auto-opens for new Lite release updates", () => {
+    expect(shouldAutoOpenUpdateModal({
+      hasUpdate: true,
+      previousHasUpdate: false,
+      mode: "lite",
+      showUpdateDialog: true,
+    })).toBe(true);
+  });
 });
 
 describe("update dialog preference", () => {

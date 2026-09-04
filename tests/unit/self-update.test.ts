@@ -7,6 +7,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 // ── Mock variables (closure-based, safe across resetModules) ──────────
 
 const _isEmbedded = vi.fn(() => false);
+const _isLite = vi.fn(() => false);
 const _existsSync = vi.fn(() => true);
 const _readFileSync = vi.fn(() => JSON.stringify({ version: "1.0.0" }));
 const _execFileSync = vi.fn((): string => "");
@@ -16,7 +17,11 @@ const _mockConfig = {
 };
 
 vi.mock("@src/config.js", () => ({ getConfig: vi.fn(() => _mockConfig) }));
-vi.mock("@src/paths.js", () => ({ isEmbedded: _isEmbedded, getRootDir: () => "/mock" }));
+vi.mock("@src/paths.js", () => ({
+  isEmbedded: _isEmbedded,
+  isLite: _isLite,
+  getRootDir: () => "/mock",
+}));
 vi.mock("fs", () => ({ existsSync: _existsSync, readFileSync: _readFileSync, openSync: vi.fn(() => 99) }));
 vi.mock("child_process", () => ({
   execFile: vi.fn(),
@@ -46,6 +51,7 @@ describe("self-update", () => {
 
     // Default: non-embedded, .git exists, git works, package.json readable
     _isEmbedded.mockReturnValue(false);
+    _isLite.mockReturnValue(false);
     _existsSync.mockReturnValue(true);
     _readFileSync.mockReturnValue(JSON.stringify({ version: "1.0.0" }));
     _execFileSync.mockReturnValue("");
@@ -71,6 +77,13 @@ describe("self-update", () => {
       const { getDeployMode } = await importFresh();
       expect(getDeployMode()).toBe("docker");
     });
+
+    it("returns 'lite' for the No-Node Lite distribution", async () => {
+      _isLite.mockReturnValue(true);
+      _existsSync.mockReturnValue(false);
+      const { getDeployMode } = await importFresh();
+      expect(getDeployMode()).toBe("lite");
+    });
   });
 
   // ── getProxyInfo ──────────────────────────────────────────────────
@@ -88,6 +101,16 @@ describe("self-update", () => {
       _existsSync.mockReturnValue(false);
       const { getProxyInfo } = await importFresh();
       expect(getProxyInfo().version).toBeNull();
+    });
+
+    it("falls back to the Lite manifest when package.json is absent", async () => {
+      _readFileSync.mockImplementation((path) => {
+        if (String(path).endsWith("package.json")) throw new Error("ENOENT");
+        return JSON.stringify({ version: "2.0.77" });
+      });
+      _existsSync.mockReturnValue(false);
+      const { getProxyInfo } = await importFresh();
+      expect(getProxyInfo().version).toBe("2.0.77");
     });
 
     it("returns commit hash when git is available", async () => {
@@ -157,6 +180,12 @@ describe("self-update", () => {
   describe("canSelfUpdate", () => {
     it("returns false when embedded", async () => {
       _isEmbedded.mockReturnValue(true);
+      const { canSelfUpdate } = await importFresh();
+      expect(canSelfUpdate()).toBe(false);
+    });
+
+    it("returns false for Lite", async () => {
+      _isLite.mockReturnValue(true);
       const { canSelfUpdate } = await importFresh();
       expect(canSelfUpdate()).toBe(false);
     });
@@ -447,6 +476,41 @@ describe("self-update", () => {
         expect.stringMatching(/\/releases$/),
         expect.any(Object),
       );
+
+      vi.unstubAllGlobals();
+    });
+  });
+
+  // ── checkProxySelfUpdate (Lite mode) ──────────────────────────────
+
+  describe("checkProxySelfUpdate (Lite mode)", () => {
+    beforeEach(() => {
+      _mockConfig.update.allow_prerelease = false;
+    });
+
+    it("checks GitHub Releases without querying Docker or git", async () => {
+      _isLite.mockReturnValue(true);
+      _existsSync.mockReturnValue(false);
+      _readFileSync.mockReturnValue(JSON.stringify({ version: "1.0.0" }));
+      const mockFetch = vi.fn().mockResolvedValueOnce({
+        ok: true,
+        json: () => Promise.resolve({
+          tag_name: "v2.0.0",
+          body: "Lite release notes",
+          html_url: "https://github.com/icebear0828/codex-proxy/releases/tag/v2.0.0",
+          published_at: "2026-09-04T00:00:00Z",
+        }),
+      });
+      vi.stubGlobal("fetch", mockFetch);
+
+      const { checkProxySelfUpdate } = await importFresh();
+      const result = await checkProxySelfUpdate();
+      expect(result.mode).toBe("lite");
+      expect(result.updateAvailable).toBe(true);
+      expect(result.release?.version).toBe("2.0.0");
+      expect(result.release?.url).toContain("releases/tag/v2.0.0");
+      expect(mockFetch).toHaveBeenCalledTimes(1);
+      expect(String(mockFetch.mock.calls[0]?.[0])).toContain("api.github.com");
 
       vi.unstubAllGlobals();
     });

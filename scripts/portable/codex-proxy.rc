@@ -1,0 +1,3 @@
+#define IDI_APP_ICON 101
+
+IDI_APP_ICON ICON "codex-proxy.ico"
