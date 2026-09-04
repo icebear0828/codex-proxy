@@ -208,6 +208,9 @@ If you see streaming AI text, the setup is working. If you get 401, double-check
 
 | Model ID | Reasoning | Current context | Max context | Max output | Output | Description |
 |----------|-----------|-----------------|-------------|------------|--------|-------------|
+| `gpt-6-astra` | low / medium / high / xhigh / max / ultra | 1,050,000 | 1,050,000 | 128,000 | text | GPT-6 frontier flagship for complex reasoning & coding (`gpt-6` is an alias) |
+| `gpt-6-astra-aeon` | low / medium / high / xhigh / max / ultra | 1,050,000 | 1,050,000 | 128,000 | text | GPT-6 variant for long-horizon multi-agent tasks & deep reasoning |
+| `gpt-reserve` | low / medium / high / xhigh / max | 272,000 | 872,000 | 128,000 | text | Fast and affordable agentic coding model (all plans) |
 | `gpt-5.6-sol` | low / medium / high / xhigh / max / ultra | 1,050,000 | 1,050,000 | 128,000 | text | GPT-5.6 flagship for complex reasoning & coding (default; `gpt-5.6` is an alias) |
 | `gpt-5.6-terra` | low / medium / high / xhigh / max / ultra | 1,050,000 | 1,050,000 | 128,000 | text | GPT-5.6 balanced intelligence and cost |
 | `gpt-5.6-luna` | low / medium / high / xhigh / max / ultra | 1,050,000 | 1,050,000 | 128,000 | text | GPT-5.6 cost-efficient / high-throughput |

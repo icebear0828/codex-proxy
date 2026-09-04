@@ -122,6 +122,90 @@ const EFFORT_SUFFIXES = new Set(["none", "minimal", "low", "medium", "high", "xh
 /** ChatGPT UI selectors that are not valid Codex model IDs. */
 const CHATGPT_ONLY_MODEL_IDS = new Set(["auto"]);
 
+export const KNOWN_OFFICIAL_MODELS: ReadonlyMap<string, CodexModelInfo> = new Map<string, CodexModelInfo>([
+  [
+    "gpt-6-astra",
+    {
+      id: "gpt-6-astra",
+      displayName: "GPT-6 Astra",
+      description: "Flagship frontier model for complex reasoning, coding, and end-to-end agentic work.",
+      isDefault: false,
+      contextWindow: 1050000,
+      maxContextWindow: 1050000,
+      maxOutputTokens: 128000,
+      inputModalities: ["text", "image"],
+      outputModalities: ["text"],
+      supportedReasoningEfforts: [
+        { reasoningEffort: "low", description: "Fast responses with lighter reasoning" },
+        { reasoningEffort: "medium", description: "Balances speed and reasoning depth for everyday tasks" },
+        { reasoningEffort: "high", description: "Greater reasoning depth for complex problems" },
+        { reasoningEffort: "xhigh", description: "Extra high reasoning depth for complex problems" },
+        { reasoningEffort: "max", description: "Maximum reasoning depth for the hardest problems" },
+        { reasoningEffort: "ultra", description: "Maximum reasoning with automatic task delegation" },
+      ],
+      defaultReasoningEffort: "medium",
+      supportsPersonality: false,
+      upgrade: null,
+      source: "static",
+    },
+  ],
+  [
+    "gpt-6-astra-aeon",
+    {
+      id: "gpt-6-astra-aeon",
+      displayName: "GPT-6 Astra Aeon",
+      description: "Specialized variant for long-horizon multi-agent tasks and extended reasoning runs.",
+      isDefault: false,
+      contextWindow: 1050000,
+      maxContextWindow: 1050000,
+      maxOutputTokens: 128000,
+      inputModalities: ["text", "image"],
+      outputModalities: ["text"],
+      supportedReasoningEfforts: [
+        { reasoningEffort: "low", description: "Fast responses with lighter reasoning" },
+        { reasoningEffort: "medium", description: "Balances speed and reasoning depth for everyday tasks" },
+        { reasoningEffort: "high", description: "Greater reasoning depth for complex problems" },
+        { reasoningEffort: "xhigh", description: "Extra high reasoning depth for complex problems" },
+        { reasoningEffort: "max", description: "Maximum reasoning depth for the hardest problems" },
+        { reasoningEffort: "ultra", description: "Maximum reasoning with automatic task delegation" },
+      ],
+      defaultReasoningEffort: "high",
+      supportsPersonality: false,
+      upgrade: null,
+      source: "static",
+    },
+  ],
+  [
+    "gpt-reserve",
+    {
+      id: "gpt-reserve",
+      displayName: "GPT-Reserve",
+      description: "Fast and affordable agentic coding model.",
+      isDefault: false,
+      contextWindow: 272000,
+      maxContextWindow: 872000,
+      maxOutputTokens: 128000,
+      inputModalities: ["text", "image"],
+      outputModalities: ["text"],
+      supportedReasoningEfforts: [
+        { reasoningEffort: "low", description: "Fast responses with lighter reasoning" },
+        { reasoningEffort: "medium", description: "Balances speed and reasoning depth for everyday tasks" },
+        { reasoningEffort: "high", description: "Greater reasoning depth for complex problems" },
+        { reasoningEffort: "xhigh", description: "Extra high reasoning depth for complex problems" },
+        { reasoningEffort: "max", description: "Maximum reasoning depth for the hardest problems" },
+      ],
+      defaultReasoningEffort: "medium",
+      supportsPersonality: false,
+      upgrade: null,
+      source: "static",
+    },
+  ],
+]);
+
+export const BUILTIN_MODEL_ALIASES: Readonly<Record<string, string>> = {
+  "gpt-6": "gpt-6-astra",
+};
+
 function isAdmittedBackendModel(model: Pick<CodexModelInfo, "id">): boolean {
   return !CHATGPT_ONLY_MODEL_IDS.has(model.id);
 }
@@ -163,6 +247,22 @@ function normalizeAliases(input: Record<string, string> | undefined): Record<str
     if (key && value) aliases[key] = value;
   }
   return aliases;
+}
+
+/**
+ * Whether a model name matches the shape of an official Codex/OpenAI model,
+ * e.g. `gpt-6-astra`, `gpt-5.6-sol`, `gpt-oss-*`, `codex-mini`, `o1`/`o3`/`o4`.
+ *
+ * This is a *shape* check, not an allowlist. It lets newly released models that
+ * aren't in the local catalog yet be routed upstream without a per-model code
+ * change. Whether a given name is actually served is decided by the upstream
+ * backend. Mirrors the regex used in `UpstreamRouter#isKnownCodexModel` so both
+ * code paths agree on what is "official-looking".
+ */
+const OFFICIAL_MODEL_SHAPE = /^(?:gpt|codex|o\d[\w.-]*)/i;
+
+function isOfficialCodexShape(modelId: string): boolean {
+  return OFFICIAL_MODEL_SHAPE.test(modelId.trim());
 }
 
 // ── Class ────────────────────────────────────────────────────────────
@@ -269,6 +369,11 @@ export class ModelStore {
     const resolved = this.resolveAliasChain(trimmed);
     if (resolved !== trimmed) return resolved;
     if (this.catalog.some((m) => m.id === resolved)) return resolved;
+    // The bare `codex` sentinel means "use the default model", not a literal ID.
+    if (resolved === "codex") return this.defaultModelFn();
+    // Recognized-but-not-catalogued official models route as-is rather than
+    // silently falling back to the default model (shape check from #776).
+    if (isOfficialCodexShape(resolved)) return resolved;
     return this.defaultModelFn();
   }
 
@@ -276,7 +381,11 @@ export class ModelStore {
     const trimmed = input.trim();
     if (!trimmed) return false;
 
-    if (this.aliases[trimmed] || this.catalog.some((m) => m.id === trimmed)) {
+    if (
+      this.aliases[trimmed]
+      || this.catalog.some((m) => m.id === trimmed)
+      || isOfficialCodexShape(trimmed)
+    ) {
       return true;
     }
 
@@ -289,13 +398,17 @@ export class ModelStore {
     }
 
     return !!this.aliases[stripped.modelName]
-      || this.catalog.some((m) => m.id === stripped.modelName);
+      || this.catalog.some((m) => m.id === stripped.modelName)
+      || isOfficialCodexShape(stripped.modelName);
   }
 
   parseModelName(input: string): ParsedModelName {
     const trimmed = input.trim();
 
-    if (this.aliases[trimmed] || this.catalog.some((m) => m.id === trimmed)) {
+    if (
+      this.aliases[trimmed]
+      || this.catalog.some((m) => m.id === trimmed)
+    ) {
       return { modelId: this.resolveModelId(trimmed), serviceTier: null, reasoningEffort: null };
     }
 
@@ -313,11 +426,15 @@ export class ModelStore {
   }
 
   getModelInfo(modelId: string): CodexModelInfo | undefined {
-    return this.catalog.find((m) => m.id === modelId);
+    const key = BUILTIN_MODEL_ALIASES[modelId] ?? modelId;
+    return this.catalog.find((m) => m.id === key) ?? KNOWN_OFFICIAL_MODELS.get(key);
   }
 
   getModelCatalog(): CodexModelInfo[] {
-    return [...this.catalog];
+    const staticModels = [...KNOWN_OFFICIAL_MODELS.values()].filter(
+      (m) => !this.catalog.some((c) => c.id === m.id),
+    );
+    return [...this.catalog, ...staticModels];
   }
 
   getModelAliases(): Record<string, string> {
@@ -459,7 +576,7 @@ export class ModelStore {
     const seen = new Set<string>();
 
     for (let depth = 0; depth < 20; depth++) {
-      const target = this.aliases[current]?.trim();
+      const target = (this.aliases[current] ?? BUILTIN_MODEL_ALIASES[current])?.trim();
       if (!target) return current;
       if (seen.has(current) || seen.has(target)) return input.trim();
       seen.add(current);

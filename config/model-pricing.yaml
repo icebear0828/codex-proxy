@@ -53,6 +53,18 @@ models:
     input_usd_per_million: 0.2
     cached_input_usd_per_million: 0.02
     output_usd_per_million: 1.2
+  gpt-6-astra:
+    input_usd_per_million: 10
+    cached_input_usd_per_million: 1
+    output_usd_per_million: 50
+  gpt-6-astra-aeon:
+    input_usd_per_million: 10
+    cached_input_usd_per_million: 1
+    output_usd_per_million: 50
+  gpt-reserve:
+    input_usd_per_million: 0.2
+    cached_input_usd_per_million: 0.02
+    output_usd_per_million: 1.2
   gpt-image-2:
     input_usd_per_million: 5
     cached_input_usd_per_million: 1.25

@@ -66,6 +66,7 @@ import {
   getModelAliases,
   applyBackendModels,
   getModelPlanTypes,
+  KNOWN_OFFICIAL_MODELS,
   applyBackendModelsForPlan,
 } from "@src/models/model-store.js";
 
@@ -147,7 +148,7 @@ describe("ModelStore", () => {
   describe("loadStaticModels", () => {
     it("loads models from YAML", () => {
       const catalog = getModelCatalog();
-      expect(catalog.length).toBe(4);
+      expect(catalog.length).toBe(4 + KNOWN_OFFICIAL_MODELS.size);
       expect(catalog[0].id).toBe("gpt-5.4");
     });
 
@@ -204,7 +205,7 @@ aliases:
 
       loadStaticModels("/tmp/test-config");
 
-      expect(getModelCatalog().map((m) => m.id)).toEqual(["cached-only"]);
+      expect(getModelCatalog().map((m) => m.id)).toEqual(["cached-only", ...KNOWN_OFFICIAL_MODELS.keys()]);
       expect(getModelInfo("auto")).toBeUndefined();
       expect(getModelAliases()).toEqual({});
       expect(getModelInfo("cached-only")!.source).toBe("backend");
@@ -500,10 +501,31 @@ aliases: {}
       expect(isRecognizedModelName("local-simple-high-fast")).toBe(true);
     });
 
+    it("accepts known official models (gpt-6-astra, gpt-reserve) and aliases", () => {
+      expect(isRecognizedModelName("gpt-6-astra")).toBe(true);
+      expect(isRecognizedModelName("gpt-6-astra-aeon")).toBe(true);
+      expect(isRecognizedModelName("gpt-6-astra-high")).toBe(true);
+      expect(isRecognizedModelName("gpt-6-astra-ultra-fast")).toBe(true);
+      expect(isRecognizedModelName("gpt-6")).toBe(true);
+      expect(isRecognizedModelName("gpt-6-fast")).toBe(true);
+      expect(isRecognizedModelName("gpt-reserve")).toBe(true);
+      expect(isRecognizedModelName("gpt-reserve-high")).toBe(true);
+    });
+
     it("rejects unknown model names even with valid-looking suffixes", () => {
       expect(isRecognizedModelName("totally-unknown")).toBe(false);
       expect(isRecognizedModelName("totally-unknown-low")).toBe(false);
       expect(isRecognizedModelName("totally-unknown-high-fast")).toBe(false);
+    });
+
+    it("accepts official-shaped models not present in the catalog (e.g. gpt-6)", () => {
+      expect(isRecognizedModelName("gpt-6-astra")).toBe(true);
+      expect(isRecognizedModelName("gpt-6-astra-high-fast")).toBe(true);
+      expect(isRecognizedModelName("gpt-6")).toBe(true);
+      expect(isRecognizedModelName("gpt-6-fast")).toBe(true);
+      expect(isRecognizedModelName("gpt-reserve")).toBe(true);
+      expect(isRecognizedModelName("gpt-reserve-high")).toBe(true);
+      expect(isRecognizedModelName("o4-mini-high")).toBe(true);
     });
   });
 
@@ -528,15 +550,39 @@ aliases: {}
       expect(isRequestableModel("my-model-high")).toBe(true);
     });
 
-    it("rejects unknown model names", () => {
+    it("rejects empty and non-official-shaped model names", () => {
       expect(isRequestableModel("")).toBe(false);
-      expect(isRequestableModel("gpt-9999")).toBe(false);
       expect(isRequestableModel("totally-unknown-high-fast")).toBe(false);
-      expect(isRequestableModel("codex-foo")).toBe(false);
+    });
+
+    it("accepts any official-shaped model name (support decided upstream)", () => {
+      // Recognized-by-shape official models pass through to the upstream backend
+      // instead of being rejected here; support is decided at the edge.
+      expect(isRequestableModel("gpt-9999")).toBe(true);
+      expect(isRequestableModel("codex-foo")).toBe(true);
+      expect(isRequestableModel("o1")).toBe(true);
+      expect(isRequestableModel("o4-mini-high")).toBe(true);
+    });
+
+    it("accepts newly released gpt-6 family without static definitions", () => {
+      // gpt-6-astra / gpt-reserve are not in the catalog/aliases/custom, yet they
+      // must be requestable so clients aren't 404'd or silently downgraded.
+      expect(isRequestableModel("gpt-6-astra")).toBe(true);
+      expect(isRequestableModel("gpt-6-astra-high-fast")).toBe(true);
+      expect(isRequestableModel("gpt-6")).toBe(true);
+      expect(isRequestableModel("gpt-reserve")).toBe(true);
+      expect(resolveModelId("gpt-6-astra")).toBe("gpt-6-astra");
     });
   });
 
   describe("getModelInfo", () => {
+    it("returns model info for known official model gpt-6-astra", () => {
+      const info = getModelInfo("gpt-6-astra");
+      expect(info).toBeDefined();
+      expect(info!.displayName).toBe("GPT-6 Astra");
+      expect(info!.contextWindow).toBe(1_050_000);
+      expect(info!.maxOutputTokens).toBe(128_000);
+    });
     it("returns model info by ID", () => {
       const info = getModelInfo("gpt-5.4");
       expect(info).toBeDefined();
@@ -555,6 +601,15 @@ aliases: {}
 
     it("returns undefined for unknown ID", () => {
       expect(getModelInfo("nonexistent")).toBeUndefined();
+    });
+  });
+
+  describe("getModelCatalog", () => {
+    it("exposes static official models alongside the live catalog", () => {
+      const ids = getModelCatalog().map((m) => m.id);
+      expect(ids).toContain("gpt-6-astra");
+      expect(ids).toContain("gpt-6-astra-aeon");
+      expect(ids).toContain("gpt-reserve");
     });
   });
 
@@ -832,6 +887,7 @@ aliases: {}
 
       applyBackendModelsForPlan("team", []);
       expect(getModelPlanTypes("gpt-5.3-codex")).toEqual([]);
+      expect(isRecognizedModelName("gpt-5.3-codex")).toBe(true);
       expect(getModelInfo("gpt-5.3-codex")).toBeUndefined();
     });
   });

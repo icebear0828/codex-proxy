@@ -11,6 +11,7 @@
 ### Added
 
 - 新增可选 No-Node Lite Browser/Server 发行版：保留现有 Electron 安装包不变，额外提供 `codex-proxy-<版本>-no-node-lite-all-platforms.tar.xz`，包含后端、前端资源、各平台 native addon 和启动器，支持无图形界面的 server 模式以及浏览器模式；Windows 通过 MSYS2 MinGW 构建 x86/x64 WebView2 host，并可选携带 Evergreen Bootstrapper。（`scripts/portable/`、`.github/workflows/lite-ci.yml`、`.github/workflows/release.yml`）
+- 支持 OpenAI GPT-6 Astra 系列（`gpt-6-astra`、`gpt-6-astra-aeon` 及别名 `gpt-6`）与 GPT-Reserve（`gpt-reserve`）：内置静态模型元数据与推理级别定义（`/v1/models/catalog` 可见），`gpt-6` 别名解析到 `gpt-6-astra`，可路由性已由 #776 的名称形态放行覆盖；同步适配 1,050,000 上下文窗口、Ollama 桥接架构系列识别与官方定价估算（`src/models/model-store.ts`、`src/ollama/bridge.ts`、`config/model-pricing.yaml`、`README.md`）。
 - 重构 Dashboard UI 视觉体系与设置交互逻辑：
   - 移除窗口顶部菜单栏，并将窗口标题统一为「Codex Proxy」（`packages/electron/electron/main.ts`、`web/index.html`）。
   - 全局优化浅色与深色色彩体系及统一系统/等宽字体层级渲染（`web/src/index.css`、`web/tailwind.config.ts`）。
@@ -26,6 +27,10 @@
 - 为 `/v1/responses` 端点添加客户端 WebSocket 支持：接受 `ws://<host>:<port>/v1/responses` 的升级请求并用 Bearer 令牌鉴权，将客户端的 `response.create` 帧代理到现有上游 Codex WebSocket 并把响应事件以 JSON 流式回传；HTTP POST + SSE 仍作为回退保持不变，并在关闭路径中一并关闭该 WS 服务器。（#681）
 - 新增 E2E 测试覆盖账号 CRUD、管理员设置、Dashboard 登录三条关键 HTTP 路径（47 个新用例）：`tests/e2e/accounts.test.ts`（list / add / delete / reset-usage / label / cookies / batch-delete / batch-status / export / quota-warnings）、`tests/e2e/admin-settings.test.ts`（rotation / settings / general / quota 四组 GET+POST）、`tests/e2e/dashboard-login.test.ts`（login / logout / status + 速率限制）。（closes #376 partial）
 - Dashboard 新增侧栏导航布局，并支持在设置中切换回顶部标签栏旧版布局（`web/src/App.tsx`、`web/src/components/Sidebar.tsx`）。
+
+### Changed
+
+- 官方模型识别改为按名称形态前缀放行（`gpt*` / `codex*` / `oN*`），不再要求模型已收录于本地 catalog：当后端/账号尚未下发的新官方模型（如 `gpt-6-astra`）被客户端请求时，不再返回 `404 model_not_found` 或静默回退默认模型，而是按原名透传交由上游裁决；`resolveModelId` 对官方形态模型原样解析、不回退默认。边界保持不变：非官方形态的未知模型仍 `404`，裸 `codex` 哨兵仍解析为默认模型（`src/models/model-store.ts`）。
 
 ### Fixed
 
