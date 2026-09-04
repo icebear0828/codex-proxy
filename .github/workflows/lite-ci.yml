@@ -1,0 +1,205 @@
+name: Lite package CI
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  native:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            platform: linux
+          - os: macos-latest
+            platform: macos
+          - os: windows-latest
+            platform: windows
+
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    env:
+      # The repository contains AGENTS.md as a symlink. Hosted Windows
+      # runners may not enable symlink creation, so materialize it as a file.
+      GIT_CONFIG_COUNT: 1
+      GIT_CONFIG_KEY_0: core.symlinks
+      GIT_CONFIG_VALUE_0: ${{ matrix.platform != 'windows' && 'true' || 'false' }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: native/package-lock.json
+
+      - name: Setup Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install native dependencies
+        working-directory: native
+        run: npm ci
+
+      - name: Build native addon
+        working-directory: native
+        run: npm run build
+
+      - name: Upload native addon
+        uses: actions/upload-artifact@v4
+        with:
+          name: lite-ci-native-${{ matrix.platform }}
+          path: native/*.node
+          if-no-files-found: error
+          retention-days: 3
+
+  package:
+    needs: native
+    runs-on: windows-latest
+    timeout-minutes: 35
+    env:
+      GIT_CONFIG_COUNT: 1
+      GIT_CONFIG_KEY_0: core.symlinks
+      GIT_CONFIG_VALUE_0: false
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            web/package-lock.json
+            native/package-lock.json
+
+      - name: Install workspace dependencies
+        run: npm ci --ignore-scripts
+
+      - name: Install web frontend dependencies
+        run: cd web && npm ci
+
+      - name: Download native addons
+        uses: actions/download-artifact@v4
+        with:
+          pattern: lite-ci-native-*
+          path: native
+          merge-multiple: true
+
+      - name: Build core and shared server bundle
+        run: |
+          npm run build
+          npm --prefix packages/electron run build
+
+      - name: Setup MSYS2 Lite toolchains
+        id: msys2
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: UCRT64
+          update: true
+          install: >-
+            mingw-w64-ucrt-x86_64-gcc
+            mingw-w64-ucrt-x86_64-webview
+            mingw-w64-i686-gcc
+
+      - name: Build WebView2 hosts
+        shell: pwsh
+        env:
+          MSYS2_ROOT: ${{ steps.msys2.outputs.msys2-location }}
+        run: |
+          $hostDir = Join-Path $env:RUNNER_TEMP "codex-proxy-webview2"
+          New-Item -ItemType Directory -Force -Path $hostDir | Out-Null
+          node scripts/portable/build-webview2-host.mjs --arch x86 --out "$hostDir\win-x86\webview2-host.exe"
+          node scripts/portable/build-webview2-host.mjs --arch x64 --out "$hostDir\win-x64\webview2-host.exe"
+
+      - name: Download Evergreen WebView2 Bootstrapper
+        shell: pwsh
+        run: |
+          $path = Join-Path $env:RUNNER_TEMP "codex-proxy-webview2\MicrosoftEdgeWebView2Setup.exe"
+          node scripts/portable/download-webview2-bootstrapper.mjs --out $path
+
+      - name: Verify Evergreen WebView2 Bootstrapper signature
+        shell: pwsh
+        run: |
+          $path = Join-Path $env:RUNNER_TEMP "codex-proxy-webview2\MicrosoftEdgeWebView2Setup.exe"
+          $signature = Get-AuthenticodeSignature -LiteralPath $path
+          if ($signature.Status -ne "Valid") { throw "Invalid WebView2 Bootstrapper signature: $($signature.Status)" }
+          if ($signature.SignerCertificate.Subject -notmatch "Microsoft") { throw "Unexpected WebView2 Bootstrapper signer: $($signature.SignerCertificate.Subject)" }
+
+      - name: Build Lite tar.xz
+        env:
+          MSYS2_ROOT: ${{ steps.msys2.outputs.msys2-location }}
+          PORTABLE_REQUIRE_WINDOWS_EXE: "1"
+        run: |
+          $hostDir = Join-Path $env:RUNNER_TEMP "codex-proxy-webview2"
+          node scripts/portable/build-portable.mjs `
+            --webview2-host-x86 "$hostDir\win-x86\webview2-host.exe" `
+            --webview2-host-x64 "$hostDir\win-x64\webview2-host.exe" `
+            --webview2-bootstrapper "$hostDir\MicrosoftEdgeWebView2Setup.exe"
+
+      - name: Test generated Windows package
+        shell: pwsh
+        run: |
+          $archive = (Get-ChildItem portable-release\*.tar.xz | Select-Object -First 1).FullName
+          node scripts/portable/test-portable.mjs --archive $archive --require-windows-exe --require-webview2 --test-native-launcher
+
+      - name: Upload Lite artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: codex-proxy-lite-${{ github.run_number }}
+          path: portable-release/*.tar.xz
+          if-no-files-found: error
+          retention-days: 7
+
+  cross-platform:
+    needs: package
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            platform: linux
+            test-args: ""
+          - os: macos-latest
+            platform: darwin
+            test-args: ""
+          - os: windows-latest
+            platform: win32
+            test-args: "--require-windows-exe --require-webview2 --test-native-launcher"
+
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    env:
+      GIT_CONFIG_COUNT: 1
+      GIT_CONFIG_KEY_0: core.symlinks
+      GIT_CONFIG_VALUE_0: ${{ matrix.platform != 'win32' && 'true' || 'false' }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Download Lite package
+        uses: actions/download-artifact@v4
+        with:
+          name: codex-proxy-lite-${{ github.run_number }}
+          path: portable-release
+
+      - name: Test package on ${{ matrix.platform }}
+        shell: bash
+        run: |
+          archive="$(find portable-release -name '*.tar.xz' -print -quit)"
+          test -n "$archive"
+          node scripts/portable/test-portable.mjs --archive "$archive" ${{ matrix.test-args }}
