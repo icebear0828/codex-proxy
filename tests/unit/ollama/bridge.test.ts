@@ -141,9 +141,11 @@ describe("Ollama bridge routes", () => {
   });
 
   it.each([
+    ["gpt-6-astra", "gpt-6", 1050000],
     ["gpt-5.6-sol", "gpt-5.6", 1050000],
     ["gpt-5.5", "gpt-5.5", 400000],
     ["gpt-5.4-mini", "gpt-5.4", 400000],
+    ["gpt-reserve", "gpt-reserve", 872000],
   ])(
     "returns context metadata for %s and can suppress vision capability",
     async (model, architecture, contextLength) => {
