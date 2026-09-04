@@ -1108,26 +1108,26 @@ Codex Proxy 最初只是一个个人自用项目，一路走来收获了超乎�
 
 特别感谢所有通过代码、文档、修复或 PR 参与建设的贡献者：
 
-<p align="center">
-  <a href="https://github.com/SsuJojo"><img src="https://github.com/SsuJojo.png" width="50" height="50" alt="@SsuJojo" /></a>
-  <a href="https://github.com/TutuchanXD"><img src="https://github.com/TutuchanXD.png" width="50" height="50" alt="@TutuchanXD" /></a>
-  <a href="https://github.com/kanweiwei"><img src="https://github.com/kanweiwei.png" width="50" height="50" alt="@kanweiwei" /></a>
-  <a href="https://github.com/et2010"><img src="https://github.com/et2010.png" width="50" height="50" alt="@et2010" /></a>
-  <a href="https://github.com/d-demand-priv"><img src="https://github.com/d-demand-priv.png" width="50" height="50" alt="@d-demand-priv" /></a>
-  <a href="https://github.com/hangox"><img src="https://github.com/hangox.png" width="50" height="50" alt="@hangox" /></a>
-  <a href="https://github.com/jarvisluk"><img src="https://github.com/jarvisluk.png" width="50" height="50" alt="@jarvisluk" /></a>
-  <a href="https://github.com/jeasonstudio"><img src="https://github.com/jeasonstudio.png" width="50" height="50" alt="@jeasonstudio" /></a>
-  <a href="https://github.com/JPClaw12"><img src="https://github.com/JPClaw12.png" width="50" height="50" alt="@JPClaw12" /></a>
-  <a href="https://github.com/lezi-fun"><img src="https://github.com/lezi-fun.png" width="50" height="50" alt="@lezi-fun" /></a>
-  <a href="https://github.com/lookvincent"><img src="https://github.com/lookvincent.png" width="50" height="50" alt="@lookvincent" /></a>
-  <a href="https://github.com/pocper1"><img src="https://github.com/pocper1.png" width="50" height="50" alt="@pocper1" /></a>
-  <a href="https://github.com/woai66"><img src="https://github.com/woai66.png" width="50" height="50" alt="@woai66" /></a>
-  <a href="https://github.com/xsShuang"><img src="https://github.com/xsShuang.png" width="50" height="50" alt="@xsShuang" /></a>
-  <a href="https://github.com/yuwei5380"><img src="https://github.com/yuwei5380.png" width="50" height="50" alt="@yuwei5380" /></a>
-  <a href="https://github.com/aeltorio"><img src="https://github.com/aeltorio.png" width="50" height="50" alt="@aeltorio" /></a>
-  <a href="https://github.com/williamjameshandley"><img src="https://github.com/williamjameshandley.png" width="50" height="50" alt="@williamjameshandley" /></a>
-  <a href="https://github.com/FlavienKlr"><img src="https://github.com/FlavienKlr.png" width="50" height="50" alt="@FlavienKlr" /></a>
-  <a href="https://github.com/zyycn"><img src="https://github.com/zyycn.png" width="50" height="50" alt="@zyycn" /></a>
+<p>
+  <a href="https://github.com/SsuJojo"><img src="https://github.com/SsuJojo.png" width="50" height="50" style="border-radius:50%;border:2px solid #fff;object-fit:cover;" alt="@SsuJojo" /></a><!--
+  --><a href="https://github.com/TutuchanXD"><img src="https://github.com/TutuchanXD.png" width="50" height="50" style="border-radius:50%;border:2px solid #fff;margin-left:8px;" alt="@TutuchanXD" /></a><!--
+  --><a href="https://github.com/kanweiwei"><img src="https://github.com/kanweiwei.png" width="50" height="50" style="border-radius:50%;border:2px solid #fff;margin-left:-14px;" alt="@kanweiwei" /></a><!--
+  --><a href="https://github.com/et2010"><img src="https://github.com/et2010.png" width="50" height="50" style="border-radius:50%;border:2px solid #fff;margin-left:-14px;" alt="@et2010" /></a><!--
+  --><a href="https://github.com/d-demand-priv"><img src="https://github.com/d-demand-priv.png" width="50" height="50" style="border-radius:50%;border:2px solid #fff;margin-left:-14px;" alt="@d-demand-priv" /></a><!--
+  --><a href="https://github.com/hangox"><img src="https://github.com/hangox.png" width="50" height="50" style="border-radius:50%;border:2px solid #fff;margin-left:-14px;" alt="@hangox" /></a><!--
+  --><a href="https://github.com/jarvisluk"><img src="https://github.com/jarvisluk.png" width="50" height="50" style="border-radius:50%;border:2px solid #fff;margin-left:-14px;" alt="@jarvisluk" /></a><!--
+  --><a href="https://github.com/jeasonstudio"><img src="https://github.com/jeasonstudio.png" width="50" height="50" style="border-radius:50%;border:2px solid #fff;margin-left:-14px;" alt="@jeasonstudio" /></a><!--
+  --><a href="https://github.com/JPClaw12"><img src="https://github.com/JPClaw12.png" width="50" height="50" style="border-radius:50%;border:2px solid #fff;margin-left:-14px;" alt="@JPClaw12" /></a><!--
+  --><a href="https://github.com/lezi-fun"><img src="https://github.com/lezi-fun.png" width="50" height="50" style="border-radius:50%;border:2px solid #fff;margin-left:-14px;" alt="@lezi-fun" /></a><!--
+  --><a href="https://github.com/lookvincent"><img src="https://github.com/lookvincent.png" width="50" height="50" style="border-radius:50%;border:2px solid #fff;margin-left:-14px;" alt="@lookvincent" /></a><!--
+  --><a href="https://github.com/pocper1"><img src="https://github.com/pocper1.png" width="50" height="50" style="border-radius:50%;border:2px solid #fff;margin-left:-14px;" alt="@pocper1" /></a><!--
+  --><a href="https://github.com/woai66"><img src="https://github.com/woai66.png" width="50" height="50" style="border-radius:50%;border:2px solid #fff;margin-left:-14px;" alt="@woai66" /></a><!--
+  --><a href="https://github.com/xsShuang"><img src="https://github.com/xsShuang.png" width="50" height="50" style="border-radius:50%;border:2px solid #fff;margin-left:-14px;" alt="@xsShuang" /></a><!--
+  --><a href="https://github.com/yuwei5380"><img src="https://github.com/yuwei5380.png" width="50" height="50" style="border-radius:50%;border:2px solid #fff;margin-left:-14px;" alt="@yuwei5380" /></a><!--
+  --><a href="https://github.com/aeltorio"><img src="https://github.com/aeltorio.png" width="50" height="50" style="border-radius:50%;border:2px solid #fff;margin-left:-14px;" alt="@aeltorio" /></a><!--
+  --><a href="https://github.com/williamjameshandley"><img src="https://github.com/williamjameshandley.png" width="50" height="50" style="border-radius:50%;border:2px solid #fff;margin-left:-14px;" alt="@williamjameshandley" /></a><!--
+  --><a href="https://github.com/FlavienKlr"><img src="https://github.com/FlavienKlr.png" width="50" height="50" style="border-radius:50%;border:2px solid #fff;margin-left:-14px;" alt="@FlavienKlr" /></a><!--
+  --><a href="https://github.com/zyycn"><img src="https://github.com/zyycn.png" width="50" height="50" style="border-radius:50%;border:2px solid #fff;margin-left:-14px;" alt="@zyycn" /></a>
 </p>
 
 感谢所有在 [Issues](https://github.com/icebear0828/codex-proxy/issues) 里提交 bug 复现、日志、兼容性反馈和功能建议的用户。这些反馈直接推动了账号轮换、代理兼容、Dashboard、Ollama Bridge、模型兼容和错误观测等能力的迭代。
