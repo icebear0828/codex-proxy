@@ -16,6 +16,10 @@ jobs:
             platform: linux
           - os: macos-latest
             platform: macos
+            arch: arm64
+          - os: macos-15-intel
+            platform: macos
+            arch: x64
           - os: windows-latest
             platform: windows
 
@@ -53,7 +57,7 @@ jobs:
       - name: Upload native addon
         uses: actions/upload-artifact@v4
         with:
-          name: lite-ci-native-${{ matrix.platform }}
+          name: lite-ci-native-${{ matrix.platform }}-${{ matrix.arch || 'x64' }}
           path: native/*.node
           if-no-files-found: error
           retention-days: 3
