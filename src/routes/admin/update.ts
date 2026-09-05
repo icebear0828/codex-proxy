@@ -34,8 +34,8 @@ export function createUpdateRoutes(): Hono {
         update_in_progress: isProxyUpdateInProgress(),
       },
       codex: {
-        current_version: codexState?.current_version ?? null,
-        current_build: codexState?.current_build ?? null,
+        current_version: codexState?.current_version ?? config.client.app_version ?? null,
+        current_build: codexState?.current_build ?? config.client.build_number ?? null,
         latest_version: codexState?.latest_version ?? null,
         latest_build: codexState?.latest_build ?? null,
         update_available: codexState?.update_available ?? false,
