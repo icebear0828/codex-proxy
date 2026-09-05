@@ -20,6 +20,7 @@ function parseArgs(argv) {
     keep: false,
     requireWindowsExe: false,
     requireWebView2: false,
+    requireLinuxX64Musl: false,
     testNativeLauncher: false,
     skipRuntime: false,
   };
@@ -28,6 +29,7 @@ function parseArgs(argv) {
     if (arg === "--keep") options.keep = true;
     else if (arg === "--require-windows-exe") options.requireWindowsExe = true;
     else if (arg === "--require-webview2") options.requireWebView2 = true;
+    else if (arg === "--require-linux-x64-musl") options.requireLinuxX64Musl = true;
     else if (arg === "--test-native-launcher") options.testNativeLauncher = true;
     else if (arg === "--skip-runtime") options.skipRuntime = true;
     else if (arg === "--archive") options.archive = argv[++i];
@@ -201,6 +203,12 @@ function archiveContract(entries, extract, options) {
 
   const nativeFiles = [...files.keys()].filter((name) => name.startsWith("native/") && name.endsWith(".node"));
   assert(nativeFiles.length > 0, "Portable archive does not contain any native addon");
+  if (options.requireLinuxX64Musl) {
+    assert(
+      nativeFiles.includes("native/codex-tls.linux-x64-musl.node"),
+      "Portable archive is missing native/codex-tls.linux-x64-musl.node",
+    );
+  }
   const candidates = nativeCandidates(process.platform, process.arch);
   if (candidates.length > 0) {
     assert(

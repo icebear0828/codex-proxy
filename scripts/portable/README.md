@@ -113,6 +113,10 @@ download or execute Node.js or the WebView2 Runtime. The optional Bootstrapper
 is downloaded from Microsoft's official endpoint during packaging, checked as
 a Windows executable, and verified by the Windows CI job's Authenticode check.
 
+Linux x64 packages include both the glibc and musl TLS native addons. The musl
+variant is intended for Alpine and other musl-based distributions; the package
+does not currently include Linux ARM native addons.
+
 The Windows native launcher is a small x86 PE built with the MSYS2 MinGW-w64
 `mingw32` toolchain and the Windows GUI subsystem. It statically links the
 MinGW runtime and only imports normal Windows system DLLs, so the package does
@@ -146,3 +150,11 @@ also checks the platform/architecture-specific .node files. Unsupported
 architectures are covered by the loader contract test; they require a
 matching native build or emulator before they can be promoted to runtime
 smoke tests.
+
+The Linux x64 musl artifact can also be tested directly after an Alpine build:
+
+    node scripts/native/test-linux-x64-musl.mjs native/codex-tls.linux-x64-musl.node
+
+The packaged musl path is checked with:
+
+    node scripts/portable/test-linux-x64-musl.mjs --package-dir PATH
