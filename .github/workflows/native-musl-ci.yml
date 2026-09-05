@@ -2,9 +2,6 @@ name: Linux x64 musl native CI
 
 on:
   workflow_dispatch:
-  push:
-    branches:
-      - feat/native-linux-x64-musl
 
 permissions:
   contents: read
