@@ -1,0 +1,139 @@
+Codex Proxy 非商业许可 / Codex Proxy Non-Commercial Licence
+Version 1.0
+
+Copyright (c) 2026 Codex Proxy authors and contributors.
+各作者及贡献者保留其各自贡献的著作权。
+Each author and contributor retains copyright in their respective contributions.
+
+中文条款
+
+1. 适用范围
+
+本许可适用于 Codex Proxy 中未单独标明其他许可的源代码、文档及随附文件
+（以下统称“本软件”）。本许可仅授予相关著作权人有权授予的权利；第三方
+组件仍适用其各自的许可，本许可不替代或限制这些许可。
+
+2. 非商业授权
+
+在遵守本许可全部条款的前提下，您可免费为个人学习、非商业研究和非商业
+自用部署而使用、复制和修改本软件。您亦可为上述非商业目的分发本软件的
+原始版本或修改版本，但须遵守第 4 条。
+
+3. 禁止商业用途
+
+禁止将本软件或其修改版本用于任何形式的商业用途，包括但不限于：
+
+- 出售或转售本软件及其修改版本；
+- 利用本软件提供收费代理、收费 API、订阅或其他付费服务；
+- 将本软件集成到商业产品或商业服务中；
+- 利用本软件支持商业经营，或直接、间接获取商业利益或报酬。
+
+免费提供访问并不自动构成非商业用途；如果使用旨在支持商业经营或获取
+商业利益，仍属于禁止的商业用途。本许可不授予任何商业使用权。
+
+4. 保留声明与分发条件
+
+分发本软件或其修改版本时，必须随附本许可全文，并保留原有著作权、许可
+及免责声明。修改版本必须明确标明已作修改，不得冒充官方版本。分发时
+不得移除本软件的非商业限制，亦不得向接收者授予本许可未授予的权利。
+
+5. 第三方服务与名称
+
+本项目与 OpenAI 无关联，未获其背书或赞助。使用本软件不代表获得任何
+第三方账号、API、模型、内容或商标的权利。使用者须自行取得必要授权，
+遵守适用法律以及 OpenAI 和其他所使用服务的服务条款。
+
+6. 免责声明与责任限制
+
+在适用法律允许的最大范围内，本软件按“现状”和“可用”状态提供，作者及
+著作权人不作任何明示或默示保证，包括适销性、特定用途适用性、不侵权、
+持续可用性或无错误的保证。使用者自行承担使用风险。
+
+在适用法律允许的最大范围内，作者及著作权人不对因本软件或其使用、无法
+使用而产生的任何索赔、损失或其他责任承担责任，无论其基于合同、侵权或
+其他法律依据，包括账号受限、数据丢失、服务中断及经济损失。
+
+7. 终止与保留权利
+
+违反本许可时，本许可授予您的权利自动终止，您必须停止使用、复制、修改
+和分发本软件。本许可未明确授予的权利均予保留。本许可不限制适用法律
+规定的、无需著作权人许可即可行使的权利。
+
+8. 语言
+
+下列英文文本为中文条款的对应译文；如两种文本存在歧义或不一致，以中文
+条款为准。
+
+English Terms
+
+1. Scope
+
+This licence applies to the source code, documentation, and accompanying files
+of Codex Proxy that are not separately identified as subject to another licence
+(the "Software"). It grants only rights that the relevant copyright holders
+are entitled to grant. Third-party components remain subject to their own
+licences, which this licence does not replace or restrict.
+
+2. Non-commercial Permission
+
+Subject to all terms of this licence, you may use, copy, and modify the Software
+free of charge for personal learning, non-commercial research, and
+non-commercial self-hosted use. You may also distribute original or modified
+copies for those non-commercial purposes, subject to Section 4.
+
+3. Commercial Use Prohibited
+
+You may not use the Software or modified versions for any commercial purpose,
+including, without limitation:
+
+- Selling or reselling the Software or modified versions;
+- Operating paid proxy services, paid APIs, subscriptions, or other paid
+  services using the Software;
+- Integrating the Software into commercial products or services;
+- Using the Software to support commercial operations or to obtain commercial
+  benefit or compensation, directly or indirectly.
+
+Providing access free of charge does not by itself make a use non-commercial.
+Use intended to support commercial operations or obtain commercial benefit
+remains prohibited. This licence grants no commercial usage rights.
+
+4. Notices and Distribution Conditions
+
+When distributing the Software or modified versions, you must include this
+licence in full and retain existing copyright, licence, and disclaimer notices.
+Modified versions must be clearly identified as modified and must not be
+represented as official versions. You must not remove the Software's
+non-commercial restrictions or grant recipients rights not granted here.
+
+5. Third-party Services and Names
+
+This project is not affiliated with, endorsed by, or sponsored by OpenAI. Use of
+the Software grants no rights to third-party accounts, APIs, models, content,
+or trademarks. You must obtain necessary authorizations and comply with
+applicable laws and the terms of service of OpenAI and any other services used.
+
+6. Disclaimer and Limitation of Liability
+
+To the maximum extent permitted by applicable law, the Software is provided
+"as is" and "as available", without express or implied warranties, including
+warranties of merchantability, fitness for a particular purpose,
+non-infringement, continued availability, or error-free operation. You use the
+Software at your own risk.
+
+To the maximum extent permitted by applicable law, the authors and copyright
+holders are not liable for any claims, losses, or other liability arising from
+the Software or its use or inability to be used, whether in contract, tort, or
+otherwise, including account restrictions, data loss, service interruptions,
+and financial losses.
+
+7. Termination and Reserved Rights
+
+Your rights under this licence terminate automatically upon violation of its
+terms. You must then stop using, copying, modifying, and distributing the
+Software. All rights not expressly granted are reserved. This licence does not
+limit rights available under applicable law without copyright permission.
+
+8. Language
+
+These English terms are a translation of the Chinese terms above. In case of
+ambiguity or inconsistency between the two texts, the Chinese terms prevail.
