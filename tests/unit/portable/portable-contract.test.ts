@@ -5,6 +5,8 @@ import { resolve } from "node:path";
 const ROOT = resolve(import.meta.dirname, "../..", "..");
 const PORTABLE = resolve(ROOT, "scripts", "portable");
 const NATIVE_INDEX = resolve(ROOT, "native", "index.js");
+const NATIVE_PACKAGE = resolve(ROOT, "native", "package.json");
+const NATIVE_MUSL_TEST = resolve(ROOT, "scripts", "native", "test-linux-x64-musl.mjs");
 const RELEASE_WORKFLOW = resolve(ROOT, ".github", "workflows", "release.yml");
 const LITE_CI_WORKFLOW = resolve(ROOT, ".github", "workflows", "lite-ci.yml");
 
@@ -143,6 +145,22 @@ describe("No-Node Lite distribution contract", () => {
     expect(source).toContain("This package does not include Node.js.");
     expect(source).toContain("WebView2 mode is only available on Windows");
     expect(source).toContain("process.arch");
+    expect(source).toContain("--require-linux-x64-musl");
+    expect(source).toContain("native/codex-tls.linux-x64-musl.node");
+  });
+
+  it("defines and exercises the Linux x64 musl native build", () => {
+    const nativePackage = JSON.parse(readFileSync(NATIVE_PACKAGE, "utf8")) as {
+      scripts?: Record<string, string>;
+    };
+    expect(nativePackage.scripts?.["build:linux-x64-musl"]).toBe(
+      "napi build --platform --release --target x86_64-unknown-linux-musl --js false",
+    );
+
+    const source = readFileSync(NATIVE_MUSL_TEST, "utf8");
+    expect(source).toContain("codex-tls-musl-ok");
+    expect(source).toContain("httpGet");
+    expect(source).toContain("x86-64 ELF image");
   });
 
   it("covers the native dispatch targets supported by the runtime loader", () => {
@@ -198,6 +216,9 @@ describe("No-Node Lite distribution contract", () => {
 
   it("assembles one portable release asset from platform native artifacts", () => {
     const workflow = readFileSync(RELEASE_WORKFLOW, "utf8");
+    expect(workflow).toContain("native-musl:");
+    expect(workflow).toContain("build:linux-x64-musl");
+    expect(workflow).toContain("lite-native-linux-x64-musl");
     expect(workflow).toContain("Upload native addon for Lite package");
     expect(workflow).toContain("Download native addons from all release platforms");
     expect(workflow).toContain("PORTABLE_REQUIRE_WINDOWS_EXE: \"1\"");
@@ -220,6 +241,9 @@ describe("No-Node Lite distribution contract", () => {
     expect(workflow).toContain("MicrosoftEdgeWebView2Setup.exe");
     expect(workflow).toContain("test-portable.mjs");
     expect(workflow).toContain("cross-platform");
+    expect(workflow).toContain("native-musl:");
+    expect(workflow).toContain("build:linux-x64-musl");
+    expect(workflow).toContain("musl-smoke:");
     expect(workflow).toContain("macos-latest");
     expect(workflow).toContain("ubuntu-latest");
     expect(workflow).not.toContain("gh release upload");

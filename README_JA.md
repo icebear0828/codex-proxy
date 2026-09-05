@@ -86,7 +86,35 @@ ChatGPT アカウント（またはサードパーティ API プロバイダー�
 </details>
 
 <details>
-<summary><h3>方法 2: Docker デプロイ</h3></summary>
+<summary><h3>方法 2: No-Node Lite（ブラウザー/サーバー向け、上級者向け）</h3></summary>
+
+Node.js をすでにインストールしている場合や、サーバー・WSL などデスクトップ環境のない
+マシンで実行したい場合は、No-Node Lite を利用できます。Electron 版と同じバックエンドと
+ダッシュボードを使用しますが、Node.js は同梱しないため、配布ファイルが小さく、実行環境を
+自分で管理できます。Electron 版のインストーラーは変更されません。
+
+Releases から `codex-proxy-<version>-no-node-lite-all-platforms.tar.xz` をダウンロードして
+展開し、パッケージのルートで実行します。
+
+```bash
+# Windows: codex-proxy.exe をダブルクリック
+# macOS/Linux:
+./codex-proxy.sh
+```
+
+Node.js 20 以降が必要です。Windows では WebView2 を優先して使用し、利用できない場合は
+システムブラウザーで実際のサーバー URL を開きます。`--mode=server` はサーバーのみ、
+`--mode=browser` はブラウザー、`--mode=webview2` は WebView2 を明示的に指定します。
+`--portable`（`-p`）を指定すると設定とデータをパッケージ内に保存できます。
+
+Linux x64 版には glibc 用と musl 用の TLS native addon が含まれているため、一般的な Linux
+ディストリビューションと Alpine Linux で使用できます。Linux ARM など他の native アーキテクチャは
+現在含まれていません。
+
+</details>
+
+<details>
+<summary><h3>方法 3: Docker デプロイ</h3></summary>
 
 ```bash
 mkdir codex-proxy && cd codex-proxy
@@ -104,7 +132,7 @@ docker compose up -d
 </details>
 
 <details>
-<summary><h3>方法 3: ソースコードから実行</h3></summary>
+<summary><h3>方法 4: ソースコードから実行</h3></summary>
 
 ```bash
 git clone https://github.com/icebear0828/codex-proxy.git

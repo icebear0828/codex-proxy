@@ -86,7 +86,31 @@
 </details>
 
 <details>
-<summary><h3>方式二：Docker 部署</h3></summary>
+<summary><h3>方式二：No-Node Lite（瀏覽器／伺服器版，適合進階使用者）</h3></summary>
+
+如果您已安裝 Node.js，或需要在伺服器、WSL 等沒有桌面環境的機器上執行 Codex Proxy，
+可以使用 No-Node Lite。它使用與 Electron 版相同的後端與控制面板，但不內置 Node.js，
+因此套件更小，也方便您自行管理執行環境；上方的 Electron 安裝包不受影響。
+
+請從 Releases 下載 `codex-proxy-<version>-no-node-lite-all-platforms.tar.xz`，解壓後在套件根目錄執行：
+
+```bash
+# Windows：雙擊 codex-proxy.exe
+# macOS/Linux：
+./codex-proxy.sh
+```
+
+此版本需要 Node.js 20 或更新版本。Windows 會優先使用 WebView2；如果無法使用，便啟動服務並
+以系統瀏覽器開啟實際的服務網址。`--mode=server` 只啟動服務，`--mode=browser` 強制使用瀏覽器，
+`--mode=webview2` 強制使用 WebView2。指定 `--portable`（`-p`）可將設定與資料保存於套件目錄內。
+
+Linux x64 Lite 同時包含 glibc 與 musl TLS native addon，可用於常見 Linux 發行版及 Alpine Linux；
+目前不包含 Linux ARM 等其他 native 架構。
+
+</details>
+
+<details>
+<summary><h3>方式三：Docker 部署</h3></summary>
 
 ```bash
 mkdir codex-proxy && cd codex-proxy
@@ -104,7 +128,7 @@ docker compose up -d
 </details>
 
 <details>
-<summary><h3>方式三：源代碼運行</h3></summary>
+<summary><h3>方式四：源代碼運行</h3></summary>
 
 ```bash
 git clone https://github.com/icebear0828/codex-proxy.git

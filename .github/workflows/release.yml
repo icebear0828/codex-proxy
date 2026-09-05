@@ -281,8 +281,54 @@ jobs:
           # One gh invocation per platform instead of one HTTP/API cycle per file.
           gh release upload "$TAG" "${files[@]}" --clobber
 
+  native-musl:
+    needs: notes
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag || github.ref }}
+
+      - name: Build Linux x64 musl native addon
+        shell: bash
+        run: |
+          docker run --rm \
+            -v "$GITHUB_WORKSPACE/native:/build" \
+            -v "$GITHUB_WORKSPACE/scripts:/scripts:ro" \
+            -w /build \
+            ghcr.io/napi-rs/napi-rs/nodejs-rust:lts-alpine \
+            sh -lc 'set -eu; apk add --no-cache build-base linux-headers; rustup toolchain install 1.88.0 --profile minimal --no-self-update; rustup target add x86_64-unknown-linux-musl --toolchain 1.88.0; export RUSTUP_TOOLCHAIN=1.88.0; export CC_x86_64_unknown_linux_musl=gcc; export CXX_x86_64_unknown_linux_musl=g++; export AWS_LC_SYS_CC_x86_64_unknown_linux_musl=gcc; export AWS_LC_SYS_CXX_x86_64_unknown_linux_musl=g++; npm ci --include=dev --ignore-scripts --no-audit --no-fund; npm run build:linux-x64-musl; node /scripts/native/test-linux-x64-musl.mjs /build/codex-tls.linux-x64-musl.node'
+
+      - name: Inspect ELF dependencies
+        shell: bash
+        run: |
+          addon="native/codex-tls.linux-x64-musl.node"
+          test -f "$addon"
+          file_output="$(file "$addon")"
+          echo "$file_output"
+          echo "$file_output" | grep -Eq 'ELF 64-bit.*x86-64'
+          if readelf -d "$addon" | grep -Eq 'libc\.so\.6|ld-linux-x86-64\.so\.2'; then
+            echo "::error::musl addon unexpectedly depends on glibc"
+            exit 1
+          fi
+          if readelf --version-info "$addon" 2>/dev/null | grep -q 'GLIBC_'; then
+            echo "::error::musl addon contains a GLIBC symbol requirement"
+            exit 1
+          fi
+
+      - name: Upload native addon for Lite package
+        uses: actions/upload-artifact@v4
+        with:
+          name: lite-native-linux-x64-musl
+          path: native/codex-tls.linux-x64-musl.node
+          if-no-files-found: error
+          retention-days: 1
+
   build-lite:
-    needs: build
+    needs: [build, native-musl]
     runs-on: windows-latest
     timeout-minutes: 35
     env:
@@ -375,7 +421,7 @@ jobs:
         shell: pwsh
         run: |
           $archive = (Get-ChildItem portable-release\*.tar.xz | Select-Object -First 1).FullName
-          node scripts/portable/test-portable.mjs --archive $archive --require-windows-exe --require-webview2 --test-native-launcher
+          node scripts/portable/test-portable.mjs --archive $archive --require-windows-exe --require-webview2 --require-linux-x64-musl --test-native-launcher
 
       - name: Upload Lite artifact
         shell: bash

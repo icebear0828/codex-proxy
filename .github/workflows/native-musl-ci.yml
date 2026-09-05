@@ -1,0 +1,53 @@
+name: Linux x64 musl native CI
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - feat/native-linux-x64-musl
+
+permissions:
+  contents: read
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Build and load-test in Alpine
+        shell: bash
+        run: |
+          docker run --rm \
+            -v "$GITHUB_WORKSPACE:/workspace" \
+            -w /workspace/native \
+            ghcr.io/napi-rs/napi-rs/nodejs-rust:lts-alpine \
+            sh -lc 'set -eu; apk add --no-cache build-base linux-headers; rustup toolchain install 1.88.0 --profile minimal --no-self-update; rustup target add x86_64-unknown-linux-musl --toolchain 1.88.0; export RUSTUP_TOOLCHAIN=1.88.0; export CC_x86_64_unknown_linux_musl=gcc; export CXX_x86_64_unknown_linux_musl=g++; export AWS_LC_SYS_CC_x86_64_unknown_linux_musl=gcc; export AWS_LC_SYS_CXX_x86_64_unknown_linux_musl=g++; npm ci --include=dev --ignore-scripts --no-audit --no-fund; npm run build:linux-x64-musl; node /workspace/scripts/native/test-linux-x64-musl.mjs /workspace/native/codex-tls.linux-x64-musl.node'
+
+      - name: Inspect ELF dependencies on the runner
+        shell: bash
+        run: |
+          addon="native/codex-tls.linux-x64-musl.node"
+          test -f "$addon"
+          file_output="$(file "$addon")"
+          echo "$file_output"
+          echo "$file_output" | grep -Eq 'ELF 64-bit.*x86-64'
+          if readelf -d "$addon" | grep -Eq 'libc\.so\.6|ld-linux-x86-64\.so\.2'; then
+            echo "::error::musl addon unexpectedly depends on glibc"
+            exit 1
+          fi
+          if readelf --version-info "$addon" 2>/dev/null | grep -q 'GLIBC_'; then
+            echo "::error::musl addon contains a GLIBC symbol requirement"
+            exit 1
+          fi
+
+      - name: Upload tested addon
+        uses: actions/upload-artifact@v4
+        with:
+          name: codex-tls-linux-x64-musl
+          path: native/codex-tls.linux-x64-musl.node
+          if-no-files-found: error
+          retention-days: 3

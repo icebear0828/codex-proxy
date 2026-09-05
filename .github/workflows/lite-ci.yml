@@ -58,8 +58,51 @@ jobs:
           if-no-files-found: error
           retention-days: 3
 
+  native-musl:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Build Linux x64 musl native addon
+        shell: bash
+        run: |
+          docker run --rm \
+            -v "$GITHUB_WORKSPACE/native:/build" \
+            -v "$GITHUB_WORKSPACE/scripts:/scripts:ro" \
+            -w /build \
+            ghcr.io/napi-rs/napi-rs/nodejs-rust:lts-alpine \
+            sh -lc 'set -eu; apk add --no-cache build-base linux-headers; rustup toolchain install 1.88.0 --profile minimal --no-self-update; rustup target add x86_64-unknown-linux-musl --toolchain 1.88.0; export RUSTUP_TOOLCHAIN=1.88.0; export CC_x86_64_unknown_linux_musl=gcc; export CXX_x86_64_unknown_linux_musl=g++; export AWS_LC_SYS_CC_x86_64_unknown_linux_musl=gcc; export AWS_LC_SYS_CXX_x86_64_unknown_linux_musl=g++; npm ci --include=dev --ignore-scripts --no-audit --no-fund; npm run build:linux-x64-musl; node /scripts/native/test-linux-x64-musl.mjs /build/codex-tls.linux-x64-musl.node'
+
+      - name: Inspect ELF dependencies
+        shell: bash
+        run: |
+          addon="native/codex-tls.linux-x64-musl.node"
+          test -f "$addon"
+          file_output="$(file "$addon")"
+          echo "$file_output"
+          echo "$file_output" | grep -Eq 'ELF 64-bit.*x86-64'
+          if readelf -d "$addon" | grep -Eq 'libc\.so\.6|ld-linux-x86-64\.so\.2'; then
+            echo "::error::musl addon unexpectedly depends on glibc"
+            exit 1
+          fi
+          if readelf --version-info "$addon" 2>/dev/null | grep -q 'GLIBC_'; then
+            echo "::error::musl addon contains a GLIBC symbol requirement"
+            exit 1
+          fi
+
+      - name: Upload native addon
+        uses: actions/upload-artifact@v4
+        with:
+          name: lite-ci-native-linux-x64-musl
+          path: native/codex-tls.linux-x64-musl.node
+          if-no-files-found: error
+          retention-days: 3
+
   package:
-    needs: native
+    needs: [native, native-musl]
     runs-on: windows-latest
     timeout-minutes: 35
     env:
@@ -149,7 +192,7 @@ jobs:
         shell: pwsh
         run: |
           $archive = (Get-ChildItem portable-release\*.tar.xz | Select-Object -First 1).FullName
-          node scripts/portable/test-portable.mjs --archive $archive --require-windows-exe --require-webview2 --test-native-launcher
+          node scripts/portable/test-portable.mjs --archive $archive --require-windows-exe --require-webview2 --require-linux-x64-musl --test-native-launcher
 
       - name: Upload Lite artifact
         uses: actions/upload-artifact@v4
@@ -203,3 +246,42 @@ jobs:
           archive="$(find portable-release -name '*.tar.xz' -print -quit)"
           test -n "$archive"
           node scripts/portable/test-portable.mjs --archive "$archive" ${{ matrix.test-args }}
+
+  musl-smoke:
+    needs: package
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download Lite package
+        uses: actions/download-artifact@v4
+        with:
+          name: codex-proxy-lite-${{ github.run_number }}
+          path: portable-release
+
+      - name: Extract Lite package
+        shell: bash
+        run: |
+          archive="$(find portable-release -name '*.tar.xz' -print -quit)"
+          test -n "$archive"
+          package_dir="$RUNNER_TEMP/codex-proxy-lite-musl"
+          mkdir -p "$package_dir"
+          python3 - "$archive" "$package_dir" <<'PY'
+          import sys, tarfile
+
+          with tarfile.open(sys.argv[1], "r:xz") as archive:
+              archive.extractall(sys.argv[2])
+          PY
+
+      - name: Load musl addon in Alpine Node
+        shell: bash
+        run: |
+          docker run --rm \
+            -v "$GITHUB_WORKSPACE:/workspace:ro" \
+            -v "$RUNNER_TEMP/codex-proxy-lite-musl:/package:ro" \
+            -w /workspace \
+            ghcr.io/napi-rs/napi-rs/nodejs-rust:lts-alpine \
+            node scripts/portable/test-linux-x64-musl.mjs --package-dir /package

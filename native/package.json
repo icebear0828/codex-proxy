@@ -8,6 +8,7 @@
   },
   "scripts": {
     "build": "napi build --platform --release",
+    "build:linux-x64-musl": "napi build --platform --release --target x86_64-unknown-linux-musl --js false",
     "build-debug": "napi build --platform"
   },
   "devDependencies": {
