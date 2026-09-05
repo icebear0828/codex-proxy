@@ -1,6 +1,6 @@
 {
   "name": "codex-proxy",
-  "version": "2.0.77",
+  "version": "2.1.1",
   "description": "Reverse proxy that exposes Codex Desktop Responses API as OpenAI-compatible /v1/chat/completions",
   "type": "module",
   "workspaces": [
@@ -9,9 +9,9 @@
   "scripts": {
     "test": "vitest run",
     "test:watch": "vitest",
-    "test:unit": "vitest run --include 'tests/unit/**/*.test.ts'",
-    "test:e2e": "vitest run --include 'tests/e2e/**/*.test.ts'",
-    "test:integration": "vitest run --include 'tests/integration/**/*.test.ts'",
+    "test:unit": "vitest run tests/unit",
+    "test:e2e": "vitest run tests/e2e",
+    "test:integration": "vitest run tests/integration",
     "test:stress": "vitest run --config tests/vitest.config.ts",
     "test:real": "vitest run --config tests/real/vitest.config.ts",
     "test:web": "cd web && npx vitest run",
@@ -19,6 +19,11 @@
     "dev:web": "cd web && npx vite",
     "build:web": "cd web && npx vite build",
     "build": "npm run build:web && tsc",
+    "build:lite": "npm run build && npm --prefix packages/electron run build && node scripts/portable/build-portable.mjs",
+    "build:lite:webview2": "node scripts/portable/build-webview2-host.mjs",
+    "download:webview2-bootstrapper": "node scripts/portable/download-webview2-bootstrapper.mjs",
+    "pack:lite": "npm run build:lite",
+    "test:lite": "node scripts/portable/test-portable.mjs",
     "typecheck:scripts": "tsc -p tsconfig.scripts.json",
     "start": "node dist/index.js",
     "check-update": "tsx scripts/build/check-update.ts",

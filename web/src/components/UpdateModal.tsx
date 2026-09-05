@@ -14,7 +14,7 @@ const STEP_LABELS: Record<string, TranslationKey> = {
 interface UpdateModalProps {
   open: boolean;
   onClose: () => void;
-  mode: "git" | "docker" | "electron";
+  mode: "git" | "docker" | "electron" | "lite";
   commits: { hash: string; message: string }[];
   changelog: string | null;
   release: { version: string; body: string; url: string } | null;
@@ -200,7 +200,7 @@ export function UpdateModal({
                 </span>
               </div>
             ) : (
-              // electron mode: link to GitHub release page for manual download
+              // Electron and Lite modes: link to GitHub release page for manual download
               release?.url ? (
                 <a
                   href={release.url}
@@ -208,11 +208,11 @@ export function UpdateModal({
                   rel="noopener noreferrer"
                   class="px-4 py-2 text-xs font-semibold bg-primary-action text-white rounded-lg hover:bg-primary-action-hover transition-colors"
                 >
-                  {t("electronDownloadBtn")}
+                  {t(mode === "lite" ? "liteDownloadBtn" : "electronDownloadBtn")}
                 </a>
               ) : (
                 <span class="text-xs text-slate-500 dark:text-text-dim italic">
-                  {t("electronUpdateHint")}
+                  {t(mode === "lite" ? "liteUpdateHint" : "electronUpdateHint")}
                 </span>
               )
             )}

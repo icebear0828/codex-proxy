@@ -76,6 +76,7 @@ quota:
 update:
   auto_update: true
   show_update_dialog: false
+  allow_prerelease: false
 ollama:
   enabled: false
   host: 127.0.0.1

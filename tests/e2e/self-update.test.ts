@@ -53,6 +53,7 @@ vi.mock("fs", () => ({
 vi.mock("@src/paths.js", () => ({
   getRootDir: vi.fn(() => "/mock"),
   isEmbedded: vi.fn(() => false),
+  isLite: vi.fn(() => false),
   getConfigDir: vi.fn(() => "/tmp/e2e-update/config"),
   getDataDir: vi.fn(() => "/tmp/e2e-update/data"),
   getBinDir: vi.fn(() => "/tmp/e2e-update/bin"),

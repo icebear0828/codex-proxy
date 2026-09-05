@@ -37,6 +37,14 @@ export function createWebRoutes(
     await next();
   }, serveStatic({ root: publicDir }));
 
+  // Vite copies web/public/ (brand icon + favicon) to the build-output root;
+  // they are not content-hashed, so they do not fall under /assets/*. Serve
+  // them explicitly here, otherwise GET /icon.png (and /favicon.ico) 404s in
+  // production builds — dev works only because the Vite dev server serves
+  // web/public/ directly.
+  app.get("/icon.png", serveStatic({ root: publicDir }));
+  app.get("/favicon.ico", serveStatic({ root: publicDir }));
+
   app.get("/", (c) => {
     try {
       const html = readFileSync(webIndexPath, "utf-8");

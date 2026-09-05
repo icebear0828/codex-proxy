@@ -28,6 +28,7 @@ interface AccountListProps {
   fallbackUpstream?: FallbackUpstreamPublic | null;
   onUpdateFallbackUpstream?: (baseUrl: string, apiKey: string) => Promise<string | null>;
   onDeleteFallbackUpstream?: () => Promise<string | null>;
+  fallbackActive?: boolean;
 }
 
 const PAGE_SIZE = 10;
@@ -41,7 +42,7 @@ function getBrowserStorage(): Storage | null {
   }
 }
 
-export function AccountList({ accounts, loading, onDelete, onRefresh, refreshing, lastUpdated, proxies, onProxyChange, onExport, onImport, onToggleStatus, onUpdateLabel, onUpdateCodexFingerprintMode, fallbackUpstream, onUpdateFallbackUpstream, onDeleteFallbackUpstream }: AccountListProps) {
+export function AccountList({ accounts, loading, onDelete, onRefresh, refreshing, lastUpdated, proxies, onProxyChange, onExport, onImport, onToggleStatus, onUpdateLabel, onUpdateCodexFingerprintMode, fallbackUpstream, onUpdateFallbackUpstream, onDeleteFallbackUpstream, fallbackActive = false }: AccountListProps) {
   const t = useT();
   const { lang } = useI18n();
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
@@ -201,7 +202,18 @@ export function AccountList({ accounts, loading, onDelete, onRefresh, refreshing
   }, [accounts]);
 
   const updatedAtText = lastUpdated
-    ? lastUpdated.toLocaleTimeString(lang === "zh" ? "zh-CN" : "en-US", { hour: "2-digit", minute: "2-digit", second: "2-digit" })
+    ? lastUpdated.toLocaleTimeString(
+        lang === "zh"
+          ? "zh-CN"
+          : lang === "zh-TW"
+          ? "zh-TW"
+          : lang === "zh-HK"
+          ? "zh-HK"
+          : lang === "ja"
+          ? "ja-JP"
+          : "en-US",
+        { hour: "2-digit", minute: "2-digit", second: "2-digit" }
+      )
     : null;
 
   const activeCount = accounts.filter((a) => a.status === "active").length;
@@ -412,6 +424,7 @@ export function AccountList({ accounts, loading, onDelete, onRefresh, refreshing
             config={fallbackUpstream}
             onUpdate={onUpdateFallbackUpstream}
             onDelete={onDeleteFallbackUpstream}
+            active={fallbackActive}
           />
         )}
       </div>

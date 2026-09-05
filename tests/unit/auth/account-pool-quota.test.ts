@@ -122,6 +122,57 @@ describe("AccountPool quota methods", () => {
       const entry = pool.getEntry(id);
       expect(entry?.cachedQuota?.credits?.balance).toBe(42);
     });
+
+    it("preserves existing reset_credits_available when new quota lacks them (header-driven passive update)", () => {
+      const id = pool.addAccount(createValidJwt({ accountId: "reset-credits-1", planType: "plus" }));
+      pool.updateCachedQuota(id, makeQuota({
+        reset_credits_available: 2,
+      }));
+      pool.updateCachedQuota(id, makeQuota({
+        rate_limit: {
+          allowed: true,
+          limit_reached: false,
+          used_percent: 45,
+          reset_at: Math.floor(Date.now() / 1000) + 1800,
+          limit_window_seconds: 18000,
+        },
+      }));
+      const entry = pool.getEntry(id);
+      expect(entry?.cachedQuota?.reset_credits_available).toBe(2);
+      expect(entry?.cachedQuota?.rate_limit.used_percent).toBe(45);
+    });
+
+    it("preserves existing reset_credits_available when new quota explicitly carries null", () => {
+      const id = pool.addAccount(createValidJwt({ accountId: "reset-credits-null", planType: "plus" }));
+      pool.updateCachedQuota(id, makeQuota({
+        reset_credits_available: 3,
+      }));
+      pool.updateCachedQuota(id, makeQuota({
+        reset_credits_available: null,
+        rate_limit: {
+          allowed: true,
+          limit_reached: false,
+          used_percent: 50,
+          reset_at: Math.floor(Date.now() / 1000) + 1800,
+          limit_window_seconds: 18000,
+        },
+      }));
+      const entry = pool.getEntry(id);
+      expect(entry?.cachedQuota?.reset_credits_available).toBe(3);
+      expect(entry?.cachedQuota?.rate_limit.used_percent).toBe(50);
+    });
+
+    it("overwrites reset_credits_available when new quota explicitly provides a number (e.g. 0 after consume)", () => {
+      const id = pool.addAccount(createValidJwt({ accountId: "reset-credits-consume", planType: "plus" }));
+      pool.updateCachedQuota(id, makeQuota({
+        reset_credits_available: 1,
+      }));
+      pool.updateCachedQuota(id, makeQuota({
+        reset_credits_available: 0,
+      }));
+      const entry = pool.getEntry(id);
+      expect(entry?.cachedQuota?.reset_credits_available).toBe(0);
+    });
   });
 
   describe("applyRateLimit429 (replaces markQuotaExhausted)", () => {

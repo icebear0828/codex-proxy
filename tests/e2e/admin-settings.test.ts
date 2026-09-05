@@ -39,7 +39,7 @@ const mockConfig = {
     max_concurrent_per_account: 3 as number | null,
     request_interval_ms: 50 as number | null,
   },
-  update: { auto_update: true, auto_download: false, show_update_dialog: false },
+  update: { auto_update: true, auto_download: false, show_update_dialog: false, allow_prerelease: false },
   logs: { enabled: false, capacity: 2000, capture_body: false, llm_only: true },
   usage_stats: { history_retention_days: null as number | null, credits_per_usd: 25 },
   quota: {
@@ -205,6 +205,7 @@ describe("GET /admin/general-settings", () => {
     expect(body).toHaveProperty("max_concurrent_per_account");
     expect(body).toHaveProperty("logs_enabled");
     expect(body).toHaveProperty("auto_update");
+    expect(body).toHaveProperty("allow_prerelease");
     expect(body).toHaveProperty("model_aliases");
   });
 });

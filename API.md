@@ -1,9 +1,22 @@
 # Codex Proxy API Reference
 
+**English** | [简体中文](./API_CN.md) | [繁體中文 (台灣)](./API_TW.md) | [繁體中文 (香港)](./API_HK.md) | [日本語](./API_JA.md)
+
+---
+
 ## Authentication
 
-All proxy endpoints (chat/messages/responses) optionally accept `Authorization: Bearer {proxy_api_key}`.
-Dashboard UI uses cookie-based session (`_codex_session`).
+All proxy endpoints (chat / messages / gemini / responses / embeddings / images) accept the configured proxy API key:
+- Header: `Authorization: Bearer {proxy_api_key}`, `x-api-key: {proxy_api_key}`, or `x-goog-api-key: {proxy_api_key}`
+- Query parameter: `?key={proxy_api_key}`
+
+### Client Access Keys (Sub-keys)
+Clients can also authenticate with a granular Client Access Key created through the Admin API or Dashboard. Client keys support spending budgets (USD), token limits, concurrency caps, allowed model restrictions, and expiration times.
+- Client key self-service info endpoint: `GET /v1/sub-key/info` (requires `Authorization: Bearer {client_key}`).
+
+### Dashboard & Admin Auth
+- Dashboard UI uses cookie-based sessions (`_codex_session`).
+- Admin endpoints (`/admin/*`) require either a valid dashboard session or the Master Proxy API Key via `Authorization: Bearer {master_api_key}`.
 
 ---
 
@@ -15,7 +28,7 @@ OpenAI-compatible chat completion.
 ```jsonc
 // Request
 {
-  "model": "o4-mini",
+  "model": "gpt-5.6-sol",
   "messages": [{"role": "user", "content": "Hello"}],
   "stream": true,
   "reasoning_effort": "medium"  // optional: low | medium | high | xhigh
@@ -25,7 +38,7 @@ OpenAI-compatible chat completion.
 - Streaming: SSE with `choice.delta` events
 - Non-streaming: `{ id, choices, usage }`
 - Errors: `{ error: { message, type, code } }`
-- `max_tokens`, `max_completion_tokens`, and `max_output_tokens` are accepted for client compatibility but are not forwarded to Codex.
+- `max_tokens`, `max_completion_tokens`, and `max_output_tokens` are accepted for client compatibility but are not forwarded to native Codex backends.
 
 ### POST /v1/messages
 Anthropic Messages API compatible.
@@ -61,18 +74,18 @@ Google Gemini compatible.
 - Errors: `{ error: { code, message, status } }`
 
 ### POST /v1/responses
-Native Codex Responses API passthrough (WebSocket transport).
+Native Codex Responses API passthrough (HTTP POST + SSE).
 
 ```jsonc
 // Request
 {
-  "model": "o4-mini",
+  "model": "gpt-5.6-sol",
   "instructions": "You are helpful.",
   "input": [{"type": "message", "content": "Hello"}],
   "stream": true,
   "reasoning": {"effort": "medium"},
   "tools": [],
-  "previous_response_id": "resp_xxx"  // multi-turn
+  "previous_response_id": "resp_xxx"  // multi-turn conversation resume
 }
 ```
 
@@ -80,7 +93,48 @@ Native Codex Responses API passthrough (WebSocket transport).
 - Non-streaming: `{ response, usage, responseId }`
 - Do not send `max_output_tokens` to native Codex. The proxy accepts it only for compatibility and strips it, because the real Codex backend rejects it with `400 Unsupported parameter: max_output_tokens`.
 
-### Codex Responses API-key auxiliary endpoints
+### WebSocket /v1/responses
+Native Codex Responses API WebSocket transport (issue #681).
+
+Clients can connect via WebSocket to `ws://{host}:{port}/v1/responses` (or `wss://`) using standard authentication (e.g. `Authorization: Bearer {key}` header or `?key={key}` query param).
+
+- The socket remains open across multiple turns.
+- The client sends a `response.create` JSON payload frame.
+- The proxy executes the request and streams back the `data:` JSON payloads as individual WebSocket text frames.
+
+### POST /v1/images/generations
+OpenAI Images API compatible endpoint for image generation.
+
+```jsonc
+// Request
+{
+  "model": "gpt-image-2",
+  "prompt": "A scenic sunset over snow-capped mountains",
+  "size": "1024x1024",
+  "output_format": "png"
+}
+```
+
+- The proxy transforms image generation requests into Codex Responses `image_generation` tool calls routed to the configured `model.image_host_model` (default: `gpt-5.5`).
+- Returns OpenAI-compatible `{ created, data: [{ b64_json, revised_prompt }] }`.
+
+### POST /v1/embeddings
+OpenAI-compatible embeddings endpoint.
+
+```jsonc
+// Request
+{
+  "model": "text-embedding-3-small",
+  "input": "Your text string goes here"
+}
+```
+
+- Routed to third-party API keys configured with the `embeddings` capability.
+- Returns `{ object: "list", data: [{ object: "embedding", embedding: [...], index: 0 }], model, usage }`.
+
+---
+
+### Codex Responses API-Key Auxiliary Endpoints
 
 When the requested model resolves to an API-key provider with `wire=codex-responses`, the proxy also supports these non-streaming JSON endpoints:
 
@@ -95,10 +149,7 @@ Each endpoint requires a non-empty `model` in its JSON body and uses the existin
 
 #### image_generation tool
 
-Declare `{"type": "image_generation", ...}` in `tools[]` to let the model invoke
-the server-side image generation backend (`gpt-image-2`). Requires a **ChatGPT
-Plus or higher** account — free plans have the tool silently stripped upstream
-and the model falls back to returning SVG text.
+Declare `{"type": "image_generation", ...}` in `tools[]` to let the model invoke the server-side image generation backend (`gpt-image-2`). Requires a **ChatGPT Plus or higher** account — free plans have the tool silently stripped upstream and the model falls back to returning SVG text.
 
 **Supported fields** (all optional except `type`):
 
@@ -129,23 +180,11 @@ and the model falls back to returning SVG text.
    - `revised_prompt` — the final prompt the model actually used.
 5. `response.completed`.
 
-**Token accounting**: `response.completed.response.usage` reports the host
-model's tokens; the image_generation tool's own tokens come back separately as
-`response.completed.response.tool_usage.image_gen.{input_tokens, output_tokens, total_tokens}`.
-The proxy passes both through verbatim, and tracks them as separate counters
-on the dashboard (`total_image_input_tokens` / `total_image_output_tokens`) so
-image-gen usage doesn't pollute host-model token charts.
+**Token accounting**: `response.completed.response.usage` reports the host model's tokens; the image_generation tool's own tokens come back separately as `response.completed.response.tool_usage.image_gen.{input_tokens, output_tokens, total_tokens}`. The proxy passes both through verbatim, and tracks them as separate counters on the dashboard (`total_image_input_tokens` / `total_image_output_tokens`) so image-gen usage doesn't pollute host-model token charts.
 
-**Request accounting**: the proxy also counts each `image_generation` request
-as success or failure. `total_image_request_count` increments when the upstream
-returned a real image (non-zero `tool_usage.image_gen.output_tokens`);
-`total_image_request_failed_count` increments when the tool was silently
-stripped (Free plan), the upstream returned an error, or the response came
-back empty. Both surfaces in `/admin/usage-stats/summary` and the Dashboard's
-"Image Requests" card.
+**Request accounting**: the proxy also counts each `image_generation` request as success or failure. `total_image_request_count` increments when the upstream returned a real image (non-zero `tool_usage.image_gen.output_tokens`); `total_image_request_failed_count` increments when the tool was silently stripped (Free plan), the upstream returned an error, or the response came back empty. Both surfaces in `/admin/usage-stats/summary` and the Dashboard's "Image Requests" card.
 
-**Edit mode** (supply a reference image): put an `input_image` block in the user
-message content. `data:` URLs and HTTPS URLs both work.
+**Edit mode** (supply a reference image): put an `input_image` block in the user message content. `data:` URLs and HTTPS URLs both work.
 
 ```jsonc
 {
@@ -162,26 +201,17 @@ message content. `data:` URLs and HTTPS URLs both work.
 }
 ```
 
-Legal content-part types (from upstream enum validation): `input_text`,
-`input_image`, `output_text`, `refusal`, `input_file`, `computer_screenshot`,
-`summary_text`.
+Legal content-part types (from upstream enum validation): `input_text`, `input_image`, `output_text`, `refusal`, `input_file`, `computer_screenshot`, `summary_text`.
 
-OpenAI Chat compatibility accepts `tools: [{"type":"image_generation"}]`, but
-the stable image payload is exposed by `/v1/responses` as
-`image_generation_call.result`. Use `/v1/responses` for clients that need the
-base64 image bytes.
+OpenAI Chat compatibility accepts `tools: [{"type":"image_generation"}]`, but the stable image payload is exposed by `/v1/responses` as `image_generation_call.result`. Use `/v1/responses` or `POST /v1/images/generations` for clients that need the base64 image bytes.
+
+---
 
 ### Ollama-Compatible Bridge
 
-The optional bridge runs on a separate listener, defaulting to `http://127.0.0.1:11434`.
-It is disabled by default and can be controlled through Dashboard settings or the admin
-API. Ollama endpoints are intentionally unauthenticated; keep the listener bound to
-localhost unless you explicitly trust the network.
-Browser CORS access is restricted to loopback origins (`localhost`, `127.x.x.x`,
-and `::1`) so non-local web pages cannot read bridge responses by default. The
-bridge injects the configured Codex Proxy API key for `/v1/*` passthrough
-requests, so exposing it beyond localhost also exposes the main proxy API
-without requiring clients to know that key.
+The optional bridge runs on a separate listener, defaulting to `http://127.0.0.1:11434`. It is disabled by default and can be controlled through Dashboard settings or the admin API. Ollama endpoints are intentionally unauthenticated; keep the listener bound to localhost unless you explicitly trust the network.
+
+Browser CORS access is restricted to loopback origins (`localhost`, `127.x.x.x`, and `::1`) so non-local web pages cannot read bridge responses by default. The bridge injects the configured Codex Proxy API key for `/v1/*` passthrough requests, so exposing it beyond localhost also exposes the main proxy API without requiring clients to know that key.
 
 | Method | Path | Description |
 |--------|------|-------------|
@@ -220,12 +250,12 @@ Supported request mappings:
 
 | Method | Path | Description |
 |--------|------|-------------|
-| GET | `/v1/models` | List models (OpenAI format) |
-| GET | `/v1/models/catalog` | Full catalog with reasoning efforts |
+| GET | `/v1/models` | List models (OpenAI format, filtered by client key if applicable) |
+| GET | `/v1/models/catalog` | Full catalog with reasoning efforts and metadata |
 | GET | `/v1/models/:id` | Single model detail |
 | GET | `/v1/models/:id/info` | Extended model info |
 | GET | `/v1beta/models` | List models (Gemini format) |
-| POST | `/admin/refresh-models` | Force refresh from upstream |
+| POST | `/admin/refresh-models` | Force refresh models from upstream |
 
 Model catalog entries can include token metadata:
 
@@ -235,15 +265,32 @@ Model catalog entries can include token metadata:
 | `maxContextWindow` | Backend-provided maximum expandable context window, when reported |
 | `maxOutputTokens` | Static or backend-provided maximum output tokens for display and client hints |
 | `truncationPolicyLimit` | Backend-provided truncation policy limit, when reported |
+| `outputModalities` | Supported output modalities (e.g. `["text"]`, `["text", "image"]`) |
 
-Static catalog values are defined in `config/models.yaml`; dynamic entries from
-`/backend-api/codex/models` win when the same model ID is returned by upstream.
-The static GPT-5.6 family (`gpt-5.6-sol` / `gpt-5.6-terra` / `gpt-5.6-luna` /
-`gpt-5.6`) uses a 1,050,000 context window and 128,000 max output tokens.
-Earlier runtime samples still document `context_window=272000` for `gpt-5.5` /
-`gpt-5.4`, with `max_context_window=1000000` on `gpt-5.4`. Treat these as
-runtime Codex limits, not as proof that request-level context or max-token
-switches are supported.
+Static catalog values are defined in `config/models.yaml`; dynamic entries from `/backend-api/codex/models` take precedence when returned by upstream.
+
+---
+
+## Client Keys (Sub-keys) Management
+
+Client keys allow generating sub-keys with specific budgets, model access lists, token limits, concurrency caps, and expiration dates.
+
+### Self-Service Endpoint
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/v1/sub-key/info` | Query client key quota, remaining budget, allowed models, and usage |
+
+### Admin Management
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/admin/client-keys` | List all client keys (masked) with summary stats |
+| POST | `/admin/client-keys` | Create a new client key (`{ name, key?, expires_at?, max_budget_usd?, max_tokens?, max_concurrency?, allowed_models?, default_tools? }`) |
+| PUT | `/admin/client-keys/:id` | Update client key properties |
+| POST | `/admin/client-keys/:id/toggle` | Toggle key between `active` and `disabled` |
+| POST | `/admin/client-keys/:id/reset-usage` | Reset cost and token counters for a client key |
+| DELETE | `/admin/client-keys/:id` | Delete a client key |
 
 ---
 
@@ -253,33 +300,36 @@ switches are supported.
 
 | Method | Path | Description |
 |--------|------|-------------|
-| GET | `/auth/accounts` | List all accounts |
+| GET | `/auth/accounts` | List all accounts, persistence health, and fallback upstream status |
 | POST | `/auth/accounts` | Add single account (`{ token?, refreshToken? }`) |
 | DELETE | `/auth/accounts/:id` | Delete account |
 | PATCH | `/auth/accounts/:id/label` | Set label (`{ label }`) |
+| PATCH | `/auth/accounts/:id/codex-fingerprint` | Set account TLS fingerprint mode (`{ mode: "off" \| "session" }`) |
 
 ### Batch Operations
 
 | Method | Path | Description |
 |--------|------|-------------|
-| POST | `/auth/accounts/import` | Bulk import (`{ accounts: [{token?, refreshToken?, label?}] }`) |
-| POST | `/auth/accounts/batch-delete` | Bulk delete (`{ ids: [] }`) |
-| POST | `/auth/accounts/batch-status` | Bulk enable/disable (`{ ids: [], status: "active"\|"disabled" }`) |
+| POST | `/auth/accounts/import` | Bulk import accounts (`{ accounts: [{token?, refreshToken?, label?}] }` or raw text) |
+| POST | `/auth/accounts/batch-delete` | Bulk delete accounts (`{ ids: [] }`) |
+| POST | `/auth/accounts/batch-status` | Bulk enable/disable (`{ ids: [], status: "active" \| "disabled" }`) |
 
 ### Health & Quota
 
 | Method | Path | Description |
 |--------|------|-------------|
-| POST | `/auth/accounts/health-check` | Check accounts (`{ ids?, stagger_ms?, concurrency? }`) |
-| POST | `/auth/accounts/:id/refresh` | Refresh single account |
-| GET | `/auth/accounts/:id/quota` | Get quota/usage |
+| POST | `/auth/accounts/health-check` | Check accounts connectivity (`{ ids?, stagger_ms?, concurrency? }`) |
+| POST | `/auth/accounts/:id/refresh` | Refresh single account access token & status |
+| GET | `/auth/accounts/:id/quota` | Get quota & usage metrics |
 | POST | `/auth/accounts/:id/reset-usage` | Reset usage counters |
+| GET | `/auth/accounts/:id/reset-credits` | Get reset credits info |
+| POST | `/auth/accounts/:id/reset-credits/consume` | Consume reset credit (`{ redeem_request_id? }`) |
 
 ### Export
 
 | Method | Path | Description |
 |--------|------|-------------|
-| GET | `/auth/accounts/export` | Export accounts (`?ids=a,b&format=minimal`) |
+| GET | `/auth/accounts/export` | Export accounts (`?ids=a,b&format=minimal\|full\|csv\|token-key\|auth-json\|sub2api`) |
 
 ### Cookies (Cloudflare)
 
@@ -288,6 +338,36 @@ switches are supported.
 | GET | `/auth/accounts/:id/cookies` | Get stored cookies |
 | POST | `/auth/accounts/:id/cookies` | Set cookies (`{ cookies }`) |
 | DELETE | `/auth/accounts/:id/cookies` | Clear cookies |
+
+### Fallback Upstream API-Key
+
+The fallback upstream provides a last-resort API key destination when all OAuth accounts are expired, rate-limited, or unavailable.
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/auth/fallback-upstream` | Get fallback upstream configuration and status |
+| POST | `/auth/fallback-upstream` | Configure fallback upstream (`{ baseUrl, apiKey }`) |
+| PUT | `/auth/fallback-upstream` | Update fallback upstream (`{ baseUrl, apiKey? }`) |
+| DELETE | `/auth/fallback-upstream` | Clear fallback upstream configuration |
+
+---
+
+## Third-Party Provider API Keys
+
+Manage API keys for upstream providers (Anthropic, OpenAI, Gemini, OpenRouter, Custom).
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/auth/api-keys` | List configured provider API keys |
+| GET | `/auth/api-keys/catalog` | Get predefined model catalog for providers |
+| POST | `/auth/api-keys/models` | Fetch available models from upstream provider |
+| GET | `/auth/api-keys/export` | Export provider API keys for re-import |
+| POST | `/auth/api-keys/import` | Bulk import provider API keys (`{ keys: [] }`) |
+| POST | `/auth/api-keys` | Add single key binding (`{ provider, models, apiKey, baseUrl?, label?, capabilities?, wire? }`) |
+| POST | `/auth/api-keys/batch-delete` | Bulk delete provider API keys (`{ ids: [] }`) |
+| DELETE | `/auth/api-keys/:id` | Delete provider API key |
+| PATCH | `/auth/api-keys/:id/label` | Set label (`{ label }`) |
+| PATCH | `/auth/api-keys/:id/status` | Set status (`{ status: "active" \| "disabled" }`) |
 
 ---
 
@@ -300,9 +380,9 @@ switches are supported.
 | POST | `/auth/code-relay` | OAuth code exchange (`{ callbackUrl }`) |
 | GET | `/auth/callback` | OAuth callback handler |
 | POST | `/auth/device-login` | Start device code flow |
-| GET | `/auth/device-poll/:deviceCode` | Poll device authorization |
-| POST | `/auth/import-cli` | Import from Codex CLI auth.json |
-| POST | `/auth/token` | Manual token submit |
+| GET | `/auth/device-poll/:deviceCode` | Poll device authorization status |
+| POST | `/auth/import-cli` | Import from Codex CLI `auth.json` |
+| POST | `/auth/token` | Manual token submission |
 | GET | `/auth/status` | Auth status + pool summary |
 | POST | `/auth/logout` | Clear all accounts |
 
@@ -334,7 +414,7 @@ switches are supported.
 |--------|------|-------------|
 | GET | `/api/proxies/assignments` | List all assignments |
 | POST | `/api/proxies/assign` | Assign proxy to account (`{ accountId, proxyId }`) |
-| DELETE | `/api/proxies/assign/:accountId` | Unassign |
+| DELETE | `/api/proxies/assign/:accountId` | Unassign proxy from account |
 | POST | `/api/proxies/assign-bulk` | Bulk assign (`{ assignments: [] }`) |
 | POST | `/api/proxies/assign-rule` | Auto-assign by rule (`{ rule: "round-robin", ... }`) |
 
@@ -358,64 +438,62 @@ switches are supported.
 
 ## Admin & Settings
 
-### General
+### General Settings
 
 | Method | Path | Description |
 |--------|------|-------------|
-| GET | `/admin/general-settings` | Get all settings |
+| GET | `/admin/general-settings` | Get all server/tls/model/logs settings |
 | POST | `/admin/general-settings` | Update settings (returns `restart_required`) |
-| GET | `/admin/settings` | Get proxy API key |
-| POST | `/admin/settings` | Set proxy API key |
+| GET | `/admin/settings` | Get Master proxy API key |
+| POST | `/admin/settings` | Set Master proxy API key |
 | GET | `/admin/rotation-settings` | Get rotation strategy |
-| POST | `/admin/rotation-settings` | Set rotation strategy |
-| GET | `/admin/quota-settings` | Get quota settings |
-| POST | `/admin/quota-settings` | Set quota settings |
+| POST | `/admin/rotation-settings` | Set rotation strategy (`least_used` \| `round_robin` \| `sticky`) |
+| GET | `/admin/quota-settings` | Get quota skip & refresh settings |
+| POST | `/admin/quota-settings` | Set quota skip & refresh settings |
 | GET | `/admin/ollama-settings` | Get Ollama Bridge settings plus runtime status |
-| POST | `/admin/ollama-settings` | Persist Ollama Bridge settings and restart the bridge |
+| POST | `/admin/ollama-settings` | Persist Ollama Bridge settings and restart bridge |
 | GET | `/admin/ollama-status` | Get Ollama Bridge runtime status |
 
 ### Diagnostics
 
 | Method | Path | Description |
 |--------|------|-------------|
-| GET | `/health` | Health probe → `{ status, authenticated, pool }` |
-| POST | `/admin/test-connection` | Full connectivity diagnostics |
+| GET | `/health` | Health probe → `{ status, authenticated, pool, uptime_seconds }` |
+| POST | `/admin/test-connection` | Full connectivity diagnostics (server, accounts, transport, upstream) |
 | GET | `/debug/fingerprint` | TLS fingerprint config (localhost only) |
-| GET | `/debug/diagnostics` | System diagnostics (localhost only) |
+| GET | `/debug/diagnostics` | System diagnostics & paths (localhost only) |
 | GET | `/debug/models` | Model store internals |
 
-## Official Codex App Server Bridge
+### Request Logs
 
-Optional bridge to a local official `codex app-server` instance. This is the
-path for using official Codex app plugins such as the Chrome/browser plugin.
-It is disabled by default with `official_agent.enabled: false`.
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/admin/logs` | List captured request logs (`?limit=&offset=&direction=&search=`) |
+| GET | `/admin/logs/state` | Get logging store state (`enabled`, `paused`, `capacity`) |
+| POST | `/admin/logs/state` | Update logging state (`{ enabled?, paused? }`) |
+| POST | `/admin/logs/clear` | Clear all in-memory request logs |
+| GET | `/admin/logs/:id` | Get single log entry details |
 
-All endpoints require `official_agent.api_key`; the bridge refuses requests
-when the dedicated official-agent API key is not configured. Do not reuse
-`server.proxy_api_key` here, because this bridge can drive local app-server
-plugins and approval flows.
+### Error Logs
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/admin/error-logs` | Get grouped error logs |
+| GET | `/admin/error-logs/raw` | Get raw error log entries (`?limit=`) |
+| GET | `/admin/error-logs/count` | Get total and unread error counts |
+| POST | `/admin/error-logs/seen` | Mark error logs as read cursor |
+| DELETE | `/admin/error-logs` | Clear error logs |
+| POST | `/admin/error-logs/report` | Report client error (`{ source, error: { name, message, stack }, context? }`) |
+
+### Official Codex App Server Bridge
+
+Optional bridge to a local official `codex app-server` instance. Used for official Codex app plugins such as the Chrome/browser plugin. Disabled by default (`official_agent.enabled: false`). Requires dedicated `official_agent.api_key`.
 
 | Method | Path | Purpose |
 |--------|------|---------|
 | GET | `/official-agent/apps` | List official Codex apps/connectors from `app/list` |
 | POST | `/official-agent/threads` | Start an app-server thread (`{ model?, cwd? }`) |
 | POST | `/official-agent/threads/:threadId/turns` | Start a turn and stream app-server notifications as SSE |
-
-`approvalPolicy`, when provided on a turn, must be one of `untrusted`,
-`on-request`, `on-failure`, or `never`.
-
-Example turn using an official Chrome app mention:
-
-```json
-{
-  "text": "Open localhost:8080 and inspect the dashboard",
-  "app": { "id": "chrome", "name": "Chrome" }
-}
-```
-
-The bridge sends a text item plus a `mention` item with `path:
-"app://{id}"`. Use `/official-agent/apps` to discover the real app id before
-hard-coding one.
 
 ### Updates
 
@@ -429,8 +507,8 @@ hard-coding one.
 
 | Method | Path | Description |
 |--------|------|-------------|
-| GET | `/admin/usage-stats/summary` | Cumulative usage by account/model |
-| GET | `/admin/usage-stats/history` | Time-series data (`?granularity=hourly&hours=24`) |
+| GET | `/admin/usage-stats/summary` | Cumulative usage by account/model/client key |
+| GET | `/admin/usage-stats/history` | Time-series data (`?granularity=raw\|five_min\|hourly\|daily&hours=24\|all`) |
 
 ### Quota Warnings
 
@@ -438,15 +516,7 @@ hard-coding one.
 |--------|------|-------------|
 | GET | `/auth/quota/warnings` | Active quota warnings |
 
-When `quota.skip_exhausted` is enabled, account acquisition filters out active
-accounts whose cached quota has `rate_limit.limit_reached === true`,
-`secondary_rate_limit.limit_reached === true`, or
-`code_review_rate_limit.limit_reached === true`. This happens before session
-affinity, so `preferredEntryId` cannot keep a request on an exhausted account.
-Near-full quota such as `used_percent=99` is not skipped until upstream marks
-`limit_reached` or the account receives a 429 and enters `rate_limited` backoff.
-Secondary and code-review cache windows are cleared after their own `reset_at`
-passes.
+When `quota.skip_exhausted` is enabled, account acquisition filters out active accounts whose cached quota has `rate_limit.limit_reached === true`, `secondary_rate_limit.limit_reached === true`, or `code_review_rate_limit.limit_reached === true`. This happens before session affinity, so `preferredEntryId` cannot keep a request on an exhausted account. Near-full quota such as `used_percent=99` is not skipped until upstream marks `limit_reached` or the account receives a 429 and enters `rate_limited` backoff.
 
 ---
 

@@ -2,14 +2,14 @@
  * Proxy self-update — detects available updates in three deployment modes:
  * - CLI (git): git fetch + commit log
  * - Docker (no .git): GHCR registry tag list (checks actual published images)
- * - Electron (embedded): GitHub Releases API
+ * - Electron (embedded) / Lite: GitHub Releases API
  */
 
 import { execFile, execFileSync, spawn } from "child_process";
 import { existsSync, openSync, readFileSync } from "fs";
 import { resolve } from "path";
 import { promisify } from "util";
-import { getRootDir, isEmbedded } from "./paths.js";
+import { getRootDir, isEmbedded, isLite } from "./paths.js";
 import { getConfig } from "./config.js";
 
 // ── Restart ─────────────────────────────────────────────────────────
@@ -100,7 +100,7 @@ export interface GitHubReleaseInfo {
   publishedAt: string;
 }
 
-export type DeployMode = "git" | "docker" | "electron";
+export type DeployMode = "git" | "docker" | "electron" | "lite";
 
 export interface ProxySelfUpdateResult {
   commitsBehind: number;
@@ -146,11 +146,19 @@ export function getProxyInfo(): ProxyInfo {
       if (tag) tagVersion = tag.startsWith("v") ? tag.slice(1) : tag;
     } catch { /* no reachable tag */ }
 
-    try {
-      const pkg = JSON.parse(readFileSync(resolve(getRootDir(), "package.json"), "utf-8")) as { version?: string };
-      const v = pkg.version;
-      if (v && v !== "1.0.0") pkgVersion = v;
-    } catch { /* ignore */ }
+    for (const metadataPath of [
+      resolve(getRootDir(), "package.json"),
+      resolve(getRootDir(), "app", "manifest.json"),
+    ]) {
+      try {
+        const metadata = JSON.parse(readFileSync(metadataPath, "utf-8")) as { version?: string };
+        const v = metadata.version;
+        if (v && v !== "1.0.0") {
+          pkgVersion = v;
+          break;
+        }
+      } catch { /* try the next package metadata location */ }
+    }
 
     // Pick whichever is higher (tag on electron branch may be unreachable from master)
     if (tagVersion && pkgVersion) {
@@ -175,7 +183,7 @@ export function getProxyInfo(): ProxyInfo {
 
 /** Whether this environment supports git-based self-update. */
 export function canSelfUpdate(): boolean {
-  if (isEmbedded()) return false;
+  if (isEmbedded() || isLite()) return false;
   if (_gitAvailable !== null) return _gitAvailable;
 
   if (!existsSync(resolve(process.cwd(), ".git"))) {
@@ -200,6 +208,7 @@ export function canSelfUpdate(): boolean {
 /** Determine deployment mode. */
 export function getDeployMode(): DeployMode {
   if (isEmbedded()) return "electron";
+  if (isLite()) return "lite";
   if (canSelfUpdate()) return "git";
   return "docker";
 }
@@ -299,8 +308,17 @@ export async function checkDockerRegistryVersion(): Promise<string | null> {
       }
     }
 
+    let allowPrerelease = false;
+    try {
+      allowPrerelease = getConfig().update?.allow_prerelease ?? false;
+    } catch {
+      // config not loaded
+    }
+
     // Step 3: filter version tags and find highest
-    const VERSION_RE = /^v?(\d+\.\d+\.\d+)$/;
+    const VERSION_RE = allowPrerelease
+      ? /^v?(\d+\.\d+\.\d+(?:-beta\.[0-9a-zA-Z]+)?)$/
+      : /^v?(\d+\.\d+\.\d+)$/;
     let latest: string | null = null;
     for (const tag of allTags) {
       const m = VERSION_RE.exec(tag);
@@ -319,6 +337,38 @@ export async function checkDockerRegistryVersion(): Promise<string | null> {
 /** Check GitHub Releases API for the latest version. */
 async function checkGitHubRelease(): Promise<GitHubReleaseInfo | null> {
   try {
+    let allowPrerelease = false;
+    try {
+      allowPrerelease = getConfig().update?.allow_prerelease ?? false;
+    } catch {
+      // config not loaded
+    }
+
+    if (allowPrerelease) {
+      const resp = await fetch(`https://api.github.com/repos/${GITHUB_REPO}/releases`, {
+        headers: { Accept: "application/vnd.github.v3+json" },
+        signal: AbortSignal.timeout(15000),
+      });
+      if (!resp.ok) return null;
+      const list = await resp.json() as Array<{
+        tag_name?: string;
+        body?: string | null;
+        html_url?: string;
+        published_at?: string;
+        draft?: boolean;
+      }>;
+      if (!Array.isArray(list)) return null;
+      const target = list.find((item) => !item.draft);
+      if (!target) return null;
+      return {
+        version: String(target.tag_name ?? "").replace(/^v/, ""),
+        tag: String(target.tag_name ?? ""),
+        body: String(target.body ?? ""),
+        url: String(target.html_url ?? ""),
+        publishedAt: String(target.published_at ?? ""),
+      };
+    }
+
     const resp = await fetch(`https://api.github.com/repos/${GITHUB_REPO}/releases/latest`, {
       headers: { Accept: "application/vnd.github.v3+json" },
       signal: AbortSignal.timeout(15000),
@@ -427,7 +477,7 @@ export async function checkProxySelfUpdate(): Promise<ProxySelfUpdateResult> {
     return result;
   }
 
-  // Electron — GitHub Releases API
+  // Electron and Lite — GitHub Releases API
   const release = await checkGitHubRelease();
   let updateAvailable = release !== null
     && release.version !== currentVersion

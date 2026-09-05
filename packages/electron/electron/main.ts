@@ -43,64 +43,67 @@ if (!gotLock) {
 // ── macOS application menu ──────────────────────────────────────────
 
 function setupAppMenu(): void {
-  if (!IS_MAC) return;
+  if (IS_MAC) {
+    const template: Electron.MenuItemConstructorOptions[] = [
+      {
+        label: app.name,
+        submenu: [
+          { role: "about" },
+          { type: "separator" },
+          { role: "hide" },
+          { role: "hideOthers" },
+          { role: "unhide" },
+          { type: "separator" },
+          {
+            label: "Quit",
+            accelerator: "Command+Q",
+            click: () => quitApplication(),
+          },
+        ],
+      },
+      {
+        label: "Edit",
+        submenu: [
+          { role: "undo" },
+          { role: "redo" },
+          { type: "separator" },
+          { role: "cut" },
+          { role: "copy" },
+          { role: "paste" },
+          { role: "selectAll" },
+        ],
+      },
+      {
+        label: "View",
+        submenu: [
+          { role: "reload" },
+          { role: "forceReload" },
+          { role: "toggleDevTools" },
+          { type: "separator" },
+          { role: "resetZoom" },
+          { role: "zoomIn" },
+          { role: "zoomOut" },
+          { type: "separator" },
+          { role: "togglefullscreen" },
+        ],
+      },
+      {
+        label: "Window",
+        submenu: [
+          { role: "minimize" },
+          { role: "zoom" },
+          { type: "separator" },
+          { role: "front" },
+        ],
+      },
+    ];
 
-  const template: Electron.MenuItemConstructorOptions[] = [
-    {
-      label: app.name,
-      submenu: [
-        { role: "about" },
-        { type: "separator" },
-        { role: "hide" },
-        { role: "hideOthers" },
-        { role: "unhide" },
-        { type: "separator" },
-        {
-          label: "Quit",
-          accelerator: "Command+Q",
-          click: () => quitApplication(),
-        },
-      ],
-    },
-    {
-      label: "Edit",
-      submenu: [
-        { role: "undo" },
-        { role: "redo" },
-        { type: "separator" },
-        { role: "cut" },
-        { role: "copy" },
-        { role: "paste" },
-        { role: "selectAll" },
-      ],
-    },
-    {
-      label: "View",
-      submenu: [
-        { role: "reload" },
-        { role: "forceReload" },
-        { role: "toggleDevTools" },
-        { type: "separator" },
-        { role: "resetZoom" },
-        { role: "zoomIn" },
-        { role: "zoomOut" },
-        { type: "separator" },
-        { role: "togglefullscreen" },
-      ],
-    },
-    {
-      label: "Window",
-      submenu: [
-        { role: "minimize" },
-        { role: "zoom" },
-        { type: "separator" },
-        { role: "front" },
-      ],
-    },
-  ];
-
-  Menu.setApplicationMenu(Menu.buildFromTemplate(template));
+    Menu.setApplicationMenu(Menu.buildFromTemplate(template));
+  } else {
+    Menu.setApplicationMenu(null);
+  }
 }
+
 
 // ── App ready ────────────────────────────────────────────────────────
 
@@ -184,6 +187,19 @@ app.on("ready", async () => {
   }
 });
 
+function getAppIconPath(): string {
+  const baseDir = app.isPackaged
+    ? join(app.getAppPath(), "electron", "assets")
+    : join(__dirname, "..", "electron", "assets");
+  if (process.platform === "win32") {
+    const icoPath = join(baseDir, "icon.ico");
+    if (existsSync(icoPath)) return icoPath;
+  }
+  const pngPath = join(baseDir, "icon.png");
+  if (existsSync(pngPath)) return pngPath;
+  return "";
+}
+
 // ── Window ───────────────────────────────────────────────────────────
 
 function createWindow(): void {
@@ -195,12 +211,16 @@ function createWindow(): void {
     return;
   }
 
+  const iconPath = getAppIconPath();
+
   mainWindow = new BrowserWindow({
     width: 1100,
     height: 750,
     minWidth: 800,
     minHeight: 500,
     title: "Codex Proxy",
+    autoHideMenuBar: true,
+    ...(iconPath ? { icon: iconPath } : {}),
     // macOS: native hidden titlebar with traffic lights inset into content
     ...(IS_MAC
       ? {
@@ -214,6 +234,10 @@ function createWindow(): void {
     },
     show: false,
   });
+
+  if (!IS_MAC) {
+    mainWindow.setMenu(null);
+  }
 
   const port = serverHandle?.port ?? 8080;
   mainWindow.loadURL(`http://127.0.0.1:${port}/`);
@@ -334,12 +358,8 @@ function rebuildTrayMenu(): void {
 }
 
 function createTray(): void {
-  // In packaged mode: icon is inside asar at {app.asar}/electron/assets/icon.png
-  // In dev mode: relative to dist-electron/ → ../electron/assets/icon.png
-  const iconPath = app.isPackaged
-    ? join(app.getAppPath(), "electron", "assets", "icon.png")
-    : join(__dirname, "..", "electron", "assets", "icon.png");
-  let icon = existsSync(iconPath)
+  const iconPath = getAppIconPath();
+  let icon = iconPath && existsSync(iconPath)
     ? nativeImage.createFromPath(iconPath)
     : nativeImage.createEmpty();
 

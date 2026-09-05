@@ -117,7 +117,7 @@ export function AccountCard({ account, index, onDelete, proxies, onProxyChange, 
   const hasImageActivity = imageRequests > 0 || imageRequestsFailed > 0 || imageTokens > 0;
   const plan = account.planType || t("freeTier");
   const windowSec = account.quota?.rate_limit?.limit_window_seconds;
-  const windowDur = windowSec ? formatWindowDuration(windowSec, lang === "zh") : null;
+  const windowDur = windowSec ? formatWindowDuration(windowSec, lang) : null;
 
   const effectiveStatus = derivedStatus(account);
   const [statusCls, statusKey] = statusStyles[effectiveStatus] || statusStyles.disabled;
@@ -144,7 +144,7 @@ export function AccountCard({ account, index, onDelete, proxies, onProxyChange, 
         : pct >= 60
           ? "text-amber-600 dark:text-amber-500"
           : "text-primary";
-  const resetAt = rl?.reset_at ? formatResetTime(rl.reset_at, lang === "zh") : null;
+  const resetAt = rl?.reset_at ? formatResetTime(rl.reset_at, lang) : null;
 
   // Quota — secondary window (e.g. weekly)
   const srl = q?.secondary_rate_limit;
@@ -161,9 +161,9 @@ export function AccountCard({ account, index, onDelete, proxies, onProxyChange, 
         : sPct >= 60
           ? "text-amber-600 dark:text-amber-500"
           : "text-indigo-500";
-  const sResetAt = srl?.reset_at ? formatResetTime(srl.reset_at, lang === "zh") : null;
+  const sResetAt = srl?.reset_at ? formatResetTime(srl.reset_at, lang) : null;
   const sWindowSec = srl?.limit_window_seconds;
-  const sWindowDur = sWindowSec ? formatWindowDuration(sWindowSec, lang === "zh") : null;
+  const sWindowDur = sWindowSec ? formatWindowDuration(sWindowSec, lang) : null;
 
   // Quota — dedicated code review window
   const rrl = q?.code_review_rate_limit;
@@ -180,9 +180,9 @@ export function AccountCard({ account, index, onDelete, proxies, onProxyChange, 
         : rPct >= 60
           ? "text-amber-600 dark:text-amber-500"
           : "text-cyan-500";
-  const rResetAt = rrl?.reset_at ? formatResetTime(rrl.reset_at, lang === "zh") : null;
+  const rResetAt = rrl?.reset_at ? formatResetTime(rrl.reset_at, lang) : null;
   const rWindowSec = rrl?.limit_window_seconds;
-  const rWindowDur = rWindowSec ? formatWindowDuration(rWindowSec, lang === "zh") : null;
+  const rWindowDur = rWindowSec ? formatWindowDuration(rWindowSec, lang) : null;
   const additionalRateLimits = Object.values(q?.rate_limits_by_limit_id ?? {})
     .filter((bucket) => {
       const limitId = normalizedLimitName(bucket.limit_id);
@@ -649,12 +649,12 @@ export function AccountCard({ account, index, onDelete, proxies, onProxyChange, 
                   : bPct >= 60
                     ? "text-amber-600 dark:text-amber-500"
                     : "text-sky-500";
-            const bResetAt = bucket.reset_at ? formatResetTime(bucket.reset_at, lang === "zh") : null;
-            const bWindowDur = bucket.limit_window_seconds ? formatWindowDuration(bucket.limit_window_seconds, lang === "zh") : null;
+            const bResetAt = bucket.reset_at ? formatResetTime(bucket.reset_at, lang) : null;
+            const bWindowDur = bucket.limit_window_seconds ? formatWindowDuration(bucket.limit_window_seconds, lang) : null;
             const bSecondary = bucket.secondary_rate_limit;
             const bsPct = limitPercent(bSecondary);
-            const bsResetAt = bSecondary?.reset_at ? formatResetTime(bSecondary.reset_at, lang === "zh") : null;
-            const bsWindowDur = bSecondary?.limit_window_seconds ? formatWindowDuration(bSecondary.limit_window_seconds, lang === "zh") : null;
+            const bsResetAt = bSecondary?.reset_at ? formatResetTime(bSecondary.reset_at, lang) : null;
+            const bsWindowDur = bSecondary?.limit_window_seconds ? formatWindowDuration(bSecondary.limit_window_seconds, lang) : null;
 
             return (
               <div key={bucket.limit_id || bucket.limit_name}>

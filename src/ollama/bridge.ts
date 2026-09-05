@@ -54,6 +54,10 @@ class OllamaBridgeError extends Error {
 }
 
 const CONTEXT_WINDOW_OVERRIDES = new Map<string, number>([
+  // GPT-6 family (GA 2026-09-03) — 1 M token context window
+  ["gpt-6-astra", 1050000],
+  ["gpt-6-astra-aeon", 1050000],
+  ["gpt-6", 1050000],
   // GPT-5.6 family (GA 2026-07-09) — 1 M token context window
   ["gpt-5.6-sol", 1050000],
   ["gpt-5.6-terra", 1050000],
@@ -64,6 +68,7 @@ const CONTEXT_WINDOW_OVERRIDES = new Map<string, number>([
   ["gpt-5.4-pro", 400000],
   ["gpt-5.4-mini", 400000],
   ["gpt-5.4-nano", 400000],
+  ["gpt-reserve", 872000],
   ["gpt-5.3-codex", 272000],
   ["gpt-5.3-codex-spark", 272000],
   ["gpt-5.2", 272000],
@@ -119,6 +124,7 @@ function responseHeaders(init: HeadersInit, request?: Request, corsAllowNullOrig
 
 function inferFamily(modelId: string): string {
   const normalized = modelId.toLowerCase();
+  if (normalized.startsWith("gpt-6")) return "gpt-6";
   if (normalized.startsWith("gpt-5.6")) return "gpt-5.6";
   if (normalized.startsWith("gpt-5.5")) return "gpt-5.5";
   if (normalized.startsWith("gpt-5.4")) return "gpt-5.4";
@@ -126,6 +132,7 @@ function inferFamily(modelId: string): string {
   if (normalized.startsWith("gpt-5.2")) return "gpt-5.2";
   if (normalized.startsWith("gpt-5.1")) return "gpt-5.1";
   if (normalized.startsWith("gpt-oss")) return "gpt-oss";
+  if (normalized.startsWith("gpt-reserve")) return "gpt-reserve";
   if (normalized.startsWith("codex")) return "codex";
   return normalized.split(/[:/-]/, 1)[0] || normalized;
 }

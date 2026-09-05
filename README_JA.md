@@ -19,11 +19,14 @@
     <a href="#-利用可能なモデル">利用可能なモデル</a> &bull;
     <a href="#-クライアント設定">クライアント設定</a> &bull;
     <a href="#-設定ガイド">設定ガイド</a> &bull;
+    <a href="./API_JA.md">API リファレンス</a> &bull;
     <a href="#-謝辞と貢献者">謝辞と貢献者</a>
   </p>
 
   <p>
     <a href="./README.md">简体中文</a> |
+    <a href="./README_TW.md">繁體中文 (台湾)</a> |
+    <a href="./README_HK.md">繁體中文 (香港)</a> |
     <a href="./README_EN.md">English</a> |
     <strong>日本語</strong>
   </p>
@@ -149,6 +152,7 @@ AI からストリーミング応答が返ってくれば正常に動作して�
 - **Structured Outputs** — `response_format`（`json_object` / `json_schema`）および Gemini `responseMimeType` をサポート
 - **Function Calling** — 全プロトコルでネイティブな `function_call` / `tool_calls` をサポート
 - **サードパーティ API Key** — OpenAI / Anthropic / Gemini / OpenRouter / カスタム OpenAI 互換プロバイダーをサポートし、モデルごとのアップストリームルーティングに対応
+- 📖 完全なエンドポイント定義と仕様については **[API リファレンス](./API_JA.md)** を参照してください。
 
 ### 🔐 アカウント管理とスマートローテーション
 - **OAuth PKCE ログイン** — ブラウザからワンクリックで認証可能、手動での Token コピー不要
@@ -264,7 +268,7 @@ curl -N http://localhost:8080/v1/responses \
   }'
 ```
 
-主なパラメータ：`size`（1024×1024 / 1024×1536 / 1536×1024 / 2048×2048 / 2048×3072 / 3072×2048 / 3840×2160 / `auto` が指定可能）、`output_format`（`png` / `jpeg` / `webp`）、`output_compression`（jpeg / webp で調整可能）、`background`（`auto` / `opaque`）、`moderation`（`auto` / `low`）、`partial_images`（0–3）。1 回のリクエストで生成できる画像は 1 枚です（`n` は 1 固定）。リクエストの `model` フィールドに何を指定しても、アップストリームによって画像ツールの実際のモデル（現在は `gpt-image-2-codex`）に書き換えられます。詳細は [API.md](./API.md#image_generation-tool) を参照してください。
+主なパラメータ：`size`（1024×1024 / 1024×1536 / 1536×1024 / 2048×2048 / 2048×3072 / 3072×2048 / 3840×2160 / `auto` が指定可能）、`output_format`（`png` / `jpeg` / `webp`）、`output_compression`（jpeg / webp で調整可能）、`background`（`auto` / `opaque`）、`moderation`（`auto` / `low`）、`partial_images`（0–3）。1 回のリクエストで生成できる画像は 1 枚です（`n` は 1 固定）。リクエストの `model` フィールドに何を指定しても、アップストリームによって画像ツールの実際のモデル（現在は `gpt-image-2-codex`）に書き換えられます。詳細は [API_JA.md](./API_JA.md#image_generation-ツール) を参照してください。
 
 > **`size` は厳密なピクセル寸法を保証するものではありません。** プロキシはクライアントが指定した値をそのまま保持して送信しますが、アップストリーム側で `2048x2048`、`2K`、`4K` などの指定が `size: "auto"` に正規化され、実際の解像度が決定される場合があります。2026-08-10 の実機検証では、`size: "2048x2048"` を指定したツール設定が `auto` としてエコーされ、最終的な `image_generation_call.size` および PNG ピクセルはいずれも `1254x1254` となりました。そのため、本フィールドでネイティブかつ正確な 2K/4K 出力を得ることは保証できません。結果アイテムの `size` またはデコード後の画像ピクセルサイズを基準としてください。業務上正確な `2048x2048` ファイルが必要な場合は、生成後に補間処理や AI 超解像によるポストプロセスを実施してください。
 

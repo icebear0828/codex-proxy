@@ -22,6 +22,7 @@ import { discoverCodexAccountIdentity } from "../services/account-identity-resol
 import { AccountQueryService } from "../services/account-query.js";
 import { AccountMutationService } from "../services/account-mutation.js";
 import { FallbackUpstreamStore } from "../auth/fallback-upstream.js";
+import { getFallbackActivity } from "../auth/fallback-state.js";
 import { getProxyUrl as getRuntimeProxyUrl } from "../tls/proxy.js";
 import {
   buildAccountExportPayload,
@@ -209,7 +210,15 @@ export function createAccountRoutes(pool: AccountPool, scheduler: RefreshSchedul
     return c.json({
       configured: fallbackUpstream?.isConfigured() ?? false,
       config: fallbackUpstream?.getPublic() ?? null,
+      active: getFallbackActivity().active,
     });
+  });
+
+  // Lightweight poll target for the dashboard fallback indicator — lets the
+  // UI flash the "fallback" badge while requests are being served by a backup
+  // account / fallback upstream and revert once they stop.
+  app.get("/auth/fallback-upstream/status", (c) => {
+    return c.json(getFallbackActivity());
   });
 
   app.post("/auth/fallback-upstream", async (c) => {
@@ -300,6 +309,9 @@ export function createAccountRoutes(pool: AccountPool, scheduler: RefreshSchedul
     try {
       const api = new CodexApi(entry.token, entry.accountId, cookieJar, id, proxyPool?.resolveProxyUrl(id));
       const resetCredits = await api.getResetCredits();
+      if (typeof resetCredits.available_count === "number" && entry.cachedQuota) {
+        pool.updateCachedQuota(id, { ...entry.cachedQuota, reset_credits_available: resetCredits.available_count });
+      }
       return c.json(resetCredits);
     } catch (err) {
       if (isTokenInvalidError(err)) {
@@ -363,6 +375,11 @@ export function createAccountRoutes(pool: AccountPool, scheduler: RefreshSchedul
         pool.updateCachedQuota(id, quota);
       } catch {
         // quota cache not updated — caller can refresh manually via GET /auth/accounts/:id/quota
+        const currentQuota = pool.getEntry(id)?.cachedQuota;
+        if (currentQuota?.reset_credits_available && currentQuota.reset_credits_available > 0) {
+          quota = { ...currentQuota, reset_credits_available: currentQuota.reset_credits_available - 1 };
+          pool.updateCachedQuota(id, quota);
+        }
       }
       return c.json({ success: true, quota });
     } catch (err) {

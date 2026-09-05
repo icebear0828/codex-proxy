@@ -144,6 +144,7 @@ export function createSettingsRoutes(accountPool?: AccountPool): Hono {
       auto_update: config.update.auto_update,
       auto_download: config.update.auto_download,
       show_update_dialog: config.update.show_update_dialog,
+      allow_prerelease: config.update.allow_prerelease,
       logs_enabled: config.logs.enabled,
       logs_capacity: config.logs.capacity,
       logs_capture_body: config.logs.capture_body,
@@ -175,6 +176,7 @@ export function createSettingsRoutes(accountPool?: AccountPool): Hono {
       auto_update?: boolean;
       auto_download?: boolean;
       show_update_dialog?: boolean;
+      allow_prerelease?: boolean;
       logs_enabled?: boolean;
       logs_capacity?: number;
       logs_capture_body?: boolean;
@@ -391,6 +393,10 @@ export function createSettingsRoutes(accountPool?: AccountPool): Hono {
         if (!data.update) data.update = {};
         (data.update as Record<string, unknown>).show_update_dialog = body.show_update_dialog;
       }
+      if (body.allow_prerelease !== undefined) {
+        if (!data.update) data.update = {};
+        (data.update as Record<string, unknown>).allow_prerelease = body.allow_prerelease;
+      }
       if (body.logs_enabled !== undefined) {
         if (!data.logs) data.logs = {};
         (data.logs as Record<string, unknown>).enabled = body.logs_enabled;
@@ -452,6 +458,7 @@ export function createSettingsRoutes(accountPool?: AccountPool): Hono {
       auto_update: updated.update.auto_update,
       auto_download: updated.update.auto_download,
       show_update_dialog: updated.update.show_update_dialog,
+      allow_prerelease: updated.update.allow_prerelease,
       logs_enabled: updated.logs?.enabled ?? false,
       logs_capacity: updated.logs?.capacity ?? 2000,
       logs_capture_body: updated.logs?.capture_body ?? false,

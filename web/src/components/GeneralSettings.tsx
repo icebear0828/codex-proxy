@@ -1,8 +1,9 @@
-import { useState, useCallback } from "preact/hooks";
+import { useState, useCallback, useRef, useEffect } from "preact/hooks";
 import { useT } from "../../../shared/i18n/context";
 import { useGeneralSettings, type SystemPromptStrategy } from "../../../shared/hooks/use-general-settings";
 import { useSettings } from "../../../shared/hooks/use-settings";
 import { getLayoutMode, saveLayoutMode, type LayoutMode } from "../lib/layout-preferences";
+import { SettingItemControl } from "./settings/SettingItemControl";
 
 interface GeneralSettingsProps {
   layoutMode?: LayoutMode;
@@ -33,8 +34,22 @@ export function GeneralSettings({ layoutMode, onLayoutModeChange }: GeneralSetti
   const [draftAutoUpdate, setDraftAutoUpdate] = useState<boolean | null>(null);
   const [draftAutoDownload, setDraftAutoDownload] = useState<boolean | null>(null);
   const [draftShowUpdateDialog, setDraftShowUpdateDialog] = useState<boolean | null>(null);
+  const [draftAllowPrerelease, setDraftAllowPrerelease] = useState<boolean | null>(null);
   const [localLayoutMode, setLocalLayoutMode] = useState<LayoutMode>(() => getLayoutMode());
   const [collapsed, setCollapsed] = useState(true);
+
+  // Field-level saving / saved states. savingFields is keyed by field name so
+  // concurrent saves on different fields each keep their own spinner.
+  const [savingFields, setSavingFields] = useState<Record<string, boolean>>({});
+  const [savedFields, setSavedFields] = useState<Record<string, boolean>>({});
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string | null>>({});
+
+  const mountedRef = useRef(true);
+  useEffect(() => {
+    return () => {
+      mountedRef.current = false;
+    };
+  }, []);
 
   const currentPort = gs.data?.port ?? 8080;
   const currentProxyUrl = gs.data?.proxy_url ?? "";
@@ -56,6 +71,7 @@ export function GeneralSettings({ layoutMode, onLayoutModeChange }: GeneralSetti
   const currentAutoUpdate = gs.data?.auto_update ?? true;
   const currentAutoDownload = gs.data?.auto_download ?? false;
   const currentShowUpdateDialog = gs.data?.show_update_dialog ?? false;
+  const currentAllowPrerelease = gs.data?.allow_prerelease ?? false;
 
   const displayPort = draftPort ?? String(currentPort);
   const displayProxyUrl = draftProxyUrl ?? currentProxyUrl;
@@ -77,197 +93,660 @@ export function GeneralSettings({ layoutMode, onLayoutModeChange }: GeneralSetti
   const displayAutoUpdate = draftAutoUpdate ?? currentAutoUpdate;
   const displayAutoDownload = draftAutoDownload ?? currentAutoDownload;
   const displayShowUpdateDialog = draftShowUpdateDialog ?? currentShowUpdateDialog;
+  const displayAllowPrerelease = draftAllowPrerelease ?? currentAllowPrerelease;
   const displayLayoutMode = layoutMode ?? localLayoutMode;
 
   const handleLayoutModeChange = (mode: LayoutMode) => {
     setLocalLayoutMode(mode);
     saveLayoutMode(mode);
     onLayoutModeChange?.(mode);
+    setSavedFields((prev) => ({ ...prev, layoutMode: true }));
+    setTimeout(() => {
+      // Reset after the badge fades so the next change re-triggers it.
+      if (mountedRef.current) {
+        setSavedFields((prev) => ({ ...prev, layoutMode: false }));
+      }
+    }, 2000);
   };
 
-  const isDirty =
-    draftPort !== null ||
-    draftProxyUrl !== null ||
-    draftForceHttp11 !== null ||
-    draftInjectContext !== null ||
-    draftSuppressDirectives !== null ||
-    draftAllowSystemPromptStrategy !== null ||
-    draftSystemPromptStrategy !== null ||
-    draftDefaultModel !== null ||
-    draftImageHostModel !== null ||
-    draftReasoningEffort !== null ||
-    draftRefreshEnabled !== null ||
-    draftRefreshMargin !== null ||
-    draftRefreshConcurrency !== null ||
-    draftMaxConcurrent !== null ||
-    draftRequestInterval !== null ||
-    draftUsageHistoryRetention !== null ||
-    draftAutoUpdate !== null ||
-    draftAutoDownload !== null ||
-    draftShowUpdateDialog !== null;
-
-  const handleSave = useCallback(async () => {
-    const patch: Record<string, unknown> = {};
-
-    if (draftPort !== null) {
-      const val = parseInt(draftPort, 10);
-      if (isNaN(val) || val < 1 || val > 65535) return;
-      patch.port = val;
+  const saveSingleField = useCallback(async (fieldName: string, patch: Record<string, unknown>, resetDraft: () => void) => {
+    setSavingFields((prev) => ({ ...prev, [fieldName]: true }));
+    setFieldErrors((prev) => ({ ...prev, [fieldName]: null }));
+    try {
+      await gs.save(patch);
+      resetDraft();
+      setSavedFields((prev) => ({ ...prev, [fieldName]: true }));
+    } catch (err: unknown) {
+      setFieldErrors((prev) => ({ ...prev, [fieldName]: err instanceof Error ? err.message : String(err) }));
+    } finally {
+      setSavingFields((prev) => {
+        const next = { ...prev };
+        delete next[fieldName];
+        return next;
+      });
     }
+  }, [gs]);
 
-    if (draftProxyUrl !== null) {
-      patch.proxy_url = draftProxyUrl.trim() || null;
+  const handleSavePort = useCallback(() => {
+    if (draftPort === null) return;
+    const val = parseInt(draftPort, 10);
+    if (isNaN(val) || val < 1 || val > 65535) {
+      setFieldErrors((prev) => ({ ...prev, port: t("settingErrorPort") }));
+      return;
     }
+    saveSingleField("port", { port: val }, () => setDraftPort(null));
+  }, [draftPort, saveSingleField, t]);
 
-    if (draftForceHttp11 !== null) {
-      patch.force_http11 = draftForceHttp11;
+  const handleSaveProxyUrl = useCallback(() => {
+    if (draftProxyUrl === null) return;
+    saveSingleField("proxy_url", { proxy_url: draftProxyUrl.trim() || null }, () => setDraftProxyUrl(null));
+  }, [draftProxyUrl, saveSingleField]);
+
+  const handleSaveForceHttp11 = useCallback(() => {
+    if (draftForceHttp11 === null) return;
+    saveSingleField("force_http11", { force_http11: draftForceHttp11 }, () => setDraftForceHttp11(null));
+  }, [draftForceHttp11, saveSingleField]);
+
+  const handleSaveInjectContext = useCallback(() => {
+    if (draftInjectContext === null) return;
+    saveSingleField("inject_desktop_context", { inject_desktop_context: draftInjectContext }, () => setDraftInjectContext(null));
+  }, [draftInjectContext, saveSingleField]);
+
+  const handleSaveSuppressDirectives = useCallback(() => {
+    if (draftSuppressDirectives === null) return;
+    saveSingleField("suppress_desktop_directives", { suppress_desktop_directives: draftSuppressDirectives }, () => setDraftSuppressDirectives(null));
+  }, [draftSuppressDirectives, saveSingleField]);
+
+  const handleSaveAllowSystemPromptStrategy = useCallback(() => {
+    if (draftAllowSystemPromptStrategy === null) return;
+    saveSingleField("allow_client_system_prompt_strategy", { allow_client_system_prompt_strategy: draftAllowSystemPromptStrategy }, () => setDraftAllowSystemPromptStrategy(null));
+  }, [draftAllowSystemPromptStrategy, saveSingleField]);
+
+  const handleSaveSystemPromptStrategy = useCallback(() => {
+    if (draftSystemPromptStrategy === null) return;
+    saveSingleField("system_prompt_strategy", { system_prompt_strategy: draftSystemPromptStrategy }, () => setDraftSystemPromptStrategy(null));
+  }, [draftSystemPromptStrategy, saveSingleField]);
+
+  const handleSaveDefaultModel = useCallback(() => {
+    if (draftDefaultModel === null) return;
+    saveSingleField("default_model", { default_model: draftDefaultModel.trim() }, () => setDraftDefaultModel(null));
+  }, [draftDefaultModel, saveSingleField]);
+
+  const handleSaveImageHostModel = useCallback(() => {
+    if (draftImageHostModel === null) return;
+    saveSingleField("image_host_model", { image_host_model: draftImageHostModel.trim() }, () => setDraftImageHostModel(null));
+  }, [draftImageHostModel, saveSingleField]);
+
+  const handleSaveReasoningEffort = useCallback(() => {
+    if (draftReasoningEffort === null) return;
+    saveSingleField("default_reasoning_effort", { default_reasoning_effort: draftReasoningEffort === "" ? null : draftReasoningEffort }, () => setDraftReasoningEffort(null));
+  }, [draftReasoningEffort, saveSingleField]);
+
+  const handleSaveRefreshEnabled = useCallback(() => {
+    if (draftRefreshEnabled === null) return;
+    saveSingleField("refresh_enabled", { refresh_enabled: draftRefreshEnabled }, () => setDraftRefreshEnabled(null));
+  }, [draftRefreshEnabled, saveSingleField]);
+
+  const handleSaveRefreshMargin = useCallback(() => {
+    if (draftRefreshMargin === null) return;
+    const val = parseInt(draftRefreshMargin, 10);
+    if (isNaN(val) || val < 0) {
+      setFieldErrors((prev) => ({ ...prev, refresh_margin_seconds: t("settingErrorInvalidNumber") }));
+      return;
     }
+    saveSingleField("refresh_margin_seconds", { refresh_margin_seconds: val }, () => setDraftRefreshMargin(null));
+  }, [draftRefreshMargin, saveSingleField, t]);
 
-    if (draftInjectContext !== null) {
-      patch.inject_desktop_context = draftInjectContext;
+  const handleSaveRefreshConcurrency = useCallback(() => {
+    if (draftRefreshConcurrency === null) return;
+    const val = parseInt(draftRefreshConcurrency, 10);
+    if (isNaN(val) || val < 1) {
+      setFieldErrors((prev) => ({ ...prev, refresh_concurrency: t("settingErrorInvalidNumber") }));
+      return;
     }
+    saveSingleField("refresh_concurrency", { refresh_concurrency: val }, () => setDraftRefreshConcurrency(null));
+  }, [draftRefreshConcurrency, saveSingleField, t]);
 
-    if (draftSuppressDirectives !== null) {
-      patch.suppress_desktop_directives = draftSuppressDirectives;
+  const handleSaveMaxConcurrent = useCallback(() => {
+    if (draftMaxConcurrent === null) return;
+    const val = parseInt(draftMaxConcurrent, 10);
+    if (isNaN(val) || val < 1) {
+      setFieldErrors((prev) => ({ ...prev, max_concurrent_per_account: t("settingErrorInvalidNumber") }));
+      return;
     }
+    saveSingleField("max_concurrent_per_account", { max_concurrent_per_account: val }, () => setDraftMaxConcurrent(null));
+  }, [draftMaxConcurrent, saveSingleField, t]);
 
-    if (draftAllowSystemPromptStrategy !== null) {
-      patch.allow_client_system_prompt_strategy = draftAllowSystemPromptStrategy;
+  const handleSaveRequestInterval = useCallback(() => {
+    if (draftRequestInterval === null) return;
+    const val = parseInt(draftRequestInterval, 10);
+    if (isNaN(val) || val < 0) {
+      setFieldErrors((prev) => ({ ...prev, request_interval_ms: t("settingErrorInvalidNumber") }));
+      return;
     }
+    saveSingleField("request_interval_ms", { request_interval_ms: val }, () => setDraftRequestInterval(null));
+  }, [draftRequestInterval, saveSingleField, t]);
 
-    if (draftSystemPromptStrategy !== null) {
-      patch.system_prompt_strategy = draftSystemPromptStrategy;
+  const handleSaveUsageHistoryRetention = useCallback(() => {
+    if (draftUsageHistoryRetention === null) return;
+    const trimmed = draftUsageHistoryRetention.trim();
+    const val = trimmed === "" ? null : Number(trimmed);
+    if (val !== null && (!Number.isInteger(val) || val < 1)) {
+      setFieldErrors((prev) => ({ ...prev, usage_history_retention_days: t("settingErrorInvalidNumber") }));
+      return;
     }
+    saveSingleField("usage_history_retention_days", { usage_history_retention_days: val }, () => setDraftUsageHistoryRetention(null));
+  }, [draftUsageHistoryRetention, saveSingleField, t]);
 
-    if (draftDefaultModel !== null) {
-      patch.default_model = draftDefaultModel.trim();
-    }
+  const handleSaveAutoUpdate = useCallback(() => {
+    if (draftAutoUpdate === null) return;
+    saveSingleField("auto_update", { auto_update: draftAutoUpdate }, () => setDraftAutoUpdate(null));
+  }, [draftAutoUpdate, saveSingleField]);
 
-    if (draftImageHostModel !== null) {
-      patch.image_host_model = draftImageHostModel.trim();
-    }
+  const handleSaveAutoDownload = useCallback(() => {
+    if (draftAutoDownload === null) return;
+    saveSingleField("auto_download", { auto_download: draftAutoDownload }, () => setDraftAutoDownload(null));
+  }, [draftAutoDownload, saveSingleField]);
 
-    if (draftReasoningEffort !== null) {
-      patch.default_reasoning_effort = draftReasoningEffort === "" ? null : draftReasoningEffort;
-    }
+  const handleSaveShowUpdateDialog = useCallback(() => {
+    if (draftShowUpdateDialog === null) return;
+    saveSingleField("show_update_dialog", { show_update_dialog: draftShowUpdateDialog }, () => setDraftShowUpdateDialog(null));
+  }, [draftShowUpdateDialog, saveSingleField]);
 
-    if (draftRefreshEnabled !== null) {
-      patch.refresh_enabled = draftRefreshEnabled;
-    }
-
-    if (draftRefreshMargin !== null) {
-      const val = parseInt(draftRefreshMargin, 10);
-      if (isNaN(val) || val < 0) return;
-      patch.refresh_margin_seconds = val;
-    }
-
-    if (draftRefreshConcurrency !== null) {
-      const val = parseInt(draftRefreshConcurrency, 10);
-      if (isNaN(val) || val < 1) return;
-      patch.refresh_concurrency = val;
-    }
-
-    if (draftMaxConcurrent !== null) {
-      const val = parseInt(draftMaxConcurrent, 10);
-      if (isNaN(val) || val < 1) return;
-      patch.max_concurrent_per_account = val;
-    }
-
-    if (draftRequestInterval !== null) {
-      const val = parseInt(draftRequestInterval, 10);
-      if (isNaN(val) || val < 0) return;
-      patch.request_interval_ms = val;
-    }
-
-    if (draftUsageHistoryRetention !== null) {
-      const trimmed = draftUsageHistoryRetention.trim();
-      if (trimmed === "") {
-        patch.usage_history_retention_days = null;
-      } else {
-        const val = Number(trimmed);
-        if (!Number.isInteger(val) || val < 1) return;
-        patch.usage_history_retention_days = val;
-      }
-    }
-
-    if (draftAutoUpdate !== null) {
-      patch.auto_update = draftAutoUpdate;
-    }
-
-    if (draftAutoDownload !== null) {
-      patch.auto_download = draftAutoDownload;
-    }
-
-    if (draftShowUpdateDialog !== null) {
-      patch.show_update_dialog = draftShowUpdateDialog;
-    }
-
-    await gs.save(patch);
-    setDraftPort(null);
-    setDraftProxyUrl(null);
-    setDraftForceHttp11(null);
-    setDraftInjectContext(null);
-    setDraftSuppressDirectives(null);
-    setDraftAllowSystemPromptStrategy(null);
-    setDraftSystemPromptStrategy(null);
-    setDraftDefaultModel(null);
-    setDraftImageHostModel(null);
-    setDraftReasoningEffort(null);
-    setDraftRefreshEnabled(null);
-    setDraftRefreshMargin(null);
-    setDraftRefreshConcurrency(null);
-    setDraftMaxConcurrent(null);
-    setDraftRequestInterval(null);
-    setDraftUsageHistoryRetention(null);
-    setDraftAutoUpdate(null);
-    setDraftAutoDownload(null);
-    setDraftShowUpdateDialog(null);
-  }, [draftPort, draftProxyUrl, draftForceHttp11, draftInjectContext, draftSuppressDirectives, draftAllowSystemPromptStrategy, draftSystemPromptStrategy, draftDefaultModel, draftImageHostModel, draftReasoningEffort, draftRefreshEnabled, draftRefreshMargin, draftRefreshConcurrency, draftMaxConcurrent, draftRequestInterval, draftUsageHistoryRetention, draftAutoUpdate, draftAutoDownload, draftShowUpdateDialog, gs]);
+  const handleSaveAllowPrerelease = useCallback(() => {
+    if (draftAllowPrerelease === null) return;
+    saveSingleField("allow_prerelease", { allow_prerelease: draftAllowPrerelease }, () => setDraftAllowPrerelease(null));
+  }, [draftAllowPrerelease, saveSingleField]);
 
   const inputCls =
     "w-full px-3 py-2 bg-white dark:bg-bg-dark border border-gray-200 dark:border-border-dark rounded-lg text-[0.78rem] font-mono text-slate-700 dark:text-text-main outline-none focus:ring-1 focus:ring-primary";
 
   return (
-    <section class="bg-white dark:bg-card-dark border border-gray-200 dark:border-border-dark rounded-xl shadow-sm transition-colors">
-      <button
-        onClick={() => setCollapsed(!collapsed)}
-        class="w-full flex items-center justify-between p-5 cursor-pointer select-none"
-      >
-        <div class="flex items-center gap-2">
-          <svg class="size-5 text-primary" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-            <path stroke-linecap="round" stroke-linejoin="round" d="M9.594 3.94c.09-.542.56-.94 1.11-.94h2.593c.55 0 1.02.398 1.11.94l.213 1.281c.063.374.313.686.645.87.074.04.147.083.22.127.325.196.72.257 1.075.124l1.217-.456a1.125 1.125 0 011.37.49l1.296 2.247a1.125 1.125 0 01-.26 1.431l-1.003.827c-.293.241-.438.613-.43.992a7.723 7.723 0 010 .255c-.008.378.137.75.43.991l1.004.827c.424.35.534.955.26 1.43l-1.298 2.247a1.125 1.125 0 01-1.369.491l-1.217-.456c-.355-.133-.75-.072-1.076.124a6.47 6.47 0 01-.22.128c-.331.183-.581.495-.644.869l-.213 1.281c-.09.543-.56.941-1.11.941h-2.594c-.55 0-1.019-.398-1.11-.94l-.213-1.281c-.062-.374-.312-.686-.644-.87a6.52 6.52 0 01-.22-.127c-.325-.196-.72-.257-1.076-.124l-1.217.456a1.125 1.125 0 01-1.369-.49l-1.297-2.247a1.125 1.125 0 01.26-1.431l1.004-.827c.292-.24.437-.613.43-.991a6.932 6.932 0 010-.255c.007-.38-.138-.751-.43-.992l-1.004-.827a1.125 1.125 0 01-.26-1.43l1.297-2.247a1.125 1.125 0 011.37-.491l1.216.456c.356.133.751.072 1.076-.124.072-.044.146-.086.22-.128.332-.183.582-.495.644-.869l.214-1.28z" />
-            <path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-          </svg>
-          <h2 class="text-[0.95rem] font-bold">{t("generalSettings")}</h2>
+    <div class="space-y-6">
+      {/* 1. Service & Network */}
+      <section class="bg-white dark:bg-card-dark border border-gray-200 dark:border-border-dark rounded-xl shadow-sm overflow-hidden transition-colors">
+        <div class="px-5 py-4 border-b border-gray-100 dark:border-border-dark flex items-center justify-between">
+          <div class="flex items-center gap-2.5">
+            <div class="flex size-7 items-center justify-center rounded-lg bg-primary-container text-primary">
+              <svg class="size-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M12 21a9.004 9.004 0 008.716-6.747M12 21a9.004 9.004 0 01-8.716-6.747M12 21c2.485 0 4.5-4.03 4.5-9S14.485 3 12 3m0 18c-2.485 0-4.5-4.03-4.5-9S9.515 3 12 3m0 0a8.997 8.997 0 017.843 4.582M12 3a8.997 8.997 0 00-7.843 4.582m15.686 0A11.953 11.953 0 0112 10.5c-2.998 0-5.74-1.1-7.843-2.918m15.686 0A8.959 8.959 0 0121 12c0 .778-.099 1.533-.284 2.253m0 0A17.919 17.919 0 0112 16.5c-3.162 0-6.133-.815-8.716-2.247m0 0A9.015 9.015 0 013 12c0-1.605.42-3.113 1.157-4.418" />
+              </svg>
+            </div>
+            <h2 class="text-sm font-bold text-slate-800 dark:text-text-main">{t("settingsCategoryService")}</h2>
+          </div>
         </div>
-        <svg class={`size-5 text-slate-400 dark:text-text-dim transition-transform ${collapsed ? "" : "rotate-180"}`} viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <path stroke-linecap="round" stroke-linejoin="round" d="M19.5 8.25l-7.5 7.5-7.5-7.5" />
-        </svg>
-      </button>
 
-      {!collapsed && (
-        <div class="px-5 pb-5 border-t border-slate-100 dark:border-border-dark pt-4 space-y-4">
-          <div class="rounded-lg border border-primary/15 bg-primary/5 p-3 dark:bg-primary/10">
-            <div class="space-y-1.5">
-              <label for="dashboard-layout" class="text-xs font-semibold text-slate-700 dark:text-text-main">
-                {t("generalSettingsLayout")}
-              </label>
-              <p class="text-xs text-slate-500 dark:text-text-dim">{t("generalSettingsLayoutHint")}</p>
+        <div class="px-5 py-2">
+          {/* Server Port */}
+          <SettingItemControl
+            label={t("generalSettingsPort")}
+            hint={t("generalSettingsPortHint")}
+            isDirty={draftPort !== null && draftPort !== String(currentPort)}
+            saving={!!savingFields.port}
+            saved={savedFields.port}
+            error={fieldErrors.port}
+            requiresRestart={true}
+            onSave={handleSavePort}
+          >
+            <input
+              type="number"
+              min="1"
+              max="65535"
+              class={`${inputCls} max-w-[180px]`}
+              value={displayPort}
+              onInput={(e) => setDraftPort((e.target as HTMLInputElement).value)}
+              onKeyDown={(e) => { if (e.key === "Enter") handleSavePort(); }}
+            />
+          </SettingItemControl>
+
+          {/* Upstream Proxy */}
+          <SettingItemControl
+            label={t("generalSettingsProxyUrl")}
+            hint={t("generalSettingsProxyUrlHint")}
+            isDirty={draftProxyUrl !== null && draftProxyUrl !== currentProxyUrl}
+            saving={!!savingFields.proxy_url}
+            saved={savedFields.proxy_url}
+            error={fieldErrors.proxy_url}
+            requiresRestart={true}
+            onSave={handleSaveProxyUrl}
+          >
+            <input
+              type="text"
+              class={inputCls}
+              value={displayProxyUrl}
+              onInput={(e) => setDraftProxyUrl((e.target as HTMLInputElement).value)}
+              onKeyDown={(e) => { if (e.key === "Enter") handleSaveProxyUrl(); }}
+              placeholder="socks5://127.0.0.1:1080"
+            />
+          </SettingItemControl>
+
+          {/* Force HTTP/1.1 */}
+          <SettingItemControl
+            label={t("generalSettingsForceHttp11")}
+            hint={t("generalSettingsForceHttp11Hint")}
+            isDirty={draftForceHttp11 !== null && draftForceHttp11 !== currentForceHttp11}
+            saving={!!savingFields.force_http11}
+            saved={savedFields.force_http11}
+            error={fieldErrors.force_http11}
+            requiresRestart={true}
+            layout="inline"
+            onSave={handleSaveForceHttp11}
+          >
+            <input
+              type="checkbox"
+              id="force-http11"
+              checked={displayForceHttp11}
+              onChange={(e) => setDraftForceHttp11((e.target as HTMLInputElement).checked)}
+              class="w-4 h-4 rounded border-gray-300 dark:border-border-dark text-primary focus:ring-primary cursor-pointer"
+            />
+            <label for="force-http11" class="text-xs font-semibold text-slate-700 dark:text-text-main cursor-pointer">
+              {t("generalSettingsForceHttp11")}
+            </label>
+          </SettingItemControl>
+        </div>
+      </section>
+
+      {/* 2. Model & Generation Defaults */}
+      <section class="bg-white dark:bg-card-dark border border-gray-200 dark:border-border-dark rounded-xl shadow-sm overflow-hidden transition-colors">
+        <div class="px-5 py-4 border-b border-gray-100 dark:border-border-dark flex items-center justify-between">
+          <div class="flex items-center gap-2.5">
+            <div class="flex size-7 items-center justify-center rounded-lg bg-primary-container text-primary">
+              <svg class="size-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09z" />
+              </svg>
+            </div>
+            <h2 class="text-sm font-bold text-slate-800 dark:text-text-main">{t("settingsCategoryModel")}</h2>
+          </div>
+        </div>
+
+        <div class="px-5 py-2">
+          {/* Default Model */}
+          <SettingItemControl
+            label={t("generalSettingsDefaultModel")}
+            hint={t("generalSettingsDefaultModelHint")}
+            isDirty={draftDefaultModel !== null && draftDefaultModel !== currentDefaultModel}
+            saving={!!savingFields.default_model}
+            saved={savedFields.default_model}
+            error={fieldErrors.default_model}
+            requiresRestart={false}
+            onSave={handleSaveDefaultModel}
+          >
+            <input
+              type="text"
+              class={inputCls}
+              value={displayDefaultModel}
+              onInput={(e) => setDraftDefaultModel((e.target as HTMLInputElement).value)}
+              onKeyDown={(e) => { if (e.key === "Enter") handleSaveDefaultModel(); }}
+              placeholder="gpt-5.2-codex"
+            />
+          </SettingItemControl>
+
+          {/* Images API Host Model */}
+          <SettingItemControl
+            label={t("generalSettingsImageHostModel")}
+            hint={t("generalSettingsImageHostModelHint")}
+            isDirty={draftImageHostModel !== null && draftImageHostModel !== currentImageHostModel}
+            saving={!!savingFields.image_host_model}
+            saved={savedFields.image_host_model}
+            error={fieldErrors.image_host_model}
+            requiresRestart={false}
+            onSave={handleSaveImageHostModel}
+          >
+            <input
+              id="image-host-model"
+              type="text"
+              class={inputCls}
+              value={displayImageHostModel}
+              list="image-host-model-allowed-models"
+              onInput={(e) => setDraftImageHostModel((e.target as HTMLInputElement).value)}
+              onKeyDown={(e) => { if (e.key === "Enter") handleSaveImageHostModel(); }}
+              placeholder="gpt-5.5"
+            />
+            <datalist id="image-host-model-allowed-models">
+              {currentImageHostModelAllowedModels.map((model: string) => <option key={model} value={model} />)}
+            </datalist>
+          </SettingItemControl>
+
+          {/* Default Reasoning Effort */}
+          <SettingItemControl
+            label={t("generalSettingsReasoningEffort")}
+            hint={t("generalSettingsReasoningEffortHint")}
+            isDirty={draftReasoningEffort !== null && draftReasoningEffort !== currentReasoningEffort}
+            saving={!!savingFields.default_reasoning_effort}
+            saved={savedFields.default_reasoning_effort}
+            error={fieldErrors.default_reasoning_effort}
+            requiresRestart={false}
+            onSave={handleSaveReasoningEffort}
+          >
+            <select
+              class={`${inputCls} max-w-[220px]`}
+              value={displayReasoningEffort}
+              onChange={(e) => setDraftReasoningEffort((e.target as HTMLSelectElement).value)}
+            >
+              <option value="">Disabled (no reasoning)</option>
+              <option value="low">low</option>
+              <option value="medium">medium</option>
+              <option value="high">high</option>
+              <option value="xhigh">xhigh</option>
+            </select>
+          </SettingItemControl>
+
+          {/* Client System Prompt Strategy Switch */}
+          <SettingItemControl
+            label={t("generalSettingsAllowSystemPromptStrategy")}
+            hint={t("generalSettingsAllowSystemPromptStrategyHint")}
+            isDirty={draftAllowSystemPromptStrategy !== null && draftAllowSystemPromptStrategy !== currentAllowSystemPromptStrategy}
+            saving={!!savingFields.allow_client_system_prompt_strategy}
+            saved={savedFields.allow_client_system_prompt_strategy}
+            error={fieldErrors.allow_client_system_prompt_strategy}
+            requiresRestart={false}
+            layout="inline"
+            onSave={handleSaveAllowSystemPromptStrategy}
+          >
+            <input
+              type="checkbox"
+              id="allow-system-prompt-strategy"
+              checked={displayAllowSystemPromptStrategy}
+              onChange={(e) => setDraftAllowSystemPromptStrategy((e.target as HTMLInputElement).checked)}
+              class="w-4 h-4 rounded border-gray-300 dark:border-border-dark text-primary focus:ring-primary cursor-pointer"
+            />
+            <label for="allow-system-prompt-strategy" class="text-xs font-semibold text-slate-700 dark:text-text-main cursor-pointer">
+              {t("generalSettingsAllowSystemPromptStrategy")}
+            </label>
+          </SettingItemControl>
+
+          {/* System Prompt Strategy */}
+          <SettingItemControl
+            label={t("generalSettingsSystemPromptStrategy")}
+            hint={
+              <div class="text-[0.73rem] text-slate-500 dark:text-text-dim space-y-1">
+                <p>{t("generalSettingsSystemPromptStrategyHintIntro")}</p>
+                <ul class="space-y-0.5">
+                  <li class="flex gap-1.5"><code class="font-mono text-[0.68rem] text-slate-600 dark:text-text-main shrink-0">instructions</code> <span>{t("generalSettingsSystemPromptStrategyDescInstructions")}</span></li>
+                  <li class="flex gap-1.5"><code class="font-mono text-[0.68rem] text-slate-600 dark:text-text-main shrink-0">developer_inline</code> <span>{t("generalSettingsSystemPromptStrategyDescDeveloperInline")}</span></li>
+                  <li class="flex gap-1.5"><code class="font-mono text-[0.68rem] text-slate-600 dark:text-text-main shrink-0">system_inline</code> <span>{t("generalSettingsSystemPromptStrategyDescSystemInline")}</span></li>
+                </ul>
+              </div>
+            }
+            isDirty={draftSystemPromptStrategy !== null && draftSystemPromptStrategy !== currentSystemPromptStrategy}
+            saving={!!savingFields.system_prompt_strategy}
+            saved={savedFields.system_prompt_strategy}
+            error={fieldErrors.system_prompt_strategy}
+            requiresRestart={false}
+            disabled={!canEditSystemPromptStrategy}
+            onSave={handleSaveSystemPromptStrategy}
+          >
+            <select
+              class={`${inputCls} max-w-[280px] ${canEditSystemPromptStrategy ? "" : "cursor-not-allowed opacity-50"}`}
+              value={displaySystemPromptStrategy}
+              disabled={!canEditSystemPromptStrategy}
+              onChange={(e) => setDraftSystemPromptStrategy((e.target as HTMLSelectElement).value as SystemPromptStrategy)}
+            >
+              <option value="instructions">{t("generalSettingsSystemPromptStrategyOptionInstructions")}</option>
+              <option value="developer_inline">{t("generalSettingsSystemPromptStrategyOptionDeveloperInline")}</option>
+              <option value="system_inline">{t("generalSettingsSystemPromptStrategyOptionSystemInline")}</option>
+            </select>
+          </SettingItemControl>
+
+          {/* Inject Desktop Context */}
+          <SettingItemControl
+            label={t("generalSettingsInjectContext")}
+            hint={t("generalSettingsInjectContextHint")}
+            isDirty={draftInjectContext !== null && draftInjectContext !== currentInjectContext}
+            saving={!!savingFields.inject_desktop_context}
+            saved={savedFields.inject_desktop_context}
+            error={fieldErrors.inject_desktop_context}
+            requiresRestart={false}
+            layout="inline"
+            onSave={handleSaveInjectContext}
+          >
+            <input
+              type="checkbox"
+              id="inject-desktop-context"
+              checked={displayInjectContext}
+              onChange={(e) => setDraftInjectContext((e.target as HTMLInputElement).checked)}
+              class="w-4 h-4 rounded border-gray-300 dark:border-border-dark text-primary focus:ring-primary cursor-pointer"
+            />
+            <label for="inject-desktop-context" class="text-xs font-semibold text-slate-700 dark:text-text-main cursor-pointer">
+              {t("generalSettingsInjectContext")}
+            </label>
+          </SettingItemControl>
+
+          {/* Suppress Desktop Directives */}
+          <SettingItemControl
+            label={t("generalSettingsSuppressDirectives")}
+            hint={t("generalSettingsSuppressDirectivesHint")}
+            isDirty={draftSuppressDirectives !== null && draftSuppressDirectives !== currentSuppressDirectives}
+            saving={!!savingFields.suppress_desktop_directives}
+            saved={savedFields.suppress_desktop_directives}
+            error={fieldErrors.suppress_desktop_directives}
+            requiresRestart={false}
+            layout="inline"
+            disabled={!displayInjectContext}
+            onSave={handleSaveSuppressDirectives}
+          >
+            <input
+              type="checkbox"
+              id="suppress-desktop-directives"
+              checked={displaySuppressDirectives}
+              onChange={(e) => setDraftSuppressDirectives((e.target as HTMLInputElement).checked)}
+              disabled={!displayInjectContext}
+              class={`w-4 h-4 rounded border-gray-300 dark:border-border-dark text-primary focus:ring-primary ${
+                displayInjectContext ? "cursor-pointer" : "cursor-not-allowed opacity-50"
+              }`}
+            />
+            <label for="suppress-desktop-directives" class={`text-xs font-semibold cursor-pointer ${displayInjectContext ? "text-slate-700 dark:text-text-main" : "text-slate-400 dark:text-text-dim"}`}>
+              {t("generalSettingsSuppressDirectives")}
+            </label>
+          </SettingItemControl>
+        </div>
+      </section>
+
+      {/* 3. Account Routing & Token Refresh */}
+      <section class="bg-white dark:bg-card-dark border border-gray-200 dark:border-border-dark rounded-xl shadow-sm overflow-hidden transition-colors">
+        <div class="px-5 py-4 border-b border-gray-100 dark:border-border-dark flex items-center justify-between">
+          <div class="flex items-center gap-2.5">
+            <div class="flex size-7 items-center justify-center rounded-lg bg-primary-container text-primary">
+              <svg class="size-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.992 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182M20.985 4.356v4.992" />
+              </svg>
+            </div>
+            <h2 class="text-sm font-bold text-slate-800 dark:text-text-main">{t("settingsCategoryRouting")}</h2>
+          </div>
+        </div>
+
+        <div class="px-5 py-2">
+          {/* Auto-refresh Tokens */}
+          <SettingItemControl
+            label={t("generalSettingsRefreshEnabled")}
+            hint={t("generalSettingsRefreshEnabledHint")}
+            isDirty={draftRefreshEnabled !== null && draftRefreshEnabled !== currentRefreshEnabled}
+            saving={!!savingFields.refresh_enabled}
+            saved={savedFields.refresh_enabled}
+            error={fieldErrors.refresh_enabled}
+            requiresRestart={false}
+            layout="inline"
+            onSave={handleSaveRefreshEnabled}
+          >
+            <input
+              type="checkbox"
+              id="refresh-enabled"
+              checked={displayRefreshEnabled}
+              onChange={(e) => setDraftRefreshEnabled((e.target as HTMLInputElement).checked)}
+              class="w-4 h-4 rounded border-gray-300 dark:border-border-dark text-primary focus:ring-primary cursor-pointer"
+            />
+            <label for="refresh-enabled" class="text-xs font-semibold text-slate-700 dark:text-text-main cursor-pointer">
+              {t("generalSettingsRefreshEnabled")}
+            </label>
+          </SettingItemControl>
+
+          {/* Refresh Margin */}
+          <SettingItemControl
+            label={t("generalSettingsRefreshMargin")}
+            hint={t("generalSettingsRefreshMarginHint")}
+            isDirty={draftRefreshMargin !== null && draftRefreshMargin !== String(currentRefreshMargin)}
+            saving={!!savingFields.refresh_margin_seconds}
+            saved={savedFields.refresh_margin_seconds}
+            error={fieldErrors.refresh_margin_seconds}
+            requiresRestart={false}
+            onSave={handleSaveRefreshMargin}
+          >
+            <div class="flex items-center gap-2">
+              <input
+                type="number"
+                min="0"
+                class={`${inputCls} max-w-[160px]`}
+                value={displayRefreshMargin}
+                onInput={(e) => setDraftRefreshMargin((e.target as HTMLInputElement).value)}
+                onKeyDown={(e) => { if (e.key === "Enter") handleSaveRefreshMargin(); }}
+              />
+              <span class="text-xs text-slate-500 dark:text-text-dim">s</span>
+            </div>
+          </SettingItemControl>
+
+          {/* Refresh Concurrency */}
+          <SettingItemControl
+            label={t("generalSettingsRefreshConcurrency")}
+            hint={t("generalSettingsRefreshConcurrencyHint")}
+            isDirty={draftRefreshConcurrency !== null && draftRefreshConcurrency !== String(currentRefreshConcurrency)}
+            saving={!!savingFields.refresh_concurrency}
+            saved={savedFields.refresh_concurrency}
+            error={fieldErrors.refresh_concurrency}
+            requiresRestart={false}
+            onSave={handleSaveRefreshConcurrency}
+          >
+            <input
+              type="number"
+              min="1"
+              class={`${inputCls} max-w-[160px]`}
+              value={displayRefreshConcurrency}
+              onInput={(e) => setDraftRefreshConcurrency((e.target as HTMLInputElement).value)}
+              onKeyDown={(e) => { if (e.key === "Enter") handleSaveRefreshConcurrency(); }}
+            />
+          </SettingItemControl>
+
+          {/* Max Concurrent Per Account */}
+          <SettingItemControl
+            label={t("generalSettingsMaxConcurrent")}
+            hint={t("generalSettingsMaxConcurrentHint")}
+            isDirty={draftMaxConcurrent !== null && draftMaxConcurrent !== String(currentMaxConcurrent)}
+            saving={!!savingFields.max_concurrent_per_account}
+            saved={savedFields.max_concurrent_per_account}
+            error={fieldErrors.max_concurrent_per_account}
+            requiresRestart={false}
+            onSave={handleSaveMaxConcurrent}
+          >
+            <input
+              type="number"
+              min="1"
+              class={`${inputCls} max-w-[160px]`}
+              value={displayMaxConcurrent}
+              onInput={(e) => setDraftMaxConcurrent((e.target as HTMLInputElement).value)}
+              onKeyDown={(e) => { if (e.key === "Enter") handleSaveMaxConcurrent(); }}
+            />
+          </SettingItemControl>
+
+          {/* Request Interval */}
+          <SettingItemControl
+            label={t("generalSettingsRequestInterval")}
+            hint={t("generalSettingsRequestIntervalHint")}
+            isDirty={draftRequestInterval !== null && draftRequestInterval !== String(currentRequestInterval)}
+            saving={!!savingFields.request_interval_ms}
+            saved={savedFields.request_interval_ms}
+            error={fieldErrors.request_interval_ms}
+            requiresRestart={false}
+            onSave={handleSaveRequestInterval}
+          >
+            <div class="flex items-center gap-2">
+              <input
+                type="number"
+                min="0"
+                class={`${inputCls} max-w-[160px]`}
+                value={displayRequestInterval}
+                onInput={(e) => setDraftRequestInterval((e.target as HTMLInputElement).value)}
+                onKeyDown={(e) => { if (e.key === "Enter") handleSaveRequestInterval(); }}
+              />
+              <span class="text-xs text-slate-500 dark:text-text-dim">ms</span>
+            </div>
+          </SettingItemControl>
+
+          {/* Usage History Retention */}
+          <SettingItemControl
+            label={t("generalSettingsUsageHistoryRetention")}
+            hint={t("generalSettingsUsageHistoryRetentionHint")}
+            isDirty={draftUsageHistoryRetention !== null && draftUsageHistoryRetention !== (currentUsageHistoryRetention === null ? "" : String(currentUsageHistoryRetention))}
+            saving={!!savingFields.usage_history_retention_days}
+            saved={savedFields.usage_history_retention_days}
+            error={fieldErrors.usage_history_retention_days}
+            requiresRestart={false}
+            onSave={handleSaveUsageHistoryRetention}
+          >
+            <div class="flex items-center gap-2">
+              <input
+                type="number"
+                min="1"
+                class={`${inputCls} max-w-[160px]`}
+                value={displayUsageHistoryRetention}
+                onInput={(e) => setDraftUsageHistoryRetention((e.target as HTMLInputElement).value)}
+                onKeyDown={(e) => { if (e.key === "Enter") handleSaveUsageHistoryRetention(); }}
+                placeholder={t("unlimited")}
+              />
+              <span class="text-xs text-slate-500 dark:text-text-dim">{t("days")}</span>
+            </div>
+          </SettingItemControl>
+        </div>
+      </section>
+
+      {/* 4. App Preferences & Updates */}
+      <section class="bg-white dark:bg-card-dark border border-gray-200 dark:border-border-dark rounded-xl shadow-sm overflow-hidden transition-colors">
+        <button
+          onClick={() => setCollapsed(!collapsed)}
+          class="w-full px-5 py-4 border-b border-gray-100 dark:border-border-dark flex items-center justify-between cursor-pointer select-none text-left"
+        >
+          <div class="flex items-center gap-2.5">
+            <div class="flex size-7 items-center justify-center rounded-lg bg-primary-container text-primary">
+              <svg class="size-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M10.5 6h9.75M10.5 6a1.5 1.5 0 11-3 0m3 0a1.5 1.5 0 10-3 0M3.75 6H7.5m3 12h9.75m-9.75 0a1.5 1.5 0 01-3 0m3 0a1.5 1.5 0 00-3 0m-3.75 0H7.5m9-6h3.75m-3.75 0a1.5 1.5 0 01-3 0m3 0a1.5 1.5 0 00-3 0m-9.75 0h9.75" />
+              </svg>
+            </div>
+            <h2 class="text-sm font-bold text-slate-800 dark:text-text-main">{t("generalSettings")}</h2>
+          </div>
+          <svg class={`size-5 text-slate-400 dark:text-text-dim transition-transform ${collapsed ? "" : "rotate-180"}`} viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M19.5 8.25l-7.5 7.5-7.5-7.5" />
+          </svg>
+        </button>
+
+        {!collapsed && (
+          <div class="px-5 py-2">
+            {/* Dashboard Layout */}
+            <SettingItemControl
+              label={t("generalSettingsLayout")}
+              hint={t("generalSettingsLayoutHint")}
+              saved={savedFields.layoutMode}
+            >
               <select
                 id="dashboard-layout"
-                class={`${inputCls} max-w-[260px] bg-white dark:bg-bg-dark`}
+                class={`${inputCls} max-w-[280px]`}
                 value={displayLayoutMode}
                 onChange={(e) => handleLayoutModeChange((e.target as HTMLSelectElement).value as LayoutMode)}
               >
                 <option value="sidebar">{t("generalSettingsLayoutSidebar")}</option>
                 <option value="top">{t("generalSettingsLayoutTop")}</option>
               </select>
-            </div>
-          </div>
+            </SettingItemControl>
 
-          {/* Auto Update */}
-          <div class="space-y-1">
-            <div class="flex items-center gap-2">
+            {/* Auto Update */}
+            <SettingItemControl
+              label={t("generalSettingsAutoUpdate")}
+              hint={t("generalSettingsAutoUpdateHint")}
+              isDirty={draftAutoUpdate !== null && draftAutoUpdate !== currentAutoUpdate}
+              saving={!!savingFields.auto_update}
+              saved={savedFields.auto_update}
+              error={fieldErrors.auto_update}
+              requiresRestart={false}
+              layout="inline"
+              onSave={handleSaveAutoUpdate}
+            >
               <input
                 type="checkbox"
                 id="auto-update"
@@ -278,13 +757,21 @@ export function GeneralSettings({ layoutMode, onLayoutModeChange }: GeneralSetti
               <label for="auto-update" class="text-xs font-semibold text-slate-700 dark:text-text-main cursor-pointer">
                 {t("generalSettingsAutoUpdate")}
               </label>
-            </div>
-            <p class="text-xs text-slate-400 dark:text-text-dim ml-6">{t("generalSettingsAutoUpdateHint")}</p>
-          </div>
+            </SettingItemControl>
 
-          {/* Auto Download */}
-          <div class="space-y-1">
-            <div class="flex items-center gap-2">
+            {/* Auto Download */}
+            <SettingItemControl
+              label={t("generalSettingsAutoDownload")}
+              hint={t("generalSettingsAutoDownloadHint")}
+              isDirty={draftAutoDownload !== null && draftAutoDownload !== currentAutoDownload}
+              saving={!!savingFields.auto_download}
+              saved={savedFields.auto_download}
+              error={fieldErrors.auto_download}
+              requiresRestart={false}
+              layout="inline"
+              disabled={!displayAutoUpdate}
+              onSave={handleSaveAutoDownload}
+            >
               <input
                 type="checkbox"
                 id="auto-download"
@@ -295,23 +782,47 @@ export function GeneralSettings({ layoutMode, onLayoutModeChange }: GeneralSetti
                   displayAutoUpdate ? "cursor-pointer" : "cursor-not-allowed opacity-50"
                 }`}
               />
-              <label
-                for="auto-download"
-                class={`text-xs font-semibold cursor-pointer ${
-                  displayAutoUpdate
-                    ? "text-slate-700 dark:text-text-main"
-                    : "text-slate-400 dark:text-text-dim"
-                }`}
-              >
+              <label for="auto-download" class={`text-xs font-semibold cursor-pointer ${displayAutoUpdate ? "text-slate-700 dark:text-text-main" : "text-slate-400 dark:text-text-dim"}`}>
                 {t("generalSettingsAutoDownload")}
               </label>
-            </div>
-            <p class="text-xs text-slate-400 dark:text-text-dim ml-6">{t("generalSettingsAutoDownloadHint")}</p>
-          </div>
+            </SettingItemControl>
 
-          {/* Update Dialog */}
-          <div class="space-y-1">
-            <div class="flex items-center gap-2">
+            {/* Allow Prerelease / Beta */}
+            <SettingItemControl
+              label={t("generalSettingsAllowPrerelease")}
+              hint={t("generalSettingsAllowPrereleaseHint")}
+              isDirty={draftAllowPrerelease !== null && draftAllowPrerelease !== currentAllowPrerelease}
+              saving={!!savingFields.allow_prerelease}
+              saved={savedFields.allow_prerelease}
+              error={fieldErrors.allow_prerelease}
+              requiresRestart={false}
+              layout="inline"
+              onSave={handleSaveAllowPrerelease}
+            >
+              <input
+                type="checkbox"
+                id="allow-prerelease"
+                checked={displayAllowPrerelease}
+                onChange={(e) => setDraftAllowPrerelease((e.target as HTMLInputElement).checked)}
+                class="w-4 h-4 rounded border-gray-300 dark:border-border-dark text-primary focus:ring-primary cursor-pointer"
+              />
+              <label for="allow-prerelease" class="text-xs font-semibold text-slate-700 dark:text-text-main cursor-pointer">
+                {t("generalSettingsAllowPrerelease")}
+              </label>
+            </SettingItemControl>
+
+            {/* Update Dialog */}
+            <SettingItemControl
+              label={t("generalSettingsShowUpdateDialog")}
+              hint={t("generalSettingsShowUpdateDialogHint")}
+              isDirty={draftShowUpdateDialog !== null && draftShowUpdateDialog !== currentShowUpdateDialog}
+              saving={!!savingFields.show_update_dialog}
+              saved={savedFields.show_update_dialog}
+              error={fieldErrors.show_update_dialog}
+              requiresRestart={false}
+              layout="inline"
+              onSave={handleSaveShowUpdateDialog}
+            >
               <input
                 type="checkbox"
                 id="show-update-dialog"
@@ -322,351 +833,10 @@ export function GeneralSettings({ layoutMode, onLayoutModeChange }: GeneralSetti
               <label for="show-update-dialog" class="text-xs font-semibold text-slate-700 dark:text-text-main cursor-pointer">
                 {t("generalSettingsShowUpdateDialog")}
               </label>
-            </div>
-            <p class="text-xs text-slate-400 dark:text-text-dim ml-6">{t("generalSettingsShowUpdateDialogHint")}</p>
+            </SettingItemControl>
           </div>
-
-          {/* Server Port */}
-          <div class="space-y-1.5">
-            <label class="text-xs font-semibold text-slate-700 dark:text-text-main">
-              {t("generalSettingsPort")}
-            </label>
-            <p class="text-xs text-slate-400 dark:text-text-dim">{t("generalSettingsPortHint")}</p>
-            <input
-              type="number"
-              min="1"
-              max="65535"
-              class={`${inputCls} max-w-[160px]`}
-              value={displayPort}
-              onInput={(e) => setDraftPort((e.target as HTMLInputElement).value)}
-            />
-          </div>
-
-          {/* Default Model */}
-          <div class="space-y-1.5">
-            <label class="text-xs font-semibold text-slate-700 dark:text-text-main">
-              {t("generalSettingsDefaultModel")}
-            </label>
-            <p class="text-xs text-slate-400 dark:text-text-dim">{t("generalSettingsDefaultModelHint")}</p>
-            <input
-              type="text"
-              class={inputCls}
-              value={displayDefaultModel}
-              onInput={(e) => setDraftDefaultModel((e.target as HTMLInputElement).value)}
-              placeholder="gpt-5.2-codex"
-            />
-          </div>
-
-          {/* Images API Host Model */}
-          <div class="space-y-1.5">
-            <label for="image-host-model" class="text-xs font-semibold text-slate-700 dark:text-text-main">
-              {t("generalSettingsImageHostModel")}
-            </label>
-            <p class="text-xs text-slate-400 dark:text-text-dim">{t("generalSettingsImageHostModelHint")}</p>
-            <input
-              id="image-host-model"
-              type="text"
-              class={inputCls}
-              value={displayImageHostModel}
-              list="image-host-model-allowed-models"
-              onInput={(e) => setDraftImageHostModel((e.target as HTMLInputElement).value)}
-              placeholder="gpt-5.5"
-            />
-            <datalist id="image-host-model-allowed-models">
-              {currentImageHostModelAllowedModels.map((model: string) => <option key={model} value={model} />)}
-            </datalist>
-          </div>
-
-          {/* Default Reasoning Effort */}
-          <div class="space-y-1.5">
-            <label class="text-xs font-semibold text-slate-700 dark:text-text-main">
-              {t("generalSettingsReasoningEffort")}
-            </label>
-            <p class="text-xs text-slate-400 dark:text-text-dim">{t("generalSettingsReasoningEffortHint")}</p>
-            <select
-              class={`${inputCls} max-w-[200px]`}
-              value={displayReasoningEffort}
-              onChange={(e) => setDraftReasoningEffort((e.target as HTMLSelectElement).value)}
-            >
-              <option value="">Disabled (no reasoning)</option>
-              <option value="low">low</option>
-              <option value="medium">medium</option>
-              <option value="high">high</option>
-              <option value="xhigh">xhigh</option>
-            </select>
-          </div>
-
-          {/* Upstream Proxy */}
-          <div class="space-y-1.5">
-            <label class="text-xs font-semibold text-slate-700 dark:text-text-main">
-              {t("generalSettingsProxyUrl")}
-            </label>
-            <p class="text-xs text-slate-400 dark:text-text-dim">{t("generalSettingsProxyUrlHint")}</p>
-            <input
-              type="text"
-              class={inputCls}
-              value={displayProxyUrl}
-              onInput={(e) => setDraftProxyUrl((e.target as HTMLInputElement).value)}
-              placeholder="socks5://127.0.0.1:1080"
-            />
-          </div>
-
-          {/* Force HTTP/1.1 */}
-          <div class="space-y-1">
-            <div class="flex items-center gap-2">
-              <input
-                type="checkbox"
-                id="force-http11"
-                checked={displayForceHttp11}
-                onChange={(e) => setDraftForceHttp11((e.target as HTMLInputElement).checked)}
-                class="w-4 h-4 rounded border-gray-300 dark:border-border-dark text-primary focus:ring-primary cursor-pointer"
-              />
-              <label for="force-http11" class="text-xs font-semibold text-slate-700 dark:text-text-main cursor-pointer">
-                {t("generalSettingsForceHttp11")}
-              </label>
-            </div>
-            <p class="text-xs text-slate-400 dark:text-text-dim ml-6">{t("generalSettingsForceHttp11Hint")}</p>
-          </div>
-
-          {/* Inject Desktop Context */}
-          <div class="space-y-1">
-            <div class="flex items-center gap-2">
-              <input
-                type="checkbox"
-                id="inject-desktop-context"
-                checked={displayInjectContext}
-                onChange={(e) => setDraftInjectContext((e.target as HTMLInputElement).checked)}
-                class="w-4 h-4 rounded border-gray-300 dark:border-border-dark text-primary focus:ring-primary cursor-pointer"
-              />
-              <label for="inject-desktop-context" class="text-xs font-semibold text-slate-700 dark:text-text-main cursor-pointer">
-                {t("generalSettingsInjectContext")}
-              </label>
-            </div>
-            <p class="text-xs text-slate-400 dark:text-text-dim ml-6">{t("generalSettingsInjectContextHint")}</p>
-          </div>
-
-          {/* Suppress Desktop Directives */}
-          <div class="space-y-1">
-            <div class="flex items-center gap-2">
-              <input
-                type="checkbox"
-                id="suppress-desktop-directives"
-                checked={displaySuppressDirectives}
-                onChange={(e) => setDraftSuppressDirectives((e.target as HTMLInputElement).checked)}
-                disabled={!displayInjectContext}
-                class={`w-4 h-4 rounded border-gray-300 dark:border-border-dark text-primary focus:ring-primary ${
-                  displayInjectContext ? "cursor-pointer" : "cursor-not-allowed opacity-50"
-                }`}
-              />
-              <label
-                for="suppress-desktop-directives"
-                class={`text-xs font-semibold cursor-pointer ${
-                  displayInjectContext
-                    ? "text-slate-700 dark:text-text-main"
-                    : "text-slate-400 dark:text-text-dim"
-                }`}
-              >
-                {t("generalSettingsSuppressDirectives")}
-              </label>
-            </div>
-            <p class="text-xs text-slate-400 dark:text-text-dim ml-6">{t("generalSettingsSuppressDirectivesHint")}</p>
-          </div>
-
-          {/* Client System Prompt Strategy */}
-          <div class="space-y-1">
-            <div class="flex items-center gap-2">
-              <input
-                type="checkbox"
-                id="allow-system-prompt-strategy"
-                checked={displayAllowSystemPromptStrategy}
-                onChange={(e) => setDraftAllowSystemPromptStrategy((e.target as HTMLInputElement).checked)}
-                class="w-4 h-4 rounded border-gray-300 dark:border-border-dark text-primary focus:ring-primary cursor-pointer"
-              />
-              <label for="allow-system-prompt-strategy" class="text-xs font-semibold text-slate-700 dark:text-text-main cursor-pointer">
-                {t("generalSettingsAllowSystemPromptStrategy")}
-              </label>
-            </div>
-            <p class="text-xs text-slate-400 dark:text-text-dim ml-6">{t("generalSettingsAllowSystemPromptStrategyHint")}</p>
-          </div>
-
-          <div class="space-y-1.5">
-            <label class={`text-xs font-semibold ${
-              canEditSystemPromptStrategy ? "text-slate-700 dark:text-text-main" : "text-slate-400 dark:text-text-dim"
-            }`}>
-              {t("generalSettingsSystemPromptStrategy")}
-            </label>
-            <div class="text-xs text-slate-400 dark:text-text-dim space-y-1">
-              <p>{t("generalSettingsSystemPromptStrategyHintIntro")}</p>
-              <ul class="space-y-1">
-                <li class="flex gap-2">
-                  <code class="font-mono text-[0.7rem] text-slate-500 dark:text-text-main shrink-0">instructions</code>
-                  <span>{t("generalSettingsSystemPromptStrategyDescInstructions")}</span>
-                </li>
-                <li class="flex gap-2">
-                  <code class="font-mono text-[0.7rem] text-slate-500 dark:text-text-main shrink-0">developer_inline</code>
-                  <span>
-                    {t("generalSettingsSystemPromptStrategyDescDeveloperInline")}
-                    <span class="ml-1 inline-block rounded px-1 py-0.5 text-[0.65rem] font-medium bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-400">
-                      {t("generalSettingsSystemPromptStrategyRecommended")}
-                    </span>
-                  </span>
-                </li>
-                <li class="flex gap-2">
-                  <code class="font-mono text-[0.7rem] text-slate-500 dark:text-text-main shrink-0">system_inline</code>
-                  <span>{t("generalSettingsSystemPromptStrategyDescSystemInline")}</span>
-                </li>
-              </ul>
-            </div>
-            <select
-              class={`${inputCls} max-w-[240px] ${canEditSystemPromptStrategy ? "" : "cursor-not-allowed opacity-50"}`}
-              value={displaySystemPromptStrategy}
-              disabled={!canEditSystemPromptStrategy}
-              title={canEditSystemPromptStrategy ? undefined : t("generalSettingsSystemPromptStrategyDisabledHint")}
-              aria-label={t("generalSettingsSystemPromptStrategy")}
-              onChange={(e) => setDraftSystemPromptStrategy((e.target as HTMLSelectElement).value as SystemPromptStrategy)}
-            >
-              <option value="instructions">{t("generalSettingsSystemPromptStrategyOptionInstructions")}</option>
-              <option value="developer_inline">{t("generalSettingsSystemPromptStrategyOptionDeveloperInline")}</option>
-              <option value="system_inline">{t("generalSettingsSystemPromptStrategyOptionSystemInline")}</option>
-            </select>
-            {!canEditSystemPromptStrategy && (
-              <p class="text-xs text-amber-600 dark:text-amber-400">{t("generalSettingsSystemPromptStrategyDisabledHint")}</p>
-            )}
-          </div>
-
-          {/* Auto-refresh Tokens */}
-          <div class="space-y-1">
-            <div class="flex items-center gap-2">
-              <input
-                type="checkbox"
-                id="refresh-enabled"
-                checked={displayRefreshEnabled}
-                onChange={(e) => setDraftRefreshEnabled((e.target as HTMLInputElement).checked)}
-                class="w-4 h-4 rounded border-gray-300 dark:border-border-dark text-primary focus:ring-primary cursor-pointer"
-              />
-              <label for="refresh-enabled" class="text-xs font-semibold text-slate-700 dark:text-text-main cursor-pointer">
-                {t("generalSettingsRefreshEnabled")}
-              </label>
-            </div>
-            <p class="text-xs text-slate-400 dark:text-text-dim ml-6">{t("generalSettingsRefreshEnabledHint")}</p>
-          </div>
-
-          {/* Refresh Margin */}
-          <div class="space-y-1.5">
-            <label class="text-xs font-semibold text-slate-700 dark:text-text-main">
-              {t("generalSettingsRefreshMargin")}
-            </label>
-            <p class="text-xs text-slate-400 dark:text-text-dim">{t("generalSettingsRefreshMarginHint")}</p>
-            <input
-              type="number"
-              min="0"
-              class={`${inputCls} max-w-[160px]`}
-              value={displayRefreshMargin}
-              onInput={(e) => setDraftRefreshMargin((e.target as HTMLInputElement).value)}
-            />
-          </div>
-
-          {/* Refresh Concurrency */}
-          <div class="space-y-1.5">
-            <label class="text-xs font-semibold text-slate-700 dark:text-text-main">
-              {t("generalSettingsRefreshConcurrency")}
-            </label>
-            <p class="text-xs text-slate-400 dark:text-text-dim">{t("generalSettingsRefreshConcurrencyHint")}</p>
-            <input
-              type="number"
-              min="1"
-              class={`${inputCls} max-w-[160px]`}
-              value={displayRefreshConcurrency}
-              onInput={(e) => setDraftRefreshConcurrency((e.target as HTMLInputElement).value)}
-            />
-          </div>
-
-          {/* Max Concurrent Per Account */}
-          <div class="space-y-1.5">
-            <label class="text-xs font-semibold text-slate-700 dark:text-text-main">
-              {t("generalSettingsMaxConcurrent")}
-            </label>
-            <p class="text-xs text-slate-400 dark:text-text-dim">{t("generalSettingsMaxConcurrentHint")}</p>
-            <input
-              type="number"
-              min="1"
-              class={`${inputCls} max-w-[160px]`}
-              value={displayMaxConcurrent}
-              onInput={(e) => setDraftMaxConcurrent((e.target as HTMLInputElement).value)}
-            />
-          </div>
-
-          {/* Request Interval */}
-          <div class="space-y-1.5">
-            <label class="text-xs font-semibold text-slate-700 dark:text-text-main">
-              {t("generalSettingsRequestInterval")}
-            </label>
-            <p class="text-xs text-slate-400 dark:text-text-dim">{t("generalSettingsRequestIntervalHint")}</p>
-            <div class="flex items-center gap-2">
-              <input
-                type="number"
-                min="0"
-                class={`${inputCls} max-w-[160px]`}
-                value={displayRequestInterval}
-                onInput={(e) => setDraftRequestInterval((e.target as HTMLInputElement).value)}
-              />
-              <span class="text-xs text-slate-500 dark:text-text-dim">ms</span>
-            </div>
-          </div>
-
-          {/* Usage History Retention */}
-          <div class="space-y-1.5">
-            <label class="text-xs font-semibold text-slate-700 dark:text-text-main">
-              {t("generalSettingsUsageHistoryRetention")}
-            </label>
-            <p class="text-xs text-slate-400 dark:text-text-dim">{t("generalSettingsUsageHistoryRetentionHint")}</p>
-            <div class="flex items-center gap-2">
-              <input
-                type="number"
-                min="1"
-                class={`${inputCls} max-w-[160px]`}
-                value={displayUsageHistoryRetention}
-                onInput={(e) => setDraftUsageHistoryRetention((e.target as HTMLInputElement).value)}
-                placeholder={t("unlimited")}
-              />
-              <span class="text-xs text-slate-500 dark:text-text-dim">{t("days")}</span>
-            </div>
-          </div>
-
-          {/* Save button + status */}
-          <div class="flex items-center gap-3">
-            <button
-              onClick={handleSave}
-              disabled={gs.saving || !isDirty}
-              class={`px-4 py-2 text-sm font-medium rounded-lg transition-colors whitespace-nowrap ${
-                isDirty && !gs.saving
-                  ? "bg-primary-action text-white hover:bg-primary-action-hover cursor-pointer"
-                  : "bg-slate-100 dark:bg-[#21262d] text-slate-400 dark:text-text-dim cursor-not-allowed"
-              }`}
-            >
-              {gs.saving ? "..." : t("submit")}
-            </button>
-            {gs.saved && (
-              <span class="text-xs font-medium text-green-600 dark:text-green-400">{t("quotaSaved")}</span>
-            )}
-            {gs.error && (
-              <span class="text-xs font-medium text-red-500">{gs.error}</span>
-            )}
-          </div>
-
-          {/* Restart required warning */}
-          {gs.restartRequired && (
-            <div class="flex items-center gap-2 px-3 py-2 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700/50 rounded-lg">
-              <svg class="size-4 text-amber-500 flex-shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z" />
-              </svg>
-              <span class="text-xs font-medium text-amber-700 dark:text-amber-400">
-                {t("generalSettingsRestartRequired")}
-              </span>
-            </div>
-          )}
-        </div>
-      )}
-    </section>
+        )}
+      </section>
+    </div>
   );
 }

@@ -51,8 +51,9 @@ describe("electron-builder.yml", () => {
   });
 
   it("icon file is referenced consistently across platforms", () => {
-    expect(config.win.icon).toBe(config.mac.icon);
-    expect(config.linux.icon).toBe(config.mac.icon);
+    expect(existsSync(resolve(PKG_DIR, config.win.icon))).toBe(true);
+    expect(existsSync(resolve(PKG_DIR, config.mac.icon))).toBe(true);
+    expect(existsSync(resolve(PKG_DIR, config.linux.icon))).toBe(true);
   });
 
   it("files list includes dist-electron bundle", () => {

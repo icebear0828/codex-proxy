@@ -2,9 +2,10 @@ node_modules/
 dist/
 dist-electron/
 release/
+portable-release/
 public-desktop/
 data/
-public/
+/public/
 docs/*
 !docs/MULTI_AGENT_WORKFLOW.md
 bin/*

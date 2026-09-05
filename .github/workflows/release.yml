@@ -160,6 +160,14 @@ jobs:
         working-directory: native
         run: npm run build
 
+      - name: Upload native addon for Lite package
+        uses: actions/upload-artifact@v4
+        with:
+          name: lite-native-${{ matrix.platform }}-${{ matrix.arch || 'x64' }}
+          path: native/*.node
+          if-no-files-found: error
+          retention-days: 1
+
       - name: Bundle Electron (esbuild)
         working-directory: packages/electron
         run: node electron/build.mjs
@@ -273,6 +281,110 @@ jobs:
           # One gh invocation per platform instead of one HTTP/API cycle per file.
           gh release upload "$TAG" "${files[@]}" --clobber
 
+  build-lite:
+    needs: build
+    runs-on: windows-latest
+    timeout-minutes: 35
+    env:
+      GIT_CONFIG_COUNT: 1
+      GIT_CONFIG_KEY_0: core.symlinks
+      GIT_CONFIG_VALUE_0: false
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag || github.ref }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            web/package-lock.json
+            native/package-lock.json
+
+      - name: Install workspace dependencies
+        run: npm ci --ignore-scripts
+
+      - name: Install web frontend dependencies
+        run: cd web && npm ci
+
+      - name: Download native addons from all release platforms
+        uses: actions/download-artifact@v4
+        with:
+          pattern: lite-native-*
+          path: native
+          merge-multiple: true
+
+      - name: Build core and shared server bundle
+        run: |
+          npm run build
+          npm --prefix packages/electron run build
+
+      - name: Setup MSYS2 Lite toolchains
+        id: msys2
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: UCRT64
+          update: true
+          install: >-
+            mingw-w64-ucrt-x86_64-gcc
+            mingw-w64-ucrt-x86_64-webview
+            mingw-w64-i686-gcc
+
+      - name: Build WebView2 hosts
+        shell: pwsh
+        env:
+          MSYS2_ROOT: ${{ steps.msys2.outputs.msys2-location }}
+        run: |
+          $hostDir = Join-Path $env:RUNNER_TEMP "codex-proxy-webview2"
+          New-Item -ItemType Directory -Force -Path $hostDir | Out-Null
+          node scripts/portable/build-webview2-host.mjs --arch x86 --out "$hostDir\win-x86\webview2-host.exe"
+          node scripts/portable/build-webview2-host.mjs --arch x64 --out "$hostDir\win-x64\webview2-host.exe"
+
+      - name: Download Evergreen WebView2 Bootstrapper
+        shell: pwsh
+        run: |
+          $path = Join-Path $env:RUNNER_TEMP "codex-proxy-webview2\MicrosoftEdgeWebView2Setup.exe"
+          node scripts/portable/download-webview2-bootstrapper.mjs --out $path
+
+      - name: Verify Evergreen WebView2 Bootstrapper signature
+        shell: pwsh
+        run: |
+          $path = Join-Path $env:RUNNER_TEMP "codex-proxy-webview2\MicrosoftEdgeWebView2Setup.exe"
+          $signature = Get-AuthenticodeSignature -LiteralPath $path
+          if ($signature.Status -ne "Valid") { throw "Invalid WebView2 Bootstrapper signature: $($signature.Status)" }
+          if ($signature.SignerCertificate.Subject -notmatch "Microsoft") { throw "Unexpected WebView2 Bootstrapper signer: $($signature.SignerCertificate.Subject)" }
+
+      - name: Build Lite tar.xz
+        env:
+          MSYS2_ROOT: ${{ steps.msys2.outputs.msys2-location }}
+          PORTABLE_REQUIRE_WINDOWS_EXE: "1"
+        run: |
+          $version = "${{ inputs.tag || github.ref_name }}" -replace '^v', ''
+          $hostDir = Join-Path $env:RUNNER_TEMP "codex-proxy-webview2"
+          node scripts/portable/build-portable.mjs --version $version `
+            --webview2-host-x86 "$hostDir\win-x86\webview2-host.exe" `
+            --webview2-host-x64 "$hostDir\win-x64\webview2-host.exe" `
+            --webview2-bootstrapper "$hostDir\MicrosoftEdgeWebView2Setup.exe"
+
+      - name: Smoke test Lite archive
+        shell: pwsh
+        run: |
+          $archive = (Get-ChildItem portable-release\*.tar.xz | Select-Object -First 1).FullName
+          node scripts/portable/test-portable.mjs --archive $archive --require-windows-exe --require-webview2 --test-native-launcher
+
+      - name: Upload Lite artifact
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG="${{ inputs.tag || github.ref_name }}"
+          gh release upload "$TAG" portable-release/*.tar.xz --clobber
+
   # Merge the two architecture-specific mac manifests after both mac builds
   # have completed. This job is tiny and removes the old full x64 serial build.
   merge-mac-manifest:
@@ -329,7 +441,7 @@ jobs:
         run: gh release upload --repo "$GITHUB_REPOSITORY" "$TAG" /tmp/latest-mac.yml --clobber
 
   notify:
-    needs: [notes, build, merge-mac-manifest]
+    needs: [notes, build, build-lite, merge-mac-manifest]
     runs-on: ubuntu-latest
     if: always() && (startsWith(github.ref, 'refs/tags/v') || inputs.tag)
     steps:

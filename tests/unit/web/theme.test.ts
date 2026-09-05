@@ -160,24 +160,24 @@ describe("Theme CSS", () => {
       const root = getRootVars();
       const dark = getDarkVars();
 
-      expect(root["--primary"]).toBe("21 128 61");
-      expect(root["--primary-hover"]).toBe("22 101 52");
-      expect(root["--primary-action"]).toBe("21 128 61");
-      expect(root["--primary-action-hover"]).toBe("22 101 52");
-      expect(root["--success"]).toBe("21 128 61");
-      expect(root["--avatar-emerald-text"]).toBe("21 128 61");
-      expect(root["--avatar-emerald-bg"]).toBe("220 252 231");
+      expect(root["--primary"]).toBe("4 120 87");
+      expect(root["--primary-hover"]).toBe("6 95 70");
+      expect(root["--primary-action"]).toBe("4 120 87");
+      expect(root["--primary-action-hover"]).toBe("6 95 70");
+      expect(root["--success"]).toBe("4 120 87");
+      expect(root["--avatar-emerald-text"]).toBe("4 120 87");
+      expect(root["--avatar-emerald-bg"]).toBe("236 253 245");
 
-      expect(dark["--primary"]).toBe("74 222 128");
-      expect(dark["--primary-hover"]).toBe("34 197 94");
-      expect(dark["--primary-action"]).toBe("21 128 61");
-      expect(dark["--primary-action-hover"]).toBe("22 101 52");
-      expect(dark["--success"]).toBe("74 222 128");
-      expect(dark["--avatar-emerald-text"]).toBe("74 222 128");
-      expect(dark["--avatar-emerald-bg"]).toBe("20 83 45");
+      expect(dark["--primary"]).toBe("52 211 153");
+      expect(dark["--primary-hover"]).toBe("16 185 129");
+      expect(dark["--primary-action"]).toBe("4 120 87");
+      expect(dark["--primary-action-hover"]).toBe("6 95 70");
+      expect(dark["--success"]).toBe("52 211 153");
+      expect(dark["--avatar-emerald-text"]).toBe("52 211 153");
+      expect(dark["--avatar-emerald-bg"]).toBe("6 78 59");
 
-      expect(root["--primary-action"]).not.toBe("4 120 87");
-      expect(dark["--primary-action"]).not.toBe("4 120 87");
+      expect(root["--primary-action"]).not.toBe(root["--primary-action-hover"]);
+      expect(dark["--primary-action"]).not.toBe(dark["--primary-action-hover"]);
     });
 
     it("keeps primary/action/status color pairs WCAG AA contrast-safe", () => {

@@ -19,11 +19,14 @@
     <a href="#-available-models">Models</a> &bull;
     <a href="#-client-setup">Client Setup</a> &bull;
     <a href="#-configuration">Configuration</a> &bull;
+    <a href="./API.md">API Reference</a> &bull;
     <a href="#-acknowledgements">Acknowledgements</a>
   </p>
 
   <p>
     <a href="./README.md">简体中文</a> |
+    <a href="./README_TW.md">繁體中文 (台灣)</a> |
+    <a href="./README_HK.md">繁體中文 (香港)</a> |
     <strong>English</strong> |
     <a href="./README_JA.md">日本語</a>
   </p>
@@ -63,6 +66,20 @@ Download the installer from [GitHub Releases](https://github.com/icebear0828/cod
 | Linux | `Codex Proxy-x.x.x.AppImage` |
 
 Open the app, log in with your ChatGPT account. Dashboard at `http://localhost:8080`.
+
+### No-Node Lite Browser/Server (Advanced users)
+
+No-Node Lite is an additional distribution for advanced users; the Electron installers above remain unchanged. It keeps the same backend and web assets but does not bundle Node.js. Download `codex-proxy-<version>-no-node-lite-all-platforms.tar.xz`, extract it, and run the platform entry point from the package root:
+
+```bash
+# Windows: double-click codex-proxy.exe; codex-proxy.cmd is always included as a script fallback
+# macOS/Linux:
+./codex-proxy.sh
+```
+
+By default the Windows launcher checks for the packaged WebView2 host and an installed WebView2 Runtime. If both are available it starts the embedded WebView2 window; otherwise it starts the local server and opens the actual bound server URL in the system browser. Use `--mode=server` to start only the server, `--mode=browser` to force the browser, or `--mode=webview2` to require WebView2. The URL is derived from the bound port rather than hard-coded. Windows portable releases provide x86/x64 WebView2 hosts. If explicit WebView2 mode finds no Runtime, it asks before running `tools/MicrosoftEdgeWebView2Setup.exe /silent /install`; the question times out without installing anything. The online installer installs only the WebView2 Runtime and does not install Node.js. The WebView2 target supports Windows 10 SAC 1709+, supported Windows 10 LTSC/IoT editions, Windows 11, and supported Windows Server editions; Windows 7/8.1 are outside the current target. Node.js 20+ is required; use `--node-path PATH` to select a Node binary. If Node.js cannot be started, the Windows native launcher shows timed installation guidance; the `.cmd` and macOS/Linux launchers print the guidance and offer to open the official Node.js download page.
+
+Like the Electron app, Lite uses the normal per-user data directory by default. Pass `--portable` (or `-p`) to keep data under the extracted package directory instead. `--host`, `--port`, `--webview2-host`, and `--node-path` also have the short forms `-H`, `-P`, `-w`, and `-n`. The Lite update action opens the latest Releases page rather than replacing the running package automatically. On macOS/Linux and in Git Bash, the shell launcher defaults to browser mode; use `--mode=auto` only when you want environment-based selection.
 
 ### Docker
 
@@ -119,6 +136,7 @@ If you see streaming AI text, the setup is working. If you get 401, double-check
 - **Structured Outputs** — `response_format` (`json_object` / `json_schema`) and Gemini `responseMimeType`
 - **Function Calling** — native `function_call` / `tool_calls` across all protocols
 - **Third-party API keys** — supports OpenAI / Anthropic / Gemini / OpenRouter / custom OpenAI-compatible providers, routed by model.
+- 📖 For complete endpoint definitions and protocol specifications, see **[API Reference](./API.md)**.
 
 ### 2. 🔐 Account Management & Smart Rotation
 - **OAuth PKCE login** — one-click browser auth
@@ -190,6 +208,9 @@ If you see streaming AI text, the setup is working. If you get 401, double-check
 
 | Model ID | Reasoning | Current context | Max context | Max output | Output | Description |
 |----------|-----------|-----------------|-------------|------------|--------|-------------|
+| `gpt-6-astra` | low / medium / high / xhigh / max / ultra | 1,050,000 | 1,050,000 | 128,000 | text | GPT-6 frontier flagship for complex reasoning & coding (`gpt-6` is an alias) |
+| `gpt-6-astra-aeon` | low / medium / high / xhigh / max / ultra | 1,050,000 | 1,050,000 | 128,000 | text | GPT-6 variant for long-horizon multi-agent tasks & deep reasoning |
+| `gpt-reserve` | low / medium / high / xhigh / max | 272,000 | 872,000 | 128,000 | text | Fast and affordable agentic coding model (all plans) |
 | `gpt-5.6-sol` | low / medium / high / xhigh / max / ultra | 1,050,000 | 1,050,000 | 128,000 | text | GPT-5.6 flagship for complex reasoning & coding (default; `gpt-5.6` is an alias) |
 | `gpt-5.6-terra` | low / medium / high / xhigh / max / ultra | 1,050,000 | 1,050,000 | 128,000 | text | GPT-5.6 balanced intelligence and cost |
 | `gpt-5.6-luna` | low / medium / high / xhigh / max / ultra | 1,050,000 | 1,050,000 | 128,000 | text | GPT-5.6 cost-efficient / high-throughput |

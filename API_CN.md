@@ -1,9 +1,22 @@
 # Codex Proxy API 文档
 
+[English](./API.md) | **简体中文** | [繁體中文 (台灣)](./API_TW.md) | [繁體中文 (香港)](./API_HK.md) | [日本語](./API_JA.md)
+
+---
+
 ## 鉴权方式
 
-所有代理端点（chat/messages/responses）可选传 `Authorization: Bearer {proxy_api_key}`。
-Dashboard 管理面板使用 cookie session（`_codex_session`）。
+所有代理端点（chat / messages / gemini / responses / embeddings / images）支持配置好的代理 API Key：
+- 请求头：`Authorization: Bearer {proxy_api_key}`、`x-api-key: {proxy_api_key}` 或 `x-goog-api-key: {proxy_api_key}`
+- 查询参数：`?key={proxy_api_key}`
+
+### 客户端子密钥（Client Keys / Sub-keys）
+客户端也可以使用在后台管理面板或 Admin API 创建的细粒度 Client Key 进行认证。子密钥支持限额（USD 预算）、Token 上限、并发上限、允许访问的模型列表以及过期时间。
+- 子密钥自查询端点：`GET /v1/sub-key/info`（需要传入 `Authorization: Bearer {client_key}`）。
+
+### Dashboard 与管理接口鉴权
+- Dashboard 管理面板使用 cookie session（`_codex_session`）。
+- 管理接口（`/admin/*`）要求有效的 Dashboard session，或通过 `Authorization: Bearer {master_api_key}` 传入主 Proxy API Key。
 
 ---
 
@@ -15,7 +28,7 @@ OpenAI 兼容的聊天补全接口。
 ```jsonc
 // 请求体
 {
-  "model": "o4-mini",
+  "model": "gpt-5.6-sol",
   "messages": [{"role": "user", "content": "Hello"}],
   "stream": true,
   "reasoning_effort": "medium"  // 可选: low | medium | high | xhigh
@@ -25,7 +38,7 @@ OpenAI 兼容的聊天补全接口。
 - 流式：SSE，事件包含 `choice.delta`
 - 非流式：`{ id, choices, usage }`
 - 错误格式：`{ error: { message, type, code } }`
-- `max_tokens`、`max_completion_tokens`、`max_output_tokens` 仅做客户端兼容解析，不会转发给 Codex。
+- `max_tokens`、`max_completion_tokens`、`max_output_tokens` 仅做客户端兼容解析，不会转发给 Codex 原生后端。
 
 ### POST /v1/messages
 Anthropic Messages API 兼容接口。
@@ -61,18 +74,18 @@ Google Gemini 兼容接口。
 - 错误格式：`{ error: { code, message, status } }`
 
 ### POST /v1/responses
-原生 Codex Responses API 透传（底层走 WebSocket）。
+原生 Codex Responses API 透传（HTTP POST + SSE）。
 
 ```jsonc
 // 请求体
 {
-  "model": "o4-mini",
+  "model": "gpt-5.6-sol",
   "instructions": "你是一个助手。",
   "input": [{"type": "message", "content": "Hello"}],
   "stream": true,
   "reasoning": {"effort": "medium"},
   "tools": [],
-  "previous_response_id": "resp_xxx"  // 多轮对话
+  "previous_response_id": "resp_xxx"  // 多轮对话上下文延续
 }
 ```
 
@@ -80,7 +93,48 @@ Google Gemini 兼容接口。
 - 非流式：`{ response, usage, responseId }`
 - 不要向原生 Codex 发送 `max_output_tokens`。代理只兼容解析并剥离该字段，因为真实 Codex 后端会返回 `400 Unsupported parameter: max_output_tokens`。
 
-### Codex Responses API-key 辅助端点
+### WebSocket /v1/responses
+原生 Codex Responses API WebSocket 传输（Issue #681）。
+
+客户端可以通过 WebSocket 连接到 `ws://{host}:{port}/v1/responses`（或 `wss://`），并携带标准认证信息（如 `Authorization: Bearer {key}` 头或 `?key={key}` 查询参数）。
+
+- 连接保持长连，支持多轮交互。
+- 客户端发送 `response.create` 格式的 JSON 文本帧。
+- 代理执行请求并将 SSE 的 `data:` JSON 数据逐帧返回给客户端。
+
+### POST /v1/images/generations
+OpenAI Images API 兼容的图片生成接口。
+
+```jsonc
+// 请求体
+{
+  "model": "gpt-image-2",
+  "prompt": "A scenic sunset over snow-capped mountains",
+  "size": "1024x1024",
+  "output_format": "png"
+}
+```
+
+- 代理将图像生成请求转换为 Codex Responses 的 `image_generation` 工具调用，并路由至配置的 `model.image_host_model`（默认：`gpt-5.5`）。
+- 返回 OpenAI 兼容格式 `{ created, data: [{ b64_json, revised_prompt }] }`。
+
+### POST /v1/embeddings
+OpenAI 兼容的文本向量嵌入接口。
+
+```jsonc
+// 请求体
+{
+  "model": "text-embedding-3-small",
+  "input": "Your text string goes here"
+}
+```
+
+- 路由至配置了 `embeddings` 能力的第三方 Provider API Key。
+- 返回 `{ object: "list", data: [{ object: "embedding", embedding: [...], index: 0 }], model, usage }`。
+
+---
+
+### Codex Responses API-Key 辅助端点
 
 当请求模型路由到 `wire=codex-responses` 的 API-key provider 时，代理还支持以下非流式 JSON 端点：
 
@@ -95,9 +149,7 @@ Google Gemini 兼容接口。
 
 #### image_generation 工具
 
-在 `tools[]` 里声明 `{"type": "image_generation", ...}`，模型可以调用服务端图像
-生成后端（`gpt-image-2`）。前提：**ChatGPT Plus 及以上** 账号——free 账号上游
-会静默剥掉工具，模型会改用 SVG 文本假装画图。
+在 `tools[]` 里声明 `{"type": "image_generation", ...}`，模型可以调用服务端图像生成后端（`gpt-image-2`）。前提：**ChatGPT Plus 及以上** 账号——free 账号上游会静默剥掉工具，模型会改用 SVG 文本假装画图。
 
 **支持字段**（除 `type` 全部可选）：
 
@@ -128,20 +180,11 @@ Google Gemini 兼容接口。
    - `revised_prompt` — 模型实际使用的最终提示词。
 5. `response.completed`。
 
-**Token 计费**：`response.completed.response.usage` 是主模型的 token；图像工具
-的 token 单独走 `response.completed.response.tool_usage.image_gen.{input_tokens,
-output_tokens, total_tokens}`。代理两边都原样透传，并且在仪表盘里把图像 token
-单列为 `total_image_input_tokens` / `total_image_output_tokens`，不会和主模型的
-token 混到一起。
+**Token 计费**：`response.completed.response.usage` 是主模型的 token；图像工具的 token 单独走 `response.completed.response.tool_usage.image_gen.{input_tokens, output_tokens, total_tokens}`。代理两边都原样透传，并且在仪表盘里把图像 token 单列为 `total_image_input_tokens` / `total_image_output_tokens`，不会和主模型的 token 混到一起。
 
-**请求计数**：代理同时分别统计图像生成的成功 / 失败次数。`total_image_request_count`
-在上游返回真实图像（`tool_usage.image_gen.output_tokens > 0`）时 +1；
-`total_image_request_failed_count` 在工具被静默剥（Free 账号）、上游错误、空响应等
-任何失败路径下 +1。两者都通过 `/admin/usage-stats/summary` 暴露，Dashboard 的
-「Image Requests」卡片直接展示 `N ok · M failed`。
+**请求计数**：代理同时分别统计图像生成的成功 / 失败次数。`total_image_request_count` 在上游返回真实图像（`tool_usage.image_gen.output_tokens > 0`）时 +1；`total_image_request_failed_count` 在工具被静默剥除（Free 账号）、上游错误、空响应等任何失败路径下 +1。两者都通过 `/admin/usage-stats/summary` 暴露，Dashboard 的「Image Requests」卡片直接展示 `N ok · M failed`。
 
-**编辑模式**（带参考图）：在 user message 的 content 数组里加 `input_image`
-块，`data:` URL 和 HTTPS URL 都支持。
+**编辑模式**（带参考图）：在 user message 的 content 数组里加 `input_image` 块，`data:` URL 和 HTTPS URL 都支持。
 
 ```jsonc
 {
@@ -158,12 +201,48 @@ token 混到一起。
 }
 ```
 
-合法 content-part 类型（由上游枚举校验回显）：`input_text`、`input_image`、
-`output_text`、`refusal`、`input_file`、`computer_screenshot`、`summary_text`。
+合法 content-part 类型（由上游枚举校验回显）：`input_text`、`input_image`、`output_text`、`refusal`、`input_file`、`computer_screenshot`、`summary_text`。
 
-OpenAI Chat 兼容路径会接受 `tools: [{"type":"image_generation"}]`，但稳定的
-图像 payload 只会通过 `/v1/responses` 的 `image_generation_call.result` 暴露。
-需要拿到 base64 图片字节时，请使用 `/v1/responses`。
+OpenAI Chat 兼容路径会接受 `tools: [{"type":"image_generation"}]`，但稳定的图像 payload 只会通过 `/v1/responses` 的 `image_generation_call.result` 暴露。需要拿到 base64 图片字节时，请使用 `/v1/responses` 或 `POST /v1/images/generations`。
+
+---
+
+### Ollama 兼容桥接
+
+可选桥接服务运行在独立的监听端口上，默认为 `http://127.0.0.1:11434`。默认处于关闭状态，可通过控制面板或 Admin API 开启。Ollama 端点设计为免认证，除非你信任当前网络，否则建议仅绑定在本地回环地址（localhost）。
+
+浏览器 CORS 访问被限制在本地回环源（`localhost`、`127.x.x.x`、`::1`），非本地网页默认无法读取桥接响应。桥接层在转发 `/v1/*` 请求时会自动注入配置好的 Codex Proxy API Key，因此向局域网或公网暴露该端口等同于免密暴露代理主接口。
+
+| 方法 | 路径 | 说明 |
+|--------|------|-------------|
+| GET | `/api/version` | 版本探测 → `{ version }` |
+| GET | `/api/tags` | Ollama 格式的模型列表 |
+| POST | `/api/show` | 模型元数据与能力描述 |
+| POST | `/api/chat` | 聊天补全接口（默认 NDJSON 流式） |
+| Any | `/v1/*` | OpenAI 兼容直通主代理 |
+
+```jsonc
+// POST http://127.0.0.1:11434/api/chat
+{
+  "model": "codex",
+  "messages": [{"role": "user", "content": "Hello"}],
+  "stream": true,
+  "think": "medium"  // 可选: false | true | low | medium | high | xhigh
+}
+```
+
+支持的请求字段映射：
+
+| Ollama 字段 | 上游 OpenAI 对应字段 |
+|--------------|-----------------------|
+| `messages[].images` | `content[].image_url` data URLs |
+| `tools` | `tools` |
+| `think` | `reasoning_effort` |
+| `format: "json"` | `response_format: { type: "json_object" }` |
+| `format: { ... }` | 严格 JSON schema 格式 |
+| `options.temperature` | `temperature` |
+| `options.top_p` | `top_p` |
+| `options.num_predict` | `max_tokens` |
 
 ---
 
@@ -171,8 +250,8 @@ OpenAI Chat 兼容路径会接受 `tools: [{"type":"image_generation"}]`，但�
 
 | 方法 | 路径 | 说明 |
 |------|------|------|
-| GET | `/v1/models` | 列出所有模型（OpenAI 格式） |
-| GET | `/v1/models/catalog` | 完整模型目录（含 reasoning effort） |
+| GET | `/v1/models` | 列出所有模型（OpenAI 格式，带 Client Key 时会自动按权限过滤） |
+| GET | `/v1/models/catalog` | 完整模型目录（含 reasoning effort 及元数据） |
 | GET | `/v1/models/:id` | 单个模型详情 |
 | GET | `/v1/models/:id/info` | 扩展模型信息 |
 | GET | `/v1beta/models` | 列出模型（Gemini 格式） |
@@ -186,14 +265,32 @@ OpenAI Chat 兼容路径会接受 `tools: [{"type":"image_generation"}]`，但�
 | `maxContextWindow` | 上游提供的最大可扩展上下文窗口（如果返回） |
 | `maxOutputTokens` | 静态或上游提供的最大输出 token，用于展示和客户端参考 |
 | `truncationPolicyLimit` | 上游提供的截断策略限制（如果返回） |
+| `outputModalities` | 支持的输出模态（例如 `["text"]`、`["text", "image"]`） |
 
-静态值定义在 `config/models.yaml`；同一模型 ID 如果从
-`/backend-api/codex/models` 拉到动态条目，则以上游动态值为准。静态 GPT-5.6
-家族（`gpt-5.6-sol` / `gpt-5.6-terra` / `gpt-5.6-luna` / `gpt-5.6`）使用
-1,050,000 上下文与 128,000 最大输出。更早的运行时样本仍记录 `gpt-5.5` /
-`gpt-5.4` 的 `context_window=272000`，以及 `gpt-5.4` 的
-`max_context_window=1000000`。这些是 Codex 运行时限制，不代表请求级
-context 或 max-token 开关可用。
+静态值定义在 `config/models.yaml`；同一模型 ID 如果从 `/backend-api/codex/models` 拉到动态条目，则以上游动态值为准。
+
+---
+
+## 客户端子密钥管理（Client Keys）
+
+通过子密钥可以生成带有特定额度、模型权限、Token 限制、并发控制和过期时间的独立 API Key。
+
+### 自服务查询端点
+
+| 方法 | 路径 | 说明 |
+|------|------|------|
+| GET | `/v1/sub-key/info` | 查询当前 Client Key 的配额、剩余额度、允许模型和用量数据 |
+
+### 管理员接口
+
+| 方法 | 路径 | 说明 |
+|------|------|------|
+| GET | `/admin/client-keys` | 列出所有 Client Keys（脱敏）及汇总统计 |
+| POST | `/admin/client-keys` | 创建新 Client Key（`{ name, key?, expires_at?, max_budget_usd?, max_tokens?, max_concurrency?, allowed_models?, default_tools? }`） |
+| PUT | `/admin/client-keys/:id` | 更新 Client Key 配置 |
+| POST | `/admin/client-keys/:id/toggle` | 快速启停 Key（`active` / `disabled`） |
+| POST | `/admin/client-keys/:id/reset-usage` | 重置指定 Key 的用量花费和 Token 计数 |
+| DELETE | `/admin/client-keys/:id` | 删除 Client Key |
 
 ---
 
@@ -203,18 +300,19 @@ context 或 max-token 开关可用。
 
 | 方法 | 路径 | 说明 |
 |------|------|------|
-| GET | `/auth/accounts` | 列出所有账号 |
+| GET | `/auth/accounts` | 列出所有账号、持久化健康状态与兜底上游状态 |
 | POST | `/auth/accounts` | 添加单个账号（`{ token?, refreshToken? }`） |
 | DELETE | `/auth/accounts/:id` | 删除账号 |
 | PATCH | `/auth/accounts/:id/label` | 设置标签（`{ label }`） |
+| PATCH | `/auth/accounts/:id/codex-fingerprint` | 设置账号 TLS 指纹模式（`{ mode: "off" \| "session" }`） |
 
 ### 批量操作
 
 | 方法 | 路径 | 说明 |
 |------|------|------|
-| POST | `/auth/accounts/import` | 批量导入（`{ accounts: [{token?, refreshToken?, label?}] }`） |
+| POST | `/auth/accounts/import` | 批量导入（`{ accounts: [{token?, refreshToken?, label?}] }` 或纯文本） |
 | POST | `/auth/accounts/batch-delete` | 批量删除（`{ ids: [] }`） |
-| POST | `/auth/accounts/batch-status` | 批量启停（`{ ids: [], status: "active"\|"disabled" }`） |
+| POST | `/auth/accounts/batch-status` | 批量启停（`{ ids: [], status: "active" \| "disabled" }`） |
 
 ### 健康检查 & 配额
 
@@ -224,12 +322,14 @@ context 或 max-token 开关可用。
 | POST | `/auth/accounts/:id/refresh` | 刷新单个账号 token 和状态 |
 | GET | `/auth/accounts/:id/quota` | 查看配额和用量 |
 | POST | `/auth/accounts/:id/reset-usage` | 重置用量计数 |
+| GET | `/auth/accounts/:id/reset-credits` | 查看 Reset Credits 信息 |
+| POST | `/auth/accounts/:id/reset-credits/consume` | 消耗 Reset Credit（`{ redeem_request_id? }`） |
 
 ### 导出
 
 | 方法 | 路径 | 说明 |
 |------|------|------|
-| GET | `/auth/accounts/export` | 导出账号（`?ids=a,b&format=minimal`） |
+| GET | `/auth/accounts/export` | 导出账号（`?ids=a,b&format=minimal\|full\|csv\|token-key\|auth-json\|sub2api`） |
 
 ### Cookies（Cloudflare）
 
@@ -238,6 +338,36 @@ context 或 max-token 开关可用。
 | GET | `/auth/accounts/:id/cookies` | 获取已存 cookies |
 | POST | `/auth/accounts/:id/cookies` | 设置 cookies（`{ cookies }`） |
 | DELETE | `/auth/accounts/:id/cookies` | 清除 cookies |
+
+### 兜底上游 API-Key（Fallback Upstream）
+
+当所有 OAuth 账号均不可用（过期、被限流或账号池为空）时，代理会自动路由至配置的兜底上游 API Key。
+
+| 方法 | 路径 | 说明 |
+|------|------|------|
+| GET | `/auth/fallback-upstream` | 获取兜底上游配置与状态 |
+| POST | `/auth/fallback-upstream` | 设置兜底上游（`{ baseUrl, apiKey }`） |
+| PUT | `/auth/fallback-upstream` | 更新兜底上游（`{ baseUrl, apiKey? }`） |
+| DELETE | `/auth/fallback-upstream` | 清除兜底上游配置 |
+
+---
+
+## 第三方 Provider API Key 管理
+
+管理第三方供应商的 API Key（Anthropic、OpenAI、Gemini、OpenRouter、Custom 等）。
+
+| 方法 | 路径 | 说明 |
+|------|------|------|
+| GET | `/auth/api-keys` | 列出所有配置的 Provider API Keys |
+| GET | `/auth/api-keys/catalog` | 获取预定义模型目录 |
+| POST | `/auth/api-keys/models` | 从上游供应商拉取可用模型列表 |
+| GET | `/auth/api-keys/export` | 导出 API Keys 用于重新导入 |
+| POST | `/auth/api-keys/import` | 批量导入 Provider API Keys（`{ keys: [] }`） |
+| POST | `/auth/api-keys` | 添加单个 Provider Key 绑定（`{ provider, models, apiKey, baseUrl?, label?, capabilities?, wire? }`） |
+| POST | `/auth/api-keys/batch-delete` | 批量删除 API Keys（`{ ids: [] }`） |
+| DELETE | `/auth/api-keys/:id` | 删除单个 API Key |
+| PATCH | `/auth/api-keys/:id/label` | 修改 Key 标签（`{ label }`） |
+| PATCH | `/auth/api-keys/:id/status` | 修改 Key 状态（`{ status: "active" \| "disabled" }`） |
 
 ---
 
@@ -312,54 +442,58 @@ context 或 max-token 开关可用。
 
 | 方法 | 路径 | 说明 |
 |------|------|------|
-| GET | `/admin/general-settings` | 获取全部设置 |
+| GET | `/admin/general-settings` | 获取全部 server / tls / model / logs 设置 |
 | POST | `/admin/general-settings` | 更新设置（返回 `restart_required` 标志） |
-| GET | `/admin/settings` | 获取 proxy API key |
-| POST | `/admin/settings` | 设置 proxy API key |
+| GET | `/admin/settings` | 获取 Master proxy API key |
+| POST | `/admin/settings` | 设置 Master proxy API key |
 | GET | `/admin/rotation-settings` | 获取轮转策略 |
-| POST | `/admin/rotation-settings` | 设置轮转策略 |
-| GET | `/admin/quota-settings` | 获取配额设置 |
-| POST | `/admin/quota-settings` | 更新配额设置 |
+| POST | `/admin/rotation-settings` | 设置轮转策略（`least_used` \| `round_robin` \| `sticky`） |
+| GET | `/admin/quota-settings` | 获取配额与跳过设置 |
+| POST | `/admin/quota-settings` | 更新配额与跳过设置 |
+| GET | `/admin/ollama-settings` | 获取 Ollama Bridge 设置及运行状态 |
+| POST | `/admin/ollama-settings` | 持久化 Ollama Bridge 设置并重启桥接 |
+| GET | `/admin/ollama-status` | 获取 Ollama Bridge 运行状态 |
 
 ### 诊断
 
 | 方法 | 路径 | 说明 |
 |------|------|------|
-| GET | `/health` | 健康探针 → `{ status, authenticated, pool }` |
-| POST | `/admin/test-connection` | 完整连通性诊断 |
+| GET | `/health` | 健康探针 → `{ status, authenticated, pool, uptime_seconds }` |
+| POST | `/admin/test-connection` | 完整连通性诊断（服务器、账号、传输层、上游） |
 | GET | `/debug/fingerprint` | TLS 指纹配置（仅 localhost） |
-| GET | `/debug/diagnostics` | 系统诊断信息（仅 localhost） |
+| GET | `/debug/diagnostics` | 系统诊断信息与文件路径（仅 localhost） |
 | GET | `/debug/models` | 模型存储内部状态 |
 
-## 官方 Codex App Server Bridge
+### 请求日志
 
-可选桥接到本机官方 `codex app-server`。这条路径用于复用官方 Codex app
-插件能力，例如 Chrome/browser 插件。默认关闭：`official_agent.enabled:
-false`。
+| 方法 | 路径 | 说明 |
+|------|------|------|
+| GET | `/admin/logs` | 查询抓取的请求日志列表（`?limit=&offset=&direction=&search=`） |
+| GET | `/admin/logs/state` | 获取请求日志存储状态（`enabled`, `paused`, `capacity`） |
+| POST | `/admin/logs/state` | 更新日志抓取状态（`{ enabled?, paused? }`） |
+| POST | `/admin/logs/clear` | 清空所有内存请求日志 |
+| GET | `/admin/logs/:id` | 获取单条日志详细内容 |
 
-以下端点强制要求独立的 `official_agent.api_key`；未配置该 key 时，桥接会拒绝请求。
-不要复用 `server.proxy_api_key`，因为该桥接可以驱动本机 app-server 插件和审批流程。
+### 错误日志
+
+| 方法 | 路径 | 说明 |
+|------|------|------|
+| GET | `/admin/error-logs` | 获取聚合后的错误日志列表 |
+| GET | `/admin/error-logs/raw` | 获取原始错误日志列表（`?limit=`） |
+| GET | `/admin/error-logs/count` | 获取总错误数与未读错误数 |
+| POST | `/admin/error-logs/seen` | 标记错误日志已读游标 |
+| DELETE | `/admin/error-logs` | 清空错误日志 |
+| POST | `/admin/error-logs/report` | 上报客户端错误（`{ source, error: { name, message, stack }, context? }`） |
+
+### 官方 Codex App Server Bridge
+
+可选桥接到本机官方 `codex app-server`。用于复用官方 Codex app 插件能力（如 Chrome/browser 插件）。默认关闭（`official_agent.enabled: false`）。强制要求独立的 `official_agent.api_key`。
 
 | 方法 | 路径 | 说明 |
 |------|------|------|
 | GET | `/official-agent/apps` | 通过 `app/list` 列出官方 Codex apps/connectors |
 | POST | `/official-agent/threads` | 创建 app-server thread（`{ model?, cwd? }`） |
 | POST | `/official-agent/threads/:threadId/turns` | 发起 turn，并以 SSE 流式返回 app-server notifications |
-
-turn 请求里的 `approvalPolicy` 如需传入，只允许 `untrusted`、`on-request`、
-`on-failure`、`never`。
-
-使用官方 Chrome app mention 的请求示例：
-
-```json
-{
-  "text": "Open localhost:8080 and inspect the dashboard",
-  "app": { "id": "chrome", "name": "Chrome" }
-}
-```
-
-桥接层会发送一个 text item 和一个 `path: "app://{id}"` 的 `mention`
-item。实际 app id 请先通过 `/official-agent/apps` 探测，不要默认硬编码。
 
 ### 更新
 
@@ -373,8 +507,8 @@ item。实际 app id 请先通过 `/official-agent/apps` 探测，不要默认�
 
 | 方法 | 路径 | 说明 |
 |------|------|------|
-| GET | `/admin/usage-stats/summary` | 按账号/模型的累计用量 |
-| GET | `/admin/usage-stats/history` | 时序数据（`?granularity=hourly&hours=24`） |
+| GET | `/admin/usage-stats/summary` | 按账号/模型/Client Key 维度的累计用量 |
+| GET | `/admin/usage-stats/history` | 时序数据（`?granularity=raw\|five_min\|hourly\|daily&hours=24\|all`） |
 
 ### 配额告警
 
@@ -382,15 +516,7 @@ item。实际 app id 请先通过 `/official-agent/apps` 探测，不要默认�
 |------|------|------|
 | GET | `/auth/quota/warnings` | 当前活跃的配额告警 |
 
-启用 `quota.skip_exhausted` 后，账号池会在获取账号时过滤缓存额度中
-`rate_limit.limit_reached === true` 或
-`secondary_rate_limit.limit_reached === true` 或
-`code_review_rate_limit.limit_reached === true` 的 active 账号。过滤发生在
-session affinity 之前，所以 `preferredEntryId` 不能把请求继续粘到已耗尽账号。
-如果只是 `used_percent=99` 这类临近满额，但上游还没标记 `limit_reached`，代理
-不会主动跳过；等上游返回 429 后，该账号会进入 `rate_limited` 退避并切换账号。
-secondary / code review 窗口自己的 `reset_at` 过期后会从缓存中清除，避免账号被
-永久跳过。
+启用 `quota.skip_exhausted` 后，账号池会在获取账号时过滤缓存额度中 `rate_limit.limit_reached === true`、`secondary_rate_limit.limit_reached === true` 或 `code_review_rate_limit.limit_reached === true` 的 active 账号。过滤发生在 session affinity 之前，所以 `preferredEntryId` 不能把请求继续粘到已耗尽账号。如果只是 `used_percent=99` 这类临近满额，但上游还没标记 `limit_reached`，代理不会主动跳过；等上游返回 429 后，该账号会进入 `rate_limited` 退避并切换账号。
 
 ---
 
@@ -417,3 +543,4 @@ secondary / code review 窗口自己的 `reset_at` 过期后会从缓存中清�
 | Admin | `{ error: "..." }` |
 
 常见 HTTP 状态码：`401`（未认证）、`429`（限流）、`503`（无可用账号）。
+

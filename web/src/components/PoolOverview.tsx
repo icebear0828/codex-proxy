@@ -106,7 +106,7 @@ export function PoolOverview({ accounts, creditsPerUsd = DEFAULT_CREDITS_PER_USD
               {stats.topUsage.account.email || stats.topUsage.account.id}
             </div>
             <div class="text-xs text-slate-500 dark:text-text-dim">
-              {stats.topUsage.pct}%{stats.topUsage.resetAt ? ` · ${formatResetTime(stats.topUsage.resetAt, lang === "zh")}` : ""}
+              {stats.topUsage.pct}%{stats.topUsage.resetAt ? ` · ${formatResetTime(stats.topUsage.resetAt, lang)}` : ""}
             </div>
           </div>
         )}

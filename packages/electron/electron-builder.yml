@@ -44,8 +44,7 @@ win:
   target:
     - target: nsis
       arch: [x64]
-  icon: electron/assets/icon.png
-  signAndEditExecutable: false
+  icon: electron/assets/icon.ico
 
 nsis:
   oneClick: false

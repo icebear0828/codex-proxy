@@ -6,6 +6,8 @@ export interface RecordProxyEgressLogOptions {
   request: ProxyRequest;
   status: number | null;
   startMs: number;
+  account?: string | null;
+  fallback?: boolean;
   error?: string;
   nowMs?: () => number;
 }
@@ -19,6 +21,8 @@ export function recordProxyEgressLog(options: RecordProxyEgressLogOptions): void
     path: "/codex/responses",
     model: options.request.model,
     provider: "codex",
+    account: options.account,
+    fallback: options.fallback,
     status: options.status,
     latencyMs: nowMs() - options.startMs,
     stream: options.request.isStreaming,

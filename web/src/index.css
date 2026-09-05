@@ -3,28 +3,28 @@
 @tailwind utilities;
 
 :root {
-  --primary: 21 128 61;
-  --primary-hover: 22 101 52;
-  --primary-action: 21 128 61;
-  --primary-action-hover: 22 101 52;
-  --primary-container: 220 252 231;
-  --success: 21 128 61;
-  --success-container: 220 252 231;
-  --warning: 180 83 9;
+  --primary: 4 120 87;
+  --primary-hover: 6 95 70;
+  --primary-action: 4 120 87;
+  --primary-action-hover: 6 95 70;
+  --primary-container: 236 253 245;
+  --success: 4 120 87;
+  --success-container: 236 253 245;
+  --warning: 146 64 14;
   --warning-container: 254 243 199;
   --danger: 185 28 28;
   --danger-container: 254 226 226;
-  --info: 29 78 216;
-  --info-container: 219 234 254;
+  --info: 37 99 235;
+  --info-container: 239 246 255;
   --avatar-purple-text: 126 34 206;
   --avatar-purple-bg: 243 232 255;
   --avatar-amber-text: 146 64 14;
   --avatar-amber-bg: 254 243 199;
   --avatar-blue-text: 29 78 216;
   --avatar-blue-bg: 219 234 254;
-  --avatar-emerald-text: 21 128 61;
-  --avatar-emerald-bg: 220 252 231;
-  --avatar-red-text: 185 28 28;
+  --avatar-emerald-text: 4 120 87;
+  --avatar-emerald-bg: 236 253 245;
+  --avatar-red-text: 220 38 38;
   --avatar-red-bg: 254 226 226;
   --chart-blue: #3b82f6;
   --chart-green: #10b981;
@@ -34,13 +34,13 @@
 }
 
 .dark {
-  --primary: 74 222 128;
-  --primary-hover: 34 197 94;
-  --primary-action: 21 128 61;
-  --primary-action-hover: 22 101 52;
-  --primary-container: 20 83 45;
-  --success: 74 222 128;
-  --success-container: 20 83 45;
+  --primary: 52 211 153;
+  --primary-hover: 16 185 129;
+  --primary-action: 4 120 87;
+  --primary-action-hover: 6 95 70;
+  --primary-container: 6 78 59;
+  --success: 52 211 153;
+  --success-container: 6 78 59;
   --warning: 251 191 36;
   --warning-container: 61 44 22;
   --danger: 248 113 113;
@@ -53,8 +53,8 @@
   --avatar-amber-bg: 61 44 22;
   --avatar-blue-text: 96 165 250;
   --avatar-blue-bg: 26 42 63;
-  --avatar-emerald-text: 74 222 128;
-  --avatar-emerald-bg: 20 83 45;
+  --avatar-emerald-text: 52 211 153;
+  --avatar-emerald-bg: 6 78 59;
   --avatar-red-text: 248 113 113;
   --avatar-red-bg: 63 26 26;
   --chart-blue: #60a5fa;
@@ -64,21 +64,56 @@
   color-scheme: dark;
 }
 
+/* Typography & Rendering */
+html {
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+  font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+}
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans", sans-serif, "Apple Color Emoji", "Segoe UI Emoji";
+  color-scheme: light dark;
+}
+
+code, kbd, samp, pre {
+  font-family: "JetBrains Mono", "Fira Code", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+}
+
+/* Custom Scrollbars */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(156, 163, 175, 0.4);
+  border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(156, 163, 175, 0.7);
+}
+.dark ::-webkit-scrollbar-thumb {
+  background: rgba(75, 85, 99, 0.5);
+}
+.dark ::-webkit-scrollbar-thumb:hover {
+  background: rgba(107, 114, 128, 0.8);
+}
+
 /* Dark scrollbar for code blocks */
-pre::-webkit-scrollbar { height: 8px; }
+pre::-webkit-scrollbar { height: 6px; }
 pre::-webkit-scrollbar-track { background: #0d1117; }
 pre::-webkit-scrollbar-thumb { background: #30363d; border-radius: 4px; }
 pre::-webkit-scrollbar-thumb:hover { background: #8b949e; }
 
 /* ── Electron macOS: native titlebar integration ────────────────── */
-/* .electron-mac is added to <html> by electron/main.ts at runtime  */
-
-/* Header becomes a draggable titlebar region */
 .electron-mac header {
   -webkit-app-region: drag;
 }
 
-/* Interactive elements inside header must remain clickable */
 .electron-mac header button,
 .electron-mac header a,
 .electron-mac header input,
@@ -86,12 +121,10 @@ pre::-webkit-scrollbar-thumb:hover { background: #8b949e; }
   -webkit-app-region: no-drag;
 }
 
-/* Extra top padding so header content clears the traffic lights vertically */
 .electron-mac header > div {
   padding-top: 6px;
 }
 
-/* Left padding so logo/title doesn't overlap the traffic lights (≈ 72px) */
 .electron-mac header > div > div {
   padding-left: 72px;
 }

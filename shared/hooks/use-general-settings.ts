@@ -24,6 +24,7 @@ export interface GeneralSettingsData {
   auto_update: boolean;
   auto_download: boolean;
   show_update_dialog: boolean;
+  allow_prerelease: boolean;
   logs_enabled: boolean;
   logs_capacity: number;
   logs_capture_body: boolean;
@@ -96,6 +97,7 @@ export function useGeneralSettings(apiKey: string | null) {
         auto_update: result.auto_update,
         auto_download: result.auto_download,
         show_update_dialog: result.show_update_dialog,
+        allow_prerelease: result.allow_prerelease,
         logs_enabled: result.logs_enabled,
         logs_capacity: result.logs_capacity,
         logs_capture_body: result.logs_capture_body,

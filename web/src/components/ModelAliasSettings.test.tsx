@@ -43,11 +43,11 @@ describe("ModelAliasSettings", () => {
 
     render(
       <I18nProvider>
-        <ModelAliasSettings />
+        <ModelAliasSettings models={["gpt-5.5", "openai:gpt-4o", "sonnet-local"]} />
       </I18nProvider>,
     );
 
-    fireEvent.click(screen.getByText("Model Aliases"));
+    expect(screen.getByText("Model Aliases")).toBeTruthy();
     expect(screen.getByDisplayValue("sonnet-local")).toBeTruthy();
 
     fireEvent.click(screen.getByText("Add alias"));
@@ -55,7 +55,10 @@ describe("ModelAliasSettings", () => {
     const targetInputs = screen.getAllByPlaceholderText("gpt-5.5 or openai:gpt-4o");
     fireEvent.input(aliasInputs[1], { target: { value: "openai-fast" } });
     fireEvent.input(targetInputs[1], { target: { value: "openai:gpt-4o" } });
-    fireEvent.click(screen.getByText("Submit"));
+
+    const saveBtn = screen.getByTitle("Save");
+    expect(saveBtn).toBeTruthy();
+    fireEvent.click(saveBtn);
 
     expect(mockGeneralSettings.save).toHaveBeenCalledWith({
       model_aliases: {

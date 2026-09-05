@@ -81,4 +81,17 @@ describe("paths — Electron mode (setPaths)", () => {
     expect(isEmbedded()).toBe(true);
   });
 
+  it("allows packaged CLI paths without classifying the process as Electron", async () => {
+    const { setPaths, isEmbedded } = await importPaths();
+    setPaths({
+      rootDir: "/package",
+      configDir: "/package/config",
+      dataDir: "/user-data",
+      binDir: "/package/bin",
+      publicDir: "/package/public",
+      embedded: false,
+    });
+    expect(isEmbedded()).toBe(false);
+  });
+
 });
