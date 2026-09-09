@@ -39,7 +39,7 @@ function formatUptime(seconds: number | null): string {
   return `${minutes}m`;
 }
 
-function NavigationLinks({ activeHash, unreadErrors = 0, onNavigate }: { activeHash: string; unreadErrors?: number; onNavigate?: () => void }) {
+function NavigationLinks({ activeHash, onNavigate }: { activeHash: string; onNavigate?: () => void }) {
   const t = useT();
   return (
     <>
@@ -58,9 +58,6 @@ function NavigationLinks({ activeHash, unreadErrors = 0, onNavigate }: { activeH
           >
             <NavIcon name={item.icon} />
             <span class="truncate">{t(item.label)}</span>
-            {item.hash === "#/errors" && unreadErrors > 0 && (
-              <span class="ml-auto rounded-full bg-danger px-1.5 py-0.5 text-[10px] font-bold text-white">{unreadErrors > 99 ? "99+" : unreadErrors}</span>
-            )}
           </a>
         );
       })}
@@ -68,7 +65,7 @@ function NavigationLinks({ activeHash, unreadErrors = 0, onNavigate }: { activeH
   );
 }
 
-function SidebarPanel({ activeHash, unreadErrors, uptimeSeconds, onClose }: { activeHash: string; unreadErrors: number; uptimeSeconds: number | null; onClose?: () => void }) {
+function SidebarPanel({ activeHash, uptimeSeconds, onClose }: { activeHash: string; uptimeSeconds: number | null; onClose?: () => void }) {
   const { t } = useI18n();
   return (
     <>
@@ -87,7 +84,7 @@ function SidebarPanel({ activeHash, unreadErrors, uptimeSeconds, onClose }: { ac
         )}
       </div>
       <nav class="flex-1 space-y-1 overflow-y-auto px-4 py-6" aria-label="Primary navigation">
-        <NavigationLinks activeHash={activeHash} unreadErrors={unreadErrors} onNavigate={onClose} />
+        <NavigationLinks activeHash={activeHash} onNavigate={onClose} />
       </nav>
       <div class="m-4 rounded-xl border border-primary/15 bg-primary/5 p-4 dark:bg-primary/10">
         <div class="flex items-center gap-2 text-xs font-semibold text-slate-700 dark:text-text-main">
@@ -100,7 +97,7 @@ function SidebarPanel({ activeHash, unreadErrors, uptimeSeconds, onClose }: { ac
   );
 }
 
-export function Sidebar({ activeHash, unreadErrors = 0, uptimeSeconds = null, mobileOpen = false, onMobileClose }: { activeHash: string; unreadErrors?: number; uptimeSeconds?: number | null; mobileOpen?: boolean; onMobileClose?: () => void }) {
+export function Sidebar({ activeHash, uptimeSeconds = null, mobileOpen = false, onMobileClose }: { activeHash: string; uptimeSeconds?: number | null; mobileOpen?: boolean; onMobileClose?: () => void }) {
   const { t } = useI18n();
 
   useEffect(() => {
@@ -115,11 +112,11 @@ export function Sidebar({ activeHash, unreadErrors = 0, uptimeSeconds = null, mo
   return (
     <>
       <aside class="fixed inset-y-0 left-0 z-40 hidden w-60 flex-col border-r border-gray-200 bg-white dark:border-border-dark dark:bg-card-dark lg:flex">
-        <SidebarPanel activeHash={activeHash} unreadErrors={unreadErrors} uptimeSeconds={uptimeSeconds} />
+        <SidebarPanel activeHash={activeHash} uptimeSeconds={uptimeSeconds} />
       </aside>
       {mobileOpen && <button class="fixed inset-0 z-[55] bg-slate-950/45 lg:hidden" onClick={onMobileClose} aria-label={t("closeSidebar")} />}
       <aside class={`fixed inset-y-0 left-0 z-[60] flex w-72 flex-col border-r border-gray-200 bg-white shadow-2xl transition-transform duration-200 dark:border-border-dark dark:bg-card-dark lg:hidden ${mobileOpen ? "translate-x-0" : "pointer-events-none -translate-x-full"}`}>
-        <SidebarPanel activeHash={activeHash} unreadErrors={unreadErrors} uptimeSeconds={uptimeSeconds} onClose={onMobileClose} />
+        <SidebarPanel activeHash={activeHash} uptimeSeconds={uptimeSeconds} onClose={onMobileClose} />
       </aside>
     </>
   );

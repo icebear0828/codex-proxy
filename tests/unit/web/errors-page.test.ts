@@ -24,4 +24,23 @@ describe("ErrorsPage", () => {
     expect(source).toContain("aria-label={t(\"errorsClear\")}");
     expect(source).toContain("onClick={() => void clearAll()}");
   });
+
+  it("does not wire unread error badges into the dashboard chrome", () => {
+    const appSource = readFileSync(
+      resolve(__dirname, "../../../web/src/App.tsx"),
+      "utf-8",
+    );
+    const headerSource = readFileSync(
+      resolve(__dirname, "../../../web/src/components/Header.tsx"),
+      "utf-8",
+    );
+    const sidebarSource = readFileSync(
+      resolve(__dirname, "../../../web/src/components/Sidebar.tsx"),
+      "utf-8",
+    );
+
+    expect(appSource).not.toContain("useErrorLogsCount");
+    expect(headerSource).not.toContain("unreadErrors");
+    expect(sidebarSource).not.toContain("unreadErrors");
+  });
 });

@@ -21,7 +21,6 @@ import { ErrorsPage } from "./pages/ErrorsPage";
 import { ClientKeysPage } from "./pages/ClientKeysPage";
 import { InfoPage } from "./pages/InfoPage";
 import { useAccounts } from "../../shared/hooks/use-accounts";
-import { useErrorLogsCount } from "../../shared/hooks/use-error-logs";
 import { useProxies } from "../../shared/hooks/use-proxies";
 import { useStatus } from "../../shared/hooks/use-status";
 import { useUpdateStatus } from "../../shared/hooks/use-update-status";
@@ -104,7 +103,6 @@ function Dashboard() {
   const [showModal, setShowModal] = useState(false);
   const prevUpdateAvailable = useRef(false);
   const hash = useHash();
-  const errorCount = useErrorLogsCount();
   const [layoutMode, setLayoutMode] = useState<LayoutMode>(() => getLayoutMode());
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
 
@@ -137,11 +135,9 @@ function Dashboard() {
   const activeTab = TABS.find((t) => t.hash === hash)?.hash ?? "";
 
   const isSidebarLayout = layoutMode === "sidebar";
-  const visibleErrorCount = errorCount.unread;
-
   return (
     <div class="min-h-screen flex bg-slate-50 dark:bg-bg-dark">
-      {isSidebarLayout && <Sidebar activeHash={activeTab} unreadErrors={visibleErrorCount} uptimeSeconds={status.uptimeSeconds} mobileOpen={mobileSidebarOpen} onMobileClose={() => setMobileSidebarOpen(false)} />}
+      {isSidebarLayout && <Sidebar activeHash={activeTab} uptimeSeconds={status.uptimeSeconds} mobileOpen={mobileSidebarOpen} onMobileClose={() => setMobileSidebarOpen(false)} />}
       <div class={`min-h-screen min-w-0 flex flex-1 flex-col ${isSidebarLayout ? "lg:pl-60" : ""}`}>
       <Header
         onAddAccount={accounts.startAdd}
@@ -154,7 +150,6 @@ function Dashboard() {
         commit={update.status?.proxy.commit ?? null}
         hasUpdate={update.hasUpdate}
         onLogout={onLogout}
-        unreadErrors={visibleErrorCount}
         showBrand={!isSidebarLayout}
         onOpenSidebar={isSidebarLayout ? () => setMobileSidebarOpen(true) : undefined}
       />

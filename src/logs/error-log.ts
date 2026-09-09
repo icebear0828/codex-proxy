@@ -195,7 +195,8 @@ function readJsonlFile(path: string): ErrorLogEntry[] {
     const trimmed = line.trim();
     if (!trimmed) continue;
     try {
-      out.push(JSON.parse(trimmed) as ErrorLogEntry);
+      const entry = JSON.parse(trimmed) as ErrorLogEntry;
+      if (isVisibleErrorLogEntry(entry)) out.push(entry);
     } catch {
       // Skip corrupted lines silently.
     }
@@ -235,8 +236,11 @@ function readJsonlFileTail(path: string, limit: number): ErrorLogEntry[] {
         const line = lines[i].trim();
         if (!line) continue;
         try {
-          out.push(JSON.parse(line) as ErrorLogEntry);
-          if (out.length >= limit) break;
+          const entry = JSON.parse(line) as ErrorLogEntry;
+          if (isVisibleErrorLogEntry(entry)) {
+            out.push(entry);
+            if (out.length >= limit) break;
+          }
         } catch {
           // ignore corrupted
         }
@@ -257,36 +261,12 @@ function readJsonlFileTail(path: string, limit: number): ErrorLogEntry[] {
   }
 }
 
-/**
- * Count newline characters in a file as a proxy for the number of JSONL entries.
- * Assumes each entry is written as exactly one line terminated by '\n' with no
- * trailing blank lines.  appendErrorLog() always appends `JSON.stringify(e)+"\n"`,
- * so this invariant holds under normal operation.
- */
-function countLines(path: string): number {
-  if (!existsSync(path)) return 0;
-  const fd = openSync(path, "r");
-  try {
-    const size = statSync(path).size;
-    if (size === 0) return 0;
-    let count = 0;
-    const chunkSize = 64 * 1024;
-    let position = 0;
-    while (position < size) {
-      const readLength = Math.min(size - position, chunkSize);
-      const buffer = Buffer.alloc(readLength);
-      readSync(fd, buffer, 0, readLength, position);
-      position += readLength;
-      for (let i = 0; i < readLength; i++) {
-        if (buffer[i] === 0x0a) {
-          count++;
-        }
-      }
-    }
-    return count;
-  } finally {
-    closeSync(fd);
-  }
+function isVisibleErrorLogEntry(entry: ErrorLogEntry): boolean {
+  return entry.error.name !== "StreamClientAbort" && entry.context?.kind !== "client-abort";
+}
+
+function countVisibleEntries(path: string): number {
+  return readJsonlFile(path).length;
 }
 
 /**
@@ -336,6 +316,7 @@ function countUnreadSince(cursor: string): number {
         if (!line) continue;
         try {
           const entry = JSON.parse(line) as ErrorLogEntry;
+          if (!isVisibleErrorLogEntry(entry)) continue;
           if (entry.ts > cursor) {
             unreadCount++;
           } else {
@@ -351,7 +332,7 @@ function countUnreadSince(cursor: string): number {
     if (!stop && leftover.trim()) {
       try {
         const entry = JSON.parse(leftover.trim()) as ErrorLogEntry;
-        if (entry.ts > cursor) {
+        if (isVisibleErrorLogEntry(entry) && entry.ts > cursor) {
           unreadCount++;
         }
       } catch {
@@ -383,6 +364,7 @@ function countUnreadSince(cursor: string): number {
               if (!line) continue;
               try {
                 const entry = JSON.parse(line) as ErrorLogEntry;
+                if (!isVisibleErrorLogEntry(entry)) continue;
                 if (entry.ts > cursor) {
                   unreadCount++;
                 } else {
@@ -397,7 +379,7 @@ function countUnreadSince(cursor: string): number {
           if (!stop && backupLeftover.trim()) {
             try {
               const entry = JSON.parse(backupLeftover.trim()) as ErrorLogEntry;
-              if (entry.ts > cursor) {
+              if (isVisibleErrorLogEntry(entry) && entry.ts > cursor) {
                 unreadCount++;
               }
             } catch {
@@ -460,6 +442,7 @@ function firstStackFrame(stack: string | undefined): string {
 export function groupErrorLog(entries: ErrorLogEntry[]): ErrorGroup[] {
   const groups = new Map<string, ErrorGroup>();
   for (const e of entries) {
+    if (!isVisibleErrorLogEntry(e)) continue;
     const sig = `${e.error.name}|${firstStackFrame(e.error.stack)}`;
     const existing = groups.get(sig);
     if (existing) {
@@ -521,21 +504,22 @@ export function setReadCursor(ts: string): void {
 export function getUnreadCount(entries?: ErrorLogEntry[]): number {
   const cursor = getReadCursor();
   if (entries !== undefined) {
-    if (cursor === null) return entries.length;
+    const visibleEntries = entries.filter(isVisibleErrorLogEntry);
+    if (cursor === null) return visibleEntries.length;
     let count = 0;
-    for (const e of entries) {
+    for (const e of visibleEntries) {
       if (e.ts > cursor) count += 1;
     }
     return count;
   }
   if (cursor === null) {
-    return countLines(logPath()) + countLines(backupPath());
+    return countVisibleEntries(logPath()) + countVisibleEntries(backupPath());
   }
   return countUnreadSince(cursor);
 }
 
 export function getTotalCount(): number {
-  return countLines(logPath()) + countLines(backupPath());
+  return countVisibleEntries(logPath()) + countVisibleEntries(backupPath());
 }
 
 // ── Process-level handlers ──────────────────────────────────────────

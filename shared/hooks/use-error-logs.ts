@@ -29,13 +29,6 @@ export interface ErrorLogCount {
 }
 
 const POLL_MS = 30_000;
-export const ERROR_LOGS_CHANGED_EVENT = "codex-proxy:error-logs-changed";
-
-function notifyErrorLogsChanged(): void {
-  if (typeof window !== "undefined") {
-    window.dispatchEvent(new Event(ERROR_LOGS_CHANGED_EVENT));
-  }
-}
 
 type ErrorLogsFetch = (input: string, init: RequestInit) => Promise<Pick<Response, "ok">>;
 
@@ -80,7 +73,6 @@ export function useErrorLogs() {
       const response = await fetch("/admin/error-logs/seen", { method: "POST" });
       if (!response.ok) return;
       await load();
-      notifyErrorLogsChanged();
     } catch {
       /* swallow */
     }
@@ -94,7 +86,6 @@ export function useErrorLogs() {
         return;
       }
       await load();
-      notifyErrorLogsChanged();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to clear error logs");
     }
@@ -109,37 +100,6 @@ export function useErrorLogs() {
   }, [load]);
 
   return { groups, count, loading, error, refresh: load, markAllSeen, clearAll };
-}
-
-/**
- * Lightweight unread-count-only hook for the Header badge.
- * Polls the same endpoint but doesn't pull the full group payload.
- */
-export function useErrorLogsCount() {
-  const [count, setCount] = useState<ErrorLogCount>({ total: 0, unread: 0 });
-  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
-
-  const load = useCallback(async () => {
-    try {
-      const r = await fetch("/admin/error-logs/count");
-      if (r.ok) setCount((await r.json()) as ErrorLogCount);
-    } catch {
-      /* swallow */
-    }
-  }, []);
-
-  useEffect(() => {
-    void load();
-    const onLogsChanged = () => { void load(); };
-    window.addEventListener(ERROR_LOGS_CHANGED_EVENT, onLogsChanged);
-    timerRef.current = setInterval(() => void load(), POLL_MS);
-    return () => {
-      window.removeEventListener(ERROR_LOGS_CHANGED_EVENT, onLogsChanged);
-      if (timerRef.current) clearInterval(timerRef.current);
-    };
-  }, [load]);
-
-  return count;
 }
 
 // ── Pure helpers (testable) ─────────────────────────────────────────

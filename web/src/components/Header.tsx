@@ -53,12 +53,9 @@ interface HeaderProps {
   onLogout?: () => void;
   showBrand?: boolean;
   onOpenSidebar?: () => void;
-  /** Number of unread errors. When > 0, show a clickable badge that
-   *  navigates to the Errors tab. */
-  unreadErrors?: number;
 }
 
-export function Header({ onAddAccount, onCheckUpdate, onOpenUpdateModal, checking, updateStatusMsg, updateStatusColor, version, commit, hasUpdate, onLogout, unreadErrors, showBrand = true, onOpenSidebar }: HeaderProps) {
+export function Header({ onAddAccount, onCheckUpdate, onOpenUpdateModal, checking, updateStatusMsg, updateStatusColor, version, commit, hasUpdate, onLogout, showBrand = true, onOpenSidebar }: HeaderProps) {
   const { lang, setLang, t } = useI18n();
   const { isDark, toggle: toggleTheme } = useTheme();
   const [fabOpen, setFabOpen] = useState(false);
@@ -95,22 +92,6 @@ export function Header({ onAddAccount, onCheckUpdate, onOpenUpdateModal, checkin
           </div>}
           {/* Actions */}
           <div class="flex min-w-0 items-center justify-end gap-1.5 sm:gap-2">
-            {/* Unread error badge — appears only when there's something to show. */}
-            {unreadErrors !== undefined && unreadErrors > 0 && (
-              <a
-                href="#/errors"
-                title={t("errorsBadgeTooltip")}
-                class="flex shrink-0 items-center gap-1.5 whitespace-nowrap px-3 py-1.5 rounded-full bg-red-50 border border-red-200 text-red-700 dark:bg-red-900/20 dark:border-red-700/30 dark:text-red-400 hover:bg-red-100 dark:hover:bg-red-900/30 transition-colors"
-              >
-                <span class="relative flex h-2.5 w-2.5">
-                  <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-500 opacity-75" />
-                  <span class="relative inline-flex rounded-full h-2.5 w-2.5 bg-red-500" />
-                </span>
-                <span class="text-xs font-semibold">
-                  {unreadErrors > 99 ? "99+" : unreadErrors} {t("errorsBadge")}
-                </span>
-              </a>
-            )}
             {/* Star on GitHub */}
             <a
               href="https://github.com/icebear0828/codex-proxy"

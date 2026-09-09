@@ -3,11 +3,14 @@
  *
  * Premature stream close (upstream-side) and client abort (downstream-side) are
  * recurring failure modes that previously left only an ad-hoc `console.warn`
- * trail in the dev tee log. This helper persists every close event through
- * both observability channels:
+ * trail in the dev tee log. This helper persists close events through the
+ * appropriate observability channels:
  *
- *   - `appendErrorLog` → `data/error-log.jsonl` → Errors tab + unread badge
+ *   - `appendErrorLog` → `data/error-log.jsonl` → Errors tab
  *   - `enqueueLogEntry` → in-memory audit log (admin /api/logs)
+ *
+ * A downstream client abort is expected request lifecycle behaviour rather
+ * than an application error, so it is kept in the audit feed only.
  *
  * Same context shape for both so the dashboard and the audit feed can be
  * cross-referenced by rid + ts when diagnosing a recurrence.
@@ -89,9 +92,9 @@ function prune<T extends object>(obj: T): Partial<T> {
   return out;
 }
 
-/** Persist a stream-close event into both the local error log (Errors tab)
- *  and the in-memory audit log. Never throws — logging failures inside the
- *  helpers swallow themselves. */
+/** Persist a stream-close event into the local error log when it represents
+ *  an actionable failure, and into the in-memory audit log. Never throws —
+ *  logging failures inside the helpers swallow themselves. */
 export function recordStreamCloseEvent(evt: StreamCloseEvent): void {
   const name = ERROR_NAMES[evt.kind];
   const base = BASE_MESSAGES[evt.kind];
@@ -99,7 +102,7 @@ export function recordStreamCloseEvent(evt: StreamCloseEvent): void {
   const numericStatus =
     typeof evt.upstreamStatus === "number" ? evt.upstreamStatus : null;
 
-  if (shouldPersistStreamCloseError(evt)) {
+  if (evt.kind !== "client-abort" && shouldPersistStreamCloseError(evt)) {
     appendErrorLog({
       source: "server",
       error: { name, message },

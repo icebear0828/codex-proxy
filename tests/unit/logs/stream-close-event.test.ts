@@ -1,8 +1,7 @@
 /**
  * Tests for recordStreamCloseEvent — the structured persistence layer for
- * premature stream close / client abort events. Verifies both downstream
- * sinks (Errors-tab error log + in-memory audit log) receive a record with
- * the caller-supplied diagnostic context.
+ * premature stream close / client abort events. Actionable close events go
+ * to both downstream sinks; expected client aborts stay in the audit log.
  */
 
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
@@ -121,7 +120,7 @@ describe("recordStreamCloseEvent", () => {
     });
   });
 
-  it("emits a client-abort entry with the correct name and message", async () => {
+  it("keeps client-abort in the audit log without creating an Errors-tab entry", async () => {
     const { recordStreamCloseEvent, logStore } = await importAll();
     recordStreamCloseEvent({
       kind: "client-abort",
@@ -133,10 +132,7 @@ describe("recordStreamCloseEvent", () => {
     });
 
     const errEntries = readErrorLogLines();
-    expect(errEntries).toHaveLength(1);
-    const errBody = errEntries[0].error as Record<string, unknown>;
-    expect(errBody.name).toBe("StreamClientAbort");
-    expect(errBody.message).toBe("Client aborted stream");
+    expect(errEntries).toHaveLength(0);
 
     await flushMicrotasks();
     const audit = logStore.list({ limit: 50 });

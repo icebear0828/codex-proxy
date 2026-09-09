@@ -187,6 +187,24 @@ describe("readErrorLog", () => {
     const { readErrorLog } = await importErrorLog();
     expect(readErrorLog()).toEqual([]);
   });
+
+  it("hides persisted client-abort entries from the Errors tab and counts", async () => {
+    const { appendErrorLog, readErrorLog, getTotalCount, getUnreadCount } = await importErrorLog();
+    appendErrorLog({
+      source: "server",
+      error: { name: "StreamClientAbort", message: "Client aborted stream" },
+      context: { kind: "client-abort" },
+    });
+    appendErrorLog({
+      source: "server",
+      error: { name: "StreamUpstreamError", message: "Upstream stream errored" },
+    });
+
+    expect(readErrorLog()).toHaveLength(1);
+    expect(readErrorLog()[0].error.name).toBe("StreamUpstreamError");
+    expect(getTotalCount()).toBe(1);
+    expect(getUnreadCount()).toBe(1);
+  });
 });
 
 describe("groupErrorLog", () => {
