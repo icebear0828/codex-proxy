@@ -1,4 +1,4 @@
-// 用法: node .github/scripts/sync-package-version.mjs 2.1.7
+// 用法: node .github/scripts/sync-package-version.mjs 2.1.7[-beta.1]
 //
 // 幂等地把新版本写入 package.json 顶层、package-lock.json 顶层以及根
 // workspace 入口（packages[""].version）。仅改版本字段，保留依赖/workspaces
@@ -6,8 +6,8 @@
 import { readFileSync, writeFileSync } from "node:fs";
 
 const version = process.argv[2];
-if (!/^\d+\.\d+\.\d+$/.test(version ?? "")) {
-  console.error(`usage: sync-package-version.mjs <x.y.z> (got "${version ?? ""}")`);
+if (!/^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/.test(version ?? "")) {
+  console.error(`usage: sync-package-version.mjs <x.y.z[-prerelease]> (got "${version ?? ""}")`);
   process.exit(2);
 }
 
