@@ -21,7 +21,13 @@ import type { ProxyPool } from "../proxy/proxy-pool.js";
 /** Errors indicating the account was banned/deactivated upstream (mark as "banned"). */
 const BAN_ERRORS = ["account has been deactivated", "refresh_token_reused"];
 /** Errors indicating the refresh token is invalid but not necessarily a ban (mark as "expired"). */
-const EXPIRED_ERRORS = ["invalid_grant", "invalid_token", "access_denied", "refresh_token_expired"];
+const EXPIRED_ERRORS = [
+  "invalid_grant",
+  "invalid_token",
+  "access_denied",
+  "refresh_token_expired",
+  "refresh_token_invalidated",
+];
 /** All permanent errors (union of ban + expired). */
 const PERMANENT_ERRORS = [...BAN_ERRORS, ...EXPIRED_ERRORS];
 
@@ -30,6 +36,11 @@ const BASE_DELAY_MS = 5_000;
 const RECOVERY_DELAY_MS = 10 * 60 * 1000; // 10 minutes
 /** Require this many consecutive permanent errors before marking expired. */
 const PERMANENT_THRESHOLD = 2;
+
+export function isPermanentRefreshError(message: string): boolean {
+  const lower = message.toLowerCase();
+  return PERMANENT_ERRORS.some((error) => lower.includes(error));
+}
 
 export class RefreshScheduler {
   private timers: Map<string, ReturnType<typeof setTimeout>> = new Map();
@@ -274,7 +285,7 @@ export class RefreshScheduler {
 
         // Track consecutive permanent errors — only mark after threshold
         const lower = msg.toLowerCase();
-        const isPermanent = PERMANENT_ERRORS.some((e) => lower.includes(e));
+        const isPermanent = isPermanentRefreshError(msg);
         if (isPermanent) {
           permanentHits++;
           if (permanentHits >= PERMANENT_THRESHOLD) {
