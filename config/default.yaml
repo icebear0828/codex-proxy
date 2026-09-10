@@ -4,7 +4,7 @@ api:
 client:
   profile: codex_cli
   originator: codex_cli_rs
-  app_version: 26.903.71938
+  app_version: "26.903.71938"
   build_number: "8576"
   platform: darwin
   arch: arm64

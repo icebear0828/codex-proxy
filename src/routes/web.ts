@@ -36,8 +36,8 @@ export function createWebRoutes(
       }),
       { status: 410, headers: { "Content-Type": "application/json" } },
     );
-  app.post("/api/v2/auth/login", legacyApiRemoved);
-  app.post("/api/v2/app/version", legacyApiRemoved);
+  app.all("/api/v2/auth/login", legacyApiRemoved);
+  app.all("/api/v2/app/version", legacyApiRemoved);
 
   const publicDir = getPublicDir();
 

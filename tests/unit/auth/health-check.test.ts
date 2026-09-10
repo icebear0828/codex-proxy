@@ -130,6 +130,20 @@ describe("probeAccount", () => {
     expect(pool.markStatus).toHaveBeenCalledWith("acc-1", "expired");
   });
 
+  it("marks expired when error is refresh_token_invalidated", async () => {
+    refreshResult = new Error("Token refresh failed (401): refresh_token_invalidated");
+    const { probeAccount } = await import("@src/auth/health-check.js");
+    const entries = [makeEntry()];
+    const pool = makePool(entries);
+    const scheduler = makeScheduler();
+
+    const result = await probeAccount(pool as never, scheduler as never, "acc-1");
+
+    expect(result.result).toBe("dead");
+    expect(result.error).toContain("refresh_token_invalidated");
+    expect(pool.markStatus).toHaveBeenCalledWith("acc-1", "expired");
+  });
+
   it("returns dead but does NOT mark expired on temporary error", async () => {
     refreshResult = new Error("ECONNREFUSED");
     const { probeAccount } = await import("@src/auth/health-check.js");
