@@ -4,6 +4,7 @@ import { describe, expect, it } from "vitest";
 
 const ROOT = resolve(__dirname, "..", "..", "..");
 const WORKFLOW_DIR = resolve(ROOT, ".github", "workflows");
+const DOCKERFILE = resolve(ROOT, "Dockerfile");
 const LITE_DOCKERFILE = resolve(ROOT, "Dockerfile.lite");
 
 type OutputRef = { stepId: string; output: string };
@@ -112,6 +113,16 @@ describe("workflow output references are satisfied", () => {
       (s) => s.uses === "actions/checkout@v4",
     );
     expect(checkout!.with?.["fetch-tags"]).toBe(true);
+
+    const dockerfile = readFileSync(DOCKERFILE, "utf8");
+    expect(dockerfile).toContain('sync-package-version.mjs "$PROXY_VERSION"');
+  });
+
+  it("docker smoke test rejects version metadata drift", () => {
+    const ciDocker = readFileSync(resolve(WORKFLOW_DIR, "ci-docker.yml"), "utf8");
+    expect(ciDocker).toContain("SMOKE_VERSION=99.99.99");
+    expect(ciDocker).toContain("PACKAGE_VER=$(docker run --rm codex-proxy:smoke");
+    expect(ciDocker).toContain("Docker version mismatch");
   });
 
   it("docker-publish-lite shares the resolved version across the manifest and image", () => {

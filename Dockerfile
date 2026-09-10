@@ -56,6 +56,13 @@ RUN cd web && npm ci
 # 3) Copy source
 COPY . .
 
+# Release tags are authoritative for Docker images, while package.json on the
+# tagged master commit may intentionally lag behind under the tag-only release
+# flow. Keep package metadata inside the image aligned with the baked version.
+RUN if [ "$PROXY_VERSION" != "unknown" ]; then \
+      node .github/scripts/sync-package-version.mjs "$PROXY_VERSION"; \
+    fi
+
 # 4) Copy native addon from builder stage (overwrite macOS .node if present)
 COPY --from=native-builder /native/codex-tls.linux-*.node /app/native/
 

@@ -8,7 +8,9 @@
 
 ## [Unreleased]
 
-> 暂无已记录的变更。
+### Fixed
+
+- 修复发布 Docker 镜像内根 `package.json` / `package-lock.json` 仍保留旧版本的问题：构建时将解析出的 `PROXY_VERSION` 同步写入包元数据，并让 Docker smoke test 校验运行时版本与包元数据一致（`Dockerfile`、`.github/scripts/sync-package-version.mjs`、`.github/workflows/ci-docker.yml`）。
 
 ## [v2.1.x](https://github.com/icebear0828/codex-proxy/releases?q=2.1) - 2026-09-01 至 2026-09-07
 

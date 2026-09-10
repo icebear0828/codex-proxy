@@ -4,6 +4,7 @@ on:
   pull_request:
     paths:
       - "Dockerfile"
+      - "Dockerfile.lite"
       - "docker-entrypoint.sh"
       - "docker-healthcheck.sh"
       - "docker-compose.yml"
@@ -33,8 +34,9 @@ jobs:
 
       - name: Build Docker image
         run: |
-          PKG_VER=$(node -p "require('./package.json').version")
-          docker build -t codex-proxy:smoke --build-arg PROXY_VERSION="$PKG_VER" .
+          SMOKE_VERSION=99.99.99
+          docker build -t codex-proxy:smoke --build-arg PROXY_VERSION="$SMOKE_VERSION" .
+          echo "SMOKE_VERSION=$SMOKE_VERSION" >> "$GITHUB_ENV"
 
       - name: Start container
         run: |
@@ -79,12 +81,13 @@ jobs:
 
       - name: Verify PROXY_VERSION is injected
         run: |
-          PKG_VER=$(node -p "require('./package.json').version")
           CONTAINER_VER=$(docker run --rm codex-proxy:smoke \
             node -e "const m=require('./dist/self-update.js'); process.stdout.write(m.getProxyInfo().version ?? '')")
-          echo "Expected: $PKG_VER  Got: $CONTAINER_VER"
-          if [ "$CONTAINER_VER" != "$PKG_VER" ]; then
-            echo "::error::PROXY_VERSION mismatch: expected $PKG_VER, got $CONTAINER_VER"
+          PACKAGE_VER=$(docker run --rm codex-proxy:smoke \
+            node -p "require('./package.json').version")
+          echo "Expected: $SMOKE_VERSION  Runtime: $CONTAINER_VER  Package: $PACKAGE_VER"
+          if [ "$CONTAINER_VER" != "$SMOKE_VERSION" ] || [ "$PACKAGE_VER" != "$SMOKE_VERSION" ]; then
+            echo "::error::Docker version mismatch: expected $SMOKE_VERSION, runtime $CONTAINER_VER, package $PACKAGE_VER"
             exit 1
           fi
 
