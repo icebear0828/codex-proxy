@@ -222,14 +222,41 @@ jobs:
       - name: Setup Rust toolchain
         uses: dtolnay/rust-toolchain@stable
 
-      - name: Build native addons for Linux
+      - name: Build musl native addon in Alpine
         run: |
-          # gnu feeds the glibc host smoke test below, musl is the only addon
-          # the Alpine image ships; a plain checkout builds neither.
+          # The musl addon must be linked against musl. Cross-building with
+          # the musl target on the glibc runner links C dependencies (aws-lc)
+          # against glibc, producing a hybrid binary that crashes in the
+          # Alpine image with "ld-linux-x86-64.so.2 not found" (#805). Build
+          # inside the same Alpine container the Lite release workflows use.
+          docker run --rm \
+            -v "$GITHUB_WORKSPACE/native:/build" \
+            -v "$GITHUB_WORKSPACE/scripts:/scripts:ro" \
+            -w /build \
+            ghcr.io/napi-rs/napi-rs/nodejs-rust:lts-alpine \
+            sh -lc 'set -eu; apk add --no-cache build-base linux-headers; rustup toolchain install 1.88.0 --profile minimal --no-self-update; rustup target add x86_64-unknown-linux-musl --toolchain 1.88.0; export RUSTUP_TOOLCHAIN=1.88.0; export CC_x86_64_unknown_linux_musl=gcc; export CXX_x86_64_unknown_linux_musl=g++; export AWS_LC_SYS_CC_x86_64_unknown_linux_musl=gcc; export AWS_LC_SYS_CXX_x86_64_unknown_linux_musl=g++; npm ci --include=dev --ignore-scripts --no-audit --no-fund; npm run build:linux-x64-musl; node /scripts/native/test-linux-x64-musl.mjs /build/codex-tls.linux-x64-musl.node'
+
+      - name: Verify musl addon is not glibc-linked
+        run: |
+          addon="native/codex-tls.linux-x64-musl.node"
+          file "$addon"
+          if readelf -d "$addon" | grep -Eq 'libc\.so\.6|ld-linux-x86-64\.so\.2'; then
+            echo "::error::musl addon unexpectedly depends on glibc"
+            exit 1
+          fi
+          if readelf --version-info "$addon" 2>/dev/null | grep -q 'GLIBC_'; then
+            echo "::error::musl addon contains a GLIBC symbol requirement"
+            exit 1
+          fi
+
+      - name: Build glibc native addon for the host smoke test
+        run: |
+          # gnu only feeds the glibc-runner staged-bundle smoke test below;
+          # it never enters the Alpine image. The Alpine container wrote
+          # root-owned node_modules/target via the bind mount — hand them
+          # back to the runner user before the host npm ci.
+          sudo chown -R "$(id -u):$(id -g)" native
           cd native && npm ci && npm run build
-          sudo apt-get update && sudo apt-get install -y --no-install-recommends musl-tools
-          rustup target add x86_64-unknown-linux-musl
-          npm run build:linux-x64-musl
           test -f codex-tls.linux-x64-gnu.node
           test -f codex-tls.linux-x64-musl.node
 
@@ -301,3 +328,42 @@ jobs:
           build-args: PROXY_VERSION=${{ steps.version.outputs.version }}
           cache-from: type=gha,scope=lite
           cache-to: type=gha,mode=max,scope=lite
+
+      - name: Smoke test the pushed lite image
+        run: |
+          # Pull the exact image that was just pushed and test it as a user
+          # would run it. The host smoke test above uses the gnu addon on
+          # glibc and cannot catch a mislinked musl addon — that gap shipped
+          # the crash-loop in #805, so verify the real artifact here.
+          SHORT_SHA=$(git rev-parse --short=7 HEAD)
+          IMAGE="ghcr.io/${GITHUB_REPOSITORY}:sha-${SHORT_SHA}-lite"
+          docker pull "$IMAGE"
+
+          # 1. The musl addon must dlopen under the image's own Node.
+          docker run --rm "$IMAGE" node -e \
+            "require('/app/native/codex-tls.linux-x64-musl.node'); console.log('musl addon loads under alpine node')"
+
+          # 2. Fresh named volumes: entrypoint must seed defaults, server must
+          #    start healthy inside the real image.
+          docker volume create lite-smoke-config >/dev/null
+          docker volume create lite-smoke-data >/dev/null
+          cid=$(docker run -d -p 18080:8080 \
+            -v lite-smoke-config:/app/config \
+            -v lite-smoke-data:/app/data \
+            "$IMAGE")
+          cleanup() {
+            docker rm -f "$cid" >/dev/null 2>&1 || true
+            docker volume rm lite-smoke-config lite-smoke-data >/dev/null 2>&1 || true
+          }
+          trap cleanup EXIT
+          for i in $(seq 1 30); do
+            if curl --noproxy '*' --fail --silent http://127.0.0.1:18080/health >/dev/null; then
+              echo "pushed lite image is healthy"
+              docker logs "$cid" | grep -E "Using native \(rustls\)|API key pool" || true
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "pushed lite image did not become healthy"
+          docker logs "$cid"
+          exit 1

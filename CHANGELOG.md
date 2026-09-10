@@ -8,7 +8,9 @@
 
 ## [Unreleased]
 
-> 暂无已记录的变更。
+### Fixed
+
+- 修复 `latest-lite` 等 Alpine 镜像在 x86_64 上启动即崩溃（`Error loading shared library ld-linux-x86-64.so.2: No such file or directory`，#805）：镜像发布流水线此前在 glibc runner 上以 musl target 交叉编译 `codex-tls.linux-x64-musl.node`，aws-lc 等 C 依赖仍被链接到 glibc，产出名为 musl 实为 glibc 的二进制，在 Alpine 中无法加载。现改为在 `napi-rs/nodejs-rust:lts-alpine` 容器内原生构建（与 Lite zip / Release 流水线一致），并新增 readelf glibc 依赖断言与**对推送后真实镜像**的冒烟测试（镜像自带 Node 下 dlopen addon + 空卷启动 + `/health`）。（`.github/workflows/docker-publish.yml`）
 
 ## [v2.1.x](https://github.com/icebear0828/codex-proxy/releases?q=2.1) - 2026-09-01 至 2026-09-07
 
