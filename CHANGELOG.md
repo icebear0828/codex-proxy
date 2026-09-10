@@ -8,14 +8,14 @@
 
 ## [Unreleased]
 
-### Fixed
-
-- 完善 Token 刷新错误与过载流关闭处理：将 `refresh_token_invalidated` 纳入永久失效错误避免无效轮转；流关闭事件中可重试的 `server_is_overloaded` 不再持久化到错误日志（`src/auth/refresh-scheduler.ts`、`src/logs/stream-close-event.ts`）。
-- 废弃的 `/api/v2/auth/login` 与 `/api/v2/app/version` 端点改为返回 410 响应及迁移提示，便于区分旧客户端探测并避免误记为服务端故障（`src/routes/web.ts`）。
+> 暂无已记录的变更。
 
 ## [v2.1.x](https://github.com/icebear0828/codex-proxy/releases?q=2.1) - 2026-09-01 至 2026-09-07
 
 ### Fixed
+
+- 完善 Token 刷新错误与过载流关闭处理：将 `refresh_token_invalidated` 纳入永久失效错误避免无效轮转；流关闭事件中可重试的 `server_is_overloaded` 不再持久化到错误日志（`src/auth/refresh-scheduler.ts`、`src/logs/stream-close-event.ts`）。
+- 废弃的 `/api/v2/auth/login` 与 `/api/v2/app/version` 端点改为返回 410 响应及迁移提示，便于区分旧客户端探测并避免误记为服务端故障（`src/routes/web.ts`）。
 
 - 修复发布 Docker 镜像内根 `package.json` / `package-lock.json` 仍保留旧版本的问题：构建时将解析出的 `PROXY_VERSION` 同步写入包元数据，并让 Docker smoke test 校验运行时版本与包元数据一致（`Dockerfile`、`.github/scripts/sync-package-version.mjs`、`.github/workflows/ci-docker.yml`）。
 
