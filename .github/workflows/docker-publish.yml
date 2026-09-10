@@ -317,7 +317,59 @@ jobs:
       - name: Copy Dockerfile.lite into the staged context
         run: cp Dockerfile.lite "$RUNNER_TEMP/docker-lite-stage/Dockerfile"
 
-      - uses: docker/build-push-action@v6
+      - name: Build lite image for local smoke test
+        uses: docker/build-push-action@v6
+        with:
+          context: ${{ runner.temp }}/docker-lite-stage
+          file: ${{ runner.temp }}/docker-lite-stage/Dockerfile
+          platforms: linux/amd64
+          load: true
+          tags: codex-proxy-lite:smoke
+          build-args: PROXY_VERSION=${{ steps.version.outputs.version }}
+          cache-from: type=gha,scope=lite
+          cache-to: type=gha,mode=max,scope=lite
+
+      - name: Smoke test the built lite image
+        run: |
+          # Test the built image before pushing. The host smoke test above
+          # uses the gnu addon on glibc and cannot catch a mislinked musl
+          # addon — that gap shipped the crash-loop in #805. Verify the real
+          # musl artifact locally before allowing any registry push.
+          IMAGE="codex-proxy-lite:smoke"
+
+          # 1. The musl addon must dlopen under the image's own Node.
+          docker run --rm "$IMAGE" node -e \
+            "require('/app/native/codex-tls.linux-x64-musl.node'); console.log('musl addon loads under alpine node')"
+
+          # 2. Fresh named volumes: entrypoint must seed defaults, server must
+          #    start healthy inside the real image.
+          SMOKE_CFG="lite-smoke-cfg-${{ github.run_id }}-${{ github.run_attempt }}"
+          SMOKE_DATA="lite-smoke-data-${{ github.run_id }}-${{ github.run_attempt }}"
+          docker volume create "$SMOKE_CFG" >/dev/null
+          docker volume create "$SMOKE_DATA" >/dev/null
+          cid=$(docker run -d -p 18080:8080 \
+            -v "$SMOKE_CFG":/app/config \
+            -v "$SMOKE_DATA":/app/data \
+            "$IMAGE")
+          cleanup() {
+            docker rm -f "$cid" >/dev/null 2>&1 || true
+            docker volume rm "$SMOKE_CFG" "$SMOKE_DATA" >/dev/null 2>&1 || true
+          }
+          trap cleanup EXIT
+          for i in $(seq 1 30); do
+            if curl --noproxy '*' --fail --silent http://127.0.0.1:18080/health >/dev/null; then
+              echo "built lite image is healthy"
+              docker logs "$cid" | grep -E "Using native \(rustls\)|API key pool" || true
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "built lite image did not become healthy"
+          docker logs "$cid"
+          exit 1
+
+      - name: Push lite image to registry
+        uses: docker/build-push-action@v6
         with:
           context: ${{ runner.temp }}/docker-lite-stage
           file: ${{ runner.temp }}/docker-lite-stage/Dockerfile
@@ -327,43 +379,4 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
           build-args: PROXY_VERSION=${{ steps.version.outputs.version }}
           cache-from: type=gha,scope=lite
-          cache-to: type=gha,mode=max,scope=lite
 
-      - name: Smoke test the pushed lite image
-        run: |
-          # Pull the exact image that was just pushed and test it as a user
-          # would run it. The host smoke test above uses the gnu addon on
-          # glibc and cannot catch a mislinked musl addon — that gap shipped
-          # the crash-loop in #805, so verify the real artifact here.
-          SHORT_SHA=$(git rev-parse --short=7 HEAD)
-          IMAGE="ghcr.io/${GITHUB_REPOSITORY}:sha-${SHORT_SHA}-lite"
-          docker pull "$IMAGE"
-
-          # 1. The musl addon must dlopen under the image's own Node.
-          docker run --rm "$IMAGE" node -e \
-            "require('/app/native/codex-tls.linux-x64-musl.node'); console.log('musl addon loads under alpine node')"
-
-          # 2. Fresh named volumes: entrypoint must seed defaults, server must
-          #    start healthy inside the real image.
-          docker volume create lite-smoke-config >/dev/null
-          docker volume create lite-smoke-data >/dev/null
-          cid=$(docker run -d -p 18080:8080 \
-            -v lite-smoke-config:/app/config \
-            -v lite-smoke-data:/app/data \
-            "$IMAGE")
-          cleanup() {
-            docker rm -f "$cid" >/dev/null 2>&1 || true
-            docker volume rm lite-smoke-config lite-smoke-data >/dev/null 2>&1 || true
-          }
-          trap cleanup EXIT
-          for i in $(seq 1 30); do
-            if curl --noproxy '*' --fail --silent http://127.0.0.1:18080/health >/dev/null; then
-              echo "pushed lite image is healthy"
-              docker logs "$cid" | grep -E "Using native \(rustls\)|API key pool" || true
-              exit 0
-            fi
-            sleep 1
-          done
-          echo "pushed lite image did not become healthy"
-          docker logs "$cid"
-          exit 1

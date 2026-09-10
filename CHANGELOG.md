@@ -14,7 +14,8 @@
 
 ### Fixed
 
-- 修复 `latest-lite` 等 Alpine 镜像在 x86_64 上启动即崩溃（`Error loading shared library ld-linux-x86-64.so.2: No such file or directory`，#805）：镜像发布流水线此前在 glibc runner 上以 musl target 交叉编译 `codex-tls.linux-x64-musl.node`，aws-lc 等 C 依赖仍被链接到 glibc，产出名为 musl 实为 glibc 的二进制，在 Alpine 中无法加载。现改为在 `napi-rs/nodejs-rust:lts-alpine` 容器内原生构建（与 Lite zip / Release 流水线一致），并新增 readelf glibc 依赖断言与**对推送后真实镜像**的冒烟测试（镜像自带 Node 下 dlopen addon + 空卷启动 + `/health`）。（`.github/workflows/docker-publish.yml`）
+- 修复 `latest-lite` 等 Alpine 镜像在 x86_64 上启动即崩溃（`Error loading shared library ld-linux-x86-64.so.2: No such file or directory`，#805）：镜像发布流水线此前在 glibc runner 上以 musl target 交叉编译 `codex-tls.linux-x64-musl.node`，aws-lc 等 C 依赖仍被链接到 glibc，产出名为 musl 实为 glibc 的二进制，在 Alpine 中无法加载。现改为在 `napi-rs/nodejs-rust:lts-alpine` 容器内原生构建（与 Lite zip / Release 流水线一致），并新增 readelf glibc 依赖断言与**推送到远程仓库前**的本地冒烟门禁测试（镜像自带 Node 下 dlopen addon + 空卷启动 + `/health`）。（`.github/workflows/docker-publish.yml`）
+
 
 - 完善 Token 刷新错误与过载流关闭处理：将 `refresh_token_invalidated` 纳入永久失效错误避免无效轮转；流关闭事件中可重试的 `server_is_overloaded` 不再持久化到错误日志（`src/auth/refresh-scheduler.ts`、`src/logs/stream-close-event.ts`）。
 - 废弃的 `/api/v2/auth/login` 与 `/api/v2/app/version` 端点改为返回 410 响应及迁移提示，便于区分旧客户端探测并避免误记为服务端故障（`src/routes/web.ts`）。

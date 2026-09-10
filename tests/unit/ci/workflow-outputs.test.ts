@@ -151,4 +151,23 @@ describe("workflow output references are satisfied", () => {
     expect(dockerfile).toContain("ARG PROXY_VERSION=unknown");
     expect(dockerfile).toContain("PROXY_VERSION=${PROXY_VERSION}");
   });
+
+  it("docker-publish-lite executes smoke test before pushing the image to registry", () => {
+    const workflow = loadWorkflow("docker-publish.yml");
+    const job = workflow.jobs["publish-lite"];
+    const pushStepIndex = job.steps.findIndex(
+      (s) => s.uses === "docker/build-push-action@v6" && s.with?.push === true,
+    );
+    expect(pushStepIndex, "push step must exist").toBeGreaterThanOrEqual(0);
+
+    const smokeStepIndex = job.steps.findIndex(
+      (s) => s.name?.toLowerCase().includes("smoke test") && s.name?.toLowerCase().includes("image"),
+    );
+    expect(smokeStepIndex, "image smoke test step must exist").toBeGreaterThanOrEqual(0);
+    expect(
+      smokeStepIndex,
+      "smoke test must execute before pushing to prevent shipping a broken image",
+    ).toBeLessThan(pushStepIndex);
+  });
 });
+
