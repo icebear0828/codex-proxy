@@ -25,6 +25,20 @@ export function createWebRoutes(
 ): Hono {
   const app = new Hono();
 
+  // The v2 API was removed, but old clients still probe these endpoints.
+  // Return an actionable response so migrations are distinguishable from
+  // unknown routes and avoid treating the probes as server failures.
+  const legacyApiRemoved = () =>
+    new Response(
+      JSON.stringify({
+        error: "legacy_api_removed",
+        message: "The /api/v2 API was removed. Use the current API endpoints.",
+      }),
+      { status: 410, headers: { "Content-Type": "application/json" } },
+    );
+  app.all("/api/v2/auth/login", legacyApiRemoved);
+  app.all("/api/v2/app/version", legacyApiRemoved);
+
   const publicDir = getPublicDir();
 
   const webIndexPath = resolve(publicDir, "index.html");

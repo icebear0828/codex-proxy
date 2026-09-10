@@ -22,6 +22,13 @@ export type StreamCloseKind =
   | "upstream-error"
   | "upstream-premature";
 
+/** Retryable upstream failures are not user-visible failures when failover succeeds. */
+export function shouldPersistStreamCloseError(evt: Pick<StreamCloseEvent, "kind" | "detail">): boolean {
+  if (evt.kind !== "upstream-error") return true;
+  const detail = (evt.detail ?? "").toLowerCase();
+  return !detail.includes("server_is_overloaded") && !detail.includes("server overloaded");
+}
+
 /** Caller-provided diagnostic context that travels with a streaming request.
  *  Optional fields are filled in opportunistically — missing context still
  *  produces a useful Errors-tab entry, callers should pass what they have. */
@@ -92,31 +99,33 @@ export function recordStreamCloseEvent(evt: StreamCloseEvent): void {
   const numericStatus =
     typeof evt.upstreamStatus === "number" ? evt.upstreamStatus : null;
 
-  appendErrorLog({
-    source: "server",
-    error: { name, message },
-    context: prune({
-      kind: evt.kind,
-      requestId: evt.requestId,
-      tag: evt.tag,
-      provider: evt.provider,
-      path: evt.path,
-      model: evt.model,
-      accountEntryId: evt.accountEntryId,
-      variantHash: evt.variantHash,
-      responseId: evt.responseId,
-      fallback: evt.fallback === true ? true : undefined,
-      eventCount: evt.eventCount,
-      hadReasoning: evt.hadReasoning,
-      closeCode: evt.closeCode,
-      writtenChunks: evt.writtenChunks,
-      writtenBytes: evt.writtenBytes,
-      lastSentEvent: evt.lastSentEvent,
-      sentTerminal: evt.sentTerminal,
-      upstreamStatus: evt.upstreamStatus,
-      detail: evt.detail,
-    }),
-  });
+  if (shouldPersistStreamCloseError(evt)) {
+    appendErrorLog({
+      source: "server",
+      error: { name, message },
+      context: prune({
+        kind: evt.kind,
+        requestId: evt.requestId,
+        tag: evt.tag,
+        provider: evt.provider,
+        path: evt.path,
+        model: evt.model,
+        accountEntryId: evt.accountEntryId,
+        variantHash: evt.variantHash,
+        responseId: evt.responseId,
+        fallback: evt.fallback === true ? true : undefined,
+        eventCount: evt.eventCount,
+        hadReasoning: evt.hadReasoning,
+        closeCode: evt.closeCode,
+        writtenChunks: evt.writtenChunks,
+        writtenBytes: evt.writtenBytes,
+        lastSentEvent: evt.lastSentEvent,
+        sentTerminal: evt.sentTerminal,
+        upstreamStatus: evt.upstreamStatus,
+        detail: evt.detail,
+      }),
+    });
+  }
 
   enqueueLogEntry({
     requestId: evt.requestId ?? "stream-close",

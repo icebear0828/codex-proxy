@@ -14,7 +14,7 @@
 import { refreshAccessToken } from "./oauth-pkce.js";
 import { jitterInt } from "../utils/jitter.js";
 import type { AccountPool } from "./account-pool.js";
-import type { RefreshScheduler } from "./refresh-scheduler.js";
+import { isPermanentRefreshError, type RefreshScheduler } from "./refresh-scheduler.js";
 import type { ProxyPool } from "../proxy/proxy-pool.js";
 
 export interface HealthCheckResult {
@@ -36,15 +36,6 @@ export interface BatchHealthCheckOptions {
   /** Only check accounts with these IDs (default: all with RT). */
   ids?: string[];
 }
-
-const PERMANENT_ERRORS = [
-  "invalid_grant",
-  "invalid_token",
-  "access_denied",
-  "refresh_token_expired",
-  "refresh_token_reused",
-  "account has been deactivated",
-];
 
 /**
  * Probe a single account by refreshing its token.
@@ -92,7 +83,7 @@ export async function probeAccount(
     };
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
-    const isPermanent = PERMANENT_ERRORS.some((e) => msg.toLowerCase().includes(e));
+    const isPermanent = isPermanentRefreshError(msg);
 
     if (isPermanent) {
       pool.markStatus(entryId, "expired");

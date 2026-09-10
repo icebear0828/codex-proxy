@@ -239,4 +239,17 @@ describe("recordStreamCloseEvent", () => {
     const ctx = errEntries[0].context as Record<string, unknown>;
     expect(ctx).not.toHaveProperty("requestId");
   });
+
+  it("does not persist retryable overloads in the error log", async () => {
+    const { recordStreamCloseEvent, logStore } = await importAll();
+    recordStreamCloseEvent({
+      kind: "upstream-error",
+      detail: "error: server_is_overloaded: try again later",
+      requestId: "retry-1",
+    });
+
+    await flushMicrotasks();
+    expect(logStore.list({ limit: 50 }).records).toHaveLength(1);
+    expect(readErrorLogLines()).toHaveLength(0);
+  });
 });
