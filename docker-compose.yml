@@ -19,12 +19,23 @@ services:
       - ./data:/app/data
       - ./config:/app/config
     restart: unless-stopped
+    # Without an explicit memory limit, Node/V8 sizes its default heap off the
+    # *host's* total memory, not this container's. On a shared host that means
+    # the process can grow well past what you actually want it to use before
+    # GC gets aggressive, and if the host is memory-constrained that growth can
+    # take the whole machine down before this container ever gets OOM-killed.
+    # Tune both to your host by setting MEM_LIMIT and NODE_OPTIONS in .env:
+    # mem_limit should leave headroom for everything else running there, and
+    # --max-old-space-size should stay comfortably below mem_limit (V8's heap
+    # is only part of the process's RSS).
+    mem_limit: ${MEM_LIMIT:-768m}
     env_file:
       - .env
     environment:
       - NODE_ENV=production
       - PORT=8080
       - CODEX_PROXY_HOST=0.0.0.0
+      - NODE_OPTIONS=${NODE_OPTIONS:---max-old-space-size=512}
 
   # -- Automatic updates (uncomment to enable) --
   # watchtower:

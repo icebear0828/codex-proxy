@@ -113,6 +113,8 @@ docker compose up -d
 
 > Data persists in `data/`. Cross-container access: use host LAN IP (e.g. `192.168.x.x:8080`), not `localhost`. Uncomment Watchtower in `docker-compose.yml` for auto-updates. To enable the Ollama-compatible bridge in Docker, see [Ollama Bridge configuration](#ollama-bridge-configuration).
 
+> **Memory settings**: `docker-compose.yml` defaults to `MEM_LIMIT=768m` and `NODE_OPTIONS=--max-old-space-size=512`. Set both variables in `.env` to override the defaults for your machine. Without these settings, Node/V8 sizes its default heap off the *host's* total memory rather than what this container should actually use — on a memory-constrained or shared host that can let RSS climb unchecked (GC stays too lenient) and, in the worst case, take the whole host down. Tune both to your machine: leave `mem_limit` enough headroom for everything else running there, and keep `--max-old-space-size` comfortably below `mem_limit` (the process's RSS is more than just the V8 heap).
+
 ### From Source
 
 ```bash

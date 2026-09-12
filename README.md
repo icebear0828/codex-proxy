@@ -149,6 +149,8 @@ docker compose up -d
 
 取消 `docker-compose.yml` 中 Watchtower 的注释即可自动更新。若要在 Docker 中启用 Ollama 兼容桥接，请参考下方 [Ollama Bridge 配置](#ollama-bridge-配置)。
 
+> **内存设置**：`docker-compose.yml` 默认使用 `MEM_LIMIT=768m` 和 `NODE_OPTIONS=--max-old-space-size=512`。在 `.env` 中设置这两个变量即可按机器覆盖默认值。不设这两个参数时，Node/V8 会按**宿主机全部内存**（而不是这个容器实际该用多少）估算堆上限，在内存有限的机器上（尤其是和其他服务共享的 VPS）可能导致内存使用一路涨上去、GC 收得太晚，严重时能把整台宿主机拖垮。请按你机器的实际内存调整这两个值——`mem_limit` 留够给其他服务的余量，`--max-old-space-size` 要明显小于 `mem_limit`（Node 进程的 RSS 不止是 V8 堆）。
+
 </details>
 
 <details>
