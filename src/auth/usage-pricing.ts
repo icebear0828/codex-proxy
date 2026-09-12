@@ -21,7 +21,7 @@ export interface ModelPricing {
 export type PricingCatalog = Readonly<Record<string, ModelPricing>>;
 
 const PRICE_FILE = "model-pricing.yaml";
-const MODEL_SUFFIX_PATTERN = /-(?:fast|flex|none|minimal|low|medium|high|xhigh)$/;
+const MODEL_SUFFIX_PATTERN = /-(?:fast|flex|max|ultra|none|minimal|low|medium|high|xhigh)$/;
 
 export function createPricingCatalog(entries: Record<string, ModelPricing>): PricingCatalog {
   const catalog: Record<string, ModelPricing> = {};
