@@ -35,6 +35,36 @@ describe("usage pricing", () => {
     expect(calculateUsageCostUsd("not-in-catalog", { input_tokens: 1_000_000, output_tokens: 1_000_000 }, catalog)).toBe(0);
   });
 
+  it("resolves -max and -ultra reasoning tiers to the base model pricing", () => {
+    const tierCatalog = createPricingCatalog({
+      "gpt-test": {
+        input_usd_per_million: 2,
+        cached_input_usd_per_million: 0.2,
+        output_usd_per_million: 8,
+      },
+    });
+    expect(calculateUsageCostUsd("gpt-test-max", { input_tokens: 1_000_000, output_tokens: 0 }, tierCatalog)).toBe(2);
+    expect(calculateUsageCostUsd("gpt-test-ultra", { input_tokens: 1_000_000, output_tokens: 0 }, tierCatalog)).toBe(2);
+  });
+
+  it("matches bare model names for custom upstream requests", () => {
+    const bareCatalog = createPricingCatalog({
+      "gpt-6": {
+        input_usd_per_million: 10,
+        cached_input_usd_per_million: 1,
+        output_usd_per_million: 50,
+      },
+      "gpt-6-astra": {
+        input_usd_per_million: 10,
+        cached_input_usd_per_million: 1,
+        output_usd_per_million: 50,
+      },
+    });
+    expect(calculateUsageCostUsd("gpt-6", { input_tokens: 1_000_000, output_tokens: 1_000_000 }, bareCatalog)).toBeCloseTo(60, 10);
+    expect(calculateUsageCostUsd("gpt-6-astra-max", { input_tokens: 1_000_000, output_tokens: 0 }, bareCatalog)).toBe(10);
+    expect(calculateUsageCostUsd("gpt-6-astra-ultra", { input_tokens: 1_000_000, output_tokens: 0 }, bareCatalog)).toBe(10);
+  });
+
   it("calculates image generation tokens using default image pricing when host model has no image pricing", () => {
     const multiCatalog = createPricingCatalog({
       "gpt-test": {
