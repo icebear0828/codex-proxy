@@ -8,7 +8,9 @@
 
 ## [Unreleased]
 
-> 暂无已记录的变更。
+### Fixed
+
+- 修复 OpenCode（Console Go，`opencode.ai/zen/go`）上游因缺少 `x-opencode-session` 请求头而拒绝请求的问题（#814）：Codex / Kilo Code 等客户端直连时会携带该头与真实 User-Agent，经代理转发后被丢弃或覆盖。现由代理识别 OpenCode 上游，透传客户端原始 `x-opencode-session` 与 User-Agent；客户端未提供会话头时，以每个对话稳定的标识符自动补上（`src/proxy/opencode-headers.ts`、`src/proxy/codex-responses-upstream.ts`、`src/proxy/responses-upstream.ts`、`src/proxy/openai-upstream.ts`）。
 
 ## [v2.1.x](https://github.com/icebear0828/codex-proxy/releases?q=2.1) - 2026-09-01 至 2026-09-07
 

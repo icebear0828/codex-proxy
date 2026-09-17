@@ -31,6 +31,8 @@ import type { ClientKeyPool } from "../auth/client-key-pool.js";
 import type { FallbackUpstreamStore } from "../auth/fallback-upstream.js";
 import { validateClientKeyModel } from "./shared/proxy-handler-utils.js";
 import { resolveDefaultTools, mergeDefaultTools } from "./shared/default-tools.js";
+import { X_OPENCODE_SESSION_HEADER } from "../proxy/opencode-headers.js";
+import { nonEmptyString } from "../proxy/codex-request-context.js";
 
 function makeOpenAIFormat(
   wantReasoning: boolean,
@@ -149,6 +151,12 @@ export function createChatRoutes(
     });
 
     const { codexRequest, tupleSchema } = translateToCodexRequest(req);
+    // OpenCode / Console Go upstreams need the real client UA and session id;
+    // forward them verbatim when the client sends them (see opencode-headers.ts).
+    codexRequest.clientUserAgent =
+      nonEmptyString(c.req.header("user-agent")) ?? undefined;
+    codexRequest.opencodeSessionId =
+      nonEmptyString(c.req.header(X_OPENCODE_SESSION_HEADER)) ?? undefined;
     if (defaultTools.length > 0) {
       codexRequest.tools = mergeDefaultTools(codexRequest.tools, defaultTools);
     }

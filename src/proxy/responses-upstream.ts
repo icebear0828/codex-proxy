@@ -19,6 +19,8 @@ import { CodexApiError } from "./codex-types.js";
 import { classifyRawUpstreamError } from "./error-classification.js";
 import { parseSSEStream } from "./codex-sse.js";
 import { withFetchDispatcher } from "./fetch-dispatcher.js";
+import { randomUUID } from "crypto";
+import { applyOpenCodeHeaders } from "./opencode-headers.js";
 
 function extractModelId(model: string): string {
   const colon = model.indexOf(":");
@@ -99,13 +101,23 @@ export class ResponsesUpstream implements UpstreamAdapter {
     const modelId = extractModelId(req.model);
     const body = buildResponsesUpstreamBody(req, modelId);
 
+    const headers: Record<string, string> = {
+      "Authorization": `Bearer ${this.apiKey}`,
+      "Content-Type": "application/json",
+      "Accept": "text/event-stream",
+    };
+    // Console Go requires x-opencode-session; fall back to the stable
+    // per-conversation cache key so the session id is consistent per dialogue.
+    applyOpenCodeHeaders(
+      headers,
+      this.baseUrl,
+      req,
+      req.prompt_cache_key ?? req.previous_response_id ?? randomUUID(),
+    );
+
     const response = await fetch(`${this.baseUrl}/responses`, withFetchDispatcher({
       method: "POST",
-      headers: {
-        "Authorization": `Bearer ${this.apiKey}`,
-        "Content-Type": "application/json",
-        "Accept": "text/event-stream",
-      },
+      headers,
       body: JSON.stringify(body),
       signal,
     }));

@@ -160,6 +160,82 @@ describe("CodexResponsesUpstream", () => {
     expect(passesStrictCodexClientMatrix(headers, body)).toBe(true);
   });
 
+  it("adds x-opencode-session and keeps the client User-Agent for Console Go upstreams", async () => {
+    const upstream = new CodexResponsesUpstream(
+      "sk-vendor",
+      "https://opencode.ai/zen/go/v1/",
+      "entry-1",
+    );
+    const request: CodexResponsesRequest = {
+      model: "gpt-5.6-sol",
+      input: [{ role: "user", content: "hello" }],
+      stream: true,
+      store: false,
+      prompt_cache_key: "thread-123",
+      clientUserAgent: "codex_cli_rs/0.41.0 (x86_64-apple-darwin) (macos 26.0.0)",
+      opencodeSessionId: "session-from-client",
+    };
+
+    await upstream.createResponse(request, new AbortController().signal);
+
+    const [, headers] = postMock.mock.calls[0] as [
+      string,
+      Record<string, string>,
+      string,
+    ];
+    expect(headers["x-opencode-session"]).toBe("session-from-client");
+    expect(headers["User-Agent"]).toBe("codex_cli_rs/0.41.0 (x86_64-apple-darwin) (macos 26.0.0)");
+  });
+
+  it("uses the stable per-conversation id for Console Go when the client sends no session", async () => {
+    const upstream = new CodexResponsesUpstream(
+      "sk-vendor",
+      "https://opencode.ai/zen/go/v1/",
+      "entry-1",
+    );
+    const request: CodexResponsesRequest = {
+      model: "gpt-5.6-sol",
+      input: [{ role: "user", content: "hello" }],
+      stream: true,
+      store: false,
+      prompt_cache_key: "thread-123",
+    };
+
+    await upstream.createResponse(request, new AbortController().signal);
+
+    const [, headers] = postMock.mock.calls[0] as [
+      string,
+      Record<string, string>,
+      string,
+    ];
+    expect(headers["x-opencode-session"]).toMatch(/^cp_[0-9a-f]{32}$/);
+  });
+
+  it("does not send x-opencode-session to non-OpenCode upstreams", async () => {
+    const upstream = new CodexResponsesUpstream(
+      "sk-vendor",
+      "https://provider.example.com/v1/",
+      "entry-1",
+    );
+    const request: CodexResponsesRequest = {
+      model: "gpt-5.6-sol",
+      input: [{ role: "user", content: "hello" }],
+      stream: true,
+      store: false,
+      prompt_cache_key: "thread-123",
+      opencodeSessionId: "session-from-client",
+    };
+
+    await upstream.createResponse(request, new AbortController().signal);
+
+    const [, headers] = postMock.mock.calls[0] as [
+      string,
+      Record<string, string>,
+      string,
+    ];
+    expect(headers).not.toHaveProperty("x-opencode-session");
+  });
+
   it("generates complete context for stateless first requests", async () => {
     const upstream = new CodexResponsesUpstream(
       "sk-vendor",

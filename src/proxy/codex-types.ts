@@ -54,6 +54,12 @@ export interface CodexResponsesRequest {
   codexWindowId?: string;
   /** Parent Codex thread id for subagent lineage. */
   parentThreadId?: string;
+  /** Original User-Agent sent by the downstream client. OpenCode (Console Go)
+   *  upstreams require the real client UA to route efficiently; kept verbatim. */
+  clientUserAgent?: string;
+  /** OpenCode session identifier forwarded to Console Go upstreams. When the
+   *  client does not send one, adapters substitute a stable per-conversation ID. */
+  opencodeSessionId?: string;
 }
 
 /**
