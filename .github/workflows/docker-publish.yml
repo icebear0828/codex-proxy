@@ -128,13 +128,77 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
+  # ── Lite image: arm64 musl addon ──────────────────────────────────
+  # Built natively in an Alpine container on an arm64 runner — the same
+  # no-cross-compile rule as #805: cross-building musl from a glibc host
+  # links C dependencies (aws-lc) against glibc and produces hybrid binaries
+  # that crash inside the Alpine image. publish-lite downloads the artifact
+  # and stages it into the dual-platform image context.
+  addon-musl-arm64:
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag || github.ref }}
+
+      - name: Cache musl cargo build
+        uses: actions/cache@v4
+        with:
+          path: native/target
+          key: musl-aarch64-unknown-linux-musl-${{ hashFiles('native/Cargo.lock') }}
+          restore-keys: musl-aarch64-unknown-linux-musl-
+
+      - name: Build Linux arm64 musl native addon in Alpine
+        run: |
+          docker run --rm \
+            -v "$GITHUB_WORKSPACE/native:/build" \
+            -v "$GITHUB_WORKSPACE/scripts:/scripts:ro" \
+            -w /build \
+            ghcr.io/napi-rs/napi-rs/nodejs-rust:lts-alpine \
+            sh -lc 'set -eu; apk add --no-cache build-base linux-headers; rustup toolchain install 1.88.0 --profile minimal --no-self-update; rustup target add aarch64-unknown-linux-musl --toolchain 1.88.0; export RUSTUP_TOOLCHAIN=1.88.0; export CC_aarch64_unknown_linux_musl=gcc; export CXX_aarch64_unknown_linux_musl=g++; export AWS_LC_SYS_CC_aarch64_unknown_linux_musl=gcc; export AWS_LC_SYS_CXX_aarch64_unknown_linux_musl=g++; export CARGO_TARGET_AARCH64_UNKNOWN_LINUX_MUSL_LINKER=gcc; export RUSTFLAGS="-C link-arg=-static-libgcc"; npm ci --include=dev --ignore-scripts --no-audit --no-fund; npm run build:linux-arm64-musl; node /scripts/native/test-linux-x64-musl.mjs /build/codex-tls.linux-arm64-musl.node'
+
+      - name: Verify arm64 musl addon is not glibc-linked
+        run: |
+          addon="native/codex-tls.linux-arm64-musl.node"
+          test -f "$addon"
+          # ld-linux-<anything> is the glibc dynamic loader on every arch, and
+          # libc.so.6 is glibc libc: either NEEDED entry is the #805 hybrid
+          # signature. A musl-linked binary carries neither.
+          if readelf -d "$addon" | grep -Eq 'libc\.so\.6|ld-linux-'; then
+            echo "::error::musl addon unexpectedly depends on glibc"
+            exit 1
+          fi
+          # GLIBC_ version records attached to libgcc_s.so.1 are inert on
+          # musl (its loader ignores GNU symbol versioning and binds by
+          # name — the dlopen smoke above proves the addon works), but the
+          # same records on any other file mean glibc contamination.
+          OFFENDERS=$(readelf --version-info "$addon" 2>/dev/null | awk '
+            $4 == "File:" { file = $5 }
+            $3 ~ /^GLIBC_[0-9]/ && file != "" { print file }
+          ' | sort -u | grep -v '^libgcc_s\.so\.1$' || true)
+          if [ -n "$OFFENDERS" ]; then
+            echo "::error::GLIBC version requirements outside libgcc_s: $OFFENDERS"
+            exit 1
+          fi
+
+      - name: Upload arm64 musl addon artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: lite-native-linux-arm64-musl
+          path: native/codex-tls.linux-arm64-musl.node
+          if-no-files-found: error
+          retention-days: 3
+
   # ── Lite image ─────────────────────────────────────────────────────
   # Alpine + the No-Node Lite bundle + prebuilt Linux native addons.
   # No node_modules, no toolchain, no Rust build: ~60 MB instead of ~450 MB.
   # Separate tags (:latest-lite / :sha-*-lite / version-lite) so the full
   # image remains the default.
   publish-lite:
+    needs: addon-musl-arm64
     runs-on: ubuntu-latest
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
         with:
@@ -219,8 +283,12 @@ jobs:
               archive.extractall(sys.argv[2])
           PY
 
-      - name: Setup Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
+      - name: Cache musl cargo build
+        uses: actions/cache@v4
+        with:
+          path: native/target
+          key: musl-x86_64-unknown-linux-musl-${{ hashFiles('native/Cargo.lock') }}
+          restore-keys: musl-x86_64-unknown-linux-musl-
 
       - name: Build musl native addon in Alpine
         run: |
@@ -234,31 +302,37 @@ jobs:
             -v "$GITHUB_WORKSPACE/scripts:/scripts:ro" \
             -w /build \
             ghcr.io/napi-rs/napi-rs/nodejs-rust:lts-alpine \
-            sh -lc 'set -eu; apk add --no-cache build-base linux-headers; rustup toolchain install 1.88.0 --profile minimal --no-self-update; rustup target add x86_64-unknown-linux-musl --toolchain 1.88.0; export RUSTUP_TOOLCHAIN=1.88.0; export CC_x86_64_unknown_linux_musl=gcc; export CXX_x86_64_unknown_linux_musl=g++; export AWS_LC_SYS_CC_x86_64_unknown_linux_musl=gcc; export AWS_LC_SYS_CXX_x86_64_unknown_linux_musl=g++; npm ci --include=dev --ignore-scripts --no-audit --no-fund; npm run build:linux-x64-musl; node /scripts/native/test-linux-x64-musl.mjs /build/codex-tls.linux-x64-musl.node'
+            sh -lc 'set -eu; apk add --no-cache build-base linux-headers; rustup toolchain install 1.88.0 --profile minimal --no-self-update; rustup target add x86_64-unknown-linux-musl --toolchain 1.88.0; export RUSTUP_TOOLCHAIN=1.88.0; export CC_x86_64_unknown_linux_musl=gcc; export CXX_x86_64_unknown_linux_musl=g++; export AWS_LC_SYS_CC_x86_64_unknown_linux_musl=gcc; export AWS_LC_SYS_CXX_x86_64_unknown_linux_musl=g++; export CARGO_TARGET_X86_64_UNKNOWN_LINUX_MUSL_LINKER=gcc; export RUSTFLAGS="-C link-arg=-static-libgcc"; npm ci --include=dev --ignore-scripts --no-audit --no-fund; npm run build:linux-x64-musl; node /scripts/native/test-linux-x64-musl.mjs /build/codex-tls.linux-x64-musl.node'
 
       - name: Verify musl addon is not glibc-linked
         run: |
           addon="native/codex-tls.linux-x64-musl.node"
           file "$addon"
-          if readelf -d "$addon" | grep -Eq 'libc\.so\.6|ld-linux-x86-64\.so\.2'; then
+          # ld-linux-<anything> is the glibc dynamic loader on every arch, and
+          # libc.so.6 is glibc libc: either NEEDED entry is the #805 hybrid
+          # signature. A musl-linked binary carries neither.
+          if readelf -d "$addon" | grep -Eq 'libc\.so\.6|ld-linux-'; then
             echo "::error::musl addon unexpectedly depends on glibc"
             exit 1
           fi
-          if readelf --version-info "$addon" 2>/dev/null | grep -q 'GLIBC_'; then
-            echo "::error::musl addon contains a GLIBC symbol requirement"
+          # GLIBC_ version records attached to libgcc_s.so.1 are inert on
+          # musl (its loader ignores GNU symbol versioning and binds by
+          # name — the dlopen smoke above proves the addon works), but the
+          # same records on any other file mean glibc contamination.
+          OFFENDERS=$(readelf --version-info "$addon" 2>/dev/null | awk '
+            $4 == "File:" { file = $5 }
+            $3 ~ /^GLIBC_[0-9]/ && file != "" { print file }
+          ' | sort -u | grep -v '^libgcc_s\.so\.1$' || true)
+          if [ -n "$OFFENDERS" ]; then
+            echo "::error::GLIBC version requirements outside libgcc_s: $OFFENDERS"
             exit 1
           fi
 
-      - name: Build glibc native addon for the host smoke test
-        run: |
-          # gnu only feeds the glibc-runner staged-bundle smoke test below;
-          # it never enters the Alpine image. The Alpine container wrote
-          # root-owned node_modules/target via the bind mount — hand them
-          # back to the runner user before the host npm ci.
-          sudo chown -R "$(id -u):$(id -g)" native
-          cd native && npm ci && npm run build
-          test -f codex-tls.linux-x64-gnu.node
-          test -f codex-tls.linux-x64-musl.node
+      - name: Download arm64 musl addon
+        uses: actions/download-artifact@v4
+        with:
+          name: lite-native-linux-arm64-musl
+          path: native
 
       - name: Stage the lite Docker context
         run: |
@@ -267,33 +341,41 @@ jobs:
             --package "$RUNNER_TEMP/lite-pkg" \
             --native native
 
-      - name: Smoke test the staged bundle
+      - name: Smoke test the staged bundle in Alpine
         run: |
-          # The runner is glibc, but the staged tree only carries the musl
-          # addon destined for the image. Lend it the gnu addon for this host
-          # test only, then drop it so it never reaches the build context.
+          # The staged tree must start the server with nothing but its own
+          # files (no node_modules, sqlite via the node:sqlite builtin). Run
+          # it in the same node:22-alpine base the image uses, with the musl
+          # addon — this replaces the old glibc-runner smoke that existed only
+          # to avoid building the addon a second time (see the removed gnu
+          # build step in git history).
           STAGE="$RUNNER_TEMP/docker-lite-stage"
-          cp native/codex-tls.linux-x64-gnu.node "$STAGE/native/"
-          cleanup() { rm -f "$STAGE/native/codex-tls.linux-x64-gnu.node"; }
+          # Pull the base image first: an implicit pull inside `docker run -d`
+          # delays container start by the pull duration and races the health
+          # poll below (first run after a runner image update pulls ~30s).
+          docker pull node:22-alpine >/dev/null
+          # CODEX_PROXY_HOST=0.0.0.0 matches the image ENV: without it the
+          # server binds 127.0.0.1 inside the container and the published
+          # port never answers.
+          docker run -d --rm --name "lite-staged-smoke-${{ github.run_id }}-${{ github.run_attempt }}" \
+            -p 18080:8080 -e CODEX_PROXY_HOST=0.0.0.0 \
+            -v "$STAGE:/app" -w /app node:22-alpine \
+            node app/server.mjs --portable --mode=server --port 8080
+          CNAME="lite-staged-smoke-${{ github.run_id }}-${{ github.run_attempt }}"
+          cleanup() { docker rm -f "$CNAME" >/dev/null 2>&1 || true; }
           trap cleanup EXIT
-          # The server must start with only the staged files: no node_modules,
-          # sqlite via the node:sqlite builtin.
-          cd "$STAGE"
-          node app/server.mjs --portable --mode=server --port 18080 &
-          SERVER_PID=$!
-          for i in $(seq 1 30); do
+          for i in $(seq 1 60); do
             if curl --noproxy '*' --fail --silent http://127.0.0.1:18080/health >/dev/null; then
-              echo "health check passed"
-              kill $SERVER_PID
+              echo "staged bundle is healthy under alpine node"
               exit 0
             fi
             sleep 1
           done
-          echo "server did not become healthy"
-          kill $SERVER_PID || true
+          echo "staged bundle did not become healthy"
+          docker logs "$CNAME"
           exit 1
 
-      - name: Assert only the musl addon reaches the image context
+      - name: Assert no glibc addon reaches the image context
         run: |
           test ! -e "$RUNNER_TEMP/docker-lite-stage/native/codex-tls.linux-x64-gnu.node"
           ls -1 "$RUNNER_TEMP/docker-lite-stage/native/"
@@ -317,63 +399,82 @@ jobs:
       - name: Copy Dockerfile.lite into the staged context
         run: cp Dockerfile.lite "$RUNNER_TEMP/docker-lite-stage/Dockerfile"
 
-      - name: Build lite image for local smoke test
-        uses: docker/build-push-action@v6
-        with:
-          context: ${{ runner.temp }}/docker-lite-stage
-          file: ${{ runner.temp }}/docker-lite-stage/Dockerfile
-          platforms: linux/amd64
-          load: true
-          tags: codex-proxy-lite:smoke
-          build-args: PROXY_VERSION=${{ steps.version.outputs.version }}
-          cache-from: type=gha,scope=lite
-          cache-to: type=gha,mode=max,scope=lite
-
-      - name: Smoke test the built lite image
+      - name: Build lite images for local smoke test
         run: |
-          # Test the built image before pushing. The host smoke test above
-          # uses the gnu addon on glibc and cannot catch a mislinked musl
-          # addon — that gap shipped the crash-loop in #805. Verify the real
-          # musl artifact locally before allowing any registry push.
-          IMAGE="codex-proxy-lite:smoke"
-
-          # 1. The musl addon must dlopen under the image's own Node.
-          docker run --rm "$IMAGE" node -e \
-            "require('/app/native/codex-tls.linux-x64-musl.node'); console.log('musl addon loads under alpine node')"
-
-          # 2. Fresh named volumes: entrypoint must seed defaults, server must
-          #    start healthy inside the real image.
-          SMOKE_CFG="lite-smoke-cfg-${{ github.run_id }}-${{ github.run_attempt }}"
-          SMOKE_DATA="lite-smoke-data-${{ github.run_id }}-${{ github.run_attempt }}"
-          docker volume create "$SMOKE_CFG" >/dev/null
-          docker volume create "$SMOKE_DATA" >/dev/null
-          cid=$(docker run -d -p 18080:8080 \
-            -v "$SMOKE_CFG":/app/config \
-            -v "$SMOKE_DATA":/app/data \
-            "$IMAGE")
-          cleanup() {
-            docker rm -f "$cid" >/dev/null 2>&1 || true
-            docker volume rm "$SMOKE_CFG" "$SMOKE_DATA" >/dev/null 2>&1 || true
-          }
-          trap cleanup EXIT
-          for i in $(seq 1 30); do
-            if curl --noproxy '*' --fail --silent http://127.0.0.1:18080/health >/dev/null; then
-              echo "built lite image is healthy"
-              docker logs "$cid" | grep -E "Using native \(rustls\)|API key pool" || true
-              exit 0
-            fi
-            sleep 1
+          # One image per platform, loaded into the local daemon. The arm64
+          # build runs its (COPY-only) steps under QEMU. Layers land in the
+          # gha cache so the final dual-platform push below is near-instant.
+          STAGE="$RUNNER_TEMP/docker-lite-stage"
+          for ARCH in amd64 arm64; do
+            docker buildx build \
+              --platform "linux/$ARCH" \
+              --build-arg PROXY_VERSION="${{ steps.version.outputs.version }}" \
+              --cache-from type=gha,scope=lite \
+              --cache-to type=gha,mode=max,scope=lite \
+              --load -t "codex-proxy-lite:smoke-$ARCH" \
+              -f "$STAGE/Dockerfile" "$STAGE"
           done
-          echo "built lite image did not become healthy"
-          docker logs "$cid"
-          exit 1
+
+      - name: Smoke test the built lite images
+        run: |
+          # Test the built images before pushing. The host smoke test above
+          # runs the staged tree, but only the real image proves the pruned
+          # native/ dir + entrypoint wiring work on each architecture — that
+          # gap shipped the #805 crash. The arm64 image runs under QEMU, so
+          # its health poll gets a longer budget.
+          for ENTRY in "amd64 codex-tls.linux-x64-musl.node 30" "arm64 codex-tls.linux-arm64-musl.node 90"; do
+            set -- $ENTRY
+            ARCH="$1"; ADDON="$2"; BUDGET="$3"
+            IMAGE="codex-proxy-lite:smoke-$ARCH"
+            if [ "$ARCH" = amd64 ]; then OTHER="codex-tls.linux-arm64-musl.node"; else OTHER="codex-tls.linux-x64-musl.node"; fi
+            echo "::group::lite image smoke ($ARCH)"
+            # 1. The musl addon must dlopen under the image's own Node, and
+            #    the other architecture's addon must have been pruned by the
+            #    Dockerfile's TARGETARCH case.
+            docker run --rm --platform "linux/$ARCH" "$IMAGE" node -e \
+              "const fs = require('fs'); if (fs.existsSync('/app/native/$OTHER')) throw new Error('wrong-arch addon in image: $OTHER'); require('/app/native/$ADDON'); console.log('$ADDON loads under alpine node ($ARCH)')"
+            # 2. Fresh named volumes: entrypoint must seed defaults, server
+            #    must start healthy inside the real image.
+            SUFFIX="${{ github.run_id }}-${{ github.run_attempt }}"
+            SMOKE_CFG="lite-smoke-cfg-$ARCH-$SUFFIX"
+            SMOKE_DATA="lite-smoke-data-$ARCH-$SUFFIX"
+            docker volume create "$SMOKE_CFG" >/dev/null
+            docker volume create "$SMOKE_DATA" >/dev/null
+            cid=$(docker run -d --platform "linux/$ARCH" -p 18080:8080 \
+              -v "$SMOKE_CFG":/app/config \
+              -v "$SMOKE_DATA":/app/data \
+              "$IMAGE")
+            cleanup() {
+              docker rm -f "$cid" >/dev/null 2>&1 || true
+              docker volume rm "$SMOKE_CFG" "$SMOKE_DATA" >/dev/null 2>&1 || true
+            }
+            trap cleanup EXIT
+            OK=""
+            for i in $(seq 1 "$BUDGET"); do
+              if curl --noproxy '*' --fail --silent http://127.0.0.1:18080/health >/dev/null; then
+                OK=1
+                break
+              fi
+              sleep 1
+            done
+            if [ -z "$OK" ]; then
+              echo "built lite image did not become healthy ($ARCH)"
+              docker logs "$cid"
+              exit 1
+            fi
+            echo "built lite image is healthy ($ARCH)"
+            docker logs "$cid" 2>/dev/null | grep -E "Using native \(rustls\)|API key pool" || true
+            trap - EXIT
+            cleanup
+            echo "::endgroup::"
+          done
 
       - name: Push lite image to registry
         uses: docker/build-push-action@v6
         with:
           context: ${{ runner.temp }}/docker-lite-stage
           file: ${{ runner.temp }}/docker-lite-stage/Dockerfile
-          platforms: linux/amd64
+          platforms: linux/amd64,linux/arm64
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
