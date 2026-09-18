@@ -83,6 +83,18 @@ Like the Electron app, Lite uses the normal per-user data directory by default. 
 
 Linux x64 Lite includes both glibc and musl TLS native addons, so it can be used on common Linux distributions and Alpine Linux. Other native architectures, including Linux ARM, are not currently included.
 
+### npm (for developers with Node.js already installed)
+
+```bash
+npm install -g @icebear0828/codex-proxy
+codex-proxy
+# Open http://localhost:8080 to log in
+```
+
+Requires Node.js 22.13+. Feature-complete: the web dashboard, account management and the Ollama bridge all work the same as the desktop app. The platform TLS native addon is picked automatically at install time (Windows x64+arm64, macOS x64+arm64, Linux x64+arm64 with glibc and musl variants); binaries for other platforms are never downloaded. Runtime data lives in the per-user data directory (`%APPDATA%\@codex-proxy\electron\data` on Windows, `~/.config/@codex-proxy/electron/data` on Linux, `~/Library/Application Support/@codex-proxy/electron/data` on macOS), so updates never wipe it; use `--portable` or `CODEX_PROXY_DATA_DIR` to relocate. Update with `npm install -g @icebear0828/codex-proxy@latest`.
+
+Common flags: `--mode=server` (headless), `--mode=browser` (force the system browser), `--host` / `--port`. See `codex-proxy --help` for everything.
+
 ### Docker
 
 The simplest way — one command:

@@ -9,9 +9,9 @@
 //   - the native addon directory (repo native/ layout: index.js, package.json,
 //     and the platform .node files produced by CI)
 //
-// Output: a directory with only what the Alpine (musl) container needs. The
-// glibc addon is deliberately excluded; CI copies it in separately just for
-// the glibc-host smoke test and removes it before the image build.
+// Output: a directory with only what the Alpine (musl) container needs, for
+// both amd64 and arm64 image builds. The glibc addon is deliberately
+// excluded; CI asserts it never reaches the build context.
 
 import { chmodSync, cpSync, existsSync, mkdirSync, readdirSync, rmSync } from "node:fs";
 import { basename, dirname, join, resolve } from "node:path";
@@ -62,6 +62,10 @@ const NATIVE_FILES = [
   "package.json",
   "codex-tls.linux-x64-musl.node",
 ];
+// Second architecture for the dual-platform image build. Optional here so a
+// locally staged tree (which usually only has the host arch's addon) still
+// stages; docker-publish.yml asserts it exists before publishing.
+const OPTIONAL_NATIVE_FILES = ["codex-tls.linux-arm64-musl.node"];
 
 function main() {
   const options = parseArgs(process.argv.slice(2));
@@ -81,6 +85,9 @@ function main() {
   if (missingAddons.length > 0) {
     throw new Error(`Native directory is missing: ${missingAddons.join(", ")}`);
   }
+  const optionalMissing = OPTIONAL_NATIVE_FILES.filter(
+    (name) => !existsSync(join(options.native, name)),
+  );
   const repoEntrypoint = join(SCRIPT_DIR, REPO_ENTRYPOINT);
   if (!existsSync(repoEntrypoint)) {
     throw new Error(`Missing lite container entrypoint: ${repoEntrypoint}`);
@@ -95,7 +102,7 @@ function main() {
     cpSync(join(options.package, name), join(options.out, name));
   }
   mkdirSync(join(options.out, "native"), { recursive: true });
-  for (const name of NATIVE_FILES) {
+  for (const name of [...NATIVE_FILES, ...OPTIONAL_NATIVE_FILES]) {
     if (existsSync(join(options.native, name))) {
       cpSync(join(options.native, name), join(options.out, "native", name));
     }

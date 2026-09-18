@@ -34,6 +34,15 @@ COPY public/ ./public/
 COPY config/ ./config/
 COPY bin/ ./bin/
 COPY native/ ./native/
+
+# The staged context carries the musl addon for both amd64 and arm64 (one
+# image build per platform); keep only the one this architecture can load.
+ARG TARGETARCH
+RUN case "$TARGETARCH" in \
+      arm64) rm -f native/codex-tls.linux-x64-musl.node ;; \
+      *) rm -f native/codex-tls.linux-arm64-musl.node ;; \
+    esac
+
 COPY codex-proxy.sh ./
 COPY THIRD-PARTY-NOTICES.txt ./
 COPY docker-entrypoint.sh /docker-entrypoint.sh

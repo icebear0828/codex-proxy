@@ -1,0 +1,293 @@
+name: Publish npm packages
+
+# Builds @icebear0828/codex-proxy plus one native-addon package per platform
+# triple and publishes them to the npm registry. Publishing only runs on the
+# upstream repository (it needs the NPM_TOKEN secret); forks run the full
+# build + package + smoke pipeline with the publish job skipped, and can grab
+# the tarballs from the npm-tarballs artifact.
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - "v*"
+  pull_request:
+    paths:
+      - "native/**"
+      - "packages/npm/**"
+      - "scripts/npm/**"
+      - ".github/workflows/npm-publish.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: npm-publish-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  addon:
+    name: Build native addon (${{ matrix.triple }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            triple: win32-x64-msvc
+          - os: windows-11-arm
+            triple: win32-arm64-msvc
+          - os: macos-latest
+            triple: darwin-arm64
+          - os: macos-15-intel
+            triple: darwin-x64
+          - os: ubuntu-latest
+            triple: linux-x64-gnu
+          - os: ubuntu-24.04-arm
+            triple: linux-arm64-gnu
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Setup Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Cargo + Rust build
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            native/target
+          key: native-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('native/Cargo.lock') }}
+          restore-keys: |
+            native-${{ runner.os }}-${{ runner.arch }}-
+
+      - name: Build native addon
+        working-directory: native
+        run: |
+          npm ci --prefer-offline --no-audit --no-fund
+          npm run build
+          test -f "codex-tls.${{ matrix.triple }}.node"
+
+      - name: Upload addon artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: npm-native-${{ matrix.triple }}
+          path: native/codex-tls.${{ matrix.triple }}.node
+          if-no-files-found: error
+          retention-days: 3
+
+  addon-musl:
+    name: Build native addon (${{ matrix.triple }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            triple: linux-x64-musl
+            target: x86_64-unknown-linux-musl
+            cc: CC_x86_64_unknown_linux_musl
+            cxx: CXX_x86_64_unknown_linux_musl
+            linker: CARGO_TARGET_X86_64_UNKNOWN_LINUX_MUSL_LINKER
+          - os: ubuntu-24.04-arm
+            triple: linux-arm64-musl
+            target: aarch64-unknown-linux-musl
+            cc: CC_aarch64_unknown_linux_musl
+            cxx: CXX_aarch64_unknown_linux_musl
+            linker: CARGO_TARGET_AARCH64_UNKNOWN_LINUX_MUSL_LINKER
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      # The target dir is shared with the container via the bind mount, so a
+      # warm cache turns the full aws-lc build into an incremental rebuild.
+      # Distinct "musl-" key prefix so it never collides with the host-build
+      # caches of the gnu/addon matrix jobs.
+      - name: Cache musl cargo build
+        uses: actions/cache@v4
+        with:
+          path: native/target
+          key: musl-${{ matrix.target }}-${{ hashFiles('native/Cargo.lock') }}
+          restore-keys: musl-${{ matrix.target }}-
+
+      - name: Build Linux musl native addon in Alpine
+        shell: bash
+        run: |
+          # The musl addon must be linked against musl. Cross-building with
+          # the musl target on a glibc host links C dependencies (aws-lc)
+          # against glibc, producing a hybrid binary that crashes in the
+          # Alpine image with "ld-linux not found" (#805). Build inside the
+          # same Alpine container the Lite release workflows use — natively,
+          # on a runner matching the target architecture. -static-libgcc
+          # bakes the unwinder in: the shared libgcc_s.so.1 dependency (and
+          # its GCC_/GLIBC_ version records, which the strict readelf gate
+          # below would flag) disappears from the artifact.
+          docker run --rm \
+            -v "$GITHUB_WORKSPACE/native:/build" \
+            -v "$GITHUB_WORKSPACE/scripts:/scripts:ro" \
+            -w /build \
+            ghcr.io/napi-rs/napi-rs/nodejs-rust:lts-alpine \
+            sh -lc 'set -eu; apk add --no-cache build-base linux-headers; rustup toolchain install 1.88.0 --profile minimal --no-self-update; rustup target add ${{ matrix.target }} --toolchain 1.88.0; export RUSTUP_TOOLCHAIN=1.88.0; export ${{ matrix.cc }}=gcc; export ${{ matrix.cxx }}=g++; export AWS_LC_SYS_${{ matrix.cc }}=gcc; export AWS_LC_SYS_${{ matrix.cxx }}=g++; export ${{ matrix.linker }}=gcc; export RUSTFLAGS="-C link-arg=-static-libgcc"; npm ci --include=dev --ignore-scripts --no-audit --no-fund; npm run build:${{ matrix.triple }}; node /scripts/native/test-linux-x64-musl.mjs /build/codex-tls.${{ matrix.triple }}.node'
+
+      - name: Inspect ELF dependencies
+        shell: bash
+        run: |
+          addon="native/codex-tls.${{ matrix.triple }}.node"
+          test -f "$addon"
+          # ld-linux-<anything> is the glibc dynamic loader on every arch, and
+          # libc.so.6 is glibc libc: either NEEDED entry is the #805 hybrid
+          # signature. A musl-linked binary carries neither.
+          if readelf -d "$addon" | grep -Eq 'libc\.so\.6|ld-linux-'; then
+            echo "::error::musl addon unexpectedly depends on glibc"
+            exit 1
+          fi
+          # GLIBC_ version records attached to libgcc_s.so.1 are inert on
+          # musl (its loader ignores GNU symbol versioning and binds by
+          # name — the dlopen smoke above proves the addon works), but the
+          # same records on any other file mean glibc contamination.
+          OFFENDERS=$(readelf --version-info "$addon" 2>/dev/null | awk '
+            $4 == "File:" { file = $5 }
+            $3 ~ /^GLIBC_[0-9]/ && file != "" { print file }
+          ' | sort -u | grep -v '^libgcc_s\.so\.1$' || true)
+          if [ -n "$OFFENDERS" ]; then
+            echo "::error::GLIBC version requirements outside libgcc_s: $OFFENDERS"
+            exit 1
+          fi
+
+      - name: Upload addon artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: npm-native-${{ matrix.triple }}
+          path: native/codex-tls.${{ matrix.triple }}.node
+          if-no-files-found: error
+          retention-days: 3
+
+  package:
+    name: Package and smoke test
+    needs: [addon, addon-musl]
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Resolve package version
+        id: version
+        run: |
+          if [[ "$GITHUB_REF_TYPE" == "tag" ]]; then
+            echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+          else
+            echo "version=$(node -p "require('./package.json').version")" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Build core and server bundle
+        run: |
+          npm ci --ignore-scripts --no-audit --no-fund
+          cd web && npm ci --no-audit --no-fund && cd ..
+          npm run build:web
+          npm --prefix packages/electron run build
+
+      - name: Download native addons
+        uses: actions/download-artifact@v4
+        with:
+          pattern: npm-native-*
+          path: native
+          merge-multiple: true
+
+      - name: Stage npm packages
+        run: |
+          node scripts/npm/stage-npm-packages.mjs \
+            --out "$RUNNER_TEMP/npm-dist" \
+            --version "${{ steps.version.outputs.version }}"
+          test -d "$RUNNER_TEMP/npm-dist/main/app"
+          test "$(ls -1 "$RUNNER_TEMP/npm-dist/addons" | wc -l)" -eq 8
+
+      - name: Pack tarballs
+        run: |
+          mkdir -p "$RUNNER_TEMP/npm-dist/tarballs"
+          cd "$RUNNER_TEMP/npm-dist/main" && npm pack --silent
+          for addon in "$RUNNER_TEMP"/npm-dist/addons/*/; do
+            (cd "$addon" && npm pack --silent)
+          done
+          mv "$RUNNER_TEMP"/npm-dist/main/*.tgz "$RUNNER_TEMP/npm-dist/tarballs/"
+          find "$RUNNER_TEMP/npm-dist/addons" -name '*.tgz' -exec mv {} "$RUNNER_TEMP/npm-dist/tarballs/" \;
+          ls -la "$RUNNER_TEMP/npm-dist/tarballs/"
+
+      - name: Smoke test the main package
+        run: |
+          # The loader hard-fails when no addon can be required, so install
+          # this runner's addon tarball next to the main package (both land
+          # in the same global node_modules, which is exactly how npm lays
+          # out the optional dependency on a real install).
+          PREFIX="$RUNNER_TEMP/npm-smoke"
+          TARBALLS="$RUNNER_TEMP/npm-dist/tarballs"
+          VERSION="${{ steps.version.outputs.version }}"
+          npm i -g --prefix "$PREFIX" --no-audit --no-fund \
+            "$TARBALLS/icebear0828-codex-proxy-$VERSION.tgz" \
+            "$TARBALLS/codex-tls-linux-x64-gnu-$VERSION.tgz"
+          "$PREFIX/bin/codex-proxy" --mode=server --port 18180 &
+          SERVER_PID=$!
+          for i in $(seq 1 30); do
+            if curl --noproxy '*' --fail --silent http://127.0.0.1:18180/health >/dev/null; then
+              echo "health check passed"
+              kill $SERVER_PID
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "server did not become healthy"
+          kill $SERVER_PID || true
+          exit 1
+
+      - name: Upload tarballs
+        uses: actions/upload-artifact@v4
+        with:
+          name: npm-tarballs
+          path: ${{ runner.temp }}/npm-dist/tarballs/*.tgz
+          if-no-files-found: error
+          retention-days: 7
+
+  publish:
+    name: Publish to npm
+    # Forks and PRs get the full build + smoke pipeline; only the upstream
+    # repository (with the NPM_TOKEN secret configured) publishes, and only
+    # for tag pushes / manual dispatches — never from a pull request.
+    if: github.repository == 'icebear0828/codex-proxy' && github.event_name != 'pull_request'
+    needs: package
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          registry-url: https://registry.npmjs.org
+
+      - name: Download tarballs
+        uses: actions/download-artifact@v4
+        with:
+          name: npm-tarballs
+          path: tarballs
+
+      - name: Publish addon packages, then the main package
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          set -eu
+          VERSION="${{ needs.package.outputs.version }}"
+          for addon in codex-tls-win32-x64-msvc codex-tls-win32-arm64-msvc codex-tls-linux-x64-gnu codex-tls-linux-x64-musl codex-tls-linux-arm64-gnu codex-tls-linux-arm64-musl codex-tls-darwin-x64 codex-tls-darwin-arm64; do
+            echo "Publishing $addon@$VERSION"
+            npm publish "tarballs/$addon-$VERSION.tgz"
+          done
+          echo "Publishing @icebear0828/codex-proxy@$VERSION"
+          npm publish "tarballs/icebear0828-codex-proxy-$VERSION.tgz" --access public
