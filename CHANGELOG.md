@@ -8,13 +8,13 @@
 
 ## [Unreleased]
 
-### Fixed
-
-- 修复 OpenCode（Console Go，`opencode.ai/zen/go`）上游因缺少 `x-opencode-session` 请求头而拒绝请求的问题（#814）：Codex / Kilo Code 等客户端直连时会携带该头与真实 User-Agent，经代理转发后被丢弃或覆盖。现由代理识别 OpenCode 上游，透传客户端原始 `x-opencode-session` 与 User-Agent；客户端未提供会话头时，以每个对话稳定的标识符自动补上（`src/proxy/opencode-headers.ts`、`src/proxy/codex-responses-upstream.ts`、`src/proxy/responses-upstream.ts`、`src/proxy/openai-upstream.ts`）。
+> 暂无已记录的变更。
 
 ## [v2.1.x](https://github.com/icebear0828/codex-proxy/releases?q=2.1) - 2026-09-01 至 2026-09-07
 
 ### Fixed
+
+- 修复 OpenCode（Console Go，`opencode.ai/zen/go`）上游因缺少 `x-opencode-session` 请求头而拒绝请求的问题（#814）：Codex / Kilo Code 等客户端直连时会携带该头与真实 User-Agent，经代理转发后被丢弃或覆盖。现由代理识别 OpenCode 上游，透传客户端原始 `x-opencode-session` 与 User-Agent；客户端未提供会话头时，以每个对话稳定的标识符自动补上（`src/proxy/opencode-headers.ts`、`src/proxy/codex-responses-upstream.ts`、`src/proxy/responses-upstream.ts`、`src/proxy/openai-upstream.ts`）。
 
 - 修复 `latest-lite` 等 Alpine 镜像在 x86_64 上启动即崩溃（`Error loading shared library ld-linux-x86-64.so.2: No such file or directory`，#805）：镜像发布流水线此前在 glibc runner 上以 musl target 交叉编译 `codex-tls.linux-x64-musl.node`，aws-lc 等 C 依赖仍被链接到 glibc，产出名为 musl 实为 glibc 的二进制，在 Alpine 中无法加载。现改为在 `napi-rs/nodejs-rust:lts-alpine` 容器内原生构建（与 Lite zip / Release 流水线一致），并新增 readelf glibc 依赖断言与**推送到远程仓库前**的本地冒烟门禁测试（镜像自带 Node 下 dlopen addon + 空卷启动 + `/health`）。（`.github/workflows/docker-publish.yml`）
 
