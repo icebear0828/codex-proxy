@@ -40,6 +40,7 @@ import {
   supportsCodexAuxiliaryJson,
   type CodexAuxiliaryJsonPath,
 } from "../proxy/upstream-adapter.js";
+import { X_OPENCODE_SESSION_HEADER } from "../proxy/opencode-headers.js";
 import { resolveDefaultTools, mergeDefaultTools } from "./shared/default-tools.js";
 
 // Re-export for downstream consumers
@@ -214,6 +215,13 @@ export function createResponsesRoutes(
     codexRequest.parentThreadId =
       firstHeaderOrMetadata(c, clientMetadata, X_CODEX_PARENT_THREAD_ID_HEADER) ??
       undefined;
+
+    // OpenCode / Console Go upstreams need the real client UA and session id;
+    // forward them verbatim when the client sends them (see opencode-headers.ts).
+    codexRequest.clientUserAgent =
+      nonEmptyString(c.req.header("user-agent")) ?? undefined;
+    codexRequest.opencodeSessionId =
+      nonEmptyString(c.req.header(X_OPENCODE_SESSION_HEADER)) ?? undefined;
 
     // Reasoning effort: explicit body > suffix > config default
     const effort =

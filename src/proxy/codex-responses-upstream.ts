@@ -13,6 +13,7 @@ import { buildHeadersWithContentType } from "../fingerprint/manager.js";
 import { getTransport } from "../tls/transport.js";
 import { getInstallationId } from "./installation-id.js";
 import { normalizeOpenAISubagent, OPENAI_SUBAGENT_HEADER } from "./openai-subagent.js";
+import { applyOpenCodeHeaders } from "./opencode-headers.js";
 import {
   X_CODEX_WINDOW_ID_HEADER,
   applyCodexContextHeaders,
@@ -153,6 +154,11 @@ export class CodexResponsesUpstream implements UpstreamAdapter {
       request.client_metadata?.[OPENAI_SUBAGENT_HEADER],
     );
     if (openAiSubagent) headers[OPENAI_SUBAGENT_HEADER] = openAiSubagent;
+
+    // Console Go requires x-opencode-session + the real client User-Agent.
+    // Fall back to the stable per-conversation identity so every dialogue
+    // keeps a consistent session id even when the client sends none.
+    applyOpenCodeHeaders(headers, this.baseUrl, request, identity.conversationId);
 
     return { headers, identity, installationId };
   }

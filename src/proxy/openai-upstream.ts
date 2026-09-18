@@ -15,6 +15,7 @@ import { classifyRawUpstreamError } from "./error-classification.js";
 import { parseSSEStream } from "./codex-sse.js";
 import { translateCodexToOpenAIRequest } from "../translation/codex-request-to-openai.js";
 import { withFetchDispatcher } from "./fetch-dispatcher.js";
+import { applyOpenCodeHeaders } from "./opencode-headers.js";
 import { isRecord } from "../translation/shared-utils.js";
 
 function extractModelId(model: string): string {
@@ -40,13 +41,23 @@ export class OpenAIUpstream implements UpstreamAdapter {
     const modelId = extractModelId(req.model);
     const body = translateCodexToOpenAIRequest(req, modelId, req.stream);
 
+    const headers: Record<string, string> = {
+      "Authorization": `Bearer ${this.apiKey}`,
+      "Content-Type": "application/json",
+      "Accept": "text/event-stream",
+    };
+    // Console Go requires x-opencode-session; fall back to the stable
+    // per-conversation cache key so the session id is consistent per dialogue.
+    applyOpenCodeHeaders(
+      headers,
+      this.baseUrl,
+      req,
+      req.prompt_cache_key ?? req.previous_response_id ?? randomUUID(),
+    );
+
     const response = await fetch(`${this.baseUrl}/chat/completions`, withFetchDispatcher({
       method: "POST",
-      headers: {
-        "Authorization": `Bearer ${this.apiKey}`,
-        "Content-Type": "application/json",
-        "Accept": "text/event-stream",
-      },
+      headers,
       body: JSON.stringify(body),
       signal,
     }));
