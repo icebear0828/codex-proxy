@@ -402,6 +402,10 @@ export class CodexApi {
       includeTimingMetrics: _timing,
       codexWindowId: _window,
       parentThreadId: _parent,
+      // Proxy-internal routing hints are applied as headers by the upstream
+      // adapters. They must not be serialized into the Codex JSON body.
+      clientUserAgent: _clientUserAgent,
+      opencodeSessionId: _opencodeSessionId,
       service_tier,
       ...bodyFields
     } = request;
