@@ -596,3 +596,45 @@ describe("CodexApi.createCompactResponse", () => {
     }
   });
 });
+
+// ── request body hygiene ──────────────────────────────────────────
+// Regression: proxy-internal routing hints leaked into the JSON body and the
+// Codex backend rejected the request with "Unsupported parameter: clientUserAgent".
+describe("CodexApi upstream body hygiene", () => {
+  it("omits proxy-internal routing hints from the serialized body", async () => {
+    const post = vi.fn().mockImplementation(() =>
+      Promise.resolve({
+        status: 200,
+        body: new ReadableStream<Uint8Array>({
+          start(controller) {
+            controller.close();
+          },
+        }),
+        headers: new Headers({ "content-type": "text/event-stream" }),
+        setCookieHeaders: [],
+      }),
+    );
+    vi.mocked(getTransport).mockReturnValue({
+      post,
+      get: vi.fn(),
+      simplePost: vi.fn(),
+      isImpersonate: vi.fn(() => false),
+    } as unknown as TlsTransport);
+
+    const api = new CodexApi("test-token", null);
+    await api.createResponse({
+      model: "gpt-5.6-sol",
+      input: [{ role: "user" as const, content: "hi" }],
+      stream: true as const,
+      store: false as const,
+      clientUserAgent: "client/1.0",
+      opencodeSessionId: "session-123",
+    } as never);
+
+    expect(post).toHaveBeenCalled();
+    const sentBody = JSON.parse(String(post.mock.calls[0][2]));
+    expect(sentBody).not.toHaveProperty("clientUserAgent");
+    expect(sentBody).not.toHaveProperty("opencodeSessionId");
+    expect(sentBody).toHaveProperty("model", "gpt-5.6-sol");
+  });
+});
