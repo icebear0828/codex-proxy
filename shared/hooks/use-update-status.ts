@@ -9,7 +9,7 @@ export interface UpdateStatus {
     version: string;
     commit: string | null;
     can_self_update: boolean;
-    mode: "git" | "docker" | "electron" | "lite";
+    mode: "git" | "docker" | "electron" | "lite" | "npm";
     commits_behind: number | null;
     commits: { hash: string; message: string }[];
     changelog: string | null;
@@ -37,7 +37,7 @@ export interface CheckResult {
     changelog: string | null;
     release: { version: string; body: string; url: string } | null;
     update_available: boolean;
-    mode: "git" | "docker" | "electron" | "lite";
+    mode: "git" | "docker" | "electron" | "lite" | "npm";
     error?: string;
   };
   codex?: {

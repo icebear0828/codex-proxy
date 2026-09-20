@@ -152,18 +152,24 @@ describe("No-Node Lite distribution contract", () => {
     expect(source).toContain("native/codex-tls.linux-x64-musl.node");
   });
 
-  it("defines and exercises the Linux x64 musl native build", () => {
+  it("defines and exercises the Linux x64/arm64 musl native builds", () => {
     const nativePackage = JSON.parse(readFileSync(NATIVE_PACKAGE, "utf8")) as {
       scripts?: Record<string, string>;
     };
     expect(nativePackage.scripts?.["build:linux-x64-musl"]).toBe(
       "napi build --platform --release --target x86_64-unknown-linux-musl --js false",
     );
+    expect(nativePackage.scripts?.["build:linux-arm64-musl"]).toBe(
+      "napi build --platform --release --target aarch64-unknown-linux-musl --js false",
+    );
 
     const source = readFileSync(NATIVE_MUSL_TEST, "utf8");
     expect(source).toContain("codex-tls-musl-ok");
     expect(source).toContain("httpGet");
-    expect(source).toContain("x86-64 ELF image");
+    // The test script runs inside the alpine container of each architecture,
+    // so its ELF machine assertion must cover both EM_X86_64 and EM_AARCH64.
+    expect(source).toContain("EM_X86_64");
+    expect(source).toContain("EM_AARCH64");
   });
 
   it("covers the native dispatch targets supported by the runtime loader", () => {

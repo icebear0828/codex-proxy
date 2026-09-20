@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, renameSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { execFileSync, spawn, spawnSync } from "node:child_process";
 import { dirname, join, resolve } from "node:path";
 import { homedir, tmpdir } from "node:os";
@@ -294,6 +294,14 @@ const dataDir = options.portable
 // then freezes the same layout for the complete backend lifetime.
 process.env.CODEX_PROXY_DATA_DIR = dataDir;
 const { getConfig, setPaths, startServer } = await import("./server-bundle.mjs");
+// The same wrapper serves the Lite zip and the npm packages; the staging
+// manifest declares which distribution this copy belongs to (Lite manifests
+// have no distribution field and stay classified as "lite").
+let distribution = "lite";
+try {
+  const manifest = JSON.parse(readFileSync(join(APP_DIR, "manifest.json"), "utf-8"));
+  if (manifest?.distribution === "npm") distribution = "npm";
+} catch { /* absent or unreadable manifest keeps the Lite default */ }
 setPaths({
   rootDir: PACKAGE_ROOT,
   configDir: join(PACKAGE_ROOT, "config"),
@@ -301,7 +309,7 @@ setPaths({
   binDir: join(PACKAGE_ROOT, "bin"),
   publicDir: join(PACKAGE_ROOT, "public"),
   embedded: false,
-  distribution: "lite",
+  distribution,
 });
 console.log(`[Portable] Data directory: ${dataDir}${options.portable ? " (portable)" : " (user profile)"}`);
 const nodeMajor = Number(process.versions.node.split(".")[0]);

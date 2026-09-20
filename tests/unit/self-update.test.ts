@@ -8,6 +8,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
 const _isEmbedded = vi.fn(() => false);
 const _isLite = vi.fn(() => false);
+const _isNpm = vi.fn(() => false);
 const _existsSync = vi.fn(() => true);
 const _readFileSync = vi.fn(() => JSON.stringify({ version: "1.0.0" }));
 const _execFileSync = vi.fn((): string => "");
@@ -20,6 +21,7 @@ vi.mock("@src/config.js", () => ({ getConfig: vi.fn(() => _mockConfig) }));
 vi.mock("@src/paths.js", () => ({
   isEmbedded: _isEmbedded,
   isLite: _isLite,
+  isNpmDistribution: _isNpm,
   getRootDir: () => "/mock",
 }));
 vi.mock("fs", () => ({ existsSync: _existsSync, readFileSync: _readFileSync, openSync: vi.fn(() => 99) }));
@@ -52,6 +54,7 @@ describe("self-update", () => {
     // Default: non-embedded, .git exists, git works, package.json readable
     _isEmbedded.mockReturnValue(false);
     _isLite.mockReturnValue(false);
+    _isNpm.mockReturnValue(false);
     _existsSync.mockReturnValue(true);
     _readFileSync.mockReturnValue(JSON.stringify({ version: "1.0.0" }));
     _execFileSync.mockReturnValue("");
@@ -83,6 +86,13 @@ describe("self-update", () => {
       _existsSync.mockReturnValue(false);
       const { getDeployMode } = await importFresh();
       expect(getDeployMode()).toBe("lite");
+    });
+
+    it("returns 'npm' for the npm distribution", async () => {
+      _isNpm.mockReturnValue(true);
+      _existsSync.mockReturnValue(false);
+      const { getDeployMode } = await importFresh();
+      expect(getDeployMode()).toBe("npm");
     });
   });
 
@@ -186,6 +196,12 @@ describe("self-update", () => {
 
     it("returns false for Lite", async () => {
       _isLite.mockReturnValue(true);
+      const { canSelfUpdate } = await importFresh();
+      expect(canSelfUpdate()).toBe(false);
+    });
+
+    it("returns false for the npm distribution", async () => {
+      _isNpm.mockReturnValue(true);
       const { canSelfUpdate } = await importFresh();
       expect(canSelfUpdate()).toBe(false);
     });
