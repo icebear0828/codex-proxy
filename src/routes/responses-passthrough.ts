@@ -130,16 +130,20 @@ export function buildResponsesStreamError(status: number, message: string): stri
 
 // ── Usage extraction ──────────────────────────────────────────────
 
-/** Extract usage from a response.completed payload, including cached_tokens
- *  (nested in input_tokens_details per the OpenAI Responses API contract). */
-export function extractResponseUsage(usage: Record<string, unknown>): { input_tokens: number; output_tokens: number; cached_tokens?: number } {
-  const result: { input_tokens: number; output_tokens: number; cached_tokens?: number } = {
+/** Extract usage from response.completed, including nested cache/reasoning
+ *  details. Reasoning tokens remain a breakdown of output_tokens, not extra output. */
+export function extractResponseUsage(usage: Record<string, unknown>): { input_tokens: number; output_tokens: number; cached_tokens?: number; reasoning_tokens?: number } {
+  const result: { input_tokens: number; output_tokens: number; cached_tokens?: number; reasoning_tokens?: number } = {
     input_tokens: typeof usage.input_tokens === "number" ? usage.input_tokens : 0,
     output_tokens: typeof usage.output_tokens === "number" ? usage.output_tokens : 0,
   };
   const inputDetails = isRecord(usage.input_tokens_details) ? usage.input_tokens_details : null;
   if (inputDetails && typeof inputDetails.cached_tokens === "number") {
     result.cached_tokens = inputDetails.cached_tokens;
+  }
+  const outputDetails = isRecord(usage.output_tokens_details) ? usage.output_tokens_details : null;
+  if (outputDetails && typeof outputDetails.reasoning_tokens === "number") {
+    result.reasoning_tokens = outputDetails.reasoning_tokens;
   }
   return result;
 }
@@ -169,7 +173,7 @@ export async function* streamPassthrough(
   api: UpstreamAdapter,
   response: Response,
   model: string,
-  onUsage: (u: { input_tokens: number; output_tokens: number; cached_tokens?: number; image_input_tokens?: number; image_output_tokens?: number }) => void,
+  onUsage: (u: { input_tokens: number; output_tokens: number; cached_tokens?: number; reasoning_tokens?: number; image_input_tokens?: number; image_output_tokens?: number }) => void,
   onResponseId: (id: string) => void,
   tupleSchema?: Record<string, unknown> | null,
   streamContext?: StreamTranslatorContext,
@@ -378,11 +382,11 @@ export async function collectPassthrough(
   onResponseMetadata?: (metadata: ResponseMetadata) => void,
 ): Promise<{
   response: unknown;
-  usage: { input_tokens: number; output_tokens: number; cached_tokens?: number; image_input_tokens?: number; image_output_tokens?: number };
+  usage: { input_tokens: number; output_tokens: number; cached_tokens?: number; reasoning_tokens?: number; image_input_tokens?: number; image_output_tokens?: number };
   responseId: string | null;
 }> {
   let finalResponse: unknown = null;
-  let usage: { input_tokens: number; output_tokens: number; cached_tokens?: number; image_input_tokens?: number; image_output_tokens?: number } = { input_tokens: 0, output_tokens: 0 };
+  let usage: { input_tokens: number; output_tokens: number; cached_tokens?: number; reasoning_tokens?: number; image_input_tokens?: number; image_output_tokens?: number } = { input_tokens: 0, output_tokens: 0 };
   let responseId: string | null = null;
   const outputItems: unknown[] = [];
   const collectFunctionCallIds = new Set<string>();
