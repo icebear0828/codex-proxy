@@ -123,6 +123,27 @@ server:
     expect(hasLocalOverride("server", "host")).toBe(true);
   });
 
+  it("applies the log byte budget on initial load and every config reload", async () => {
+    const configDir = makeTempConfig(MINIMAL_DEFAULT, "logs:\n  max_bytes: 4096\n");
+    const { loadConfig, reloadConfig } = await import("@src/config.js");
+    const { logStore } = await import("@src/logs/store.js");
+    loadConfig(configDir);
+    expect(logStore.getState().maxBytes).toBe(4096);
+
+    const localPath = resolve(configDir, "..", "data", "local.yaml");
+    writeFileSync(localPath, "logs:\n  max_bytes: 0\n", "utf-8");
+    reloadConfig(configDir);
+    expect(logStore.getState().maxBytes).toBe(0);
+
+    writeFileSync(localPath, "logs:\n  max_bytes: -1\n", "utf-8");
+    expect(() => reloadConfig(configDir)).toThrow();
+    expect(logStore.getState().maxBytes).toBe(0);
+
+    writeFileSync(localPath, "{}\n", "utf-8");
+    reloadConfig(configDir);
+    expect(logStore.getState().maxBytes).toBe(64 * 1024 * 1024);
+  });
+
   it("returns false when local.yaml has unrelated keys only", async () => {
     const localYaml = `
 auth:

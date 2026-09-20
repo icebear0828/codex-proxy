@@ -43,11 +43,16 @@ export interface LogState {
   dropped: number;
   size: number;
   capacity: number;
+  /** Retained approximate bytes and the configured byte budget. */
+  bytes: number;
+  maxBytes: number;
 }
 
 interface LogStateUpdate {
   enabled?: boolean;
   paused?: boolean;
+  /** Retained-bytes budget; 0 disables byte-based eviction. */
+  maxBytes?: number;
   capacity?: number;
 }
 
@@ -59,6 +64,13 @@ export interface LogQuery {
 }
 
 const DEFAULT_CAPACITY = 2000;
+/** Retained log budget: count alone is unsafe when records contain large bodies. */
+const DEFAULT_MAX_BYTES = 64 * 1024 * 1024;
+
+/** Serialized UTF-8 size plus fixed overhead; an estimate, not V8 heap accounting. */
+function estimateRecordBytes(record: LogRecord): number {
+  return 256 + Buffer.byteLength(JSON.stringify(record), "utf8");
+}
 const DEFAULT_LIMIT = 50;
 const MAX_LIMIT = 200;
 
@@ -75,14 +87,19 @@ function normalizeOffset(offset: number | undefined): number {
 export class LogStore {
   private records: LogRecord[] = [];
   private capacity: number;
+  private maxBytes: number;
+  private bytes = 0;
+  /** Size bookkeeping stays separate from API-visible records. */
+  private sizes = new WeakMap<LogRecord, number>();
   private enabled = true;
   private paused = false;
   private dropped = 0;
   private queue: LogRecord[] = [];
   private flushScheduled = false;
 
-  constructor(capacity = DEFAULT_CAPACITY) {
+  constructor(capacity = DEFAULT_CAPACITY, maxBytes = DEFAULT_MAX_BYTES) {
     this.capacity = capacity;
+    this.maxBytes = maxBytes;
   }
 
   getState(): LogState {
@@ -92,6 +109,8 @@ export class LogStore {
       dropped: this.dropped,
       size: this.records.length,
       capacity: this.capacity,
+      bytes: this.bytes,
+      maxBytes: this.maxBytes,
     };
   }
 
@@ -101,15 +120,20 @@ export class LogStore {
       if (next.enabled) this.paused = false;
     }
     if (typeof next.paused === "boolean") this.paused = next.paused;
+    if (typeof next.maxBytes === "number" && Number.isFinite(next.maxBytes)) {
+      this.maxBytes = Math.max(0, Math.trunc(next.maxBytes));
+    }
     if (typeof next.capacity === "number" && Number.isFinite(next.capacity)) {
       this.capacity = Math.max(1, Math.trunc(next.capacity));
-      this.trimToCapacity();
     }
+    this.trimToCapacity();
     return this.getState();
   }
 
   clear(): void {
     this.records = [];
+    this.sizes = new WeakMap<LogRecord, number>();
+    this.bytes = 0;
     this.dropped = 0;
   }
 
@@ -159,6 +183,7 @@ export class LogStore {
     for (const record of this.records) {
       if (record.requestId === requestId) {
         updated = true;
+        const before = this.sizes.get(record) ?? 0;
         if (patch.status !== undefined) record.status = patch.status;
         if (patch.latencyMs !== undefined) record.latencyMs = patch.latencyMs;
         if (patch.model !== undefined) record.model = patch.model;
@@ -174,8 +199,14 @@ export class LogStore {
         if (patch.response !== undefined) {
           record.response = redactJson(patch.response);
         }
+        // Patches can add bodies (e.g. collected responses), so refresh the
+        // size estimate and re-trim to keep the byte budget honest.
+        const after = estimateRecordBytes(record);
+        this.sizes.set(record, after);
+        this.bytes = Math.max(0, this.bytes - before + after);
       }
     }
+    if (updated) this.trimToCapacity();
     return updated;
   }
 
@@ -190,17 +221,25 @@ export class LogStore {
         request: record.request !== undefined ? redactJson(record.request) : undefined,
         response: record.response !== undefined ? redactJson(record.response) : undefined,
       };
+      const size = estimateRecordBytes(redacted);
+      this.sizes.set(redacted, size);
+      this.bytes += size;
       this.records.push(redacted);
+      this.trimToCapacity();
     }
-
-    this.trimToCapacity();
   }
 
   private trimToCapacity(): void {
-    if (this.records.length <= this.capacity) return;
-    const over = this.records.length - this.capacity;
-    this.records.splice(0, over);
-    this.dropped += over;
+    let evicted = 0;
+    // Evict oldest until BOTH the count capacity and the byte budget are met.
+    while (this.records.length > this.capacity || (this.maxBytes > 0 && this.bytes > this.maxBytes)) {
+      const removed = this.records.shift();
+      if (!removed) break;
+      this.bytes = Math.max(0, this.bytes - (this.sizes.get(removed) ?? 0));
+      this.sizes.delete(removed);
+      evicted++;
+    }
+    if (evicted > 0) this.dropped += evicted;
   }
 }
 
