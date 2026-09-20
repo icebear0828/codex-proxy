@@ -1,4 +1,5 @@
 import { resolve } from "path";
+import { logStore } from "./logs/store.js";
 import { loadStaticModels } from "./models/model-store.js";
 import { triggerImmediateRefresh } from "./models/model-fetcher.js";
 import { getConfigDir, getDataDir } from "./paths.js";
@@ -28,6 +29,7 @@ export function loadConfig(configDir?: string): AppConfig {
   applyEnvOverrides(raw, local);
   _localOverrides = local;
   _config = ConfigSchema.parse(raw);
+  logStore.setState({ maxBytes: _config.logs.max_bytes });
   return _config;
 }
 
@@ -92,6 +94,7 @@ export function reloadConfig(configDir?: string): AppConfig {
   _localOverrides = local;
   const fresh = ConfigSchema.parse(raw);
   _config = fresh;
+  logStore.setState({ maxBytes: _config.logs.max_bytes });
   return _config;
 }
 

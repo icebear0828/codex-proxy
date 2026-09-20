@@ -154,6 +154,10 @@ export const ConfigSchema = z.object({
     capacity: z.number().int().min(1).default(2000),
     capture_body: z.boolean().default(false),
     llm_only: z.boolean().default(true),
+    /** Approximate retained log budget (serialized UTF-8 bytes plus overhead).
+     *  Evicts oldest records as well as records larger than the budget.
+     *  0 disables byte-based eviction; capacity still applies. */
+    max_bytes: z.number().int().min(0).default(64 * 1024 * 1024),
   }).default({}),
   // Local observability (no third-party SaaS). v1 ships a local
   // uncaught-error log; future iterations may add remote upload here.
