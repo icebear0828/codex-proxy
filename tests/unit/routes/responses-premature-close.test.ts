@@ -634,3 +634,38 @@ describe("collectPassthrough premature close handling", () => {
     ).rejects.toThrow("late stream error");
   });
 });
+
+describe("Responses reasoning usage regression", () => {
+  it.each([13, 0, undefined, "13"])("preserves reasoning through stream and collect: %s", async (reasoningTokens) => {
+    const usage = {
+      input_tokens: 100,
+      output_tokens: 20,
+      total_tokens: 120,
+      input_tokens_details: { cached_tokens: 50 },
+      ...(reasoningTokens === undefined ? {} : { output_tokens_details: { reasoning_tokens: reasoningTokens } }),
+    };
+    const events = [{
+      event: "response.completed",
+      data: { type: "response.completed", response: { id: "fixture", status: "completed", usage, output: [] } },
+    }];
+    const onUsage = vi.fn();
+    let wire = "";
+    for await (const chunk of streamPassthrough(
+      createMockApi(events) as never, new Response(), "test-model", onUsage, () => {},
+    )) {
+      wire += chunk;
+    }
+    const collected = await collectPassthrough(createMockApi(events) as never, new Response(), "test-model");
+    const expected = {
+      input_tokens: 100,
+      output_tokens: 20,
+      cached_tokens: 50,
+      ...(typeof reasoningTokens === "number" ? { reasoning_tokens: reasoningTokens } : {}),
+    };
+    expect(onUsage).toHaveBeenCalledExactlyOnceWith(expected);
+    expect(collected.usage).toEqual(expected);
+    expect(collected.usage.input_tokens + collected.usage.output_tokens).toBe(usage.total_tokens);
+    expect(wire).toContain(JSON.stringify(usage));
+    expect((collected.response as { usage: unknown }).usage).toEqual(usage);
+  });
+});

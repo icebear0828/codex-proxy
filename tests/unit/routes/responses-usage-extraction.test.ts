@@ -70,6 +70,24 @@ describe("/v1/responses extractResponseUsage", () => {
       cached_tokens: 50,
     });
   });
+
+  it.each([0, 13])("preserves reasoning_tokens=%i without adding them to output_tokens", (reasoningTokens) => {
+    const usage = extractResponseUsage({
+      input_tokens: 100,
+      output_tokens: 20,
+      output_tokens_details: { reasoning_tokens: reasoningTokens },
+    });
+    expect(usage).toEqual({ input_tokens: 100, output_tokens: 20, reasoning_tokens: reasoningTokens });
+    expect(usage.input_tokens + usage.output_tokens).toBe(120);
+  });
+
+  it.each([undefined, null, "13", {}, { reasoning_tokens: "13" }])("omits invalid reasoning details: %s", (details) => {
+    expect(extractResponseUsage({
+      input_tokens: 1,
+      output_tokens: 2,
+      output_tokens_details: details,
+    })).toEqual({ input_tokens: 1, output_tokens: 2 });
+  });
 });
 
 describe("/v1/responses extractImageGenUsage", () => {
