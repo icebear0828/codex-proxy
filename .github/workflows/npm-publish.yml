@@ -286,9 +286,18 @@ jobs:
         run: |
           set -eu
           VERSION="${{ needs.package.outputs.version }}"
+          # npm publishes under the `latest` dist-tag by default, so a
+          # vX.Y.Z-beta run would hand plain `npm i -g` users the beta (and
+          # a later beta would steal it back from the stable). Semver
+          # prerelease versions carry a hyphen — send those to `beta`.
+          NPM_TAG=latest
+          if [[ "$VERSION" == *-* ]]; then
+            NPM_TAG=beta
+          fi
+          echo "Publishing with dist-tag: $NPM_TAG"
           for addon in codex-tls-win32-x64-msvc codex-tls-win32-arm64-msvc codex-tls-linux-x64-gnu codex-tls-linux-x64-musl codex-tls-linux-arm64-gnu codex-tls-linux-arm64-musl codex-tls-darwin-x64 codex-tls-darwin-arm64; do
             echo "Publishing $addon@$VERSION"
-            npm publish "tarballs/$addon-$VERSION.tgz"
+            npm publish "tarballs/$addon-$VERSION.tgz" --tag "$NPM_TAG"
           done
           echo "Publishing @icebear0828/codex-proxy@$VERSION"
-          npm publish "tarballs/icebear0828-codex-proxy-$VERSION.tgz" --access public
+          npm publish "tarballs/icebear0828-codex-proxy-$VERSION.tgz" --access public --tag "$NPM_TAG"
