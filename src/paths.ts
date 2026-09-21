@@ -15,8 +15,8 @@ interface PathConfig {
   publicDir: string;
   /** Whether this path set belongs to the Electron shell. */
   embedded?: boolean;
-  /** Identifies the no-Node Lite distribution without affecting CLI mode. */
-  distribution?: "lite";
+  /** Identifies the no-Node Lite distribution or the npm install. */
+  distribution?: "lite" | "npm";
 }
 
 let _paths: PathConfig | null = null;
@@ -65,4 +65,9 @@ export function isEmbedded(): boolean {
 /** Whether the backend is running from the No-Node Lite distribution. */
 export function isLite(): boolean {
   return _paths?.distribution === "lite";
+}
+
+/** Whether the backend is running from the npm distribution. */
+export function isNpmDistribution(): boolean {
+  return _paths?.distribution === "npm";
 }

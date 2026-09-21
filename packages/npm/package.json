@@ -1,0 +1,48 @@
+{
+  "name": "@icebear0828/codex-proxy",
+  "version": "0.0.0-dev",
+  "description": "OpenAI-compatible proxy for the ChatGPT Codex Responses API, with a web dashboard, multi-account key pool and an Ollama-compatible bridge.",
+  "license": "SEE LICENSE IN LICENCE",
+  "bin": {
+    "codex-proxy": "bin/codex-proxy.mjs"
+  },
+  "engines": {
+    "node": ">=22.13"
+  },
+  "os": [
+    "win32",
+    "darwin",
+    "linux"
+  ],
+  "cpu": [
+    "x64",
+    "arm64"
+  ],
+  "files": [
+    "app/",
+    "bin/",
+    "config/",
+    "native/",
+    "public/",
+    "LICENCE",
+    "README.md",
+    "THIRD-PARTY-NOTICES.txt"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/icebear0828/codex-proxy.git"
+  },
+  "homepage": "https://github.com/icebear0828/codex-proxy#readme",
+  "bugs": "https://github.com/icebear0828/codex-proxy/issues",
+  "keywords": [
+    "codex",
+    "proxy",
+    "openai",
+    "chatgpt",
+    "ollama",
+    "api"
+  ],
+  "publishConfig": {
+    "access": "public"
+  }
+}

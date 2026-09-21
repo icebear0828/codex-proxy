@@ -40,8 +40,13 @@ async function main() {
     "musl native addon is not an ELF image");
   assert(image[4] === 2 && image[5] === 1,
     "musl native addon is not a little-endian 64-bit ELF image");
-  assert(image.readUInt16LE(18) === 0x3e,
-    "musl native addon is not an x86-64 ELF image");
+  // The addon is always built for — and dlopen'd into — the container's own
+  // architecture, so the ELF machine must match the Node running this test.
+  const EM_X86_64 = 0x3e;
+  const EM_AARCH64 = 0xb7;
+  const expectedMachine = process.arch === "arm64" ? EM_AARCH64 : EM_X86_64;
+  assert(image.readUInt16LE(18) === expectedMachine,
+    `musl native addon is not a ${process.arch} ELF image`);
 
   const bindings = createRequire(import.meta.url)(addonPath);
   for (const name of ["httpGet", "httpPost", "httpPostStream"]) {
@@ -74,7 +79,7 @@ async function main() {
     await close(server);
   }
 
-  console.log("[native-musl-test] PASS loaded linux-x64-musl addon and completed local HTTP GET");
+  console.log(`[native-musl-test] PASS loaded linux musl addon (${process.arch}) and completed local HTTP GET`);
 }
 
 main().catch((error) => {

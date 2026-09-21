@@ -1,15 +1,15 @@
 /**
- * Proxy self-update — detects available updates in three deployment modes:
+ * Proxy self-update — detects available updates per deployment mode:
  * - CLI (git): git fetch + commit log
  * - Docker (no .git): GHCR registry tag list (checks actual published images)
- * - Electron (embedded) / Lite: GitHub Releases API
+ * - Electron (embedded) / Lite / npm: GitHub Releases API
  */
 
 import { execFile, execFileSync, spawn } from "child_process";
 import { existsSync, openSync, readFileSync } from "fs";
 import { resolve } from "path";
 import { promisify } from "util";
-import { getRootDir, isEmbedded, isLite } from "./paths.js";
+import { getRootDir, isEmbedded, isLite, isNpmDistribution } from "./paths.js";
 import { getConfig } from "./config.js";
 
 // ── Restart ─────────────────────────────────────────────────────────
@@ -100,7 +100,7 @@ export interface GitHubReleaseInfo {
   publishedAt: string;
 }
 
-export type DeployMode = "git" | "docker" | "electron" | "lite";
+export type DeployMode = "git" | "docker" | "electron" | "lite" | "npm";
 
 export interface ProxySelfUpdateResult {
   commitsBehind: number;
@@ -183,7 +183,7 @@ export function getProxyInfo(): ProxyInfo {
 
 /** Whether this environment supports git-based self-update. */
 export function canSelfUpdate(): boolean {
-  if (isEmbedded() || isLite()) return false;
+  if (isEmbedded() || isLite() || isNpmDistribution()) return false;
   if (_gitAvailable !== null) return _gitAvailable;
 
   if (!existsSync(resolve(process.cwd(), ".git"))) {
@@ -208,6 +208,7 @@ export function canSelfUpdate(): boolean {
 /** Determine deployment mode. */
 export function getDeployMode(): DeployMode {
   if (isEmbedded()) return "electron";
+  if (isNpmDistribution()) return "npm";
   if (isLite()) return "lite";
   if (canSelfUpdate()) return "git";
   return "docker";
@@ -477,7 +478,7 @@ export async function checkProxySelfUpdate(): Promise<ProxySelfUpdateResult> {
     return result;
   }
 
-  // Electron and Lite — GitHub Releases API
+  // Electron, Lite and npm — GitHub Releases API
   const release = await checkGitHubRelease();
   let updateAvailable = release !== null
     && release.version !== currentVersion

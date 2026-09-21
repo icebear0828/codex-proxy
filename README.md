@@ -117,7 +117,29 @@ Linux x64 Lite 同时包含 glibc 和 musl 两种 TLS native addon，可用于�
 </details>
 
 <details>
-<summary><h3>方式三：Docker 部署</h3></summary>
+<summary><h3>方式三：npm 安装（适合已有 Node 的开发者）</h3></summary>
+
+```bash
+npm install -g @icebear0828/codex-proxy
+codex-proxy
+# 打开 http://localhost:8080 登录
+```
+
+要求 Node.js 22.13+。功能与桌面版一致：Web 面板、账号管理、Ollama 桥接均可正常使用；
+平台 TLS native addon 会在安装时按系统自动选择（Windows x64+arm64 / macOS x64+arm64 /
+Linux x64+arm64，各分 glibc+musl），其他平台的二进制不会下载。运行数据保存在用户数据目录
+（Windows `%APPDATA%\@codex-proxy\electron\data`、Linux `~/.config/@codex-proxy/electron/data`、
+macOS `~/Library/Application Support/@codex-proxy/electron/data`），更新包不会丢失；
+`--portable` 或 `CODEX_PROXY_DATA_DIR` 可自定义位置。更新：
+`npm install -g @icebear0828/codex-proxy@latest`。
+
+常用参数：`--mode=server`（纯服务器）、`--mode=browser`（强制浏览器）、
+`--host` / `--port`。完整参数见 `codex-proxy --help`。
+
+</details>
+
+<details>
+<summary><h3>方式四：Docker 部署</h3></summary>
 
 最简单的方式，一条命令即可启动：
 
