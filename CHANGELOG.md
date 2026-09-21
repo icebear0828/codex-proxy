@@ -8,6 +8,10 @@
 
 ## [Unreleased]
 
+> 暂无已记录的变更。
+
+## [v2.1.x](https://github.com/icebear0828/codex-proxy/releases?q=2.1) - 2026-09-01 至 2026-09-07
+
 ### Added
 
 - 新增 npm 分发渠道 `@icebear0828/codex-proxy`（#813）：`npm install -g @icebear0828/codex-proxy` 后以 `codex-proxy` 命令启动，功能与桌面版一致（Web 面板、账号管理、Ollama 桥接）；要求 Node.js 22.13+（内置 `node:sqlite`）。主包含 esbuild 单文件 bundle、前端资源与默认配置，各平台 TLS native addon（win32-x64/arm64-msvc、linux-x64/arm64 的 glibc+musl、darwin-x64/arm64）拆分为 `codex-tls-<triple>` 平台包，经 `optionalDependencies`（os/cpu/libc 字段）按系统自动选择，其他平台二进制不下载；运行数据默认存于用户数据目录（与 Lite 非便携模式一致），`--portable` / `CODEX_PROXY_DATA_DIR` 可迁移。新增 `scripts/npm/stage-npm-packages.mjs` 打包脚本（主包 + 平台包，manifest 由 `packages/npm/package.json` 模板生成）与 `.github/workflows/npm-publish.yml`（tag 触发；6 平台矩阵构建（arm64 平台跑在免费 arm64 runner 上原生编译）+ 双架构 alpine 容器 musl 构建（含 cargo target 缓存）+ 打包冒烟 + 仅在上游仓库凭 `NPM_TOKEN` 发布，fork 运行时跳过发布并上传 tarball 产物）。npm 安装在后端被准确归类为 npm 分发模式：共享的 portable 启动器从所在包的 `manifest.json` 读取分发标识（Lite 清单无此字段、行为不变），`/admin/apply-update` 据此给出 `npm install -g @icebear0828/codex-proxy@latest` 升级指引，Web 更新弹窗提供一键复制该命令的按钮。（`packages/npm/`、`scripts/npm/`、`scripts/portable/server.mjs`、`src/paths.ts`、`src/self-update.ts`、`src/routes/admin/update.ts`、`web/src/components/UpdateModal.tsx`、`.github/workflows/npm-publish.yml`、`tests/unit/npm/`、`tests/unit/self-update.test.ts`）
@@ -16,7 +20,34 @@
 
 > 暂无其他已记录的变更。
 
-## [v2.1.x](https://github.com/icebear0828/codex-proxy/releases?q=2.1) - 2026-09-01 至 2026-09-07
+- API Keys 新增「备忘录」：保存第三方供应商的 API Key / Base URL / 协议 / 能力作为添加模板，模型清单随模板保存并可一键刷新；添加条目时点选备忘录即可预填表单并勾选模型（支持筛选），无需重复输入凭据，条目添加后与备忘录解耦（自持 key 快照，不影响现有路由与轮询）。提供「从现有条目生成备忘录」一键迁移（仅当存在未被覆盖的凭据组合时显示）。（`src/auth/api-key-memo-store.ts`、`src/routes/api-keys.ts`、`web/src/components/ApiKeyManager.tsx`、`shared/hooks/use-api-keys.ts`）
+
+- API Keys 添加面板支持每日后台自动刷新备忘录模型清单（串行、逐备忘录强制直连上游，不同 token 的模型列表差异不会被 URL 级缓存污染），可通过 `api_keys.memo_auto_refresh: false` 关闭。（`src/memo-model-refresher.ts`、`src/config-schema.ts`）
+
+- 新增基于 Alpine 的 Docker 镜像变体 `ghcr.io/icebear0828/codex-proxy:latest-lite`（及 `:sha-*-lite`、`<版本>-lite` tag；标签名 lite 仅为内部变体标识）：**功能与现有 Debian 镜像完全一致**，镜像只包含应用本体与运行时必需内容——`node:22-alpine` 基底、esbuild 单文件 bundle、前端资源、仅 Linux musl TLS addon（不含 gnu/Windows/macOS 文件、node_modules 与构建工具链），压缩拉取体积约为 Debian 镜像的 1/12.6（GHCR manifest 实测 57.2MB vs 722MB）；sqlite 使用 Node 22 内置 `node:sqlite`（node:20 alpine 未内置），健康检查用 Node fetch（无 curl）；与 Debian 镜像保持相同的 `/app` 目录布局、`./data`/`./config` 卷契约及空 config 卷自动播种（entrypoint 从 `/defaults` 拷贝），stock `docker-compose.yml` 仅替换 image tag 即可互换；发布流水线在 glibc runner 上借 gnu addon 完成冒烟测试后将其移出镜像构建上下文。（`Dockerfile.lite`、`scripts/docker/stage-lite.mjs`、`.github/workflows/docker-publish.yml`）
+- No-Node Lite 在 Windows 缺少 WebView2 运行时且显式指定 `--mode=webview2` 时，新增经用户确认后的按需安装路径：从微软官方端点下载 Evergreen Bootstrapper（约 2MB），校验 Windows 可执行格式与 Authenticode 签名（须为 Microsoft 签发）后以 `/silent /install` 静默安装，下载器缓存于系统临时目录并复用；下载或校验失败时回退为打开官方安装页，仍支持 `CODEX_PROXY_WEBVIEW2_BOOTSTRAPPER` 指定本地安装器。（`scripts/portable/server.mjs`）
+
+- 新增 Linux x64 musl TLS native addon 构建与验证流程，并将 `codex-tls.linux-x64-musl.node` 接入 No-Node Lite 的构建和发布包，使 Lite 可在 Alpine 等 musl Linux 环境中使用。（`native/package.json`、`scripts/native/`、`scripts/portable/`、`.github/workflows/native-musl-ci.yml`）
+
+- 新增可选 No-Node Lite Browser/Server 发行版：保留现有 Electron 安装包不变，额外提供 `codex-proxy-<版本>-no-node-lite-all-platforms.tar.xz`，包含后端、前端资源、各平台 native addon 和启动器，支持无图形界面的 server 模式以及浏览器模式；Windows 通过 MSYS2 MinGW 构建 x86/x64 WebView2 host，并可选携带 Evergreen Bootstrapper。（`scripts/portable/`、`.github/workflows/lite-ci.yml`、`.github/workflows/release.yml`）
+
+- 支持 OpenAI GPT-6 Astra 系列（`gpt-6-astra`、`gpt-6-astra-aeon` 及别名 `gpt-6`）与 GPT-Reserve（`gpt-reserve`）：内置静态模型元数据与推理级别定义（`/v1/models/catalog` 可见），`gpt-6` 别名解析到 `gpt-6-astra`，可路由性已由 #776 的名称形态放行覆盖；同步适配 1,050,000 上下文窗口、Ollama 桥接架构系列识别与官方定价估算（`src/models/model-store.ts`、`src/ollama/bridge.ts`、`config/model-pricing.yaml`、`README.md`）。
+
+- 重构 Dashboard UI 视觉体系与设置交互逻辑：
+  - 移除窗口顶部菜单栏，并将窗口标题统一为「Codex Proxy」（`packages/electron/electron/main.ts`、`web/index.html`）。
+  - 全局优化浅色与深色色彩体系及统一系统/等宽字体层级渲染（`web/src/index.css`、`web/tailwind.config.ts`）。
+  - 新增独立「信息」Tab 页（`#/info`），归拢 API 配置、Anthropic SDK 配置、代码示例及连通性测试只读卡片（`web/src/pages/InfoPage.tsx`、`web/src/navigation.ts`、`shared/i18n/`）。
+  - 改版设置界面（`#/settings`）：重新组织分类设置项，升级为项级即时生效机制（修改后行内显示 `✅` 保存按钮，点击转圈加载，生效后平滑淡出，需重启项显示 `🔄 等待重启` 徽章），移除底部全局保存按钮（`web/src/components/`）。
+
+- 请求日志新增「账号 / 后备」列：展示每条请求实际服务的账号（label / 邮箱 / ID 短标识），走了后备（备用账号重试或后备上游 apikey）时显示橙色「后备」徽章；详情抽屉同步展示账号信息（`src/logs/`、`src/routes/shared/proxy-*.ts`、`shared/hooks/use-logs.ts`、`web/src/pages/LogsPage.tsx`、`shared/i18n/`）。
+
+- 首页「后备上游 (API Key)」卡片新增运行状态指示：请求切到后备（备用账号或后备上游）时卡片橙色高亮并脉冲闪动，显示「后备中」徽章；停止走后约 60 秒内自动恢复（`src/auth/fallback-state.ts`、`src/routes/accounts.ts`、`shared/hooks/use-accounts.ts`、`web/src/components/FallbackUpstreamCard.tsx`）。
+
+- 通用设置新增「更新到测试版 (Beta)」选项（默认关闭）：开启后自动更新检查将包含测试版（GitHub Releases 预发布版本与 Docker `-beta.` 标签），Electron 客户端同步开启测试版通道（`config/default.yaml`、`src/routes/admin/`、`src/self-update.ts`、`web/src/components/GeneralSettings.tsx`、`shared/i18n/`）。
+
+- 控制台新增日語 (ja)、繁體中文 (台灣, zh-TW)、繁體中文 (香港, zh-HK) 完整語言字典與本地化支援，並將頂部導航列語言切換升級為多語言下拉選擇器（`shared/i18n/`、`web/src/components/Header.tsx`、`shared/utils/format.ts`）。
+
+- 新增「后备上游 (API Key)」账户类型：配置一个 baseUrl + apiKey，固定走 Responses 接口，仅在所有账号均不可用时作为最后兜底启用；添加账户弹窗可添加，账户列表末尾独占一行展示，支持卡片上编辑/删除，仅允许配置一个。（`src/auth/fallback-upstream.ts`、`src/routes/accounts.ts`、`src/routes/shared/proxy-handler.ts`、`web/src/components/FallbackUpstreamCard.tsx`、`web/src/components/AddAccount.tsx`）
 
 ### Fixed
 
@@ -48,37 +79,6 @@
 - 修复并统一桌面端与 Web 端应用图标与 Logo：生成包含 Windows 完整多分辨率的 `icon.ico`、Web `favicon.ico` / `icon.png`，Electron 主进程窗口配置中注入应用图标并移除 `electron-builder` 的 `signAndEditExecutable: false` 以确保可执行文件与任务栏/桌面快捷方式正确嵌入图标；统一 Dashboard 顶部导航栏 Logo 为品牌立方体图标。（`packages/electron/`、`web/`、`scripts/build/generate-ico.ps1`）
 
 - 移除 Dashboard 顶部导航栏与侧栏重复展示的「服务运行中」状态徽标（`web/src/components/Header.tsx`）。
-
-### Added
-
-- API Keys 新增「备忘录」：保存第三方供应商的 API Key / Base URL / 协议 / 能力作为添加模板，模型清单随模板保存并可一键刷新；添加条目时点选备忘录即可预填表单并勾选模型（支持筛选），无需重复输入凭据，条目添加后与备忘录解耦（自持 key 快照，不影响现有路由与轮询）。提供「从现有条目生成备忘录」一键迁移（仅当存在未被覆盖的凭据组合时显示）。（`src/auth/api-key-memo-store.ts`、`src/routes/api-keys.ts`、`web/src/components/ApiKeyManager.tsx`、`shared/hooks/use-api-keys.ts`）
-
-- API Keys 添加面板支持每日后台自动刷新备忘录模型清单（串行、逐备忘录强制直连上游，不同 token 的模型列表差异不会被 URL 级缓存污染），可通过 `api_keys.memo_auto_refresh: false` 关闭。（`src/memo-model-refresher.ts`、`src/config-schema.ts`）
-
-- 新增基于 Alpine 的 Docker 镜像变体 `ghcr.io/icebear0828/codex-proxy:latest-lite`（及 `:sha-*-lite`、`<版本>-lite` tag；标签名 lite 仅为内部变体标识）：**功能与现有 Debian 镜像完全一致**，镜像只包含应用本体与运行时必需内容——`node:22-alpine` 基底、esbuild 单文件 bundle、前端资源、仅 Linux musl TLS addon（不含 gnu/Windows/macOS 文件、node_modules 与构建工具链），压缩拉取体积约为 Debian 镜像的 1/12.6（GHCR manifest 实测 57.2MB vs 722MB）；sqlite 使用 Node 22 内置 `node:sqlite`（node:20 alpine 未内置），健康检查用 Node fetch（无 curl）；与 Debian 镜像保持相同的 `/app` 目录布局、`./data`/`./config` 卷契约及空 config 卷自动播种（entrypoint 从 `/defaults` 拷贝），stock `docker-compose.yml` 仅替换 image tag 即可互换；发布流水线在 glibc runner 上借 gnu addon 完成冒烟测试后将其移出镜像构建上下文。（`Dockerfile.lite`、`scripts/docker/stage-lite.mjs`、`.github/workflows/docker-publish.yml`）
-- No-Node Lite 在 Windows 缺少 WebView2 运行时且显式指定 `--mode=webview2` 时，新增经用户确认后的按需安装路径：从微软官方端点下载 Evergreen Bootstrapper（约 2MB），校验 Windows 可执行格式与 Authenticode 签名（须为 Microsoft 签发）后以 `/silent /install` 静默安装，下载器缓存于系统临时目录并复用；下载或校验失败时回退为打开官方安装页，仍支持 `CODEX_PROXY_WEBVIEW2_BOOTSTRAPPER` 指定本地安装器。（`scripts/portable/server.mjs`）
-
-- 新增 Linux x64 musl TLS native addon 构建与验证流程，并将 `codex-tls.linux-x64-musl.node` 接入 No-Node Lite 的构建和发布包，使 Lite 可在 Alpine 等 musl Linux 环境中使用。（`native/package.json`、`scripts/native/`、`scripts/portable/`、`.github/workflows/native-musl-ci.yml`）
-
-- 新增可选 No-Node Lite Browser/Server 发行版：保留现有 Electron 安装包不变，额外提供 `codex-proxy-<版本>-no-node-lite-all-platforms.tar.xz`，包含后端、前端资源、各平台 native addon 和启动器，支持无图形界面的 server 模式以及浏览器模式；Windows 通过 MSYS2 MinGW 构建 x86/x64 WebView2 host，并可选携带 Evergreen Bootstrapper。（`scripts/portable/`、`.github/workflows/lite-ci.yml`、`.github/workflows/release.yml`）
-
-- 支持 OpenAI GPT-6 Astra 系列（`gpt-6-astra`、`gpt-6-astra-aeon` 及别名 `gpt-6`）与 GPT-Reserve（`gpt-reserve`）：内置静态模型元数据与推理级别定义（`/v1/models/catalog` 可见），`gpt-6` 别名解析到 `gpt-6-astra`，可路由性已由 #776 的名称形态放行覆盖；同步适配 1,050,000 上下文窗口、Ollama 桥接架构系列识别与官方定价估算（`src/models/model-store.ts`、`src/ollama/bridge.ts`、`config/model-pricing.yaml`、`README.md`）。
-
-- 重构 Dashboard UI 视觉体系与设置交互逻辑：
-  - 移除窗口顶部菜单栏，并将窗口标题统一为「Codex Proxy」（`packages/electron/electron/main.ts`、`web/index.html`）。
-  - 全局优化浅色与深色色彩体系及统一系统/等宽字体层级渲染（`web/src/index.css`、`web/tailwind.config.ts`）。
-  - 新增独立「信息」Tab 页（`#/info`），归拢 API 配置、Anthropic SDK 配置、代码示例及连通性测试只读卡片（`web/src/pages/InfoPage.tsx`、`web/src/navigation.ts`、`shared/i18n/`）。
-  - 改版设置界面（`#/settings`）：重新组织分类设置项，升级为项级即时生效机制（修改后行内显示 `✅` 保存按钮，点击转圈加载，生效后平滑淡出，需重启项显示 `🔄 等待重启` 徽章），移除底部全局保存按钮（`web/src/components/`）。
-
-- 请求日志新增「账号 / 后备」列：展示每条请求实际服务的账号（label / 邮箱 / ID 短标识），走了后备（备用账号重试或后备上游 apikey）时显示橙色「后备」徽章；详情抽屉同步展示账号信息（`src/logs/`、`src/routes/shared/proxy-*.ts`、`shared/hooks/use-logs.ts`、`web/src/pages/LogsPage.tsx`、`shared/i18n/`）。
-
-- 首页「后备上游 (API Key)」卡片新增运行状态指示：请求切到后备（备用账号或后备上游）时卡片橙色高亮并脉冲闪动，显示「后备中」徽章；停止走后约 60 秒内自动恢复（`src/auth/fallback-state.ts`、`src/routes/accounts.ts`、`shared/hooks/use-accounts.ts`、`web/src/components/FallbackUpstreamCard.tsx`）。
-
-- 通用设置新增「更新到测试版 (Beta)」选项（默认关闭）：开启后自动更新检查将包含测试版（GitHub Releases 预发布版本与 Docker `-beta.` 标签），Electron 客户端同步开启测试版通道（`config/default.yaml`、`src/routes/admin/`、`src/self-update.ts`、`web/src/components/GeneralSettings.tsx`、`shared/i18n/`）。
-
-- 控制台新增日語 (ja)、繁體中文 (台灣, zh-TW)、繁體中文 (香港, zh-HK) 完整語言字典與本地化支援，並將頂部導航列語言切換升級為多語言下拉選擇器（`shared/i18n/`、`web/src/components/Header.tsx`、`shared/utils/format.ts`）。
-
-- 新增「后备上游 (API Key)」账户类型：配置一个 baseUrl + apiKey，固定走 Responses 接口，仅在所有账号均不可用时作为最后兜底启用；添加账户弹窗可添加，账户列表末尾独占一行展示，支持卡片上编辑/删除，仅允许配置一个。（`src/auth/fallback-upstream.ts`、`src/routes/accounts.ts`、`src/routes/shared/proxy-handler.ts`、`web/src/components/FallbackUpstreamCard.tsx`、`web/src/components/AddAccount.tsx`）
 
 ### Changed
 
