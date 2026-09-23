@@ -12,6 +12,7 @@ import {
   type CodexModelInfo,
 } from "../models/model-store.js";
 import { triggerImmediateRefresh } from "../models/model-fetcher.js";
+import { toCodexCatalogEntry } from "../models/codex-catalog.js";
 import { getConfig } from "../config.js";
 import type { ApiKeyPool } from "../auth/api-key-pool.js";
 import type { ClientKeyPool } from "../auth/client-key-pool.js";
@@ -52,14 +53,61 @@ function toOpenAIModel(info: CodexModelInfo): OpenAIModel {
   if (info.maxContextWindow !== undefined) model.max_context_window = info.maxContextWindow;
   if (info.maxOutputTokens !== undefined) model.max_output_tokens = info.maxOutputTokens;
   if (info.truncationPolicyLimit !== undefined) {
-    model.truncation_policy = { mode: "tokens", limit: info.truncationPolicyLimit };
+    model.truncation_policy = {
+      mode: info.truncationPolicyMode === "bytes" ? "bytes" : "tokens",
+      limit: info.truncationPolicyLimit,
+    };
   }
 
   const compactLimit = autoCompactTokenLimit(info);
   if (compactLimit !== undefined) {
     model.auto_compact_token_limit = compactLimit;
-    model.effective_context_window_percent = DEFAULT_EFFECTIVE_CONTEXT_WINDOW_PERCENT;
   }
+  if (info.effectiveContextWindowPercent !== undefined || compactLimit !== undefined) {
+    model.effective_context_window_percent =
+      info.effectiveContextWindowPercent ?? DEFAULT_EFFECTIVE_CONTEXT_WINDOW_PERCENT;
+  }
+
+  // Rich backend metadata (snake_case superset of the OpenAI model object).
+  // Static YAML entries may omit collections, so guard before reading them.
+  if (info.displayName && info.displayName !== info.id) model.display_name = info.displayName;
+  if (info.description) model.description = info.description;
+  if (info.defaultReasoningEffort) model.default_reasoning_effort = info.defaultReasoningEffort;
+  if (info.supportedReasoningEfforts?.length) {
+    model.supported_reasoning_efforts = info.supportedReasoningEfforts.map((effort) => ({
+      reasoning_effort: effort.reasoningEffort,
+      description: effort.description,
+    }));
+  }
+  if (info.inputModalities?.length) model.input_modalities = info.inputModalities;
+  if (info.outputModalities) model.output_modalities = info.outputModalities;
+  if (info.serviceTiers) model.service_tiers = info.serviceTiers;
+  if (info.defaultServiceTier !== undefined) model.default_service_tier = info.defaultServiceTier;
+  if (info.additionalSpeedTiers) model.additional_speed_tiers = info.additionalSpeedTiers;
+  if (info.visibility !== undefined) model.visibility = info.visibility;
+  if (info.priority !== undefined) model.priority = info.priority;
+  if (info.supportedInApi !== undefined) model.supported_in_api = info.supportedInApi;
+  if (info.preferWebsockets !== undefined) model.prefer_websockets = info.preferWebsockets;
+  if (info.modelSpecialty !== undefined) model.model_specialty = info.modelSpecialty;
+  if (info.shellType !== undefined) model.shell_type = info.shellType;
+  if (info.toolMode !== undefined) model.tool_mode = info.toolMode;
+  if (info.multiAgentVersion !== undefined) model.multi_agent_version = info.multiAgentVersion;
+  if (info.multiAgentReasoningEffort !== undefined) {
+    model.multi_agent_reasoning_effort = info.multiAgentReasoningEffort;
+  }
+  if (info.supportVerbosity !== undefined) model.support_verbosity = info.supportVerbosity;
+  if (info.defaultVerbosity !== undefined) model.default_verbosity = info.defaultVerbosity;
+  if (info.applyPatchToolType !== undefined) model.apply_patch_tool_type = info.applyPatchToolType;
+  if (info.webSearchToolType !== undefined) model.web_search_tool_type = info.webSearchToolType;
+  if (info.defaultReasoningSummary !== undefined) model.default_reasoning_summary = info.defaultReasoningSummary;
+  if (info.supportsReasoningSummaryParameter !== undefined) {
+    model.supports_reasoning_summary_parameter = info.supportsReasoningSummaryParameter;
+  }
+  if (info.compHash !== undefined) model.comp_hash = info.compHash;
+  if (info.experimentalSupportedTools) model.experimental_supported_tools = info.experimentalSupportedTools;
+  if (info.supportsSearchTool !== undefined) model.supports_search_tool = info.supportsSearchTool;
+  if (info.upgrade) model.upgrade = info.upgrade;
+  if (info.upgradeInfo) model.upgrade_info = info.upgradeInfo;
 
   return model;
 }
@@ -70,6 +118,22 @@ function toRuntimeOpenAIModel(id: string): OpenAIModel {
     object: "model",
     created: MODEL_CREATED_TIMESTAMP,
     owned_by: "openai",
+  };
+}
+
+/** Minimal catalog entry for runtime-discovered models with no backend metadata. */
+function toRuntimeCatalogModel(id: string): CodexModelInfo {
+  return {
+    id,
+    displayName: id,
+    description: "",
+    isDefault: false,
+    supportedReasoningEfforts: [{ reasoningEffort: "medium", description: "Default" }],
+    defaultReasoningEffort: "medium",
+    inputModalities: ["text"],
+    supportsPersonality: false,
+    upgrade: null,
+    source: "runtime",
   };
 }
 
@@ -128,6 +192,29 @@ export function createModelRoutes(apiKeyPool?: ApiKeyPool, clientKeyPool?: Clien
         outputModalities: m.outputModalities ?? ["text"],
       })),
     );
+  });
+
+  // Codex-native rich catalog ({models: [ModelInfo]}) for downstream Codex CLI
+  // `model_catalog_url`. Two segments, so :modelId can never shadow it.
+  app.get("/v1/models/catalog/codex", (c) => {
+    const catalog = getModelCatalog();
+    const modelsById = new Map<string, CodexModelInfo>();
+    for (const model of catalog) {
+      modelsById.set(model.id, model);
+    }
+    for (const modelId of apiKeyPool?.getActiveModels() ?? []) {
+      if (!modelsById.has(modelId)) {
+        modelsById.set(modelId, toRuntimeCatalogModel(modelId));
+      }
+    }
+
+    let data = [...modelsById.values()];
+    const allowed = getClientKeyAllowedModels(c);
+    if (allowed) {
+      data = data.filter((m) => allowed.includes(m.id));
+    }
+
+    return c.json({ models: data.map(toCodexCatalogEntry) });
   });
 
   app.get("/v1/models/:modelId", (c) => {

@@ -523,9 +523,42 @@ export interface OpenAIModel {
   auto_compact_token_limit?: number;
   effective_context_window_percent?: number;
   truncation_policy?: {
-    mode: "tokens";
+    mode: "tokens" | "bytes";
     limit: number;
   };
+  /**
+   * Rich backend metadata (non-standard extensions; OpenAI clients ignore
+   * unknown fields). snake_case to mirror the Codex backend catalog.
+   */
+  display_name?: string;
+  description?: string;
+  default_reasoning_effort?: string;
+  supported_reasoning_efforts?: { reasoning_effort: string; description: string }[];
+  input_modalities?: string[];
+  output_modalities?: string[];
+  service_tiers?: { id: string; name: string; description: string }[];
+  default_service_tier?: string;
+  additional_speed_tiers?: string[];
+  visibility?: string;
+  priority?: number;
+  supported_in_api?: boolean;
+  prefer_websockets?: boolean;
+  model_specialty?: string;
+  shell_type?: string;
+  tool_mode?: string;
+  multi_agent_version?: string;
+  multi_agent_reasoning_effort?: string;
+  support_verbosity?: boolean;
+  default_verbosity?: string;
+  apply_patch_tool_type?: string;
+  web_search_tool_type?: string;
+  default_reasoning_summary?: string;
+  supports_reasoning_summary_parameter?: boolean;
+  comp_hash?: string;
+  experimental_supported_tools?: string[];
+  supports_search_tool?: boolean;
+  upgrade?: string | null;
+  upgrade_info?: { model: string; migration_markdown?: string; retirement_at?: string };
 }
 
 export interface OpenAIModelList {
