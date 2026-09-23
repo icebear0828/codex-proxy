@@ -291,6 +291,57 @@ aliases: {}
       expect(getModelInfo("local-custom")).toBeUndefined();
     });
 
+    it("sanitizes object-shaped upgrade payloads left by older cache versions", () => {
+      vi.mocked(existsSync).mockReturnValue(true);
+      vi.mocked(readFileSync).mockImplementation((path) => {
+        const filePath = String(path);
+        if (filePath.endsWith("models-cache.yaml")) {
+          return `
+models:
+  - id: cached-legacy
+    displayName: Cached Legacy
+    description: ""
+    isDefault: false
+    supportedReasoningEfforts:
+      - { reasoningEffort: medium, description: "Medium" }
+    defaultReasoningEffort: medium
+    inputModalities: [text]
+    supportsPersonality: false
+    upgrade:
+      model: gpt-6.1
+      migration_markdown: "# Move"
+      retirement_at: "2027-01-01T00:00:00Z"
+aliases: {}
+`;
+        }
+        return FIXTURE_YAML;
+      });
+
+      loadStaticModels("/tmp/test-config");
+
+      const info = getModelInfo("cached-legacy");
+      expect(info).toBeDefined();
+      expect(info!.upgrade).toBe("gpt-6.1");
+      expect(info!.upgradeInfo).toEqual({
+        model: "gpt-6.1",
+        migration_markdown: "# Move",
+        retirement_at: "2027-01-01T00:00:00Z",
+      });
+    });
+
+    it("normalizes upgrade payloads keyed by id instead of model", () => {
+      loadStaticModels("/tmp/test-config");
+      applyBackendModels([{
+        slug: "gpt-5.2",
+        display_name: "GPT-5.2",
+        upgrade: { id: "gpt-6.1" },
+      }]);
+
+      const info = getModelInfo("gpt-5.2");
+      expect(info!.upgrade).toBe("gpt-6.1");
+      expect(info!.upgradeInfo).toEqual({ model: "gpt-6.1" });
+    });
+
     it("adds custom models from local config to the catalog", () => {
       mockCustomModels.push(
         "local-simple",

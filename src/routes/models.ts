@@ -69,16 +69,17 @@ function toOpenAIModel(info: CodexModelInfo): OpenAIModel {
   }
 
   // Rich backend metadata (snake_case superset of the OpenAI model object).
+  // Static YAML entries may omit collections, so guard before reading them.
   if (info.displayName && info.displayName !== info.id) model.display_name = info.displayName;
   if (info.description) model.description = info.description;
   if (info.defaultReasoningEffort) model.default_reasoning_effort = info.defaultReasoningEffort;
-  if (info.supportedReasoningEfforts.length > 0) {
+  if (info.supportedReasoningEfforts?.length) {
     model.supported_reasoning_efforts = info.supportedReasoningEfforts.map((effort) => ({
       reasoning_effort: effort.reasoningEffort,
       description: effort.description,
     }));
   }
-  if (info.inputModalities.length > 0) model.input_modalities = info.inputModalities;
+  if (info.inputModalities?.length) model.input_modalities = info.inputModalities;
   if (info.outputModalities) model.output_modalities = info.outputModalities;
   if (info.serviceTiers) model.service_tiers = info.serviceTiers;
   if (info.defaultServiceTier !== undefined) model.default_service_tier = info.defaultServiceTier;
@@ -105,7 +106,7 @@ function toOpenAIModel(info: CodexModelInfo): OpenAIModel {
   if (info.compHash !== undefined) model.comp_hash = info.compHash;
   if (info.experimentalSupportedTools) model.experimental_supported_tools = info.experimentalSupportedTools;
   if (info.supportsSearchTool !== undefined) model.supports_search_tool = info.supportsSearchTool;
-  if (info.upgrade !== null) model.upgrade = info.upgrade;
+  if (info.upgrade) model.upgrade = info.upgrade;
   if (info.upgradeInfo) model.upgrade_info = info.upgradeInfo;
 
   return model;

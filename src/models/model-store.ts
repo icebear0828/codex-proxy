@@ -35,6 +35,12 @@ export interface CodexModelUpgradeInfo {
   retirement_at?: string;
 }
 
+/** Raw upgrade payload from the wire: a slug, or an object keyed by model or id. */
+export type RawUpgradePayload =
+  | string
+  | { model?: string; id?: string; migration_markdown?: string; retirement_at?: string }
+  | null;
+
 export interface CodexModelInfo {
   id: string;
   displayName: string;
@@ -143,7 +149,7 @@ export interface BackendModelEntry {
   input_modalities?: string[];
   output_modalities?: string[];
   supports_personality?: boolean;
-  upgrade?: string | CodexModelUpgradeInfo | null;
+  upgrade?: RawUpgradePayload;
   context_window?: number;
   contextWindow?: number;
   max_context_window?: number;
@@ -385,6 +391,7 @@ export class ModelStore {
           for (const [planType, models] of Object.entries(planSnapshots)) {
             const backendModels = models
               .filter(isAdmittedBackendModel)
+              .map(sanitizeCachedModel)
               .map((m) => ({ ...m, source: "backend" as const }));
             this.planModelSnapshots.set(planType, backendModels);
             this.planModelMap.set(planType, new Set(backendModels.map((m) => m.id)));
@@ -393,7 +400,7 @@ export class ModelStore {
           console.log(`[ModelStore] Loaded ${this.catalog.length} cached backend models from data/models-cache.yaml`);
         } else {
           const cachedModels = (cached.models ?? []).filter(isAdmittedBackendModel);
-          this.catalog = cachedModels.map((m) => ({ ...m, source: "backend" as const }));
+          this.catalog = cachedModels.map(sanitizeCachedModel).map((m) => ({ ...m, source: "backend" as const }));
           if (this.catalog.length > 0) {
             this.planModelSnapshots.set("cache", this.catalog.map((m) => ({ ...m })));
             this.planModelMap.set("cache", new Set(this.catalog.map((m) => m.id)));
@@ -677,6 +684,37 @@ function stripNormalizeMetadata(model: NormalizedModelWithMeta): CodexModelInfo 
   return info;
 }
 
+/**
+ * Normalize an upgrade payload to a slug plus optional migration info.
+ *
+ * Older payloads carry a plain slug string; current ones send an object
+ * ({model, migration_markdown, retirement_at}). Some cached snapshots from
+ * earlier versions store that object verbatim in the string-typed field, so
+ * cache loading sanitizes through here too. Null/empty input yields null.
+ */
+function normalizeUpgrade(raw: unknown): Pick<CodexModelInfo, "upgrade" | "upgradeInfo"> {
+  if (typeof raw === "string") {
+    const slug = raw.trim();
+    return { upgrade: slug || null };
+  }
+  if (raw && typeof raw === "object") {
+    const payload = raw as { model?: unknown; id?: unknown; migration_markdown?: unknown; retirement_at?: unknown };
+    const slug = (typeof payload.model === "string" ? payload.model : typeof payload.id === "string" ? payload.id : "").trim();
+    if (!slug) return { upgrade: null };
+    const info: CodexModelUpgradeInfo = { model: slug };
+    if (typeof payload.migration_markdown === "string") info.migration_markdown = payload.migration_markdown;
+    if (typeof payload.retirement_at === "string") info.retirement_at = payload.retirement_at;
+    return { upgrade: slug, upgradeInfo: info };
+  }
+  return { upgrade: null };
+}
+
+/** Load-time guard for cached YAML snapshots that predate field-level normalization. */
+function sanitizeCachedModel(model: CodexModelInfo): CodexModelInfo {
+  const { upgrade, upgradeInfo } = normalizeUpgrade(model.upgrade);
+  return { ...model, upgrade, upgradeInfo };
+}
+
 function normalizeBackendModel(raw: BackendModelEntry): NormalizedModelWithMeta {
   const id = raw.slug ?? raw.id ?? raw.name ?? "unknown";
 
@@ -711,19 +749,9 @@ function normalizeBackendModel(raw: BackendModelEntry): NormalizedModelWithMeta 
   };
   // Upgrade arrived as a plain slug in older payloads and as an object
   // ({model, migration_markdown, retirement_at}) in current ones.
-  if (typeof raw.upgrade === "string" && raw.upgrade.trim()) {
-    out.upgrade = raw.upgrade.trim();
-  } else if (raw.upgrade && typeof raw.upgrade === "object") {
-    const slug = (raw.upgrade.model ?? "").trim();
-    if (slug) {
-      out.upgrade = slug;
-      out.upgradeInfo = {
-        model: slug,
-        ...(raw.upgrade.migration_markdown !== undefined && { migration_markdown: raw.upgrade.migration_markdown }),
-        ...(raw.upgrade.retirement_at !== undefined && { retirement_at: raw.upgrade.retirement_at }),
-      };
-    }
-  }
+  const { upgrade, upgradeInfo } = normalizeUpgrade(raw.upgrade);
+  out.upgrade = upgrade;
+  if (upgradeInfo) out.upgradeInfo = upgradeInfo;
   if (typeof raw.truncation_policy?.limit === "number") {
     out.truncationPolicyLimit = raw.truncation_policy.limit;
     if (typeof raw.truncation_policy.mode === "string") out.truncationPolicyMode = raw.truncation_policy.mode;

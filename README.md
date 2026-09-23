@@ -368,6 +368,8 @@ curl http://localhost:8080/v1/chat/completions \
 > wire_api = "responses"
 > model_catalog_url = "http://127.0.0.1:8080/v1/models/catalog/codex"
 > ```
+>
+> 鉴权：CLI 会以 provider 的 API Key 调用 `model_catalog_url`。若代理设置了 `server.proxy_api_key`，请在 provider 配置中提供同一 Key（如 `env_key = "CODEX_PROXY_KEY"` 并导出该环境变量），否则目录请求会返回 401。
 
 ### 🖼️ 图像生成
 

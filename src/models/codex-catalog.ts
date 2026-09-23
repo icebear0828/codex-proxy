@@ -40,7 +40,13 @@ export function toCodexCatalogEntry(info: CodexModelInfo) {
     supported_in_api: info.supportedInApi ?? true,
     priority: info.priority ?? 99,
     additional_speed_tiers: info.additionalSpeedTiers ?? [],
-    service_tiers: info.serviceTiers ?? [],
+    // CLI decodes ModelServiceTier with required string id/name/description —
+    // fill gaps instead of passing partial tiers through.
+    service_tiers: (info.serviceTiers ?? []).map((tier) => ({
+      id: String(tier?.id ?? ""),
+      name: String(tier?.name ?? tier?.id ?? ""),
+      description: String(tier?.description ?? ""),
+    })),
     default_service_tier: info.defaultServiceTier ?? null,
     available_access_programs: null,
     availability_nux: null,

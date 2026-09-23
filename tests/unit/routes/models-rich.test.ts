@@ -37,7 +37,12 @@ vi.mock("fs", async (importOriginal) => {
     ...actual,
     readFileSync: vi.fn((path: string) => {
       if (typeof path === "string" && path.includes("models.yaml")) {
-        return "models: []\naliases: {}\n";
+        return `models:
+  - id: partial-model
+    displayName: Partial
+    description: hand-written minimal entry
+aliases: {}
+`;
       }
       return "";
     }),
@@ -88,6 +93,15 @@ const BACKEND_MODELS = [
     default_reasoning_level: "medium",
     supported_reasoning_levels: [{ effort: "medium", description: "Standard" }],
     input_modalities: ["text"],
+  },
+  {
+    slug: "gpt-5.2",
+    display_name: "GPT-5.2",
+    description: "Partial metadata",
+    default_reasoning_level: "medium",
+    supported_reasoning_levels: [{ effort: "low", description: "Fast" }],
+    input_modalities: ["text"],
+    service_tiers: [{ id: "fast" }],
   },
 ];
 
@@ -166,6 +180,36 @@ describe("GET /v1/models — rich metadata", () => {
   });
 });
 
+describe("static catalog entries missing collections", () => {
+  // No backend snapshot here: applyBackendModelsForPlan rebuilds the catalog
+  // and drops static-only entries, which is the existing snapshot semantics.
+  beforeEach(() => {
+    resetModelStoreForTesting();
+    loadStaticModels();
+  });
+
+  it("does not fail on hand-written entries missing collections", async () => {
+    const app = createModelRoutes();
+
+    const res = await app.request("/v1/models/partial-model");
+    expect(res.status).toBe(200);
+    const model = (await res.json()) as Record<string, unknown>;
+    expect(model.id).toBe("partial-model");
+    expect(model.display_name).toBe("Partial");
+    expect(model).not.toHaveProperty("supported_reasoning_efforts");
+    expect(model).not.toHaveProperty("input_modalities");
+    expect(model).not.toHaveProperty("upgrade");
+
+    const codexRes = await app.request("/v1/models/catalog/codex");
+    const body = (await codexRes.json()) as { models: Array<Record<string, unknown>> };
+    const partial = body.models.find((m) => m.slug === "partial-model");
+    expect(partial).toBeDefined();
+    expect(partial!.supported_reasoning_levels).toEqual([]);
+    expect(partial!.input_modalities).toEqual(["text", "image"]);
+    expect(partial!.shell_type).toBe("unified_exec");
+  });
+});
+
 describe("GET /v1/models/catalog/codex", () => {
   beforeEach(() => {
     resetModelStoreForTesting();
@@ -232,6 +276,12 @@ describe("GET /v1/models/catalog/codex", () => {
       context_window: null,
       upgrade: null,
     });
+
+    const partial = body.models.find((m) => m.slug === "gpt-5.2");
+    expect(partial).toBeDefined();
+    // ModelServiceTier requires string id/name/description — gaps are filled
+    // so one malformed tier cannot break the whole CLI catalog decode.
+    expect(partial!.service_tiers).toEqual([{ id: "fast", name: "fast", description: "" }]);
   });
 
   it("includes static and runtime models with defaults", async () => {
