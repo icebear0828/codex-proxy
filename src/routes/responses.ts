@@ -438,8 +438,6 @@ export function createResponsesRoutes(
   };
 
   const searchHandler = auxiliaryJsonHandler("alpha/search");
-  const imageGenerationHandler = auxiliaryJsonHandler("images/generations");
-  const imageEditHandler = auxiliaryJsonHandler("images/edits");
 
   app.post("/v1/responses", apiKeyAuth(accountPool, clientKeyPool), responsesHandler);
   app.post("/v1/responses/review", apiKeyAuth(accountPool, clientKeyPool), responsesHandler);
@@ -449,10 +447,9 @@ export function createResponsesRoutes(
   app.post("/responses/compact", apiKeyAuth(accountPool, clientKeyPool), compactHandler);
   app.post("/v1/alpha/search", apiKeyAuth(accountPool, clientKeyPool), searchHandler);
   app.post("/alpha/search", apiKeyAuth(accountPool, clientKeyPool), searchHandler);
-  app.post("/v1/images/generations", apiKeyAuth(accountPool, clientKeyPool), imageGenerationHandler);
-  app.post("/images/generations", apiKeyAuth(accountPool, clientKeyPool), imageGenerationHandler);
-  app.post("/v1/images/edits", apiKeyAuth(accountPool, clientKeyPool), imageEditHandler);
-  app.post("/images/edits", apiKeyAuth(accountPool, clientKeyPool), imageEditHandler);
+  // /v1/images/* 由 images.ts 的 createImagesRoutes 独家注册：它按模型路由在
+  // API-key JSON 透传与账号模式 image_generation 工具转换之间分发。不要在这里
+  // 重复注册——Hono 同路径先注册者胜出，双注册会把其中一条链路静默遮蔽。
 
   return app;
 }

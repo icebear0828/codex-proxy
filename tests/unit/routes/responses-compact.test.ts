@@ -252,8 +252,6 @@ describe("POST /v1/responses/compact", () => {
   it.each([
     ["/v1/alpha/search", "alpha/search"],
     ["/alpha/search", "alpha/search"],
-    ["/v1/images/generations", "images/generations"],
-    ["/v1/images/edits", "images/edits"],
   ] as const)("forwards Codex auxiliary route %s", async (incomingPath, upstreamPath) => {
     const forwardCodexJsonRequest = vi.fn(async () => new Response(
       JSON.stringify({ endpoint: upstreamPath, ok: true }),

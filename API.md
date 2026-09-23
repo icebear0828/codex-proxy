@@ -102,21 +102,35 @@ Clients can connect via WebSocket to `ws://{host}:{port}/v1/responses` (or `wss:
 - The client sends a `response.create` JSON payload frame.
 - The proxy executes the request and streams back the `data:` JSON payloads as individual WebSocket text frames.
 
-### POST /v1/images/generations
-OpenAI Images API compatible endpoint for image generation.
+### POST /v1/images/generations & /v1/images/edits
+OpenAI Images API compatible endpoints for image generation and editing. Both endpoints dispatch by model routing:
+
+- **API-key provider** (`wire=codex-responses` with Codex JSON support): the JSON body is forwarded verbatim to `<baseUrl>/images/generations` | `<baseUrl>/images/edits` — field validation is up to the upstream.
+- **ChatGPT account mode** (any other routable model): the request is converted into a Codex Responses `image_generation` tool call routed to the configured `model.image_host_model` (default: `gpt-5.5`). For `edits`, the reference images ride along as `input_image` content parts in the user message (Edit mode, see the tool section below).
+
+Both return OpenAI-compatible `{ created, data: [{ b64_json, revised_prompt }] }`.
 
 ```jsonc
-// Request
+// generations request
 {
   "model": "gpt-image-2",
   "prompt": "A scenic sunset over snow-capped mountains",
   "size": "1024x1024",
   "output_format": "png"
 }
+
+// edits request (Codex JSON protocol: images[] with data:/https URLs)
+{
+  "model": "gpt-image-2",
+  "prompt": "Make this sky a sunset.",
+  "images": [{ "image_url": "data:image/png;base64,AAA..." }],
+  "size": "1024x1024"
+}
 ```
 
-- The proxy transforms image generation requests into Codex Responses `image_generation` tool calls routed to the configured `model.image_host_model` (default: `gpt-5.5`).
-- Returns OpenAI-compatible `{ created, data: [{ b64_json, revised_prompt }] }`.
+Edits notes: 1–16 reference images; `n` must be `1`; `output_compression` must be `100` when `output_format` is `png`.
+
+`POST /v1/images/edits` also accepts `multipart/form-data` file uploads (the standard OpenAI Images edits format): form fields `image` (file, repeatable — `image[]` also accepted), `prompt` (required), `model` (required), plus optional `size`, `quality`, `background`, `output_format`, `output_compression`, `moderation`, `partial_images`, `n`, `response_format` (`b64_json` only). The proxy converts the upload into the JSON protocol above before dispatch, so both modes behave identically. `mask` is not supported by the Codex image editing backend and is rejected explicitly.
 
 ### POST /v1/embeddings
 OpenAI-compatible embeddings endpoint.
@@ -142,8 +156,8 @@ When the requested model resolves to an API-key provider with `wire=codex-respon
 |---|---|---|
 | `POST /v1/alpha/search` | `<baseUrl>/alpha/search` | Codex CLI standalone Web Search |
 | `POST /v1/responses/compact` | `<baseUrl>/responses/compact` | Remote conversation compaction |
-| `POST /v1/images/generations` | `<baseUrl>/images/generations` | Codex JSON image generation |
-| `POST /v1/images/edits` | `<baseUrl>/images/edits` | Codex JSON image editing |
+
+The Images endpoints for API-key providers (`/v1/images/generations`, `/v1/images/edits`) are served by the same routes documented in the Images section above: when the model resolves to an API-key provider with Codex JSON support, the JSON body is forwarded unchanged to `<baseUrl>/images/<path>`; other models are served by the account-mode conversion.
 
 Each endpoint requires a non-empty `model` in its JSON body and uses the existing model router to select the API-key entry. The proxy replaces local authentication with the configured provider key. Apart from configured model-alias resolution and stripping an internal provider prefix, it leaves the JSON body unchanged and preserves the upstream status, Content-Type, and response body. Paths outside the exact allowlist are not forwarded. Local aliases without `/v1` are accepted as well. See the public [OpenAI Responses compact API](https://developers.openai.com/api/reference/resources/responses/methods/compact/) and the [Codex CLI 0.147.0 search endpoint source](https://github.com/openai/codex/blob/rust-v0.147.0/codex-rs/codex-api/src/endpoint/search.rs#L31-L45).
 

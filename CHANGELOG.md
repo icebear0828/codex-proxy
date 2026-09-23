@@ -8,7 +8,17 @@
 
 ## [Unreleased]
 
-> 暂无已记录的变更。
+### Fixed
+
+- 修复 `/v1/images/generations` 被同名路由静默遮蔽的问题：API-key 辅助端点引入后，`responsesRoutes` 先于 `imagesRoutes` 挂载且 Hono 同路径先注册者胜出，导致账号登录模式下该端点恒返回 400 `unsupported_codex_auxiliary_route`，与 API.md 文档描述的账号模式生图流程不符。现在 Images 两条路由（generations / edits）由 `createImagesRoutes` 独家注册并按模型路由分发：模型命中声明 Codex JSON 辅助能力的 API-key provider 时继续逐字节透传给上游 `/images/*`（行为与原 aux 通道一致），其余可路由模型走账号模式 `image_generation` 工具转换；未路由模型返回 404 `model_not_found`。（`src/routes/images.ts`、`src/routes/responses.ts`、`src/index.ts`、`tests/e2e/images.test.ts`、`tests/unit/routes/responses-compact.test.ts`）
+
+### Added
+
+- `/v1/images/edits` 补齐账号登录模式支持（JSON 协议）：请求体为 Codex CLI `images/edits` JSON 协议——`{model, prompt, images: [{image_url: "data:image/...;base64,..."}], size?, quality?, background?, output_format?, output_compression?, moderation?, partial_images?}`，参考图 1–16 张（data: 或 https URL），`n` 仅支持 1，PNG 输出仅允许压缩值 100；代理将其转换为 Codex Responses Edit mode 请求（参考图以 `input_image` 内容块进入 user 消息 + `image_generation` 工具）经账号池执行，宿主模型取 `model.image_host_model`，响应仍为 OpenAI Images JSON 形状。API-key wire 行为不变（逐字节透传给上游 `/images/edits`，字段校验由上游决定）。（`src/routes/shared/image-generation.ts`、`src/routes/images.ts`、`tests/e2e/images.test.ts`、`API.md`）
+
+- `/v1/images/edits` 接受 multipart/form-data 文件上传（OpenAI Images edits 标准格式）：`image`/`image[]` 文件段（可重复）、`prompt`/`model` 必填，可选 `size`/`quality`/`background`/`output_format`/`output_compression`/`moderation`/`partial_images`/`n`/`response_format`（仅 `b64_json`）。代理在入口将上传统一转换为 JSON 协议体后进入模型分发，API-key 透传与账号模式转换共享同一转换结果；`mask` 蒙版上游后端不支持、显式 400 拒绝（避免客户端误以为蒙版生效）；`/v1/images/generations` 收到 multipart 时返回 400 并提示仅 edits 支持。（`src/routes/shared/image-generation.ts`、`src/routes/images.ts`、`tests/e2e/images.test.ts`、`API.md`）
+
+> 暂无其他已记录的变更。
 
 ## [v2.1.x](https://github.com/icebear0828/codex-proxy/releases?q=2.1) - 2026-09-01 至 2026-09-07
 

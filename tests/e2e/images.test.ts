@@ -43,7 +43,7 @@ interface TestContext {
 
 let ctx: TestContext;
 
-function buildApp(opts?: { noAccount?: boolean; clientKeyPool?: ClientKeyPool }): TestContext {
+function buildApp(opts?: { noAccount?: boolean; clientKeyPool?: ClientKeyPool; router?: unknown }): TestContext {
   loadStaticModels();
   const accountPool = new AccountPool();
   const cookieJar = new CookieJar();
@@ -66,7 +66,7 @@ function buildApp(opts?: { noAccount?: boolean; clientKeyPool?: ClientKeyPool })
   const app = new Hono();
   app.use("*", requestId);
   app.onError(errorHandler);
-  app.route("/", createImagesRoutes(accountPool, cookieJar, proxyPool, clientKeyPool));
+  app.route("/", createImagesRoutes(accountPool, cookieJar, proxyPool, clientKeyPool, opts?.router as never));
   return { app, accountPool, cookieJar, proxyPool, clientKeyPool, tempDir };
 }
 
@@ -528,5 +528,378 @@ describe("POST /v1/images/generations", () => {
     expect(body.error.code).toBe("concurrency_limit_exceeded");
 
     ctx.clientKeyPool.releaseSlot(clientKey.id);
+  });
+});
+
+describe("POST /v1/images/edits", () => {
+  const editBody = {
+    model: "gpt-image-2",
+    prompt: "Fill the image with solid blue.",
+    images: [{ image_url: "data:image/png;base64,AAAA" }],
+  };
+
+  function editsRequest(body: unknown, app = ctx.app): Promise<Response> {
+    return app.request("/v1/images/edits", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+  }
+
+  it("maps an Images edits request to an Edit-mode Codex request and returns b64_json", async () => {
+    const res = await editsRequest({
+      ...editBody,
+      size: "1024x1024",
+      quality: "high",
+      output_format: "png",
+    });
+
+    expect(res.status).toBe(200);
+    const body = await res.json() as { created: number; data: Array<{ b64_json: string }> };
+    expect(body.created).toEqual(expect.any(Number));
+    expect(body.data[0]?.b64_json).toBe("ZmFrZS1pbWFnZQ==");
+
+    const sent = JSON.parse(getLastTransportBody()!);
+    expect(sent.model).toBe("gpt-5.5");
+    expect(sent.model).not.toBe("gpt-image-2");
+    expect(sent.input).toEqual([{
+      role: "user",
+      content: [
+        { type: "input_text", text: editBody.prompt },
+        { type: "input_image", image_url: "data:image/png;base64,AAAA" },
+      ],
+    }]);
+    expect(sent.tools).toEqual([{
+      type: "image_generation",
+      size: "1024x1024",
+      output_format: "png",
+      quality: "high",
+    }]);
+    expect(sent.stream).toBe(true);
+  });
+
+  it("accepts the /images/edits route alias", async () => {
+    const res = await ctx.app.request("/images/edits", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(editBody),
+    });
+
+    expect(res.status).toBe(200);
+    const body = await res.json() as { data: Array<{ b64_json: string }> };
+    expect(body.data[0]?.b64_json).toBe("ZmFrZS1pbWFnZQ==");
+  });
+
+  it.each([
+    ["missing images array", { model: "gpt-image-2", prompt: "p" }, null],
+    ["empty images array", { model: "gpt-image-2", prompt: "p", images: [] }, null],
+    [
+      "bad image_url scheme",
+      { model: "gpt-image-2", prompt: "p", images: [{ image_url: "not-a-url" }] },
+      "image_url must be a data: or http(s) URL",
+    ],
+    [
+      "n other than one",
+      { model: "gpt-image-2", prompt: "p", images: [{ image_url: "data:image/png;base64,AAAA" }], n: 2 },
+      null,
+    ],
+    [
+      "png compression override",
+      { model: "gpt-image-2", prompt: "p", images: [{ image_url: "data:image/png;base64,AAAA" }], output_compression: 80 },
+      "output_compression must be 100 when output_format is png",
+    ],
+    ["unsupported mask", { ...editBody, mask: "data:image/png;base64,AAAA" }, "mask"],
+    ["unsupported response format", { ...editBody, response_format: "url" }, "response_format"],
+  ])("rejects an invalid edits request before upstream: %s", async (_label, body, needle) => {
+    const res = await editsRequest(body);
+
+    expect(res.status).toBe(400);
+    const err = await res.json() as { error: { code: string; message: string } };
+    expect(err.error.code).toBe("invalid_request");
+    if (needle) expect(err.error.message).toContain(needle);
+    expect(getMockTransport().post).not.toHaveBeenCalled();
+  });
+
+  it("requires an authenticated account before attempting upstream", async () => {
+    const noAccount = buildApp({ noAccount: true });
+
+    const res = await editsRequest(editBody, noAccount.app);
+
+    expect(res.status).toBe(401);
+    const body = await res.json() as { error: { code: string } };
+    expect(body.error.code).toBe("invalid_api_key");
+    expect(getMockTransport().post).not.toHaveBeenCalled();
+    noAccount.cookieJar.destroy();
+    noAccount.proxyPool.destroy();
+    noAccount.accountPool.destroy();
+  });
+});
+
+describe("images route model dispatch", () => {
+  function buildRoutedApp(resolveMatch: unknown): TestContext {
+    return buildApp({ router: { resolveMatch: vi.fn(() => resolveMatch) } });
+  }
+
+  function destroyBuilt(built: TestContext): void {
+    built.cookieJar.destroy();
+    built.proxyPool.destroy();
+    built.accountPool.destroy();
+  }
+
+  it("routes api-key-wired models through the Codex JSON passthrough verbatim", async () => {
+    const forwardCodexJsonRequest = vi.fn(async () => new Response(
+      JSON.stringify({ endpoint: "images/edits", ok: true }),
+      {
+        status: 200,
+        headers: new Headers({
+          "Content-Type": "application/json",
+          "x-request-id": "upstream-rid",
+          "Set-Cookie": "provider-secret=hidden",
+          Authorization: "Bearer upstream-secret",
+        }),
+      },
+    ));
+    const built = buildRoutedApp({
+      kind: "api-key",
+      adapter: { tag: "codex-responses", forwardCodexJsonRequest },
+    });
+    const requestBody = {
+      model: "gpt-image-2",
+      prompt: "p",
+      images: [{ image_url: "data:image/png;base64,AAAA" }],
+      provider_extension: { preserved: true },
+    };
+
+    const res = await built.app.request("/v1/images/edits", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(requestBody),
+    });
+
+    expect(res.status).toBe(200);
+    expect(res.headers.get("x-request-id")).toBe("upstream-rid");
+    expect(res.headers.get("set-cookie")).toBeNull();
+    await expect(res.json()).resolves.toEqual({ endpoint: "images/edits", ok: true });
+    expect(forwardCodexJsonRequest).toHaveBeenCalledWith(
+      "images/edits",
+      requestBody,
+      expect.anything(),
+      expect.anything(),
+    );
+    destroyBuilt(built);
+  });
+
+  it("rewrites the model through routeMatch.resolvedModel on the generations passthrough", async () => {
+    const forwardCodexJsonRequest = vi.fn(async () => new Response(
+      JSON.stringify({ ok: true }),
+      { status: 200, headers: new Headers({ "Content-Type": "application/json" }) },
+    ));
+    const built = buildRoutedApp({
+      kind: "adapter",
+      adapter: { tag: "codex-responses", forwardCodexJsonRequest },
+      resolvedModel: "resolved-image-model",
+    });
+
+    const res = await built.app.request("/images/generations", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ model: "gpt-image-2", prompt: "p" }),
+    });
+
+    expect(res.status).toBe(200);
+    expect(forwardCodexJsonRequest).toHaveBeenCalledWith(
+      "images/generations",
+      expect.objectContaining({ model: "resolved-image-model" }),
+      expect.anything(),
+      expect.anything(),
+    );
+    destroyBuilt(built);
+  });
+
+  it("fails closed for adapters without Codex JSON support", async () => {
+    const built = buildRoutedApp({ kind: "adapter", adapter: { tag: "responses" } });
+
+    const res = await built.app.request("/v1/images/generations", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ model: "my-model", prompt: "p" }),
+    });
+
+    expect(res.status).toBe(400);
+    const body = await res.json() as { error: { code: string } };
+    expect(body.error.code).toBe("unsupported_codex_auxiliary_route");
+    expect(getMockTransport().post).not.toHaveBeenCalled();
+    destroyBuilt(built);
+  });
+
+  it("returns model_not_found for unrouted models", async () => {
+    const built = buildRoutedApp({ kind: "not-found" });
+
+    const res = await built.app.request("/v1/images/generations", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ model: "gpt-9999", prompt: "p" }),
+    });
+
+    expect(res.status).toBe(404);
+    const body = await res.json() as { error: { code: string } };
+    expect(body.error.code).toBe("model_not_found");
+    expect(getMockTransport().post).not.toHaveBeenCalled();
+    destroyBuilt(built);
+  });
+
+  it("routes codex-kind models to the account conversion when a router is present", async () => {
+    const built = buildRoutedApp({ kind: "codex" });
+
+    const res = await built.app.request("/v1/images/generations", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ model: "gpt-image-2", prompt: "a red circle" }),
+    });
+
+    expect(res.status).toBe(200);
+    const body = await res.json() as { data: Array<{ b64_json: string }> };
+    expect(body.data[0]?.b64_json).toBe("ZmFrZS1pbWFnZQ==");
+    const sent = JSON.parse(getLastTransportBody()!);
+    expect(sent.model).toBe("gpt-5.5");
+    expect(sent.input[0].content).toEqual([{ type: "input_text", text: "a red circle" }]);
+    destroyBuilt(built);
+  });
+});
+
+describe("POST /v1/images/edits (multipart)", () => {
+  const pngBytes = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+
+  function pngBlob(): Blob {
+    return new Blob([pngBytes], { type: "image/png" });
+  }
+
+  function multipartForm(): FormData {
+    const form = new FormData();
+    form.append("model", "gpt-image-2");
+    form.append("prompt", "Fill the image with solid blue.");
+    return form;
+  }
+
+  function multipartEdits(form: FormData, app = ctx.app): Promise<Response> {
+    // Request 构造器会为 FormData body 自动附加带 boundary 的 multipart Content-Type。
+    return app.request("/v1/images/edits", { method: "POST", body: form });
+  }
+
+  it("accepts a multipart file upload and converts it to the Codex JSON protocol", async () => {
+    const form = multipartForm();
+    form.append("image", pngBlob(), "t.png");
+    form.append("size", "1024x1024");
+
+    const res = await multipartEdits(form);
+
+    expect(res.status).toBe(200);
+    const body = await res.json() as { data: Array<{ b64_json: string }> };
+    expect(body.data[0]?.b64_json).toBe("ZmFrZS1pbWFnZQ==");
+
+    const sent = JSON.parse(getLastTransportBody()!);
+    const parts = sent.input[0].content;
+    expect(parts[0]).toEqual({ type: "input_text", text: "Fill the image with solid blue." });
+    expect(parts[1].type).toBe("input_image");
+    expect(parts[1].image_url).toMatch(/^data:image\/png;base64,/);
+    const decoded = Buffer.from((parts[1].image_url as string).split(",")[1]!, "base64");
+    expect(Buffer.compare(decoded, Buffer.from(pngBytes))).toBe(0);
+    expect(sent.tools[0]).toEqual({ type: "image_generation", size: "1024x1024", output_format: "png" });
+  });
+
+  it("accepts repeated image[] parts as multiple reference images", async () => {
+    const form = multipartForm();
+    form.append("image[]", pngBlob(), "a.png");
+    form.append("image[]", pngBlob(), "b.png");
+
+    const res = await multipartEdits(form);
+
+    expect(res.status).toBe(200);
+    const sent = JSON.parse(getLastTransportBody()!);
+    const images = sent.input[0].content.filter((p: { type: string }) => p.type === "input_image");
+    expect(images).toHaveLength(2);
+    expect(images.every((p: { image_url: string }) => p.image_url.startsWith("data:image/png;base64,"))).toBe(true);
+  });
+
+  it("routes multipart through the api-key passthrough as the converted JSON body", async () => {
+    const forwardCodexJsonRequest = vi.fn(async () => new Response(
+      JSON.stringify({ ok: true }),
+      { status: 200, headers: new Headers({ "Content-Type": "application/json" }) },
+    ));
+    const built = buildApp({
+      router: { resolveMatch: vi.fn(() => ({ kind: "api-key", adapter: { tag: "codex-responses", forwardCodexJsonRequest } })) },
+    });
+    const form = multipartForm();
+    form.append("image", pngBlob(), "t.png");
+
+    const res = await multipartEdits(form, built.app);
+
+    expect(res.status).toBe(200);
+    await expect(res.json()).resolves.toEqual({ ok: true });
+    expect(forwardCodexJsonRequest).toHaveBeenCalledTimes(1);
+    const [path, body] = forwardCodexJsonRequest.mock.calls[0] as [string, Record<string, unknown>];
+    expect(path).toBe("images/edits");
+    expect(body.model).toBe("gpt-image-2");
+    expect(body.prompt).toBe("Fill the image with solid blue.");
+    const images = body.images as Array<{ image_url: string }>;
+    expect(images[0]?.image_url).toMatch(/^data:image\/png;base64,/);
+    built.cookieJar.destroy();
+    built.proxyPool.destroy();
+    built.accountPool.destroy();
+  });
+
+  it("rejects a mask file with an explicit unsupported error", async () => {
+    const form = multipartForm();
+    form.append("image", pngBlob(), "t.png");
+    form.append("mask", pngBlob(), "mask.png");
+
+    const res = await multipartEdits(form);
+
+    expect(res.status).toBe(400);
+    const err = await res.json() as { error: { code: string; message: string } };
+    expect(err.error.code).toBe("invalid_request");
+    expect(err.error.message).toContain("mask is not supported");
+    expect(getMockTransport().post).not.toHaveBeenCalled();
+  });
+
+  it("rejects response_format other than b64_json", async () => {
+    const form = multipartForm();
+    form.append("image", pngBlob(), "t.png");
+    form.append("response_format", "url");
+
+    const res = await multipartEdits(form);
+
+    expect(res.status).toBe(400);
+    const err = await res.json() as { error: { message: string } };
+    expect(err.error.message).toContain("response_format=b64_json");
+  });
+
+  it("rejects multipart file uploads on generations", async () => {
+    const form = new FormData();
+    form.append("model", "gpt-image-2");
+    form.append("prompt", "a red circle");
+    form.append("image", pngBlob(), "t.png");
+
+    const res = await ctx.app.request("/v1/images/generations", { method: "POST", body: form });
+
+    expect(res.status).toBe(400);
+    const err = await res.json() as { error: { message: string } };
+    expect(err.error.message).toContain("only supported on /v1/images/edits");
+    expect(getMockTransport().post).not.toHaveBeenCalled();
+  });
+
+  it("requires an authenticated account for multipart edits", async () => {
+    const noAccount = buildApp({ noAccount: true });
+    const form = multipartForm();
+    form.append("image", pngBlob(), "t.png");
+
+    const res = await multipartEdits(form, noAccount.app);
+
+    expect(res.status).toBe(401);
+    const body = await res.json() as { error: { code: string } };
+    expect(body.error.code).toBe("invalid_api_key");
+    noAccount.cookieJar.destroy();
+    noAccount.proxyPool.destroy();
+    noAccount.accountPool.destroy();
   });
 });

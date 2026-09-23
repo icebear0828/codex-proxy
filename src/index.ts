@@ -201,7 +201,7 @@ export async function startServer(options?: StartOptions): Promise<ServerHandle>
   const messagesRoutes = createMessagesRoutes(accountPool, cookieJar, proxyPool, upstreamRouter, clientKeyPool, fallbackUpstreamStore);
   const geminiRoutes = createGeminiRoutes(accountPool, cookieJar, proxyPool, upstreamRouter, clientKeyPool, fallbackUpstreamStore);
   const responsesRoutes = createResponsesRoutes(accountPool, cookieJar, proxyPool, upstreamRouter, clientKeyPool, fallbackUpstreamStore);
-  const imagesRoutes = createImagesRoutes(accountPool, cookieJar, proxyPool, clientKeyPool);
+  const imagesRoutes = createImagesRoutes(accountPool, cookieJar, proxyPool, clientKeyPool, upstreamRouter);
   const apiKeyRoutes = createApiKeyRoutes(apiKeyPool, apiKeyModelCache, memoStore);
   const embeddingsRoutes = createEmbeddingsRoutes(accountPool, apiKeyPool, clientKeyPool);
   const proxyRoutes = createProxyRoutes(proxyPool, accountPool);
