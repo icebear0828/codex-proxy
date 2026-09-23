@@ -329,6 +329,41 @@ aliases: {}
       });
     });
 
+    it("preserves upgrade metadata from normalized cache snapshots", () => {
+      vi.mocked(existsSync).mockReturnValue(true);
+      vi.mocked(readFileSync).mockImplementation((path) => {
+        if (String(path).endsWith("models-cache.yaml")) {
+          return `
+planSnapshots:
+  plus:
+    - id: cached-normalized
+      displayName: Cached Normalized
+      description: ""
+      isDefault: false
+      supportedReasoningEfforts: []
+      defaultReasoningEffort: medium
+      inputModalities: [text]
+      supportsPersonality: false
+      upgrade: gpt-6.1
+      upgradeInfo:
+        model: gpt-6.1
+        migration_markdown: "# Move"
+        retirement_at: "2027-01-01T00:00:00Z"
+aliases: {}
+`;
+        }
+        return FIXTURE_YAML;
+      });
+
+      loadStaticModels("/tmp/test-config");
+
+      expect(getModelInfo("cached-normalized")?.upgradeInfo).toEqual({
+        model: "gpt-6.1",
+        migration_markdown: "# Move",
+        retirement_at: "2027-01-01T00:00:00Z",
+      });
+    });
+
     it("normalizes upgrade payloads keyed by id instead of model", () => {
       loadStaticModels("/tmp/test-config");
       applyBackendModels([{

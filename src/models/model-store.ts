@@ -712,7 +712,11 @@ function normalizeUpgrade(raw: unknown): Pick<CodexModelInfo, "upgrade" | "upgra
 /** Load-time guard for cached YAML snapshots that predate field-level normalization. */
 function sanitizeCachedModel(model: CodexModelInfo): CodexModelInfo {
   const { upgrade, upgradeInfo } = normalizeUpgrade(model.upgrade);
-  return { ...model, upgrade, upgradeInfo };
+  return {
+    ...model,
+    upgrade,
+    upgradeInfo: upgradeInfo ?? (upgrade && model.upgradeInfo?.model === upgrade ? model.upgradeInfo : undefined),
+  };
 }
 
 function normalizeBackendModel(raw: BackendModelEntry): NormalizedModelWithMeta {
