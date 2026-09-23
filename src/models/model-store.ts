@@ -21,6 +21,20 @@ import { getConfigDir, getDataDir } from "../paths.js";
 
 // ── Types ────────────────────────────────────────────────────────────
 
+/** Service tier metadata as reported by the Codex backend (fast/flex-style). */
+export interface CodexServiceTier {
+  id: string;
+  name: string;
+  description: string;
+}
+
+/** Upgrade hint from the backend model catalog (slug target + migration copy). */
+export interface CodexModelUpgradeInfo {
+  model: string;
+  migration_markdown?: string;
+  retirement_at?: string;
+}
+
 export interface CodexModelInfo {
   id: string;
   displayName: string;
@@ -33,6 +47,8 @@ export interface CodexModelInfo {
   outputModalities?: string[];
   supportsPersonality: boolean;
   upgrade: string | null;
+  /** Full backend upgrade payload (migration copy / retirement), when reported. */
+  upgradeInfo?: CodexModelUpgradeInfo;
   /** Maximum total context window in tokens, when known. */
   contextWindow?: number;
   /** Maximum expandable context window reported by the Codex backend, when known. */
@@ -43,8 +59,54 @@ export interface CodexModelInfo {
   autoCompactTokenLimit?: number;
   /** Backend truncation policy limit, when reported. */
   truncationPolicyLimit?: number;
+  /** Backend tool-output truncation mode ("tokens" | "bytes"), when reported. */
+  truncationPolicyMode?: string;
+  /** Share of the context window usable for inputs, as reported by the backend. */
+  effectiveContextWindowPercent?: number;
+  /** Backend picker visibility ("list" | "hide" | "none"). */
+  visibility?: string;
+  /** Backend sort priority for the model picker. */
+  priority?: number;
+  /** Whether the backend serves this model through the API surface. */
+  supportedInApi?: boolean;
+  /** Shell execution capability ("unified_exec" | "disabled"). */
+  shellType?: string;
+  /** Service tiers this model can run with, when reported. */
+  serviceTiers?: CodexServiceTier[];
+  /** Catalog default service tier id, when reported. */
+  defaultServiceTier?: string;
+  /** Deprecated alias of serviceTiers kept for older backend payloads. */
+  additionalSpeedTiers?: string[];
+  /** Whether the backend prefers websocket transport for this model. */
+  preferWebsockets?: boolean;
+  /** Backend catalog specialty (e.g. "cyber"), when reported. */
+  modelSpecialty?: string;
+  /** Tool execution mode ("direct" | "code_mode" | "code_mode_only"). */
+  toolMode?: string;
+  /** Multi-agent backend slug selected when this model starts a thread. */
+  multiAgentVersion?: string;
+  /** Reasoning effort used for multi-agent work when the user selects Ultra. */
+  multiAgentReasoningEffort?: string;
+  /** Whether the model accepts the verbosity parameter. */
+  supportVerbosity?: boolean;
+  /** Default verbosity level, when reported. */
+  defaultVerbosity?: string;
+  /** Apply-patch tool encoding ("freeform"), when reported. */
+  applyPatchToolType?: string;
+  /** Web-search capability ("text" | "text_and_image"), when reported. */
+  webSearchToolType?: string;
+  /** Default reasoning summary level, when reported. */
+  defaultReasoningSummary?: string;
+  /** Whether the model accepts the reasoning.summary parameter. */
+  supportsReasoningSummaryParameter?: boolean;
+  /** Opaque identifier for compaction-compatible model configurations. */
+  compHash?: string;
+  /** Tools the backend experiments with for this model, when reported. */
+  experimentalSupportedTools?: string[];
+  /** Whether the model supports the built-in search tool. */
+  supportsSearchTool?: boolean;
   /** Where this model entry came from */
-  source?: "static" | "backend" | "custom";
+  source?: "static" | "backend" | "custom" | "runtime";
 }
 
 interface ModelsConfig {
@@ -81,8 +143,7 @@ export interface BackendModelEntry {
   input_modalities?: string[];
   output_modalities?: string[];
   supports_personality?: boolean;
-  upgrade?: string | null;
-  prefer_websockets?: boolean;
+  upgrade?: string | CodexModelUpgradeInfo | null;
   context_window?: number;
   contextWindow?: number;
   max_context_window?: number;
@@ -92,14 +153,36 @@ export interface BackendModelEntry {
   auto_compact_token_limit?: number | null;
   autoCompactTokenLimit?: number | null;
   truncation_policy?: {
+    mode?: string;
     limit?: number;
   };
   truncationPolicy?: {
+    mode?: string;
     limit?: number;
   };
-  available_in_plans?: string[];
-  priority?: number;
+  effective_context_window_percent?: number;
   visibility?: string;
+  priority?: number;
+  supported_in_api?: boolean;
+  shell_type?: string;
+  service_tiers?: CodexServiceTier[];
+  default_service_tier?: string;
+  additional_speed_tiers?: string[];
+  prefer_websockets?: boolean;
+  model_specialty?: string;
+  tool_mode?: string;
+  multi_agent_version?: string;
+  multi_agent_reasoning_effort?: string;
+  support_verbosity?: boolean;
+  default_verbosity?: string;
+  apply_patch_tool_type?: string;
+  web_search_tool_type?: string;
+  default_reasoning_summary?: string;
+  supports_reasoning_summary_parameter?: boolean;
+  comp_hash?: string;
+  experimental_supported_tools?: string[];
+  supports_search_tool?: boolean;
+  available_in_plans?: string[];
 }
 
 type ConfiguredCustomModel = AppConfig["model"]["custom_models"][number];
@@ -622,10 +705,60 @@ function normalizeBackendModel(raw: BackendModelEntry): NormalizedModelWithMeta 
     defaultReasoningEffort: raw.default_reasoning_effort ?? raw.default_reasoning_level ?? "medium",
     inputModalities: raw.input_modalities ?? ["text"],
     supportsPersonality: raw.supports_personality ?? false,
-    upgrade: raw.upgrade ?? null,
+    upgrade: null,
     source: "backend",
     _hasExplicitEfforts: hasExplicitEfforts,
   };
+  // Upgrade arrived as a plain slug in older payloads and as an object
+  // ({model, migration_markdown, retirement_at}) in current ones.
+  if (typeof raw.upgrade === "string" && raw.upgrade.trim()) {
+    out.upgrade = raw.upgrade.trim();
+  } else if (raw.upgrade && typeof raw.upgrade === "object") {
+    const slug = (raw.upgrade.model ?? "").trim();
+    if (slug) {
+      out.upgrade = slug;
+      out.upgradeInfo = {
+        model: slug,
+        ...(raw.upgrade.migration_markdown !== undefined && { migration_markdown: raw.upgrade.migration_markdown }),
+        ...(raw.upgrade.retirement_at !== undefined && { retirement_at: raw.upgrade.retirement_at }),
+      };
+    }
+  }
+  if (typeof raw.truncation_policy?.limit === "number") {
+    out.truncationPolicyLimit = raw.truncation_policy.limit;
+    if (typeof raw.truncation_policy.mode === "string") out.truncationPolicyMode = raw.truncation_policy.mode;
+  } else if (typeof raw.truncationPolicy?.limit === "number") {
+    out.truncationPolicyLimit = raw.truncationPolicy.limit;
+    if (typeof raw.truncationPolicy.mode === "string") out.truncationPolicyMode = raw.truncationPolicy.mode;
+  }
+  if (typeof raw.effective_context_window_percent === "number") {
+    out.effectiveContextWindowPercent = raw.effective_context_window_percent;
+  }
+  if (typeof raw.visibility === "string") out.visibility = raw.visibility;
+  if (typeof raw.priority === "number") out.priority = raw.priority;
+  if (typeof raw.supported_in_api === "boolean") out.supportedInApi = raw.supported_in_api;
+  if (typeof raw.shell_type === "string") out.shellType = raw.shell_type;
+  if (Array.isArray(raw.service_tiers)) out.serviceTiers = raw.service_tiers;
+  if (typeof raw.default_service_tier === "string") out.defaultServiceTier = raw.default_service_tier;
+  if (Array.isArray(raw.additional_speed_tiers)) out.additionalSpeedTiers = raw.additional_speed_tiers;
+  if (typeof raw.prefer_websockets === "boolean") out.preferWebsockets = raw.prefer_websockets;
+  if (typeof raw.model_specialty === "string") out.modelSpecialty = raw.model_specialty;
+  if (typeof raw.tool_mode === "string") out.toolMode = raw.tool_mode;
+  if (typeof raw.multi_agent_version === "string") out.multiAgentVersion = raw.multi_agent_version;
+  if (typeof raw.multi_agent_reasoning_effort === "string") {
+    out.multiAgentReasoningEffort = raw.multi_agent_reasoning_effort;
+  }
+  if (typeof raw.support_verbosity === "boolean") out.supportVerbosity = raw.support_verbosity;
+  if (typeof raw.default_verbosity === "string") out.defaultVerbosity = raw.default_verbosity;
+  if (typeof raw.apply_patch_tool_type === "string") out.applyPatchToolType = raw.apply_patch_tool_type;
+  if (typeof raw.web_search_tool_type === "string") out.webSearchToolType = raw.web_search_tool_type;
+  if (typeof raw.default_reasoning_summary === "string") out.defaultReasoningSummary = raw.default_reasoning_summary;
+  if (typeof raw.supports_reasoning_summary_parameter === "boolean") {
+    out.supportsReasoningSummaryParameter = raw.supports_reasoning_summary_parameter;
+  }
+  if (typeof raw.comp_hash === "string") out.compHash = raw.comp_hash;
+  if (Array.isArray(raw.experimental_supported_tools)) out.experimentalSupportedTools = raw.experimental_supported_tools;
+  if (typeof raw.supports_search_tool === "boolean") out.supportsSearchTool = raw.supports_search_tool;
   // Only set outputModalities when backend provided it — otherwise the spread
   // in applyBackendModels would clobber the static catalog value with undefined.
   if (raw.output_modalities) out.outputModalities = raw.output_modalities;
@@ -648,11 +781,6 @@ function normalizeBackendModel(raw: BackendModelEntry): NormalizedModelWithMeta 
     out.autoCompactTokenLimit = raw.auto_compact_token_limit;
   } else if (typeof raw.autoCompactTokenLimit === "number") {
     out.autoCompactTokenLimit = raw.autoCompactTokenLimit;
-  }
-  if (typeof raw.truncation_policy?.limit === "number") {
-    out.truncationPolicyLimit = raw.truncation_policy.limit;
-  } else if (typeof raw.truncationPolicy?.limit === "number") {
-    out.truncationPolicyLimit = raw.truncationPolicy.limit;
   }
   return out;
 }

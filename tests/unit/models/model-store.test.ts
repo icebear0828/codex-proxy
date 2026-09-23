@@ -847,6 +847,99 @@ aliases: {}
     });
   });
 
+  describe("applyBackendModels — rich backend metadata", () => {
+    it("preserves rich catalog fields on the normalized entry", () => {
+      loadStaticModels("/tmp/test-config");
+      applyBackendModels([{
+        slug: "gpt-6.1",
+        display_name: "GPT-6.1",
+        visibility: "list",
+        priority: 7,
+        supported_in_api: true,
+        shell_type: "unified_exec",
+        service_tiers: [{ id: "fast", name: "Fast", description: "Low latency" }],
+        default_service_tier: "fast",
+        additional_speed_tiers: ["flex"],
+        prefer_websockets: true,
+        model_specialty: "cyber",
+        tool_mode: "code_mode",
+        multi_agent_version: "gpt-6.1-agent",
+        multi_agent_reasoning_effort: "high",
+        support_verbosity: true,
+        default_verbosity: "low",
+        apply_patch_tool_type: "freeform",
+        web_search_tool_type: "text_and_image",
+        default_reasoning_summary: "auto",
+        supports_reasoning_summary_parameter: false,
+        comp_hash: "abc123",
+        effective_context_window_percent: 92,
+        experimental_supported_tools: ["browser"],
+        supports_search_tool: true,
+        truncation_policy: { mode: "bytes", limit: 48_000 },
+      }]);
+
+      const info = getModelInfo("gpt-6.1");
+      expect(info).toBeDefined();
+      expect(info!.visibility).toBe("list");
+      expect(info!.priority).toBe(7);
+      expect(info!.supportedInApi).toBe(true);
+      expect(info!.shellType).toBe("unified_exec");
+      expect(info!.serviceTiers).toEqual([{ id: "fast", name: "Fast", description: "Low latency" }]);
+      expect(info!.defaultServiceTier).toBe("fast");
+      expect(info!.additionalSpeedTiers).toEqual(["flex"]);
+      expect(info!.preferWebsockets).toBe(true);
+      expect(info!.modelSpecialty).toBe("cyber");
+      expect(info!.toolMode).toBe("code_mode");
+      expect(info!.multiAgentVersion).toBe("gpt-6.1-agent");
+      expect(info!.multiAgentReasoningEffort).toBe("high");
+      expect(info!.supportVerbosity).toBe(true);
+      expect(info!.defaultVerbosity).toBe("low");
+      expect(info!.applyPatchToolType).toBe("freeform");
+      expect(info!.webSearchToolType).toBe("text_and_image");
+      expect(info!.defaultReasoningSummary).toBe("auto");
+      expect(info!.supportsReasoningSummaryParameter).toBe(false);
+      expect(info!.compHash).toBe("abc123");
+      expect(info!.effectiveContextWindowPercent).toBe(92);
+      expect(info!.experimentalSupportedTools).toEqual(["browser"]);
+      expect(info!.supportsSearchTool).toBe(true);
+      expect(info!.truncationPolicyLimit).toBe(48_000);
+      expect(info!.truncationPolicyMode).toBe("bytes");
+    });
+
+    it("normalizes object upgrade payloads to a slug plus upgrade info", () => {
+      loadStaticModels("/tmp/test-config");
+      applyBackendModels([{
+        slug: "gpt-5.3-codex",
+        display_name: "Codex",
+        upgrade: { model: "gpt-6.1", migration_markdown: "# Move", retirement_at: "2027-01-01T00:00:00Z" },
+      }]);
+
+      const info = getModelInfo("gpt-5.3-codex");
+      expect(info!.upgrade).toBe("gpt-6.1");
+      expect(info!.upgradeInfo).toEqual({
+        model: "gpt-6.1",
+        migration_markdown: "# Move",
+        retirement_at: "2027-01-01T00:00:00Z",
+      });
+    });
+
+    it("keeps string upgrade payloads and leaves absent rich fields undefined", () => {
+      loadStaticModels("/tmp/test-config");
+      applyBackendModels([{
+        slug: "gpt-5.4",
+        display_name: "GPT-5.4",
+        upgrade: "gpt-6.1",
+      }]);
+
+      const info = getModelInfo("gpt-5.4");
+      expect(info!.upgrade).toBe("gpt-6.1");
+      expect(info!.upgradeInfo).toBeUndefined();
+      expect(info!.visibility).toBeUndefined();
+      expect(info!.serviceTiers).toBeUndefined();
+      expect(info!.effectiveContextWindowPercent).toBeUndefined();
+    });
+  });
+
   describe("applyBackendModelsForPlan — model removal", () => {
     it("removes old plan record when model is no longer in backend list", () => {
       loadStaticModels("/tmp/test-config");
