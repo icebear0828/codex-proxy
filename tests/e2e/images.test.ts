@@ -608,6 +608,8 @@ describe("POST /v1/images/edits", () => {
       { model: "gpt-image-2", prompt: "p", images: [{ image_url: "data:image/png;base64,AAAA" }], output_compression: 80 },
       "output_compression must be 100 when output_format is png",
     ],
+    ["unsupported mask", { ...editBody, mask: "data:image/png;base64,AAAA" }, "mask"],
+    ["unsupported response format", { ...editBody, response_format: "url" }, "response_format"],
   ])("rejects an invalid edits request before upstream: %s", async (_label, body, needle) => {
     const res = await editsRequest(body);
 

@@ -84,6 +84,8 @@ export const ImageEditRequestSchema = z.object({
   moderation: z.enum(IMAGE_MODERATION_LEVELS).optional(),
   partial_images: z.number().int().min(0).max(3).optional(),
   n: z.literal(1).optional(),
+  mask: z.never().optional(),
+  response_format: z.literal("b64_json").optional(),
 }).passthrough();
 
 export type ImageEditRequest = z.infer<typeof ImageEditRequestSchema>;
