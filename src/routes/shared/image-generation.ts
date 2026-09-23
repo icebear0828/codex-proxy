@@ -60,6 +60,122 @@ export const ImageGenerationRequestSchema = z.object({
 
 export type ImageGenerationRequest = z.infer<typeof ImageGenerationRequestSchema>;
 
+/**
+ * Images edits 的最小兼容请求（Codex JSON 协议：`images[]` 携带 data:/https
+ * 引用，见 Codex CLI codex-api endpoint/images.rs 的 ImageEditRequest）。
+ * 未知字段保留在解析结果中但不会转发。
+ */
+export const ImageEditRequestSchema = z.object({
+  model: z.string().trim().min(1),
+  prompt: z.string().trim().min(1).max(32768),
+  images: z.array(
+    z.object({
+      image_url: z.string().trim().min(1).refine(
+        (url) => url.startsWith("data:") || url.startsWith("http://") || url.startsWith("https://"),
+        { message: "image_url must be a data: or http(s) URL" },
+      ),
+    }),
+  ).min(1).max(16),
+  size: z.enum(IMAGE_SIZES).optional(),
+  quality: z.string().trim().min(1).optional(),
+  background: z.enum(IMAGE_BACKGROUNDS).optional(),
+  output_format: z.enum(IMAGE_OUTPUT_FORMATS).optional(),
+  output_compression: z.number().int().min(0).max(100).optional(),
+  moderation: z.enum(IMAGE_MODERATION_LEVELS).optional(),
+  partial_images: z.number().int().min(0).max(3).optional(),
+  n: z.literal(1).optional(),
+}).passthrough();
+
+export type ImageEditRequest = z.infer<typeof ImageEditRequestSchema>;
+
+/**
+ * multipart edits 转换结果：转换后的 Codex JSON 协议体，或面向客户端的错误消息。
+ */
+export type MultipartEditsConversion =
+  | { ok: true; body: Record<string, unknown> }
+  | { ok: false; error: string };
+
+/**
+ * 将 OpenAI Images edits 的 multipart/form-data 转换为 Codex JSON edits 协议体
+ * （`images[]` 携带 data: URL），随后可走 API-key 透传或账号模式 Edit mode 转换。
+ *
+ * 仅接受标准字段；`mask` 上游后端不支持，显式拒绝以免客户端误以为蒙版生效；
+ * `response_format` 仅接受 `b64_json`（本端点恒返回 b64）。文件整缓冲 + base64
+ * 编码由调用方的运行时内存约束兜底。
+ */
+export async function convertMultipartEditsBody(form: FormData): Promise<MultipartEditsConversion> {
+  const files = [...form.getAll("image[]"), ...form.getAll("image")]
+    .filter((v): v is File => v instanceof File);
+  if (files.length === 0) return { ok: false, error: "image file is required" };
+  if (files.length > 16) return { ok: false, error: "at most 16 image files are supported" };
+
+  if ([...form.getAll("mask")].some((v) => v instanceof File)) {
+    return { ok: false, error: "mask is not supported by the Codex image editing backend" };
+  }
+
+  const responseFormat = form.get("response_format");
+  if (typeof responseFormat === "string" && responseFormat.trim() && responseFormat.trim() !== "b64_json") {
+    return { ok: false, error: "only response_format=b64_json is supported" };
+  }
+
+  const prompt = form.get("prompt");
+  if (typeof prompt !== "string" || !prompt.trim()) return { ok: false, error: "prompt is required" };
+  const model = form.get("model");
+  if (typeof model !== "string" || !model.trim()) return { ok: false, error: "model is required" };
+
+  const scalar = (name: string): string | undefined => {
+    const value = form.get(name);
+    return typeof value === "string" && value.trim() ? value.trim() : undefined;
+  };
+  const numeric = (name: string): number | undefined => {
+    const value = scalar(name);
+    if (value === undefined) return undefined;
+    const parsed = Number(value);
+    // NaN 保持可序列化判定失败：Number.isFinite 检查后原样传给 schema 拒绝。
+    return Number.isNaN(parsed) ? Number.NaN : parsed;
+  };
+
+  const body: Record<string, unknown> = {
+    model: model.trim(),
+    prompt: prompt.trim(),
+    images: await Promise.all(files.map(async (file) => ({
+      image_url: `data:${file.type || "image/png"};base64,${Buffer.from(await file.arrayBuffer()).toString("base64")}`,
+    }))),
+  };
+  const size = scalar("size");
+  if (size) body.size = size;
+  const quality = scalar("quality");
+  if (quality) body.quality = quality;
+  const background = scalar("background");
+  if (background) body.background = background;
+  const outputFormat = scalar("output_format");
+  if (outputFormat) body.output_format = outputFormat;
+  const outputCompression = numeric("output_compression");
+  if (outputCompression !== undefined) body.output_compression = outputCompression;
+  const moderation = scalar("moderation");
+  if (moderation) body.moderation = moderation;
+  const partialImages = numeric("partial_images");
+  if (partialImages !== undefined) body.partial_images = partialImages;
+  const n = numeric("n");
+  if (n !== undefined) body.n = n;
+
+  return { ok: true, body };
+}
+
+/**
+ * Images 共用校验：PNG 输出只允许 100 压缩（Codex image_generation 工具约束）。
+ * 违规时返回错误消息文本，合法时返回 null。
+ */
+export function validateImagePngCompression(
+  outputFormat: "png" | "jpeg" | "webp" | undefined,
+  outputCompression: number | undefined,
+): string | null {
+  if ((outputFormat ?? "png") === "png" && outputCompression !== undefined && outputCompression !== 100) {
+    return "output_compression must be 100 when output_format is png";
+  }
+  return null;
+}
+
 export const IMAGE_GENERATION_FAILED_CODE = "image_generation_failed";
 export const IMAGE_GENERATION_EMPTY_RESULT_MESSAGE =
   "Upstream returned no image_generation_call.result";
@@ -100,6 +216,48 @@ export function buildImageGenerationCodexRequest(
     input: [{
       role: "user",
       content: [{ type: "input_text", text: request.prompt }],
+    }],
+    stream: true,
+    store: false,
+    tools: [imageTool],
+    ...(process.env.CODEX_PROXY_DISABLE_WS !== "1" ? { useWebSocket: true } : {}),
+  };
+}
+
+/**
+ * 将 Images edits 请求转换为 Codex Responses 请求（Edit mode）：参考图以
+ * `input_image` 内容块进入 user 消息（data: 与 https URL 均可），由
+ * image_generation 工具执行编辑。`hostModel` 语义同 buildImageGenerationCodexRequest。
+ */
+export function buildImageEditCodexRequest(
+  request: ImageEditRequest,
+  hostModel: string,
+): CodexResponsesRequest {
+  const imageTool: Record<string, unknown> = {
+    type: "image_generation",
+    size: request.size ?? "auto",
+    output_format: request.output_format ?? "png",
+  };
+  if (request.output_compression !== undefined) {
+    imageTool.output_compression = request.output_compression;
+  }
+  if (request.background !== undefined) imageTool.background = request.background;
+  if (request.moderation !== undefined) imageTool.moderation = request.moderation;
+  if (request.partial_images !== undefined) imageTool.partial_images = request.partial_images;
+  if (request.quality !== undefined) imageTool.quality = request.quality;
+
+  return {
+    model: hostModel,
+    instructions: "",
+    input: [{
+      role: "user",
+      content: [
+        { type: "input_text", text: request.prompt },
+        ...request.images.map((image) => ({
+          type: "input_image" as const,
+          image_url: image.image_url,
+        })),
+      ],
     }],
     stream: true,
     store: false,
