@@ -12,6 +12,7 @@ import {
   type CodexModelInfo,
 } from "../models/model-store.js";
 import { triggerImmediateRefresh } from "../models/model-fetcher.js";
+import { toCodexCatalogEntry } from "../models/codex-catalog.js";
 import { getConfig } from "../config.js";
 import type { ApiKeyPool } from "../auth/api-key-pool.js";
 import type { ClientKeyPool } from "../auth/client-key-pool.js";
@@ -119,6 +120,22 @@ function toRuntimeOpenAIModel(id: string): OpenAIModel {
   };
 }
 
+/** Minimal catalog entry for runtime-discovered models with no backend metadata. */
+function toRuntimeCatalogModel(id: string): CodexModelInfo {
+  return {
+    id,
+    displayName: id,
+    description: "",
+    isDefault: false,
+    supportedReasoningEfforts: [{ reasoningEffort: "medium", description: "Default" }],
+    defaultReasoningEffort: "medium",
+    inputModalities: ["text"],
+    supportsPersonality: false,
+    upgrade: null,
+    source: "runtime",
+  };
+}
+
 export function createModelRoutes(apiKeyPool?: ApiKeyPool, clientKeyPool?: ClientKeyPool): Hono {
   const app = new Hono();
 
@@ -174,6 +191,29 @@ export function createModelRoutes(apiKeyPool?: ApiKeyPool, clientKeyPool?: Clien
         outputModalities: m.outputModalities ?? ["text"],
       })),
     );
+  });
+
+  // Codex-native rich catalog ({models: [ModelInfo]}) for downstream Codex CLI
+  // `model_catalog_url`. Two segments, so :modelId can never shadow it.
+  app.get("/v1/models/catalog/codex", (c) => {
+    const catalog = getModelCatalog();
+    const modelsById = new Map<string, CodexModelInfo>();
+    for (const model of catalog) {
+      modelsById.set(model.id, model);
+    }
+    for (const modelId of apiKeyPool?.getActiveModels() ?? []) {
+      if (!modelsById.has(modelId)) {
+        modelsById.set(modelId, toRuntimeCatalogModel(modelId));
+      }
+    }
+
+    let data = [...modelsById.values()];
+    const allowed = getClientKeyAllowedModels(c);
+    if (allowed) {
+      data = data.filter((m) => allowed.includes(m.id));
+    }
+
+    return c.json({ models: data.map(toCodexCatalogEntry) });
   });
 
   app.get("/v1/models/:modelId", (c) => {

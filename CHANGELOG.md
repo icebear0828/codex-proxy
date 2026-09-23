@@ -8,7 +8,13 @@
 
 ## [Unreleased]
 
-> 暂无已记录的变更。
+### Added
+
+- 模型列表支持 Codex 后端富元数据：运行时抓取的模型条目现在保留此前被丢弃的后端字段（`visibility`、`priority`、`supported_in_api`、`shell_type`、`service_tiers` / `default_service_tier`、`prefer_websockets`、`model_specialty`、`tool_mode`、verbosity 支持、`effective_context_window_percent`、truncation 策略 mode 等），并适配当前后端的对象形 `upgrade`（归一化为升级目标 slug + 完整迁移信息）。`/v1/models` 与 `/v1/models/:modelId` 在 OpenAI 标准字段之上以 snake_case 超集附带这些元数据（含 `display_name`、`description`、`supported_reasoning_efforts`、输入/输出模态），OpenAI 客户端忽略未知字段不受影响；Dashboard 的 `/v1/models/catalog` 与 `/v1/models/:modelId/info` 自动获得新字段。新增 `runtime` 模型来源标记运行时发现的 API Key 模型。（`src/models/model-store.ts`、`src/routes/models.ts`、`src/types/openai.ts`）
+
+- 新增 Codex CLI 富目录端点 `GET /v1/models/catalog/codex`：返回下游 Codex CLI 可原生解码的 `{models: [ModelInfo]}` 形状（必填键 `slug` / `display_name` / `supported_reasoning_levels` / `shell_type` / `visibility` / `supported_in_api` / `priority` / `support_verbosity` / `truncation_policy` 恒有值，后端未上报的字段按 CLI fallback 语义补默认值）。把 provider 配置的 `model_catalog_url` 指向该端点即可让下游 Codex CLI 获得经代理的全量模型元数据；端点遵循 client key `allowed_models` 过滤，并并入静态目录与运行时发现的模型。（`src/models/codex-catalog.ts`、`src/routes/models.ts`、`README.md`）
+
+> 暂无其他已记录的变更。
 
 ## [v2.1.x](https://github.com/icebear0828/codex-proxy/releases?q=2.1) - 2026-09-01 至 2026-09-07
 

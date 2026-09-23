@@ -358,6 +358,16 @@ curl http://localhost:8080/v1/chat/completions \
 > **前端模型选择 ≠ 配置文件**：Dashboard 中切换模型只影响前端展示和 API 示例中的模型名，**不会修改** `config/default.yaml` 或 `data/local.yaml` 中的 `model.default`。实际使用哪个模型取决于客户端请求中的 `model` 字段（如 Cursor、Claude Code 等自行指定），配置文件中的 `model.default` 仅在客户端未指定模型时作为兜底。
 >
 > **Max token 说明**：上表跟随当前 `config/models.yaml` 和 Codex runtime `/v1/models/catalog` 元数据；`—` 表示当前目录未返回该字段，不代表模型不可用。运行时从 Codex 后端拉到的模型信息会覆盖静态值，并保留 `contextWindow`、`maxContextWindow`、`maxOutputTokens`、`truncationPolicyLimit`。请求体里的 `context_window` / `max_context_window` / `truncation_policy` / `max_output_tokens` 都不是可用开关；直接转发给 Codex 原生接口会返回 `400 Unsupported parameter`。
+>
+> **富元数据**：`/v1/models` 与 `/v1/models/:modelId` 在 OpenAI 标准字段之外附带 Codex 后端返回的富元数据（`display_name`、`description`、`supported_reasoning_efforts`、`input_modalities`、`service_tiers`、`visibility`、`priority` 等，字段缺失时不输出）。OpenAI 客户端会忽略未知字段，行为不受影响。若下游 Codex CLI 需要完整模型目录，可在 provider 配置中把 `model_catalog_url` 指向 `/v1/models/catalog/codex`，该端点返回 CLI 原生解码的 `{models: [ModelInfo]}` 富格式：
+>
+> ```toml
+> [model_providers.codex-proxy]
+> name = "codex-proxy"
+> base_url = "http://127.0.0.1:8080/v1"
+> wire_api = "responses"
+> model_catalog_url = "http://127.0.0.1:8080/v1/models/catalog/codex"
+> ```
 
 ### 🖼️ 图像生成
 
@@ -1057,8 +1067,9 @@ curl -N http://localhost:8080/official-agent/threads/{threadId}/turns \
 | `/v1/images/generations` | POST | Codex JSON 图片生成直通（`codex-responses` API-key wire） |
 | `/v1/images/edits` | POST | Codex JSON 图片编辑直通（`codex-responses` API-key wire） |
 | `/v1/messages` | POST | Anthropic 格式聊天补全 |
-| `/v1/models` | GET | 可用模型列表 |
+| `/v1/models` | GET | 可用模型列表（含 Codex 后端富元数据：描述、推理档位、模态、service tiers 等） |
 | `/v1/models/catalog` | GET | Dashboard 使用的完整模型目录 |
+| `/v1/models/catalog/codex` | GET | Codex CLI `model_catalog_url` 兼容的富目录（`{models: [ModelInfo]}`） |
 | `/v1/models/:modelId/info` | GET | 单个模型的推理等级等详情 |
 | `/v1beta/models` | GET | Gemini 格式模型列表 |
 | `/v1beta/models/:modelAction` | POST | Gemini `generateContent` / `streamGenerateContent` |

@@ -8,6 +8,8 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { createModelRoutes } from "@src/routes/models.js";
 import { applyBackendModelsForPlan, loadStaticModels, resetModelStoreForTesting } from "@src/models/model-store.js";
+import type { ClientKeyPool } from "@src/auth/client-key-pool.js";
+import type { ApiKeyPool } from "@src/auth/api-key-pool.js";
 
 const mockConfig = {
   model: {
@@ -161,5 +163,117 @@ describe("GET /v1/models — rich metadata", () => {
     expect(model.display_name).toBe("GPT-5.4");
     expect(model.supported_reasoning_efforts).toHaveLength(2);
     expect(model.service_tiers).toHaveLength(1);
+  });
+});
+
+describe("GET /v1/models/catalog/codex", () => {
+  beforeEach(() => {
+    resetModelStoreForTesting();
+    loadStaticModels();
+    applyBackendModelsForPlan("plus", BACKEND_MODELS);
+  });
+
+  it("emits ModelsResponse shape with ModelInfo required keys", async () => {
+    const app = createModelRoutes();
+    const res = await app.request("/v1/models/catalog/codex");
+    expect(res.status).toBe(200);
+
+    const body = (await res.json()) as { models: Array<Record<string, unknown>> };
+    expect(Array.isArray(body.models)).toBe(true);
+    expect(body.models.length).toBeGreaterThan(0);
+
+    for (const entry of body.models) {
+      // Fields the Codex CLI decoder requires (no serde default, non-Option).
+      expect(typeof entry.slug).toBe("string");
+      expect(typeof entry.display_name).toBe("string");
+      expect(Array.isArray(entry.supported_reasoning_levels)).toBe(true);
+      expect(typeof entry.shell_type).toBe("string");
+      expect(typeof entry.visibility).toBe("string");
+      expect(typeof entry.supported_in_api).toBe("boolean");
+      expect(typeof entry.priority).toBe("number");
+      expect(typeof entry.support_verbosity).toBe("boolean");
+      expect(entry.truncation_policy).toMatchObject({
+        mode: expect.any(String),
+        limit: expect.any(Number),
+      });
+    }
+  });
+
+  it("passes backend metadata through and defaults the rest", async () => {
+    const app = createModelRoutes();
+    const res = await app.request("/v1/models/catalog/codex");
+    const body = (await res.json()) as { models: Array<Record<string, unknown>> };
+
+    const gpt54 = body.models.find((m) => m.slug === "gpt-5.4");
+    expect(gpt54).toMatchObject({
+      slug: "gpt-5.4",
+      display_name: "GPT-5.4",
+      default_reasoning_level: "high",
+      supported_reasoning_levels: [
+        { effort: "low", description: "Fast" },
+        { effort: "high", description: "Deep" },
+      ],
+      visibility: "list",
+      priority: 3,
+      supported_in_api: true,
+      truncation_policy: { mode: "tokens", limit: 48_000 },
+      effective_context_window_percent: 92,
+      context_window: 400_000,
+      upgrade: { model: "gpt-6.1", migration_markdown: "# Move", retirement_at: "2027-01-01T00:00:00Z" },
+    });
+
+    const codex = body.models.find((m) => m.slug === "gpt-5.3-codex");
+    expect(codex).toMatchObject({
+      slug: "gpt-5.3-codex",
+      visibility: "list",
+      supported_in_api: true,
+      truncation_policy: { mode: "bytes", limit: 10_000 },
+      effective_context_window_percent: 95,
+      context_window: null,
+      upgrade: null,
+    });
+  });
+
+  it("includes static and runtime models with defaults", async () => {
+    const mockApiKeyPool = {
+      getActiveModels: vi.fn(() => ["gpt-9999-runtime"]),
+      hasActiveModel: vi.fn(() => true),
+    } as unknown as ApiKeyPool;
+    const app = createModelRoutes(mockApiKeyPool);
+    const res = await app.request("/v1/models/catalog/codex");
+    const body = (await res.json()) as { models: Array<Record<string, unknown>> };
+
+    // Static built-in metadata (KNOWN_OFFICIAL_MODELS) is part of the catalog.
+    const astra = body.models.find((m) => m.slug === "gpt-6-astra");
+    expect(astra).toBeDefined();
+    expect(astra!.display_name).toBe("GPT-6 Astra");
+    expect(astra!.context_window).toBe(1_050_000);
+
+    const runtime = body.models.find((m) => m.slug === "gpt-9999-runtime");
+    expect(runtime).toBeDefined();
+    expect(runtime!.display_name).toBe("gpt-9999-runtime");
+    expect(runtime!.visibility).toBe("list");
+    expect(runtime!.supported_reasoning_levels).toEqual([
+      { effort: "medium", description: "Default" },
+    ]);
+  });
+
+  it("honors client key allowed_models filtering", async () => {
+    const mockClientKeyPool = {
+      getByKey: vi.fn((key: string) => {
+        if (key === "test-client-key") {
+          return { allowed_models: ["gpt-5.4"] };
+        }
+        return null;
+      }),
+    } as unknown as ClientKeyPool;
+    const app = createModelRoutes(undefined, mockClientKeyPool);
+
+    const res = await app.request("/v1/models/catalog/codex", {
+      headers: { Authorization: "Bearer test-client-key" },
+    });
+    const body = (await res.json()) as { models: Array<Record<string, unknown>> };
+
+    expect(body.models.map((m) => m.slug)).toEqual(["gpt-5.4"]);
   });
 });
