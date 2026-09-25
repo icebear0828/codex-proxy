@@ -286,6 +286,13 @@ jobs:
         run: |
           set -eu
           VERSION="${{ needs.package.outputs.version }}"
+          # Publishing needs the npm org plus NPM_TOKEN; until the token is
+          # configured, keep the dispatched run green and skip — build + smoke
+          # above still prove the tag, and the tarballs land in the artifact.
+          if [[ -z "$NODE_AUTH_TOKEN" ]]; then
+            echo "::notice::NPM_TOKEN is not configured — skipping npm publish"
+            exit 0
+          fi
           # npm publishes under the `latest` dist-tag by default, so a
           # vX.Y.Z-beta run would hand plain `npm i -g` users the beta (and
           # a later beta would steal it back from the stable). Semver

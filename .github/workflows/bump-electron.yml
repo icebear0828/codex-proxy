@@ -152,6 +152,19 @@ jobs:
         # the ghcr.io vX.Y.Z version image (branch pushes are latest-only).
         run: gh workflow run docker-publish.yml --ref master -f tag="$NEW_TAG"
 
+      - name: Trigger npm publish
+        # npm-publish.yml has the same problem as docker-publish.yml above:
+        # a bot-pushed tag never fires its own `push: tags: v*` trigger, so
+        # dispatch it against the tag ref explicitly — its version step
+        # derives every package version from ${GITHUB_REF_NAME#v} on tag
+        # runs. An unconfigured NPM_TOKEN keeps the dispatched run green
+        # (the publish job skips itself; build + smoke still execute).
+        if: steps.bump.outputs.new_tag
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          NEW_TAG: ${{ steps.bump.outputs.new_tag }}
+        run: gh workflow run npm-publish.yml --ref "$NEW_TAG"
+
       - name: Sync version to dev (after new stable tag)
         # Only runs when a new tag was actually created. The version is written
         # back to dev (not master): master's package.json always flows up from
