@@ -7,7 +7,8 @@
 
 import type { StatusCode } from "hono/utils/http-status";
 import { stream } from "hono/streaming";
-import { CodexApiError } from "../../proxy/codex-api.js";
+import { CodexApiError, PreviousResponseWebSocketError } from "../../proxy/codex-api.js";
+import type { UpstreamAdapter } from "../../proxy/upstream-adapter.js";
 import { randomUUID } from "crypto";
 import { enqueueLogEntry, updateLogEntry } from "../../logs/entry.js";
 import { calculateLogMetrics } from "../../logs/metrics.js";
@@ -15,14 +16,67 @@ import type { UsageInfo } from "../../translation/codex-event-extractor.js";
 import { recordStreamCloseEvent } from "../../logs/stream-close-event.js";
 import { streamResponse } from "./response-processor.js";
 import { toErrorStatus } from "./proxy-error-handler.js";
-import type { HandleDirectRequestOptions } from "./proxy-handler-types.js";
+import type { HandleDirectRequestOptions, ProxyRequest } from "./proxy-handler-types.js";
 import { canReturnStreamError, streamErrorResponse } from "./stream-error-response.js";
 import { recordClientKeyUsage } from "./proxy-handler-utils.js";
+
+/** Transport-level failures (status 0) get bounded retries: weak networks
+ *  produce transient connection errors routinely, and the direct path has no
+ *  account-rotation fallback to absorb them. Bounded small — a persistent
+ *  outage must fail fast, and only pre-response failures are replayed. */
+const TRANSPORT_RETRY_MAX = 2;
+const TRANSPORT_RETRY_BASE_MS = 250;
+
+function isTransportFailure(err: unknown): boolean {
+  // Continuity failures also carry status 0 but are managed by dedicated
+  // recovery paths — they must not consume the transport retry budget.
+  return err instanceof CodexApiError
+    && err.status === 0
+    && !(err instanceof PreviousResponseWebSocketError);
+}
+
+/**
+ * Create the upstream response with bounded transport retry. A status-0
+ * CodexApiError means the request never completed at the transport layer
+ * (connect refused/reset, DNS, connection closed before response) — replaying
+ * the full request is safe and matches the account path's cross-account
+ * replay semantics.
+ */
+async function createResponseWithTransportRetry(
+  upstream: UpstreamAdapter,
+  req: ProxyRequest,
+  signal: AbortSignal,
+): Promise<Response> {
+  for (let attempt = 0; ; attempt++) {
+    try {
+      return await upstream.createResponse(req.codexRequest, signal);
+    } catch (err) {
+      if (!isTransportFailure(err)
+        || attempt >= TRANSPORT_RETRY_MAX
+        || signal.aborted) {
+        throw err;
+      }
+      const delayMs = TRANSPORT_RETRY_BASE_MS * 2 ** attempt;
+      const msg = err instanceof Error ? err.message : String(err);
+      console.warn(
+        `[direct:${upstream.tag}] upstream transport failure, `
+        + `retry ${attempt + 1}/${TRANSPORT_RETRY_MAX} in ${delayMs}ms: ${msg.slice(0, 160)}`,
+      );
+      await new Promise((r) => setTimeout(r, delayMs));
+    }
+  }
+}
 
 export async function handleDirectRequest(options: HandleDirectRequestOptions): Promise<Response> {
   const { c, upstream, req, fmt } = options;
   const abortController = new AbortController();
-  c.req.raw.signal.addEventListener("abort", () => abortController.abort(), { once: true });
+  // addEventListener never fires for an already-aborted signal — a client
+  // that aborted before reaching the handler must still stop work.
+  if (c.req.raw.signal.aborted) {
+    abortController.abort();
+  } else {
+    c.req.raw.signal.addEventListener("abort", () => abortController.abort(), { once: true });
+  }
 
   const requestId = c.get("requestId") ?? randomUUID().slice(0, 8);
   const startMs = Date.now();
@@ -33,7 +87,7 @@ export async function handleDirectRequest(options: HandleDirectRequestOptions): 
   const accountLog = isFallback ? "fallback" : undefined;
   let rawResponse: Response;
   try {
-    rawResponse = await upstream.createResponse(req.codexRequest, abortController.signal);
+    rawResponse = await createResponseWithTransportRetry(upstream, req, abortController.signal);
     enqueueLogEntry({
       requestId,
       direction: "egress",
