@@ -183,6 +183,16 @@ export const ConfigSchema = z.object({
     proxy_url: z.string().nullable().default(null),
     force_http11: z.boolean().default(false),
     health_check_url: z.string().default("https://api.ipify.org?format=json"),
+    /** Upstream streaming no-progress watchdog (ms). Covers both phases:
+     *  waiting for response headers (a pre-header hang rejects after this
+     *  budget and the upstream send is cancelled) and gaps between body
+     *  bytes once the body has started (treated as a dead half-open
+     *  connection). The body clock starts at the first byte, so legitimate
+     *  pre-first-token thinking pauses are never cut. 0 disables. Large
+     *  single SSE events (e.g. 10-15MB image_generation_call payloads) over
+     *  slow links may need a higher value: 15MB at 128KB/s spends ~2 minutes
+     *  on the wire. */
+    stream_idle_timeout_ms: z.number().int().min(0).max(600000).default(120000),
   }).default({}),
   quota: z.object({
     refresh_interval_minutes: z.number().min(0).default(5),

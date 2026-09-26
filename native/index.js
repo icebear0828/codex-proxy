@@ -310,8 +310,9 @@ if (!nativeBinding) {
   throw new Error(`Failed to load native binding`)
 }
 
-const { httpGet, httpPost, httpPostStream } = nativeBinding
+const { httpGet, httpPost, httpCancel, httpPostStream } = nativeBinding
 
 module.exports.httpGet = httpGet
 module.exports.httpPost = httpPost
+module.exports.httpCancel = httpCancel
 module.exports.httpPostStream = httpPostStream

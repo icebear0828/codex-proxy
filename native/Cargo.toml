@@ -21,7 +21,7 @@ reqwest = { version = "0.12.28", default-features = false, features = [
 ] }
 # Pin rustls to match real Codex Desktop (0.23.36, not 0.23.37)
 rustls = "=0.23.36"
-tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync"] }
 futures-util = "0.3"
 
 [build-dependencies]

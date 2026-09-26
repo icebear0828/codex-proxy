@@ -20,9 +20,16 @@ export interface StreamMeta {
   setCookieHeaders: Array<string>
 }
 /**
+ * Abort an in-flight streaming POST in either phase: before response headers
+ * (cancels the send) or during body streaming (stops the chunk pump and drops
+ * the upstream connection). Returns false when no request with that id is
+ * registered (already completed or unknown id).
+ */
+export declare function httpCancel(requestId: string): boolean
+/**
  * Streaming POST: returns metadata immediately, pushes chunks via callback.
  *
  * onChunk(Buffer)  — data chunk
  * onChunk(null)    — stream ended (clean EOF or after error)
  */
-export declare function httpPostStream(url: string, headers: Record<string, string>, body: string, onChunk: (arg: Buffer | undefined | null) => any, proxyUrl?: string | undefined | null, forceHttp11?: boolean | undefined | null): Promise<unknown>
+export declare function httpPostStream(url: string, headers: Record<string, string>, body: string, onChunk: (arg: Buffer | undefined | null) => any, proxyUrl?: string | undefined | null, forceHttp11?: boolean | undefined | null, requestId?: string | undefined | null): Promise<unknown>
