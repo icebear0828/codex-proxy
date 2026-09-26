@@ -1,0 +1,98 @@
+name: Native addon CI matrix
+
+# Multi-platform validation for the codex-tls addon (including the
+# httpCancel surface). Builds the native addon per platform, runs an ABI
+# smoke test against the fresh artifact, and uploads it.
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-and-smoke:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+            artifact: codex-tls.win32-x64-msvc.node
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-musl
+            artifact: codex-tls.linux-x64-musl.node
+            alpine: true
+          - os: macos-14
+            target: aarch64-apple-darwin
+            artifact: codex-tls.darwin-arm64.node
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # ── Alpine (musl) leg: build + smoke inside the napi-rs container ──
+      - name: Build and smoke in Alpine
+        if: matrix.alpine
+        shell: bash
+        run: |
+          docker run --rm \
+            -v "$GITHUB_WORKSPACE:/workspace" \
+            -w /workspace \
+            ghcr.io/napi-rs/napi-rs/nodejs-rust:lts-alpine \
+            sh -lc 'set -eu; apk add --no-cache build-base linux-headers; rustup toolchain install 1.88.0 --profile minimal --no-self-update; rustup target add x86_64-unknown-linux-musl --toolchain 1.88.0; export RUSTUP_TOOLCHAIN=1.88.0; export CC_x86_64_unknown_linux_musl=gcc; export CXX_x86_64_unknown_linux_musl=g++; export AWS_LC_SYS_CC_x86_64_unknown_linux_musl=gcc; export AWS_LC_SYS_CXX_x86_64_unknown_linux_musl=g++; cd native; npm ci --include=dev --ignore-scripts --no-audit --no-fund; npx napi build --platform --release --target x86_64-unknown-linux-musl; cd ..; node scripts/native/smoke-addon.mjs'
+
+      - name: Inspect ELF dependencies on the runner
+        if: matrix.alpine
+        shell: bash
+        run: |
+          addon="native/codex-tls.linux-x64-musl.node"
+          test -f "$addon"
+          file_output="$(file "$addon")"
+          echo "$file_output"
+          echo "$file_output" | grep -Eq 'ELF 64-bit.*x86-64'
+          if readelf -d "$addon" | grep -Eq 'libc\.so\.6|ld-linux-x86-64\.so\.2'; then
+            echo "::error::musl addon unexpectedly depends on glibc"
+            exit 1
+          fi
+          if readelf --version-info "$addon" 2>/dev/null | grep -q 'GLIBC_'; then
+            echo "::error::musl addon contains a GLIBC symbol requirement"
+            exit 1
+          fi
+
+      # ── Windows (msvc) leg ──
+      - name: Build (windows msvc)
+        if: runner.os == 'Windows'
+        shell: bash
+        run: |
+          rustup toolchain install 1.88.0 --profile minimal --no-self-update
+          rustup default 1.88.0
+          cd native
+          npm ci --include=dev --ignore-scripts --no-audit --no-fund
+          npx napi build --platform --release
+
+      # ── macOS (arm64) leg ──
+      - name: Build (macos arm64)
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          rustup toolchain install 1.88.0 --profile minimal --no-self-update
+          rustup default 1.88.0
+          cd native
+          npm ci --include=dev --ignore-scripts --no-audit --no-fund
+          npx napi build --platform --release --target aarch64-apple-darwin
+
+      - name: Smoke test fresh addon
+        if: ${{ !matrix.alpine }}
+        shell: bash
+        run: node scripts/native/smoke-addon.mjs
+
+      - name: Upload addon
+        uses: actions/upload-artifact@v4
+        with:
+          name: codex-tls-${{ matrix.artifact }}
+          path: native/${{ matrix.artifact }}
+          if-no-files-found: error
+          retention-days: 3

@@ -8,7 +8,11 @@
 
 ## [Unreleased]
 
-> 暂无已记录的变更。
+### Added
+
+- 上游传输弱网韧性三件套（状态码 0 重试、流空闲看门狗、原生层请求取消）：其一,上游建流阶段的状态码 0 传输失败（连接被重置/拒绝等）现在按指数退避自动重试（默认 2 次,客户端断开即停止,`PreviousResponseWebSocketError` 续链错误不适用）,重试耗尽后以 502 干净报错,不再直接把传输失败当作"无可用账号";其二,新增 `tls.stream_idle_timeout_ms`（默认 120s,0 关闭）上游无进度看门狗,同时覆盖两阶段——响应 header 迟迟不到（预 header 挂起,超时后取消上游 send 并按可重试传输失败处理）与 body 字节间静默（首个 body 字节起计时,首 token 前的合法思考停顿不会被误杀）,触发后按流提前断开暴露给客户端并归因日志;其三,rustls 原生层新增 inflight 注册表与 `httpCancel(requestId)` 绑定（tokio watch 通道贯穿 header 与 body 两阶段）,看门狗触发/客户端断开/下游流取消/预 header 超时四条路径都会终止上游请求并回收连接,旧版 addon 无此导出时自动降级为原行为。netlab 弱网实验环境（`tests/netlab/`,mock 上游 + toxiproxy 注入 + 隔离 runtime）提供可重复场景与"连接回收"验收（mock `openConnections` 归零断言）,新增 `npm run netlab:baseline` 命令与 `scripts/native/smoke-addon.mjs` ABI 冒烟,`.github/workflows/native-ci-matrix.yml` 支持 fork 侧 win-msvc/linux-musl/darwin-arm64 三平台 addon 矩阵验证。（`src/tls/native-transport.ts`、`native/src/lib.rs`、`src/routes/shared/`、`src/config-schema.ts`、`config/default.yaml`、`tests/netlab/`、`scripts/native/`、`.github/workflows/native-ci-matrix.yml`）
+
+> 暂无其他已记录的变更。
 
 ## [v2.1.x](https://github.com/icebear0828/codex-proxy/releases?q=2.1) - 2026-09-01 至 2026-09-07
 
