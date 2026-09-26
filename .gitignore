@@ -29,3 +29,7 @@ stitch-screens/
 CLAUDE.md
 *.tar.gz
 stitch-output/
+tests/netlab/runtime/
+tests/netlab/reports/
+tests/netlab/.bin/
+native/codex-tls.win32-x64-gnu.node
