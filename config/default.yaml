@@ -4,13 +4,17 @@ api:
 client:
   profile: codex_cli
   originator: codex_cli_rs
-  app_version: 26.924.22138
-  build_number: "11645"
+  app_version: "26.903.71938"
+  build_number: "8576"
   platform: darwin
   arch: arm64
   chromium_version: "146"
+
 model:
   default: gpt-5.6-sol
+  # Codex host model for POST /v1/images/generations. The client-facing
+  # gpt-image-2 identifier only means "generate an image" — it is never
+  # sent upstream as the chat model itself.
   image_host_model: gpt-5.5
   default_reasoning_effort: null
   default_service_tier: null
@@ -20,6 +24,12 @@ model:
   inject_desktop_context: false
   suppress_desktop_directives: false
   allow_client_system_prompt_strategy: false
+  # How user-supplied system prompt is delivered to the Codex backend:
+  #   instructions     - default; user system goes into the top-level `instructions` field
+  #   developer_inline - user system is moved to input[0] as a developer-role message
+  #   system_inline    - user system is moved to input[0] as a system-role message
+  # The two `_inline` modes can bypass Codex backend's built-in base prompt prior
+  # in cases where the `instructions` field is overridden by server-injected context.
   system_prompt_strategy: instructions
 auth:
   jwt_token: null
@@ -52,6 +62,11 @@ tls:
   transport: native
   proxy_url: null
   force_http11: false
+  # Upstream streaming no-progress watchdog (ms). Surfaces half-open
+  # connections as premature stream closes instead of hanging forever.
+  # Covers both phases: waiting for response headers (pre-header hang) and
+  # gaps between body bytes (clock starts at the first body byte, so
+  # pre-first-token thinking pauses are never cut). 0 disables.
   stream_idle_timeout_ms: 120000
 quota:
   refresh_interval_minutes: 0
