@@ -305,7 +305,7 @@ describe("handleCodexApiError", () => {
     });
 
     it("clamps non-error status codes to 502", () => {
-      const err = new CodexApiError(0, "connection refused");
+      const err = new CodexApiError(700, "bogus status");
 
       const result = handleCodexApiError(err, pool as never, entryId, model, tag, false);
 
@@ -322,6 +322,52 @@ describe("handleCodexApiError", () => {
 
       expect(result.action).toBe("respond");
       expect(result).not.toHaveProperty("errorBody");
+    });
+  });
+
+  // ── transport failure (status 0) ──
+
+  describe("transport failure (status 0)", () => {
+    const err = new CodexApiError(0, "error sending request for url: connection reset");
+
+    it("retries once on first occurrence without mutating account state", () => {
+      const result = handleCodexApiError(err, pool as never, entryId, model, tag, false);
+
+      expect(result.action).toBe("retry");
+      expect(result).toMatchObject({
+        releaseBeforeRetry: true,
+        markTransportRetried: true,
+        status: 502,
+      });
+      // Transport failures never reach the application layer — the account
+      // must not be marked rate-limited / banned / quota-exhausted.
+      expect(pool.markStatus).not.toHaveBeenCalled();
+      expect(pool.applyRateLimit429).not.toHaveBeenCalled();
+      expect(pool.markRateLimited).not.toHaveBeenCalled();
+    });
+
+    it("responds 502 when the retry was already used", () => {
+      const result = handleCodexApiError(
+        err, pool as never, entryId, model, tag, false, undefined, false, true,
+      );
+
+      expect(result.action).toBe("respond");
+      expect(result.status).toBe(502);
+    });
+
+    it("does not consume the transport retry for transport-unrelated errors", () => {
+      // A 500 early server error is NOT a transport failure — its own
+      // once-only retry flag applies, and transportRetried stays untouched.
+      const early500 = new CodexApiError(500, JSON.stringify({
+        error: { code: "server_error" },
+      }));
+      const result = handleCodexApiError(
+        early500, pool as never, entryId, model, tag, false, undefined, false, false,
+      );
+
+      expect(result.action).toBe("retry");
+      expect(result).toHaveProperty("markEarlyServerErrorRetried", true);
+      expect(result).not.toHaveProperty("markTransportRetried");
     });
   });
 
