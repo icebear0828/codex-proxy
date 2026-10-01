@@ -27,6 +27,7 @@ export type ProxyFallbackAccountRetryResult =
 export interface PrepareProxyFallbackAccountRetryOptions {
   accountPool: AccountPool;
   model: string;
+  serviceTier?: string | null;
   triedEntryIds: string[];
   tag: string;
   decision: RetryDecision;
@@ -41,6 +42,7 @@ export function prepareProxyFallbackAccountRetry(
   const {
     accountPool,
     model,
+    serviceTier,
     triedEntryIds,
     tag,
     decision,
@@ -62,7 +64,7 @@ export function prepareProxyFallbackAccountRetry(
     return fallbackPlan;
   }
 
-  const retry = acquireAccount(accountPool, model, excludeEntryIds, tag);
+  const retry = acquireAccount(accountPool, model, excludeEntryIds, tag, undefined, serviceTier);
   if (!retry) {
     return {
       action: "respond",

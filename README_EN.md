@@ -705,6 +705,55 @@ When `quota.skip_exhausted: true`, the account pool skips accounts whose cached 
 
 The skip condition is currently `rate_limit.limit_reached === true`, `secondary_rate_limit.limit_reached === true`, or `code_review_rate_limit.limit_reached === true` in cached quota. If `used_percent` is merely near 100, for example 99%, but upstream has not set `limit_reached`, the proxy may still use that account. Once upstream returns 429, the account is marked `rate_limited`, enters backoff, and the request is retried with another available account. Secondary and code-review windows are removed from cache after their own `reset_at` passes, so an account is not skipped forever on stale quota data.
 
+### Account routing by service tier
+
+Use `auth.service_tier_routing` to reserve accounts for a service tier. The keys
+match the effective `service_tier` exactly; the proxy does not translate marketing
+names into tier IDs or infer entitlements. Confirm the upstream tier and account
+eligibility before configuring a rule.
+
+```yaml
+model:
+  service_tier_overrides:
+    gpt-6.1-sol: ultrafast
+auth:
+  service_tier_routing:
+    ultrafast:
+      account_ids: ["reserved-account-entry-id"]
+    default:
+      exclude_account_ids: ["reserved-account-entry-id"]
+    standard:
+      exclude_account_ids: ["reserved-account-entry-id"]
+```
+
+This example forces all OAuth GPT-6.1-Sol inference requests to `ultrafast`,
+even when a client requests another tier. It reserves one account for ultrafast and
+keeps requests using `default` or `standard` on the other accounts. The override
+uses the resolved model ID and does not change the model itself. Without a model
+override, client tier selection is preserved. Normal Astra requests should omit
+the tier unless the upstream explicitly supports the requested tier value. `account_ids` and `exclude_account_ids` use the proxy account entry
+`id` shown by `/auth/accounts`, not the upstream ChatGPT account ID or email.
+
+Alternatively, use `plan_types: ["pro"]` when the reported plan type uniquely
+identifies eligible accounts. Account plan metadata may not distinguish Pro
+subscription variants; use explicit entry IDs in that case. If multiple fields
+are supplied, all restrictions must match, and exclusions take precedence.
+Unknown plan types cannot satisfy a `plan_types` restriction.
+
+Rules are applied after model eligibility, quota and concurrency checks, before
+plan priority, session affinity and rotation. Account retries retain the tier.
+If all matching accounts are unavailable, the request fails instead of selecting
+an excluded account or using the API-key fallback. Compact requests also apply
+these account restrictions, without adding a service tier to the compact payload.
+Explicitly routed third-party API providers do not use the OAuth account pool and
+are outside these rules.
+
+When no request tier is specified, `model.default_service_tier` is used, falling
+back to the key `default`. Unconfigured tiers retain existing selection behavior.
+Rules are empty by default. Empty lists and empty rules are rejected to catch
+configuration errors. This is account selection policy, not an upstream entitlement
+check or a guarantee of a particular response speed.
+
 ### Ollama Bridge Configuration
 
 ```yaml

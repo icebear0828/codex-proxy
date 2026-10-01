@@ -149,6 +149,8 @@ vi.mock("@src/translation/codex-event-extractor.js", () => {
 });
 
 // Import after mocks are set up
+import { getConfig } from "@src/config.js";
+import type { FallbackUpstreamStore } from "@src/auth/fallback-upstream.js";
 import { handleProxyRequest } from "@src/routes/shared/proxy-handler.js";
 import { CodexApiError, PreviousResponseWebSocketError } from "@src/proxy/codex-api.js";
 import { EmptyResponseError, UpstreamPrematureCloseError } from "@src/translation/codex-event-extractor.js";
@@ -202,6 +204,7 @@ function buildTestApp(opts: {
   fmt?: ReturnType<typeof createMockFormatAdapter>;
   req?: ProxyRequest;
   cookieJar?: unknown;
+  fallbackUpstream?: FallbackUpstreamStore;
 }) {
   const accountPool = opts.accountPool ?? createMockAccountPool();
   const fmt = opts.fmt ?? createMockFormatAdapter();
@@ -215,6 +218,7 @@ function buildTestApp(opts: {
       accountPool: accountPool as never,
       cookieJar,
       req: proxyReq,
+      fallbackUpstream: opts.fallbackUpstream,
       fmt,
     }),
   );
@@ -231,6 +235,58 @@ describe("proxy-handler integration", () => {
     getSessionAffinityMap().dispose();
     _resetAllCfChallengeCooldowns();
     vi.clearAllMocks();
+  });
+
+  it.each([undefined, "default", "priority"])("forces the configured model tier over client preference %s", async (tier) => {
+    vi.mocked(getConfig).mockReturnValueOnce({
+      auth: {}, model: { service_tier_overrides: { "gpt-6.1-sol": "ultrafast" } },
+    } as never);
+    const req = createDefaultRequest();
+    req.codexRequest.model = "gpt-6.1-sol";
+    req.codexRequest.service_tier = tier;
+    mockCreateResponse = async (request) => {
+      expect(request.service_tier).toBe("ultrafast");
+      return new Response("data: {}\n\n");
+    };
+    const { app, accountPool } = buildTestApp({ req });
+    expect((await app.request("/test", { method: "POST" })).status).toBe(200);
+    expect(accountPool.acquire).toHaveBeenCalledWith(expect.objectContaining({ serviceTier: "ultrafast" }));
+    expect(req.codexRequest.service_tier).toBe("ultrafast");
+  });
+
+  it("preserves the requested tier when rotating after a rate limit", async () => {
+    let count = 0;
+    mockCreateResponse = () => ++count === 1
+      ? Promise.reject(new CodexApiError(429, JSON.stringify({ error: { type: "usage_limit_reached", resets_in_seconds: 60 } })))
+      : Promise.resolve(new Response("data: {}\n\n"));
+    const pool = createMockAccountPool({ acquire: vi.fn()
+      .mockReturnValueOnce({ entryId: "e1", token: "t1", accountId: "a1" })
+      .mockReturnValueOnce({ entryId: "e2", token: "t2", accountId: "a2" }) });
+    const req = createDefaultRequest();
+    req.codexRequest.service_tier = "ultrafast";
+    const { app } = buildTestApp({ accountPool: pool, req });
+    expect((await app.request("/test", { method: "POST" })).status).toBe(200);
+    expect(pool.acquire).toHaveBeenCalledTimes(2);
+    for (const [options] of pool.acquire.mock.calls) {
+      expect(options).toMatchObject({ serviceTier: "ultrafast" });
+    }
+  });
+
+  it("does not escape a tier restriction through the API-key fallback", async () => {
+    vi.mocked(getConfig).mockReturnValueOnce({ auth: {
+      service_tier_routing: { ultrafast: { account_ids: ["reserved"] } },
+    }, model: {} } as never).mockReturnValueOnce({ auth: {
+      service_tier_routing: { ultrafast: { account_ids: ["reserved"] } },
+    }, model: {} } as never);
+    const get = vi.fn(() => ({ apiKey: "secret", baseUrl: "https://upstream.invalid" }));
+    const req = createDefaultRequest();
+    req.codexRequest.service_tier = "ultrafast";
+    const { app } = buildTestApp({
+      req, accountPool: createMockAccountPool({ acquire: vi.fn(() => null) }),
+      fallbackUpstream: { get } as unknown as FallbackUpstreamStore,
+    });
+    expect((await app.request("/test", { method: "POST" })).status).toBe(503);
+    expect(get).not.toHaveBeenCalled();
   });
 
   // 1. No account available

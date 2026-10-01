@@ -31,6 +31,7 @@ export interface ApplyProxyErrorRetryTransitionOptions {
   accountPool: AccountPool;
   entryId: string;
   model: string;
+  serviceTier?: string | null;
   triedEntryIds: string[];
   tag: string;
   decision: ErrorAction;
@@ -49,6 +50,7 @@ export function applyProxyErrorRetryTransition(
     accountPool,
     entryId,
     model,
+    serviceTier,
     triedEntryIds,
     tag,
     decision,
@@ -79,6 +81,7 @@ export function applyProxyErrorRetryTransition(
   const fallbackRetry = prepareProxyFallbackAccountRetry({
     accountPool,
     model,
+    serviceTier,
     triedEntryIds,
     tag,
     decision,

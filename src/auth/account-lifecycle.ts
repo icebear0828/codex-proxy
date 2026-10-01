@@ -5,6 +5,7 @@
  * Uses AccountRegistry for entry access (no circular dep — one-way reference).
  */
 
+import { getServiceTierAccountRule } from "./service-tier-routing.js";
 import { getConfig } from "../config.js";
 import { getModelPlanTypes, isPlanFetched } from "../models/model-store.js";
 import { hasReachedCachedQuota } from "./quota-skip.js";
@@ -72,7 +73,7 @@ export class AccountLifecycle {
     }
   }
 
-  acquire(options?: { model?: string; excludeIds?: string[]; preferredEntryId?: string }): AcquiredAccount | null {
+  acquire(options?: { model?: string; serviceTier?: string | null; excludeIds?: string[]; preferredEntryId?: string }): AcquiredAccount | null {
     const nowMs = Date.now();
     const now = new Date(nowMs);
 
@@ -115,6 +116,16 @@ export class AccountLifecycle {
           return null;
         }
       }
+    }
+
+    const rule = getServiceTierAccountRule(options?.serviceTier);
+    if (rule) {
+      candidates = candidates.filter((account) =>
+        (!rule.plan_types || (account.planType != null && rule.plan_types.includes(account.planType))) &&
+        (!rule.account_ids || rule.account_ids.includes(account.id)) &&
+        !rule.exclude_account_ids?.includes(account.id),
+      );
+      if (candidates.length === 0) return null;
     }
 
     // Tier-based filtering: when configured, restrict to the highest available tier

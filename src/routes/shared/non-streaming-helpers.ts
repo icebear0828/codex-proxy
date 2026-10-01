@@ -291,7 +291,7 @@ export async function retryNonStreamingEmptyResponse(
   releaseAccount(accountPool, currentEntryId, annotateUsageCost(req.model, annotateImageGenOutcome(collectErr.usage, req.expectsImageGen)), released);
   restoreImplicitResumeRequest?.();
 
-  const acquired = acquireAccount(accountPool, req.codexRequest.model, undefined, tag);
+  const acquired = acquireAccount(accountPool, req.codexRequest.model, undefined, tag, undefined, req.codexRequest.service_tier);
   if (!acquired) {
     return {
       action: "respond",
