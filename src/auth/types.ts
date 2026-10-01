@@ -165,6 +165,8 @@ export interface CodexQuota {
 
 /** Returned by acquire() */
 export interface AcquiredAccount {
+  /** Set when account selection downgraded the requested service tier. */
+  serviceTier?: "default";
   entryId: string;
   token: string;
   accountId: string | null;

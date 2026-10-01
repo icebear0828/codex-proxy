@@ -2,6 +2,7 @@
  * Responses API compact handler — non-streaming JSON proxy for /v1/responses/compact.
  */
 
+import { getModelServiceTierOverride } from "../auth/service-tier-routing.js";
 import type { Context } from "hono";
 import type { StatusCode } from "hono/utils/http-status";
 import type { AccountPool } from "../auth/account-pool.js";
@@ -94,6 +95,8 @@ export async function handleCompact(
 
   const parsed = parseModelName(rawModel);
   const modelId = resolveModelId(parsed.modelId);
+  const serviceTier = getModelServiceTierOverride(modelId) ??
+    (typeof body.service_tier === "string" ? body.service_tier : parsed.serviceTier);
 
   const compactRequest: CodexCompactRequest = {
     model: modelId,
@@ -158,7 +161,7 @@ export async function handleCompact(
   const triedEntryIds: string[] = [];
   const released = new Set<string>();
 
-  const acquired = acquireAccount(accountPool, modelId, undefined, TAG);
+  const acquired = acquireAccount(accountPool, modelId, undefined, TAG, undefined, serviceTier);
   if (!acquired) {
     c.status(503);
     return c.json(formatResponsesError(503, "No available accounts. All accounts are expired or rate-limited."));
@@ -205,7 +208,7 @@ export async function handleCompact(
         releaseAccount(accountPool, entryId, annotateUsageCost(modelId, compactImageFailedUsage), released);
       }
 
-      const retry = acquireAccount(accountPool, modelId, triedEntryIds, TAG);
+      const retry = acquireAccount(accountPool, modelId, triedEntryIds, TAG, undefined, serviceTier);
       if (!retry) {
         const status = decision.status as StatusCode;
         c.status(status);

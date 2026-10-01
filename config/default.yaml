@@ -18,6 +18,8 @@ model:
   image_host_model: gpt-5.5
   default_reasoning_effort: null
   default_service_tier: null
+  # Optional forced service tier per OAuth model, overriding client preferences.
+  service_tier_overrides: {}
   default_tools: []
   aliases: {}
   custom_models: []
@@ -37,6 +39,8 @@ auth:
   refresh_enabled: true
   refresh_margin_seconds: 300
   rotation_strategy: least_used
+  # Hard account restrictions keyed by effective service_tier; see README_EN.md.
+  service_tier_routing: {}
   rate_limit_backoff_seconds: 60
   oauth_client_id: app_EMoamEEZ73f0CkXaXp7hrann
   oauth_auth_endpoint: https://auth.openai.com/oauth/authorize

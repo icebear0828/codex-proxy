@@ -194,4 +194,106 @@ describe("account-pool plan-based routing", () => {
     expect(spark).not.toBeNull();
     expect(spark!.token).toBe(jwts.get("plus2"));
   });
+
+  function routingPool() {
+    return createPool(
+      { accountId: "fast", planType: "pro", email: "fast@test.com" },
+      { accountId: "normal", planType: "plus", email: "normal@test.com" },
+    );
+  }
+
+  it("reserves a plan for ultrafast and uses other plans for default-tier Astra", () => {
+    setConfigForTesting(createMockConfig({ auth: { service_tier_routing: {
+      ultrafast: { plan_types: ["pro"] }, default: { plan_types: ["plus"] },
+    } } }));
+    const { pool, jwts } = routingPool();
+    expect(pool.acquire({ model: "gpt-6.1-sol", serviceTier: "ultrafast" })?.token).toBe(jwts.get("fast"));
+    expect(pool.acquire({ model: "gpt-6-astra" })?.token).toBe(jwts.get("normal"));
+  });
+
+  it("does not bypass tier restrictions for session affinity or global plan priority", () => {
+    setConfigForTesting(createMockConfig({ auth: {
+      tier_priority: ["plus", "pro"], service_tier_routing: { ultrafast: { plan_types: ["pro"] } },
+    } }));
+    const { pool, jwts } = routingPool();
+    const preferredEntryId = pool.getAccounts().find(a => a.accountId === "normal")!.id;
+    expect(pool.acquire({ serviceTier: "ultrafast", preferredEntryId })?.token).toBe(jwts.get("fast"));
+  });
+
+  it("fails closed when the only matching account was already tried", () => {
+    setConfigForTesting(createMockConfig({ auth: { service_tier_routing: { ultrafast: { plan_types: ["pro"] } } } }));
+    const { pool } = routingPool();
+    const first = pool.acquire({ serviceTier: "ultrafast" })!;
+    pool.release(first.entryId);
+    expect(pool.acquire({ serviceTier: "ultrafast", excludeIds: [first.entryId] })).toBeNull();
+  });
+
+  it("fails closed when matching accounts reach their concurrency limit", () => {
+    setConfigForTesting(createMockConfig({ auth: {
+      max_concurrent_per_account: 1, service_tier_routing: { ultrafast: { plan_types: ["pro"] } },
+    } }));
+    const { pool } = routingPool();
+    expect(pool.acquire({ serviceTier: "ultrafast" })).not.toBeNull();
+    expect(pool.acquire({ serviceTier: "ultrafast" })).toBeNull();
+  });
+
+  it("intersects service-tier rules with known model eligibility", () => {
+    setConfigForTesting(createMockConfig({ auth: { service_tier_routing: { ultrafast: { plan_types: ["pro"] } } } }));
+    vi.mocked(getModelPlanTypes).mockReturnValue(["plus"]);
+    const { pool } = routingPool();
+    expect(pool.acquire({ model: "plus-only", serviceTier: "ultrafast" })).toBeNull();
+  });
+
+  it("uses explicit IDs to distinguish accounts with the same reported plan", () => {
+    const { pool, jwts } = createPool(
+      { accountId: "fast", planType: "pro", email: "fast@test.com" },
+      { accountId: "normal", planType: "pro", email: "normal@test.com" },
+    );
+    const id = pool.getAccounts().find(a => a.accountId === "fast")!.id;
+    setConfigForTesting(createMockConfig({ auth: { service_tier_routing: {
+      ultrafast: { account_ids: [id] }, default: { exclude_account_ids: [id] },
+    } } }));
+    expect(pool.acquire({ serviceTier: "ultrafast" })?.token).toBe(jwts.get("fast"));
+    expect(pool.acquire({})?.token).toBe(jwts.get("normal"));
+  });
+
+  it("uses the configured default tier and honors explicit overrides", () => {
+    setConfigForTesting(createMockConfig({ model: { default_service_tier: "ultrafast" }, auth: {
+      service_tier_routing: { ultrafast: { plan_types: ["pro"] }, default: { plan_types: ["plus"] } },
+    } }));
+    const { pool, jwts } = routingPool();
+    expect(pool.acquire({})?.token).toBe(jwts.get("fast"));
+    expect(pool.acquire({ serviceTier: "default" })?.token).toBe(jwts.get("normal"));
+  });
+
+  it("does not restrict unmatched tiers", () => {
+    setConfigForTesting(createMockConfig({ auth: { service_tier_routing: { ultrafast: { plan_types: ["pro"] } } } }));
+    const { pool } = createPool({ accountId: "normal", planType: "plus", email: "normal@test.com" });
+    expect(pool.acquire({ serviceTier: "priority" })).not.toBeNull();
+  });
+
+  it("downgrades to default when the fast account is unavailable", () => {
+    setConfigForTesting(createMockConfig({ auth: { max_concurrent_per_account: 1, service_tier_routing: {
+      ultrafast: { plan_types: ["pro"], fallback_to_default: true },
+      default: { plan_types: ["plus"] },
+    } } }));
+    const { pool, jwts } = routingPool();
+    expect(pool.acquire({ serviceTier: "ultrafast" })?.token).toBe(jwts.get("fast"));
+    const fallback = pool.acquire({ serviceTier: "ultrafast" });
+    expect(fallback?.token).toBe(jwts.get("normal"));
+    expect(fallback?.serviceTier).toBe("default");
+    expect(pool.acquire({ serviceTier: "ultrafast" })).toBeNull();
+  });
+
+  it("uses default when no fast-plan account exists, preserving retry exclusions", () => {
+    setConfigForTesting(createMockConfig({ auth: { service_tier_routing: {
+      ultrafast: { plan_types: ["pro"], fallback_to_default: true },
+    } } }));
+    const { pool } = createPool({ accountId: "normal", planType: "plus", email: "normal@test.com" });
+    const fallback = pool.acquire({ serviceTier: "ultrafast" })!;
+    expect(fallback.serviceTier).toBe("default");
+    pool.release(fallback.entryId);
+    expect(pool.acquire({ serviceTier: "ultrafast", excludeIds: [fallback.entryId] })).toBeNull();
+  });
+
 });

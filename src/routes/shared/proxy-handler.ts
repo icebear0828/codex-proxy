@@ -22,6 +22,7 @@
  *   - non-streaming-handler.ts — collect / retry response lifecycle
  */
 
+import { getServiceTierAccountRule, getModelServiceTierOverride } from "../../auth/service-tier-routing.js";
 import { CodexApi, CodexApiError, PreviousResponseWebSocketError } from "../../proxy/codex-api.js";
 import { toQuota } from "../../auth/quota-utils.js";
 import { markFallbackUsed } from "../../auth/fallback-state.js";
@@ -78,7 +79,9 @@ async function respondNoAccountOrFallback(
   req: ProxyRequest,
   fmt: FormatAdapter,
 ): Promise<Response> {
-  const fallback = options.fallbackUpstream?.get();
+  const fallback = getServiceTierAccountRule(req.codexRequest.service_tier)
+    ? undefined
+    : options.fallbackUpstream?.get();
   if (fallback) {
     console.log(
       `[${fmt.tag}] No available OAuth accounts — routing through fallback upstream apikey (${fallback.baseUrl})`,
@@ -109,7 +112,9 @@ async function respondProxyErrorOrFallback(
   message: string,
   useFormat429?: boolean,
 ): Promise<Response> {
-  const fallback = options.fallbackUpstream?.get();
+  const fallback = getServiceTierAccountRule(req.codexRequest.service_tier)
+    ? undefined
+    : options.fallbackUpstream?.get();
   if (fallback) {
     console.log(
       `[${fmt.tag}] Retry exhausted — routing through fallback upstream apikey (${fallback.baseUrl})`,
@@ -128,6 +133,9 @@ async function respondProxyErrorOrFallback(
 export async function handleProxyRequest(options: HandleProxyRequestOptions): Promise<Response> {
   const { c, accountPool, cookieJar, req, fmt, proxyPool } = options;
   c.set("logForwarded", true);
+  const forcedTier = getModelServiceTierOverride(req.codexRequest.model);
+  if (forcedTier !== undefined) req.codexRequest.service_tier = forcedTier;
+
 
   const affinityMap = getSessionAffinityMap();
   const requestId = c.get("requestId") ?? randomUUID().slice(0, 8);
@@ -149,7 +157,7 @@ export async function handleProxyRequest(options: HandleProxyRequestOptions): Pr
   const verifiedExcludeIds: string[] = [];
 
   // Single acquire call — preferredEntryId is a hint, not a hard requirement
-  let acquired = acquireAccount(accountPool, req.codexRequest.model, undefined, fmt.tag, sessionContext.preferredEntryId ?? undefined);
+  let acquired = acquireAccount(accountPool, req.codexRequest.model, undefined, fmt.tag, sessionContext.preferredEntryId ?? undefined, req.codexRequest.service_tier);
   if (!acquired) {
     return respondNoAccountOrFallback(options, req, fmt);
   }
@@ -188,7 +196,7 @@ export async function handleProxyRequest(options: HandleProxyRequestOptions): Pr
             return respondNoAccountOrFallback(options, req, fmt);
           }
 
-          acquired = acquireAccount(accountPool, req.codexRequest.model, verifiedExcludeIds, fmt.tag, sessionContext.preferredEntryId ?? undefined);
+          acquired = acquireAccount(accountPool, req.codexRequest.model, verifiedExcludeIds, fmt.tag, sessionContext.preferredEntryId ?? undefined, req.codexRequest.service_tier);
           if (!acquired) {
             return respondNoAccountOrFallback(options, req, fmt);
           }
@@ -205,6 +213,7 @@ export async function handleProxyRequest(options: HandleProxyRequestOptions): Pr
   }
 
   if (!acquired) return respondNoAccountOrFallback(options, req, fmt);
+  if (acquired.serviceTier) req.codexRequest.service_tier = acquired.serviceTier;
   let { entryId } = acquired;
   // First account this request acquired; later attempts that switch to another
   // entry (fallback account retry) are marked as fallback in the audit log.
@@ -495,6 +504,7 @@ export async function handleProxyRequest(options: HandleProxyRequestOptions): Pr
           const errorRetryTransition = applyProxyErrorRetryTransition({
             accountPool, entryId,
             model: req.codexRequest.model,
+            serviceTier: req.codexRequest.service_tier,
             triedEntryIds, tag: fmt.tag,
             decision, released,
             restoreImplicitResumeRequest: implicitResume.restore,
@@ -523,6 +533,7 @@ export async function handleProxyRequest(options: HandleProxyRequestOptions): Pr
           if (decision.action === "retry" && decision.markEarlyServerErrorRetried) {
             earlyServerErrorRetried = true;
           }
+          if (errorRetryTransition.serviceTier) req.codexRequest.service_tier = errorRetryTransition.serviceTier;
           entryId = errorRetryTransition.entryId;
           triedEntryIds.push(errorRetryTransition.entryId);
           codexApi = errorRetryTransition.api;

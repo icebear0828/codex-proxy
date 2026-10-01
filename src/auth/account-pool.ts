@@ -89,7 +89,7 @@ export class AccountPool {
 
   // ── Lifecycle (acquire/release) ───────────────────────────────────
 
-  acquire(options?: { model?: string; excludeIds?: string[]; preferredEntryId?: string }): AcquiredAccount | null {
+  acquire(options?: { model?: string; serviceTier?: string | null; excludeIds?: string[]; preferredEntryId?: string }): AcquiredAccount | null {
     return this.lifecycle.acquire(options);
   }
 
