@@ -300,6 +300,7 @@ export async function retryNonStreamingEmptyResponse(
     };
   }
 
+  if (acquired.serviceTier) req.codexRequest.service_tier = acquired.serviceTier;
   const nextApi = buildCodexApi(
     acquired.token,
     acquired.accountId,

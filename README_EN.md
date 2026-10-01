@@ -720,6 +720,7 @@ auth:
   service_tier_routing:
     ultrafast:
       account_ids: ["reserved-account-entry-id"]
+      fallback_to_default: true
     default:
       exclude_account_ids: ["reserved-account-entry-id"]
     standard:
@@ -742,7 +743,11 @@ Unknown plan types cannot satisfy a `plan_types` restriction.
 
 Rules are applied after model eligibility, quota and concurrency checks, before
 plan priority, session affinity and rotation. Account retries retain the tier.
-If all matching accounts are unavailable, the request fails instead of selecting
+With `fallback_to_default: true`, unavailable fast-tier accounts trigger another
+selection using the `default` rule and send `service_tier: default` upstream.
+This covers missing, disabled, busy, exhausted, and previously tried accounts.
+The model and reasoning effort are unchanged. Fallback is one-way and optional.
+Without this option, if all matching accounts are unavailable, the request fails instead of selecting
 an excluded account or using the API-key fallback. Compact requests also apply
 these account restrictions, without adding a service tier to the compact payload.
 Explicitly routed third-party API providers do not use the OAuth account pool and

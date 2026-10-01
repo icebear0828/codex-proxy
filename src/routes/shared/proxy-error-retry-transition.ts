@@ -24,6 +24,7 @@ export type ProxyErrorRetryTransitionResult =
       entryId: string;
       api: CodexApi;
       prevSlotMs: number | null;
+      serviceTier?: "default";
       modelRetried: boolean;
     };
 
@@ -105,6 +106,7 @@ export function applyProxyErrorRetryTransition(
     entryId: fallbackRetry.entryId,
     api: fallbackRetry.api,
     prevSlotMs: fallbackRetry.prevSlotMs,
+    ...(fallbackRetry.serviceTier ? { serviceTier: fallbackRetry.serviceTier } : {}),
     modelRetried: nextModelRetried,
   };
 }

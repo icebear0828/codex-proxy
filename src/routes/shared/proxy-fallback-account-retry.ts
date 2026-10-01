@@ -22,6 +22,7 @@ export type ProxyFallbackAccountRetryResult =
       entryId: string;
       api: CodexApi;
       prevSlotMs: number | null;
+      serviceTier?: "default";
     };
 
 export interface PrepareProxyFallbackAccountRetryOptions {
@@ -89,5 +90,6 @@ export function prepareProxyFallbackAccountRetry(
     entryId: retry.entryId,
     api,
     prevSlotMs: retry.prevSlotMs,
+    ...(retry.serviceTier ? { serviceTier: retry.serviceTier } : {}),
   };
 }

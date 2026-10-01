@@ -126,6 +126,7 @@ export const ConfigSchema = z.object({
     tier_priority: z.array(z.string()).nullable().default(null),
     /** Hard account restrictions keyed by the effective service tier. */
     service_tier_routing: z.record(z.string().trim().min(1), z.object({
+      fallback_to_default: z.boolean().optional(),
       plan_types: z.array(z.string().trim().min(1)).min(1).optional(),
       account_ids: z.array(z.string().trim().min(1)).min(1).optional(),
       exclude_account_ids: z.array(z.string().trim().min(1)).min(1).optional(),

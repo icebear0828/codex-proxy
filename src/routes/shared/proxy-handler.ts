@@ -213,6 +213,7 @@ export async function handleProxyRequest(options: HandleProxyRequestOptions): Pr
   }
 
   if (!acquired) return respondNoAccountOrFallback(options, req, fmt);
+  if (acquired.serviceTier) req.codexRequest.service_tier = acquired.serviceTier;
   let { entryId } = acquired;
   // First account this request acquired; later attempts that switch to another
   // entry (fallback account retry) are marked as fallback in the audit log.
@@ -563,6 +564,7 @@ export async function handleProxyRequest(options: HandleProxyRequestOptions): Pr
           if (decision.action === "retry" && decision.markTransportRetried) {
             transportRetried = true;
           }
+          if (errorRetryTransition.serviceTier) req.codexRequest.service_tier = errorRetryTransition.serviceTier;
           entryId = errorRetryTransition.entryId;
           triedEntryIds.push(errorRetryTransition.entryId);
           codexApi = errorRetryTransition.api;

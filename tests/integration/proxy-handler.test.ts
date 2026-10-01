@@ -254,6 +254,36 @@ describe("proxy-handler integration", () => {
     expect(req.codexRequest.service_tier).toBe("ultrafast");
   });
 
+  it("sends default upstream after account selection downgrades ultrafast", async () => {
+    const req = createDefaultRequest();
+    req.codexRequest.service_tier = "ultrafast";
+    mockCreateResponse = async (request) => {
+      expect(request.service_tier).toBe("default");
+      return new Response("data: {}\n\n");
+    };
+    const { app } = buildTestApp({ req, accountPool: createMockAccountPool({
+      acquire: vi.fn(() => ({ entryId: "normal", token: "t", accountId: "normal", serviceTier: "default" })),
+    }) });
+    expect((await app.request("/test", { method: "POST" })).status).toBe(200);
+  });
+
+  it("downgrades the outgoing tier on a rate-limit account retry", async () => {
+    const tiers: unknown[] = [];
+    mockCreateResponse = async (request) => {
+      tiers.push(request.service_tier);
+      if (tiers.length === 1) throw new CodexApiError(429, JSON.stringify({ error: { type: "usage_limit_reached", resets_in_seconds: 60 } }));
+      return new Response("data: {}\n\n");
+    };
+    const req = createDefaultRequest();
+    req.codexRequest.service_tier = "ultrafast";
+    const pool = createMockAccountPool({ acquire: vi.fn()
+      .mockReturnValueOnce({ entryId: "fast", token: "t1", accountId: "a1" })
+      .mockReturnValueOnce({ entryId: "normal", token: "t2", accountId: "a2", serviceTier: "default" }) });
+    const { app } = buildTestApp({ req, accountPool: pool });
+    expect((await app.request("/test", { method: "POST" })).status).toBe(200);
+    expect(tiers).toEqual(["ultrafast", "default"]);
+  });
+
   it("preserves the requested tier when rotating after a rate limit", async () => {
     let count = 0;
     mockCreateResponse = () => ++count === 1

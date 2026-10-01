@@ -125,7 +125,14 @@ export class AccountLifecycle {
         (!rule.account_ids || rule.account_ids.includes(account.id)) &&
         !rule.exclude_account_ids?.includes(account.id),
       );
-      if (candidates.length === 0) return null;
+      if (candidates.length === 0) {
+        const tier = options?.serviceTier ?? config.model.default_service_tier ?? "default";
+        if (rule.fallback_to_default && tier !== "default") {
+          const fallback = this.acquire({ ...options, serviceTier: "default" });
+          return fallback ? { ...fallback, serviceTier: "default" } : null;
+        }
+        return null;
+      }
     }
 
     // Tier-based filtering: when configured, restrict to the highest available tier
