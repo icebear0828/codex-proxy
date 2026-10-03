@@ -9,6 +9,7 @@ import { translateCodexToGeminiRequest } from "../translation/codex-request-to-g
 import { isRecord } from "../translation/shared-utils.js";
 
 const DEFAULT_OAUTH_CLIENT_ID = "1071006060591-tmhssin2h21lcre235vtolojh4g403ep.apps.googleusercontent.com";
+const DEFAULT_OAUTH_CLIENT_SECRET = "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";
 const TOKEN_URL = "https://oauth2.googleapis.com/token";
 const DEFAULT_BASE_URL = "https://cloudcode-pa.googleapis.com";
 const DEFAULT_USER_AGENT_VERSION = "2.9.1";
@@ -110,13 +111,7 @@ export class AntigravityUpstream implements UpstreamAdapter {
   }
 
   private async refreshAccessToken(): Promise<string> {
-    const clientSecret = process.env.ANTIGRAVITY_OAUTH_CLIENT_SECRET?.trim();
-    if (!clientSecret) {
-      throw new CodexApiError(
-        500,
-        "Set ANTIGRAVITY_OAUTH_CLIENT_SECRET in the Codex Proxy environment before using Antigravity accounts.",
-      );
-    }
+    const clientSecret = process.env.ANTIGRAVITY_OAUTH_CLIENT_SECRET?.trim() || DEFAULT_OAUTH_CLIENT_SECRET;
 
     const form = new URLSearchParams({
       client_id: process.env.ANTIGRAVITY_OAUTH_CLIENT_ID?.trim() || DEFAULT_OAUTH_CLIENT_ID,

@@ -1096,7 +1096,7 @@ curl -N http://localhost:8080/official-agent/threads/{threadId}/turns \
 
 **第三方 API Keys**
 
-Antigravity OAuth 账号也可在 Dashboard 的 Provider 池中添加：输入 Google OAuth `refresh_token`，手动填写模型 ID；Google Cloud Project ID 可留空，由 `loadCodeAssist` 自动发现。若账号未返回项目 ID，请手动填写。运行环境需要设置 `ANTIGRAVITY_OAUTH_CLIENT_SECRET`；如 refresh token 来自其他 OAuth client，可同时设置 `ANTIGRAVITY_OAUTH_CLIENT_ID`。请求和 `/v1/models` 使用 `antigravity:<model-id>` 名称。
+Antigravity OAuth 账号也可在 Dashboard 的 Provider 池中添加：输入 Google OAuth `refresh_token`，手动填写模型 ID；Google Cloud Project ID 可留空，由 `loadCodeAssist` 自动发现。若账号未返回项目 ID，请手动填写。OAuth client ID 和 secret 均有内置默认值，通常无需设置环境变量；如 refresh token 来自其他 OAuth client，可通过 `ANTIGRAVITY_OAUTH_CLIENT_ID` 和 `ANTIGRAVITY_OAUTH_CLIENT_SECRET` 覆盖。请求和 `/v1/models` 使用 `antigravity:<model-id>` 名称。
 
 对于在标准 Responses API 上要求 Codex 官方客户端上下文的 API-key 上游，请在 Dashboard 中选择 `Custom` Provider 和 `Codex Responses (client context)` 协议。Base URL 应填写 API v1 根地址（例如 `https://provider.example.com/v1`，不要填写完整的 `/responses` 地址）。该协议的主 Responses 请求使用 HTTP SSE，并发送 Codex headers、installation/session/thread/window ID 与 client metadata；同时支持按请求 body 的 `model` 路由 standalone Web Search、远程 compact 和 Codex JSON 图片生成/编辑端点，不支持 Embeddings。若供应商没有提供兼容的 `/models` 接口，可在 Dashboard 中手动填写模型名。
 

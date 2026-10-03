@@ -8,7 +8,9 @@
 
 ## [Unreleased]
 
-> 暂无已记录的变更。
+### Changed
+
+- Antigravity OAuth 使用内置 client secret，常规使用无需设置 `ANTIGRAVITY_OAUTH_CLIENT_SECRET`；该变量仍可用于覆盖默认凭据。（`src/proxy/antigravity-upstream.ts`、`.env.example`、`README.md`）
 
 ## [v2.1.x](https://github.com/icebear0828/codex-proxy/releases?q=2.1) - 2026-09-01 至 2026-09-07
 
