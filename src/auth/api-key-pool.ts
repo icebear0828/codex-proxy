@@ -42,6 +42,7 @@ export interface ApiKeyEntry {
   model: string;
   apiKey: string;
   baseUrl: string;
+  projectId?: string;
   label: string | null;
   capabilities: ApiKeyCapability[];
   wire: ApiKeyWire;
@@ -150,12 +151,16 @@ export class ApiKeyPool {
 
   /** Get unique active model IDs from runtime-managed API keys. */
   getActiveModels(): string[] {
-    return [...new Set(this.entries.filter((e) => e.status === "active").map((e) => e.model))];
+    return [...new Set(this.entries.filter((e) => e.status === "active").map((e) =>
+      e.provider === "antigravity" ? `antigravity:${e.model}` : e.model,
+    ))];
   }
 
   /** Returns true if any active entry matches the given model ID. */
   hasActiveModel(modelId: string): boolean {
-    return this.entries.some((e) => e.status === "active" && e.model === modelId);
+    return this.entries.some((e) => e.status === "active" && (
+      e.model === modelId || (e.provider === "antigravity" && `antigravity:${e.model}` === modelId)
+    ));
   }
 
   // ── Mutations ──────────────────────────────────────────────────
@@ -165,6 +170,7 @@ export class ApiKeyPool {
     model: string;
     apiKey: string;
     baseUrl?: string;
+    projectId?: string;
     label?: string | null;
     capabilities?: ApiKeyCapability[];
     wire?: ApiKeyWire;
@@ -179,8 +185,9 @@ export class ApiKeyPool {
       model: input.model,
       apiKey: input.apiKey,
       baseUrl,
+      ...(input.provider === "antigravity" && input.projectId?.trim() ? { projectId: input.projectId.trim() } : {}),
       label: input.label ?? null,
-      capabilities: normalizeCapabilities(input.capabilities),
+      capabilities: input.provider === "antigravity" ? ["chat"] : normalizeCapabilities(input.capabilities),
       wire: normalizeWireForProvider(input.provider, input.wire),
       status: "active",
       addedAt: new Date().toISOString(),
@@ -229,6 +236,7 @@ export class ApiKeyPool {
     model: string;
     apiKey: string;
     baseUrl?: string;
+    projectId?: string;
     label?: string | null;
     capabilities?: ApiKeyCapability[];
     wire?: ApiKeyWire;
@@ -262,6 +270,7 @@ export class ApiKeyPool {
     model: string;
     apiKey: string;
     baseUrl?: string;
+    projectId?: string;
     label: string | null;
     capabilities: ApiKeyCapability[];
     wire: ApiKeyWire;
@@ -271,6 +280,7 @@ export class ApiKeyPool {
       model: e.model,
       apiKey: e.apiKey,
       ...(e.provider === "custom" ? { baseUrl: e.baseUrl } : {}),
+      ...(e.provider === "antigravity" && e.projectId ? { projectId: e.projectId } : {}),
       label: e.label,
       capabilities: e.capabilities,
       wire: e.wire,
@@ -324,6 +334,7 @@ export function normalizeWireForProvider(provider: ApiKeyProvider, value: unknow
   }
   if (provider === "anthropic") return "anthropic";
   if (provider === "gemini") return "gemini";
+  if (provider === "antigravity") return "gemini";
   return "chat";
 }
 

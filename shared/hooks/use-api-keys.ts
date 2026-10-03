@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from "preact/hooks";
 
-export type ApiKeyProvider = "anthropic" | "openai" | "gemini" | "openrouter" | "custom";
+export type ApiKeyProvider = "anthropic" | "openai" | "gemini" | "openrouter" | "antigravity" | "custom";
+export type ApiKeyMemoProvider = Exclude<ApiKeyProvider, "antigravity">;
 export type ApiKeyCapability = "chat" | "embeddings";
 /** Upstream wire protocol used by runtime API-key entries. */
 export type ApiKeyWire = "chat" | "responses" | "codex-responses" | "anthropic" | "gemini";
@@ -11,6 +12,7 @@ export interface ApiKeyEntry {
   model: string;
   apiKey: string; // masked
   baseUrl: string;
+  projectId?: string;
   label: string | null;
   capabilities: ApiKeyCapability[];
   wire: ApiKeyWire;
@@ -43,7 +45,7 @@ export type Catalog = Record<string, ProviderMeta>;
 export interface ApiKeyMemo {
   id: string;
   name: string;
-  provider: ApiKeyProvider;
+  provider: ApiKeyMemoProvider;
   baseUrl: string;
   wire: ApiKeyWire;
   capabilities: ApiKeyCapability[];
@@ -113,6 +115,7 @@ export function useApiKeys() {
     models: string[];
     apiKey: string;
     baseUrl?: string;
+    projectId?: string;
     label?: string | null;
     capabilities?: ApiKeyCapability[];
     wire?: ApiKeyWire;
@@ -227,7 +230,7 @@ export function useApiKeys() {
 
   const createMemo = useCallback(async (input: {
     name?: string;
-    provider: ApiKeyProvider;
+    provider: ApiKeyMemoProvider;
     apiKey: string;
     baseUrl?: string;
     wire?: ApiKeyWire;

@@ -4,7 +4,8 @@
  */
 
 export type BuiltinProvider = "anthropic" | "openai" | "gemini" | "openrouter";
-export type ApiKeyProvider = BuiltinProvider | "custom";
+export type ApiKeyProvider = BuiltinProvider | "antigravity" | "custom";
+export type MemoProvider = Exclude<ApiKeyProvider, "antigravity">;
 
 export interface CatalogModel {
   id: string;

@@ -9,6 +9,7 @@ import { OpenAIUpstream } from "./openai-upstream.js";
 import { ResponsesUpstream } from "./responses-upstream.js";
 import { AnthropicUpstream } from "./anthropic-upstream.js";
 import { GeminiUpstream } from "./gemini-upstream.js";
+import { AntigravityUpstream } from "./antigravity-upstream.js";
 import { CodexResponsesUpstream } from "./codex-responses-upstream.js";
 
 /**
@@ -45,6 +46,8 @@ export function createAdapterForEntry(entry: ApiKeyEntry): UpstreamAdapter {
       return new AnthropicUpstream(entry.apiKey, entry.baseUrl);
     case "gemini":
       return new GeminiUpstream(entry.apiKey, entry.baseUrl);
+    case "antigravity":
+      return new AntigravityUpstream(entry.apiKey, entry.projectId, entry.baseUrl);
     case "openai":
       return createOpenAIFamilyAdapter("openai", entry);
     case "openrouter":

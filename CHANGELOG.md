@@ -8,7 +8,9 @@
 
 ## [Unreleased]
 
-> 暂无已记录的变更。
+### Added
+
+- 新增 Antigravity OAuth Provider：通过刷新令牌接入，支持自动发现 Google Cloud Project ID、手动配置模型，并按 `antigravity:<model-id>` 路由聊天请求。（`src/proxy/antigravity-upstream.ts`、`src/auth/api-key-pool.ts`、`web/src/components/ApiKeyManager.tsx`）
 
 ## [v2.1.x](https://github.com/icebear0828/codex-proxy/releases?q=2.1) - 2026-09-01 至 2026-09-07
 

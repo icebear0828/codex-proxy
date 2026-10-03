@@ -1,7 +1,7 @@
 import { useState, useCallback, useEffect, useMemo, useRef } from "preact/hooks";
 import { useApiKeys } from "../../../shared/hooks/use-api-keys";
 import { useT } from "../../../shared/i18n/context";
-import type { ApiKeyCapability, ApiKeyProvider, ApiKeyWire, ApiKeyEntry, ApiKeyMemo, CatalogModel } from "../../../shared/hooks/use-api-keys";
+import type { ApiKeyCapability, ApiKeyProvider, ApiKeyMemoProvider, ApiKeyWire, ApiKeyEntry, ApiKeyMemo, CatalogModel } from "../../../shared/hooks/use-api-keys";
 import { accountToolbarIconClass } from "../lib/account-toolbar";
 
 /** Providers whose upstream wire protocol is selectable. */
@@ -11,6 +11,7 @@ const PROVIDER_OPTIONS: Array<{ value: ApiKeyProvider; label: string }> = [
   { value: "anthropic", label: "Anthropic" },
   { value: "openai", label: "OpenAI" },
   { value: "gemini", label: "Google Gemini" },
+  { value: "antigravity", label: "Antigravity OAuth" },
   { value: "openrouter", label: "OpenRouter" },
   { value: "custom", label: "Custom" },
 ];
@@ -50,6 +51,7 @@ function AddKeyForm({ onAdd, catalog, fetchProviderModels, memos, memoCoverage, 
     models: string[];
     apiKey: string;
     baseUrl?: string;
+    projectId?: string;
     label?: string;
     capabilities?: ApiKeyCapability[];
     wire?: ApiKeyWire;
@@ -62,7 +64,7 @@ function AddKeyForm({ onAdd, catalog, fetchProviderModels, memos, memoCoverage, 
   >;
   memos: ApiKeyMemo[];
   memoCoverage: { uncovered: number; canGenerate: boolean } | null;
-  createMemo: (input: { name?: string; provider: ApiKeyProvider; apiKey: string; baseUrl?: string; wire?: ApiKeyWire; capabilities?: ApiKeyCapability[] }) => Promise<{ ok: boolean; memo?: ApiKeyMemo; error?: string }>;
+  createMemo: (input: { name?: string; provider: ApiKeyMemoProvider; apiKey: string; baseUrl?: string; wire?: ApiKeyWire; capabilities?: ApiKeyCapability[] }) => Promise<{ ok: boolean; memo?: ApiKeyMemo; error?: string }>;
   deleteMemo: (id: string) => Promise<void>;
   fetchMemoModels: (id: string, force?: boolean) => Promise<{ ok: true; models: CatalogModel[]; fetchedAt?: string; stale?: boolean; memo?: ApiKeyMemo } | { ok: false; error: string }>;
   generateMemos: () => Promise<{ created: number; skipped: number }>;
@@ -73,6 +75,7 @@ function AddKeyForm({ onAdd, catalog, fetchProviderModels, memos, memoCoverage, 
   const [provider, setProvider] = useState<ApiKeyProvider>("anthropic");
   const [selectedModels, setSelectedModels] = useState<string[]>([]);
   const [apiKey, setApiKey] = useState("");
+  const [projectId, setProjectId] = useState("");
   const [baseUrl, setBaseUrl] = useState("");
   const [label, setLabel] = useState("");
   const [manualModelsInput, setManualModelsInput] = useState("");
@@ -140,6 +143,8 @@ function AddKeyForm({ onAdd, catalog, fetchProviderModels, memos, memoCoverage, 
   ], [t]);
 
   const isCustom = provider === "custom";
+  const isAntigravity = provider === "antigravity";
+  const supportsMemos = !isAntigravity;
   const wireSelectable = WIRE_SELECTABLE_PROVIDERS.has(provider);
   const providerCatalog = !isCustom ? catalog[provider]?.models ?? [] : [];
   const usingLiveModels = providerModels.length > 0;
@@ -155,6 +160,9 @@ function AddKeyForm({ onAdd, catalog, fetchProviderModels, memos, memoCoverage, 
   const selectedWireOption = visibleWireOptions.find((option) => option.value === wire) ?? visibleWireOptions[0];
   const selectedModelSet = useMemo(() => new Set(selectedModels), [selectedModels]);
   const selectedCapabilitySet = useMemo(() => new Set(capabilities), [capabilities]);
+  const visibleCapabilityOptions = isAntigravity
+    ? capabilityOptions.filter((option) => option.value === "chat")
+    : capabilityOptions;
 
   const resetProviderModels = useCallback((status: ProviderModelStatus = "idle", message?: string) => {
     setProviderModels([]);
@@ -181,6 +189,11 @@ function AddKeyForm({ onAdd, catalog, fetchProviderModels, memos, memoCoverage, 
 
   const triggerProviderModelFetch = useCallback(async (options: { force?: boolean } = {}) => {
     const force = options.force ?? false;
+    if (provider === "antigravity") {
+      setModelStatus("fallback");
+      setModelMessage(t("antigravityModelHint"));
+      return;
+    }
     const normalizedApiKey = apiKey.trim();
     const normalizedBaseUrl = baseUrl.trim();
     if (!normalizedApiKey || (isCustom && !normalizedBaseUrl)) {
@@ -281,6 +294,7 @@ function AddKeyForm({ onAdd, catalog, fetchProviderModels, memos, memoCoverage, 
   }, [activeMemoId, applyMemo, fetchMemoModels, t]);
 
   const handleSaveMemoFromForm = useCallback(async () => {
+    if (provider === "antigravity") return;
     const normalizedApiKey = apiKey.trim();
     const normalizedBaseUrl = isCustom ? baseUrl.trim() : catalog[provider]?.defaultBaseUrl ?? "";
     if (!normalizedApiKey) {
@@ -358,7 +372,7 @@ function AddKeyForm({ onAdd, catalog, fetchProviderModels, memos, memoCoverage, 
         ? "responses"
         : "chat";
     // Manual key + "save as memo" — persist the template before adding entries.
-    if (!usingMemoKey && saveAsMemo) {
+    if (provider !== "antigravity" && !usingMemoKey && saveAsMemo) {
       await createMemo({
         name: label.trim() || undefined,
         provider,
@@ -373,6 +387,7 @@ function AddKeyForm({ onAdd, catalog, fetchProviderModels, memos, memoCoverage, 
       models,
       apiKey: normalizedApiKey || (usingMemoKey ? "" : ""),
       baseUrl: isCustom ? normalizedBaseUrl : undefined,
+      projectId: isAntigravity ? projectId.trim() || undefined : undefined,
       label: label.trim() || undefined,
       capabilities,
       wire: wireSelectable ? submittedWire : undefined,
@@ -382,6 +397,7 @@ function AddKeyForm({ onAdd, catalog, fetchProviderModels, memos, memoCoverage, 
     if (result.ok) {
       setSelectedModels([]);
       setApiKey("");
+      setProjectId("");
       setBaseUrl("");
       setLabel("");
       setManualModelsInput("");
@@ -398,7 +414,7 @@ function AddKeyForm({ onAdd, catalog, fetchProviderModels, memos, memoCoverage, 
 
   return (
     <form onSubmit={handleSubmit} class="flex flex-col gap-3 p-4 bg-white dark:bg-card-dark border border-gray-200 dark:border-border-dark rounded-xl">
-      {memos.length > 0 && (
+      {supportsMemos && memos.length > 0 && (
         <div class="group/memos flex flex-col gap-1">
           <div class="flex items-center gap-2">
             <label class="text-[0.7rem] font-medium text-slate-500 dark:text-text-dim">{t("memoSectionTitle")}</label>
@@ -514,24 +530,25 @@ function AddKeyForm({ onAdd, catalog, fetchProviderModels, memos, memoCoverage, 
               setSelectedModels([]);
               setBaseUrl("");
               setApiKey("");
+              setProjectId("");
               setLabel("");
               setManualModelsInput("");
               setCapabilities(["chat"]);
               setWire("chat");
               setActiveMemoId(null);
               latestResolvedSignatureRef.current = "";
-              resetProviderModels("idle", v === "custom" ? t("customModelsHint") : t("providerModelsHint"));
+              resetProviderModels("idle", v === "antigravity" ? t("antigravityModelHint") : v === "custom" ? t("customModelsHint") : t("providerModelsHint"));
             }}
             class="px-2.5 py-1.5 text-sm rounded-lg border border-gray-200 dark:border-border-dark bg-slate-50 dark:bg-bg-dark text-slate-800 dark:text-text-main"
           >
             {PROVIDER_OPTIONS.map((o) => (
-              <option key={o.value} value={o.value}>{o.label}</option>
+              <option key={o.value} value={o.value}>{o.value === "antigravity" ? t("antigravityProviderOption") : o.label}</option>
             ))}
           </select>
         </div>
 
         <div class="flex flex-col gap-1 flex-1 min-w-[200px]">
-          <label class="text-[0.7rem] font-medium text-slate-500 dark:text-text-dim">{t("apiKeyLabelField")}</label>
+          <label class="text-[0.7rem] font-medium text-slate-500 dark:text-text-dim">{isAntigravity ? t("antigravityRefreshTokenLabel") : t("apiKeyLabelField")}</label>
           <input
             type="password"
             value={apiKey}
@@ -542,10 +559,10 @@ function AddKeyForm({ onAdd, catalog, fetchProviderModels, memos, memoCoverage, 
               resetProviderModels("idle", isCustom ? t("customModelsHint") : t("providerModelsHint"));
             }}
             onBlur={() => { void triggerProviderModelFetch(); }}
-            placeholder={activeMemo ? t("memoKeyPlaceholder", { name: activeMemo.name }) : "sk-..."}
+            placeholder={activeMemo ? t("memoKeyPlaceholder", { name: activeMemo.name }) : isAntigravity ? "1//..." : "sk-..."}
             class="px-2.5 py-1.5 text-sm rounded-lg border border-gray-200 dark:border-border-dark bg-slate-50 dark:bg-bg-dark text-slate-800 dark:text-text-main"
           />
-          {activeMemo && (
+          {supportsMemos && activeMemo && (
             <label class="flex items-center gap-1.5 text-[0.65rem] text-slate-400 dark:text-text-dim cursor-pointer">
               <input
                 type="checkbox"
@@ -556,6 +573,18 @@ function AddKeyForm({ onAdd, catalog, fetchProviderModels, memos, memoCoverage, 
             </label>
           )}
         </div>
+        {isAntigravity && (
+          <div class="flex flex-col gap-1 min-w-[240px] flex-1">
+            <label class="text-[0.7rem] font-medium text-slate-500 dark:text-text-dim">{t("antigravityProjectIdLabel")}</label>
+            <input
+              type="text"
+              value={projectId}
+              onInput={(e) => setProjectId((e.target as HTMLInputElement).value)}
+              placeholder={t("antigravityProjectIdHint")}
+              class="px-2.5 py-1.5 text-sm rounded-lg border border-gray-200 dark:border-border-dark bg-slate-50 dark:bg-bg-dark text-slate-800 dark:text-text-main"
+            />
+          </div>
+        )}
       </div>
 
       <div class="flex flex-col gap-1">
@@ -588,7 +617,7 @@ function AddKeyForm({ onAdd, catalog, fetchProviderModels, memos, memoCoverage, 
         {availableModels.length > 0 && renderModelChecklist(filteredModels, selectedModelSet, handleModelToggle, t("modelFilterNoMatch"))}
         {availableModels.length === 0 && (
           <div class="px-2.5 py-2 text-sm rounded-lg border border-dashed border-gray-200 dark:border-border-dark text-slate-400 dark:text-text-dim">
-            {modelStatus === "loading" ? t("fetchingModelsHint") : modelMessage}
+            {modelStatus === "loading" ? t("fetchingModelsHint") : isAntigravity ? t("antigravityModelHint") : modelMessage}
           </div>
         )}
         <input
@@ -614,7 +643,7 @@ function AddKeyForm({ onAdd, catalog, fetchProviderModels, memos, memoCoverage, 
       <div class="flex flex-col gap-1">
         <label class="text-[0.7rem] font-medium text-slate-500 dark:text-text-dim">{t("capabilitiesLabel")}</label>
         <div class="flex flex-wrap gap-2">
-          {capabilityOptions.map((option) => (
+          {visibleCapabilityOptions.map((option) => (
             <label key={option.value} class="flex items-center gap-2 px-2.5 py-1.5 rounded-lg border border-gray-200 dark:border-border-dark bg-slate-50 dark:bg-bg-dark text-sm text-slate-700 dark:text-text-main">
               <input
                 type="checkbox"
@@ -687,7 +716,7 @@ function AddKeyForm({ onAdd, catalog, fetchProviderModels, memos, memoCoverage, 
         </button>
       </div>
 
-      {!activeMemo && (
+      {supportsMemos && !activeMemo && (
         <label class="flex items-center gap-1.5 text-[0.7rem] text-slate-500 dark:text-text-dim cursor-pointer">
           <input
             type="checkbox"
@@ -710,6 +739,7 @@ function providerBadgeColor(provider: ApiKeyProvider): string {
     case "anthropic": return "bg-warning-container text-warning";
     case "openai": return "bg-success-container text-success";
     case "gemini": return "bg-info-container text-info";
+    case "antigravity": return "bg-info-container text-info";
     case "openrouter": return "bg-avatar-purple-bg text-avatar-purple-text";
     default: return "bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400";
   }

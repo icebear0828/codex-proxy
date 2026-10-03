@@ -16,7 +16,9 @@ import { ApiKeyMemoStore, memoSignature } from "../auth/api-key-memo-store.js";
 import type { ApiKeyMemo } from "../auth/api-key-memo-store.js";
 import type { ApiKeyCapability } from "../auth/api-key-pool.js";
 
-const VALID_PROVIDERS = ["anthropic", "openai", "gemini", "openrouter", "custom"] as const;
+const VALID_PROVIDERS = ["anthropic", "openai", "gemini", "openrouter", "antigravity", "custom"] as const;
+const MODEL_PROVIDERS = ["anthropic", "openai", "gemini", "openrouter", "custom"] as const;
+const MEMO_PROVIDERS = MODEL_PROVIDERS;
 const ModelsSchema = z.array(z.string().trim().min(1)).min(1).transform((models) => [...new Set(models)]);
 const CapabilitiesSchema = z.array(z.enum(API_KEY_CAPABILITIES)).min(1).transform((capabilities) => [...new Set(capabilities)]).optional();
 const WireSchema = z.enum(API_KEY_WIRES).optional();
@@ -27,6 +29,7 @@ const ApiKeyBindingObjectSchema = z.object({
   // Optional only when memoId resolves the key from a memo.
   apiKey: z.string().min(1).optional(),
   baseUrl: z.string().url().optional(),
+  projectId: z.string().trim().min(1).max(256).optional(),
   label: z.string().max(64).nullable().optional(),
   capabilities: CapabilitiesSchema,
   wire: WireSchema,
@@ -52,7 +55,7 @@ function refineBinding<T extends { provider: Provider; baseUrl?: string; wire?: 
 const ApiKeyBindingSchema = refineBinding(ApiKeyBindingObjectSchema);
 
 const FetchProviderModelsSchema = z.object({
-  provider: z.enum(VALID_PROVIDERS),
+  provider: z.enum(MODEL_PROVIDERS),
   apiKey: z.string().trim().min(1),
   baseUrl: z.string().trim().url().optional(),
   wire: WireSchema,
@@ -80,7 +83,7 @@ const CapabilitiesListSchema = z.array(z.enum(API_KEY_CAPABILITIES)).min(1).tran
 
 const MemoCreateSchema = z.object({
   name: z.string().trim().max(64).optional(),
-  provider: z.enum(VALID_PROVIDERS),
+  provider: z.enum(MEMO_PROVIDERS),
   apiKey: z.string().trim().min(1),
   baseUrl: z.string().trim().url().optional(),
   wire: WireSchema,
@@ -111,6 +114,7 @@ type Provider = typeof VALID_PROVIDERS[number];
 
 function isProviderWireAllowed(provider: Provider, wire: z.infer<typeof WireSchema>): boolean {
   if (!wire) return true;
+  if (provider === "antigravity") return wire === "gemini";
   if (provider === "custom") return true;
   if (provider === "openai" || provider === "openrouter") return wire === "chat" || wire === "responses";
   return wire === provider;
@@ -154,6 +158,7 @@ function addEntries(pool: ApiKeyPool, items: Array<Omit<ApiKeyBindingInput, "api
           model,
           apiKey: item.apiKey,
           baseUrl: item.baseUrl,
+          projectId: item.projectId,
           label: item.label,
           capabilities: item.capabilities,
           wire: item.wire,
@@ -371,7 +376,7 @@ export function createApiKeyRoutes(pool: ApiKeyPool, modelCache = new ApiKeyMode
   // Memo generator — visible only while some (provider, baseUrl, wire, key,
   // capabilities) signature from the pool is not covered by any memo.
   app.get("/auth/api-keys/memos/coverage", (c) => {
-    const uncovered = pool.getAll().filter((entry) => !memoStore.isCovered({
+    const uncovered = pool.getAll().filter((entry) => entry.provider !== "antigravity" && !memoStore.isCovered({
       provider: entry.provider,
       baseUrl: entry.baseUrl,
       wire: entry.wire,
@@ -387,13 +392,16 @@ export function createApiKeyRoutes(pool: ApiKeyPool, modelCache = new ApiKeyMode
   app.post("/auth/api-keys/memos/generate", async (c) => {
     const parsed = await parseJsonRequest(c, MemoGenerateSchema).catch(() => ({ ok: true as const, data: { overwrite: false } }));
     if (!parsed.ok) return parsed.response;
-    const result = memoStore.generateFromEntries(pool.getAll().map((entry) => ({
-      provider: entry.provider,
-      baseUrl: entry.baseUrl,
-      wire: entry.wire,
-      apiKey: entry.apiKey,
-      capabilities: entry.capabilities,
-    })));
+    const result = memoStore.generateFromEntries(pool.getAll().flatMap((entry) => {
+      if (entry.provider === "antigravity") return [];
+      return [{
+        provider: entry.provider,
+        baseUrl: entry.baseUrl,
+        wire: entry.wire,
+        apiKey: entry.apiKey,
+        capabilities: entry.capabilities,
+      }];
+    }));
     return c.json({ success: true, created: result.created.length, skipped: result.skipped, memos: memoStore.list().map(toPublicMemo) });
   });
 
