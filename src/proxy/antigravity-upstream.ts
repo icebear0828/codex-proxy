@@ -93,7 +93,7 @@ export class AntigravityUpstream implements UpstreamAdapter {
     yield* this.streamParser.parseStream(response);
   }
 
-  private async getAccessToken(signal: AbortSignal, force = false): Promise<string> {
+  private async getAccessToken(force = false): Promise<string> {
     if (!force && this.accessToken && Date.now() < this.accessTokenExpiresAt - 60_000) {
       return this.accessToken;
     }
@@ -102,14 +102,14 @@ export class AntigravityUpstream implements UpstreamAdapter {
       this.accessTokenExpiresAt = 0;
     }
     if (!this.refreshPromise) {
-      this.refreshPromise = this.refreshAccessToken(signal).finally(() => {
+      this.refreshPromise = this.refreshAccessToken().finally(() => {
         this.refreshPromise = null;
       });
     }
     return this.refreshPromise;
   }
 
-  private async refreshAccessToken(signal: AbortSignal): Promise<string> {
+  private async refreshAccessToken(): Promise<string> {
     const clientSecret = process.env.ANTIGRAVITY_OAUTH_CLIENT_SECRET?.trim();
     if (!clientSecret) {
       throw new CodexApiError(
@@ -128,7 +128,7 @@ export class AntigravityUpstream implements UpstreamAdapter {
       method: "POST",
       headers: { "Content-Type": "application/x-www-form-urlencoded", Accept: "application/json" },
       body: form.toString(),
-      signal,
+      signal: AbortSignal.timeout(15_000),
     }));
     const data: unknown = await response.json().catch(() => null);
     if (!response.ok || !isRecord(data) || typeof data.access_token !== "string") {
@@ -184,10 +184,10 @@ export class AntigravityUpstream implements UpstreamAdapter {
       }),
     );
 
-    let response = await send(await this.getAccessToken(signal));
+    let response = await send(await this.getAccessToken());
     if (response.status === 401) {
       if (response.body) await response.body.cancel().catch(() => undefined);
-      response = await send(await this.getAccessToken(signal, true));
+      response = await send(await this.getAccessToken(true));
     }
     return response;
   }
