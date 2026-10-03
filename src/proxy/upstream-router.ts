@@ -35,7 +35,7 @@ export class UpstreamRouter {
     const colonIdx = model.indexOf(":");
     if (colonIdx <= 0) return null;
     const tag = model.slice(0, colonIdx);
-    if (!this.adapters.has(tag)) return null;
+    if (!this.adapters.has(tag) && tag !== "antigravity") return null;
     return { tag, bareModel: model.slice(colonIdx + 1) };
   }
 
@@ -65,7 +65,9 @@ export class UpstreamRouter {
 
     if (this.apiKeyPool && this.adapterFactory) {
       for (const candidate of this.resolvePoolModelCandidates(model)) {
-        const entries = this.apiKeyPool.getByModel(candidate);
+        const entries = explicitProvider?.tag === "antigravity"
+          ? this.apiKeyPool.getByModel(candidate).filter((entry) => entry.provider === "antigravity")
+          : this.apiKeyPool.getByModel(candidate);
         if (entries.length > 0) {
           const entry = pickLeastRecentlyUsed(entries);
           this.apiKeyPool.markUsed(entry.id);
@@ -78,6 +80,8 @@ export class UpstreamRouter {
         }
       }
     }
+
+    if (explicitProvider?.tag === "antigravity") return { kind: "not-found" };
 
     if (explicitProvider) {
       const adapter = this.adapters.get(explicitProvider.tag);

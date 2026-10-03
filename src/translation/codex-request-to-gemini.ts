@@ -37,7 +37,7 @@ interface GeminiTool {
 
 export interface GeminiGenerateContentRequest {
   contents: GeminiContent[];
-  system_instruction?: { parts: [{ text: string }] };
+  system_instruction?: { parts: Array<{ text: string }> };
   tools?: GeminiTool[];
   generationConfig?: {
     responseMimeType?: string;

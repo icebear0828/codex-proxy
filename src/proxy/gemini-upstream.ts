@@ -88,7 +88,7 @@ export class GeminiUpstream implements UpstreamAdapter {
     for await (const raw of parseSSEStream(response)) {
       // Gemini SSE has no `event:` field — each data line is a GenerateContentResponse
       if (!isRecord(raw.data)) continue;
-      const chunk = raw.data;
+      const chunk = isRecord(raw.data.response) ? raw.data.response : raw.data;
 
       if (!sentCreated) {
         yield {

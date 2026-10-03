@@ -14,12 +14,12 @@ import { randomBytes } from "crypto";
 import { getDataDir } from "../paths.js";
 import { normalizeWireForProvider } from "./api-key-pool.js";
 import type { ApiKeyCapability, ApiKeyWire } from "./api-key-pool.js";
-import type { ApiKeyProvider, CatalogModel } from "./api-key-catalog.js";
+import type { MemoProvider, CatalogModel } from "./api-key-catalog.js";
 
 export interface ApiKeyMemo {
   id: string;
   name: string;
-  provider: ApiKeyProvider;
+  provider: MemoProvider;
   baseUrl: string;
   wire: ApiKeyWire;
   apiKey: string;
