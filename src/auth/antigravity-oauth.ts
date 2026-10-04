@@ -1,4 +1,5 @@
 import { createHash, randomBytes } from "crypto";
+import { createServer, type Server, type ServerResponse } from "node:http";
 import { withFetchDispatcher } from "../proxy/fetch-dispatcher.js";
 import {
   ANTIGRAVITY_DEFAULT_OAUTH_CLIENT_ID,
@@ -8,7 +9,8 @@ import {
 import { isRecord } from "../translation/shared-utils.js";
 
 const AUTHORIZATION_URL = "https://accounts.google.com/o/oauth2/v2/auth";
-const REDIRECT_URI = "http://localhost:51121/oauth-callback";
+const CALLBACK_PORT = 51121;
+const REDIRECT_URI = `http://localhost:${CALLBACK_PORT}/oauth-callback`;
 const SCOPES = [
   "https://www.googleapis.com/auth/cloud-platform",
   "https://www.googleapis.com/auth/userinfo.email",
@@ -25,6 +27,86 @@ interface PendingAntigravitySession {
 }
 
 const pendingSessions = new Map<string, PendingAntigravitySession>();
+let callbackServer: Server | null = null;
+let callbackServerTimeout: ReturnType<typeof setTimeout> | null = null;
+
+function closeCallbackServer(server: Server | null = callbackServer): void {
+  if (!server || callbackServer !== server) return;
+  callbackServer = null;
+  if (callbackServerTimeout) clearTimeout(callbackServerTimeout);
+  callbackServerTimeout = null;
+  if (server.listening) server.close();
+}
+
+function sendCallbackPage(response: ServerResponse): void {
+  response.writeHead(200, {
+    "Cache-Control": "no-store",
+    "Content-Security-Policy": "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; base-uri 'none'; frame-ancestors 'none'",
+    "Content-Type": "text/html; charset=utf-8",
+    "Referrer-Policy": "no-referrer",
+    "X-Content-Type-Options": "nosniff",
+  });
+  response.end(`<!doctype html>
+<html lang="zh-CN"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Antigravity OAuth</title>
+<style>body{font:16px system-ui,sans-serif;max-width:560px;margin:12vh auto;padding:24px;color:#172033}h1{font-size:24px}p{line-height:1.6;color:#526078}input{box-sizing:border-box;width:100%;padding:12px;border:1px solid #ccd3df;border-radius:8px}button{margin-top:12px;padding:10px 14px;border:0;border-radius:8px;background:#315efb;color:white;cursor:pointer}</style>
+<main><h1>Antigravity 登录完成</h1><p id="message">正在返回 Codex Proxy…</p><input id="callback" aria-label="回调地址" readonly><button id="copy" hidden>复制回调地址</button></main>
+<script>
+const callbackUrl = window.location.href;
+const input = document.getElementById('callback');
+input.value = callbackUrl;
+const isError = new URLSearchParams(window.location.search).has('error');
+if (isError) document.getElementById('message').textContent = '登录未完成，正在返回 Codex Proxy…';
+if (window.opener) {
+  window.opener.postMessage({ type: 'antigravity-oauth-callback', callbackUrl }, '*');
+  setTimeout(() => window.close(), 300);
+} else {
+  document.getElementById('message').textContent = '请复制下面的完整地址，并粘贴回 Codex Proxy。';
+  document.getElementById('copy').hidden = false;
+  document.getElementById('copy').onclick = async () => { await navigator.clipboard.writeText(callbackUrl); document.getElementById('copy').textContent = '已复制'; };
+  input.select();
+}
+</script></html>`);
+}
+
+async function ensureCallbackServer(): Promise<void> {
+  if (callbackServer?.listening) {
+    if (callbackServerTimeout) clearTimeout(callbackServerTimeout);
+    callbackServerTimeout = setTimeout(() => closeCallbackServer(), SESSION_TTL_MS);
+    callbackServerTimeout.unref();
+    return;
+  }
+
+  const server = createServer((request, response) => {
+    const url = new URL(request.url || "/", "http://localhost");
+    if (request.method !== "GET" || url.pathname !== "/oauth-callback") {
+      response.writeHead(404, { "Cache-Control": "no-store", "Content-Type": "text/plain; charset=utf-8" });
+      response.end("Not found");
+      return;
+    }
+    const state = url.searchParams.get("state");
+    if (!state || !pendingSessions.has(state)) {
+      response.writeHead(400, { "Cache-Control": "no-store", "Content-Type": "text/plain; charset=utf-8" });
+      response.end("This Antigravity login session is invalid or expired. Return to Codex Proxy and start again.");
+      return;
+    }
+    sendCallbackPage(response);
+    response.once("finish", () => closeCallbackServer(server));
+  });
+
+  await new Promise<void>((resolve, reject) => {
+    const onError = (error: Error) => reject(error);
+    server.once("error", onError);
+    server.listen(CALLBACK_PORT, "localhost", () => {
+      server.off("error", onError);
+      resolve();
+    });
+  });
+
+  callbackServer = server;
+  callbackServerTimeout = setTimeout(() => closeCallbackServer(server), SESSION_TTL_MS);
+  callbackServerTimeout.unref();
+}
 
 function pruneExpiredSessions(now = Date.now()): void {
   for (const [state, session] of pendingSessions) {
@@ -36,8 +118,9 @@ function randomCode(): string {
   return randomBytes(32).toString("base64url");
 }
 
-export function startAntigravityOAuthFlow(): string {
+export async function startAntigravityOAuthFlow(): Promise<string> {
   pruneExpiredSessions();
+  await ensureCallbackServer();
 
   const state = randomCode();
   const codeVerifier = randomCode();

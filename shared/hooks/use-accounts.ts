@@ -13,6 +13,42 @@ export interface PersistenceHealth {
   message?: string;
 }
 
+export interface AntigravitySupportedModel {
+  id: string;
+  displayName: string;
+  family: "claude" | "gemini";
+}
+
+export interface AntigravityAccountSummary {
+  id: string;
+  label: string;
+  status: "active" | "disabled" | "error";
+  models: string[];
+  modelCount: number;
+  claudeModelCount: number;
+  geminiModelCount: number;
+  addedAt: string;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
+}
+
+function isAntigravityModel(value: unknown): value is AntigravitySupportedModel {
+  if (!isRecord(value)) return false;
+  return typeof value.id === "string" && typeof value.displayName === "string" &&
+    (value.family === "claude" || value.family === "gemini");
+}
+
+function isAntigravityAccount(value: unknown): value is AntigravityAccountSummary {
+  if (!isRecord(value)) return false;
+  return typeof value.id === "string" && typeof value.label === "string" &&
+    (value.status === "active" || value.status === "disabled" || value.status === "error") &&
+    Array.isArray(value.models) && value.models.every((model) => typeof model === "string") &&
+    typeof value.modelCount === "number" && typeof value.claudeModelCount === "number" &&
+    typeof value.geminiModelCount === "number" && typeof value.addedAt === "string";
+}
+
 export function useAccounts() {
   const [list, setList] = useState<Account[]>([]);
   const [loading, setLoading] = useState(true);
@@ -23,6 +59,8 @@ export function useAccounts() {
   const [addError, setAddError] = useState("");
   const [addAuthUrl, setAddAuthUrl] = useState("");
   const [antigravityAuthUrl, setAntigravityAuthUrl] = useState("");
+  const [antigravityModels, setAntigravityModels] = useState<AntigravitySupportedModel[]>([]);
+  const [antigravityAccounts, setAntigravityAccounts] = useState<AntigravityAccountSummary[]>([]);
   const [fallbackUpstream, setFallbackUpstream] = useState<FallbackUpstreamPublic | null>(null);
   const [fallbackActive, setFallbackActive] = useState(false);
   const [persistenceHealth, setPersistenceHealth] = useState<PersistenceHealth>({ ok: true });
@@ -41,6 +79,17 @@ export function useAccounts() {
       }
       if (data.persistence_health && typeof data.persistence_health === "object") {
         setPersistenceHealth(data.persistence_health as PersistenceHealth);
+      }
+      try {
+        const antigravityResp = await fetch("/auth/antigravity/accounts");
+        const antigravityData: unknown = await antigravityResp.json();
+        setAntigravityAccounts(
+          antigravityResp.ok && isRecord(antigravityData) && Array.isArray(antigravityData.accounts)
+            ? antigravityData.accounts.filter(isAntigravityAccount)
+            : [],
+        );
+      } catch {
+        setAntigravityAccounts([]);
       }
       setLastUpdated(new Date());
     } catch {
@@ -96,6 +145,7 @@ export function useAccounts() {
     setAddError("");
     setAddAuthUrl("");
     setAntigravityAuthUrl("");
+    setAntigravityModels([]);
     try {
       const resp = await fetch("/auth/login-start", { method: "POST" });
       const data = await resp.json();
@@ -170,39 +220,72 @@ export function useAccounts() {
     setAddError("");
     try {
       const resp = await fetch("/auth/antigravity/login-start", { method: "POST" });
-      const data = await resp.json();
-      if (!resp.ok || typeof data.authUrl !== "string") {
-        throw new Error(data.error || "failedStartLogin");
+      const data: unknown = await resp.json();
+      if (!resp.ok || !isRecord(data) || typeof data.authUrl !== "string" || !Array.isArray(data.models)) {
+        const message = isRecord(data) && typeof data.error === "string" ? data.error : "failedStartLogin";
+        throw new Error(message);
       }
+      const models = data.models.filter(isAntigravityModel);
+      if (models.length === 0) throw new Error("failedStartLogin");
       setAntigravityAuthUrl(data.authUrl);
+      setAntigravityModels(models);
     } catch (err) {
       setAddError(err instanceof Error ? err.message : "failedStartLogin");
     }
   }, []);
 
-  const submitAntigravityOAuth = useCallback(async (callbackUrl: string, models: string[]): Promise<boolean> => {
+  const submitAntigravityOAuth = useCallback(async (callbackUrl: string): Promise<boolean> => {
     setAddInfo("");
     setAddError("");
     try {
       const resp = await fetch("/auth/antigravity/code-relay", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ callbackUrl, models }),
+        body: JSON.stringify({ callbackUrl }),
       });
-      const data = await resp.json();
-      if (!resp.ok || !data.success) {
-        setAddError(data.error || "failedExchangeCode");
+      const data: unknown = await resp.json();
+      if (!resp.ok || !isRecord(data) || data.success !== true) {
+        setAddError(isRecord(data) && typeof data.error === "string" ? data.error : "failedExchangeCode");
         return false;
       }
       setAddVisible(false);
       setAddInfo("antigravityAccountAdded");
       setAntigravityAuthUrl("");
+      await loadAccounts();
       return true;
     } catch (err) {
       setAddError("networkError" + (err instanceof Error ? err.message : String(err)));
       return false;
     }
-  }, []);
+  }, [loadAccounts]);
+
+  const deleteAntigravityAccount = useCallback(async (id: string): Promise<string | null> => {
+    try {
+      const resp = await fetch(`/auth/antigravity/accounts/${encodeURIComponent(id)}`, { method: "DELETE" });
+      const data: unknown = await resp.json();
+      if (!resp.ok) return isRecord(data) && typeof data.error === "string" ? data.error : "Failed to delete Antigravity account";
+      await loadAccounts();
+      return null;
+    } catch (err) {
+      return err instanceof Error ? err.message : String(err);
+    }
+  }, [loadAccounts]);
+
+  const toggleAntigravityAccountStatus = useCallback(async (id: string, currentStatus: AntigravityAccountSummary["status"]): Promise<string | null> => {
+    try {
+      const resp = await fetch(`/auth/antigravity/accounts/${encodeURIComponent(id)}/status`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status: currentStatus === "active" ? "disabled" : "active" }),
+      });
+      const data: unknown = await resp.json();
+      if (!resp.ok) return isRecord(data) && typeof data.error === "string" ? data.error : "Failed to update Antigravity account";
+      await loadAccounts();
+      return null;
+    } catch (err) {
+      return err instanceof Error ? err.message : String(err);
+    }
+  }, [loadAccounts]);
 
   const submitRelay = useCallback(
     async (callbackUrl: string) => {
@@ -468,6 +551,8 @@ export function useAccounts() {
     addError,
     addAuthUrl,
     antigravityAuthUrl,
+    antigravityModels,
+    antigravityAccounts,
     fallbackUpstream,
     fallbackActive,
     refreshFallbackUpstream,
@@ -483,6 +568,8 @@ export function useAccounts() {
     addByRefreshToken,
     startAntigravityOAuth,
     submitAntigravityOAuth,
+    deleteAntigravityAccount,
+    toggleAntigravityAccountStatus,
     deleteAccount,
     exportAccounts,
     importAccounts,

@@ -11,7 +11,6 @@ const PROVIDER_OPTIONS: Array<{ value: ApiKeyProvider; label: string }> = [
   { value: "anthropic", label: "Anthropic" },
   { value: "openai", label: "OpenAI" },
   { value: "gemini", label: "Google Gemini" },
-  { value: "antigravity", label: "Antigravity OAuth" },
   { value: "openrouter", label: "OpenRouter" },
   { value: "custom", label: "Custom" },
 ];

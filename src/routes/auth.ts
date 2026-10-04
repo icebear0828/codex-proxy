@@ -1,10 +1,11 @@
 import { Hono } from "hono";
 import { z } from "zod";
 import type { AccountPool } from "../auth/account-pool.js";
-import type { ApiKeyPool } from "../auth/api-key-pool.js";
+import type { ApiKeyEntry, ApiKeyPool } from "../auth/api-key-pool.js";
 import type { RefreshScheduler } from "../auth/refresh-scheduler.js";
 import { validateManualToken } from "../auth/chatgpt-oauth.js";
 import { exchangeAntigravityCallback, startAntigravityOAuthFlow } from "../auth/antigravity-oauth.js";
+import { ANTIGRAVITY_SUPPORTED_MODELS } from "../auth/antigravity-models.js";
 import { getConfig } from "../config.js";
 import {
   startOAuthFlow,
@@ -28,8 +29,59 @@ export function createAuthRoutes(
 ): Hono {
   const app = new Hono();
 
-  app.post("/auth/antigravity/login-start", (c) => {
-    return c.json({ authUrl: startAntigravityOAuthFlow() });
+  app.post("/auth/antigravity/login-start", async (c) => {
+    try {
+      return c.json({ authUrl: await startAntigravityOAuthFlow(), models: ANTIGRAVITY_SUPPORTED_MODELS });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Antigravity callback server could not start.";
+      return c.json({ error: message }, 503);
+    }
+  });
+
+  app.get("/auth/antigravity/accounts", (c) => {
+    if (!apiKeyPool) return c.json({ error: "Antigravity account storage is unavailable." }, 503);
+    const groups = new Map<string, ApiKeyEntry[]>();
+    for (const entry of apiKeyPool.getAll()) {
+      if (entry.provider !== "antigravity") continue;
+      const group = groups.get(entry.apiKey) ?? [];
+      group.push(entry);
+      groups.set(entry.apiKey, group);
+    }
+    const accounts = [...groups.values()].map((entries) => {
+      const models = [...new Set(entries.map((entry) => entry.model))].sort();
+      const status = entries.some((entry) => entry.status === "error")
+        ? "error"
+        : entries.every((entry) => entry.status === "active") ? "active" : "disabled";
+      return {
+        id: entries[0].id,
+        label: entries.find((entry) => entry.label)?.label ?? "Antigravity OAuth",
+        status,
+        models,
+        modelCount: models.length,
+        claudeModelCount: models.filter((model) => model.startsWith("claude-")).length,
+        geminiModelCount: models.filter((model) => model.startsWith("gemini-")).length,
+        addedAt: entries.map((entry) => entry.addedAt).sort()[0],
+      };
+    });
+    return c.json({ accounts });
+  });
+
+  app.patch("/auth/antigravity/accounts/:id/status", async (c) => {
+    if (!apiKeyPool) return c.json({ error: "Antigravity account storage is unavailable." }, 503);
+    const parsed = z.object({ status: z.enum(["active", "disabled"]) }).safeParse(await c.req.json().catch(() => null));
+    if (!parsed.success) return c.json({ error: "Invalid account status." }, 400);
+    if (!apiKeyPool.setAntigravityAccountStatus(c.req.param("id"), parsed.data.status)) {
+      return c.json({ error: "Antigravity account not found." }, 404);
+    }
+    return c.json({ success: true });
+  });
+
+  app.delete("/auth/antigravity/accounts/:id", (c) => {
+    if (!apiKeyPool) return c.json({ error: "Antigravity account storage is unavailable." }, 503);
+    if (!apiKeyPool.removeAntigravityAccount(c.req.param("id"))) {
+      return c.json({ error: "Antigravity account not found." }, 404);
+    }
+    return c.json({ success: true });
   });
 
   app.post("/auth/antigravity/code-relay", async (c) => {
@@ -38,16 +90,14 @@ export function createAuthRoutes(
     const body: unknown = await c.req.json().catch(() => null);
     const parsed = z.object({
       callbackUrl: z.string().trim().min(1),
-      models: z.array(z.string().trim().min(1).max(128)).min(1).max(20),
       label: z.string().trim().max(64).optional(),
     }).safeParse(body);
-    if (!parsed.success) return c.json({ error: "Enter at least one model ID and paste the full Google callback URL." }, 400);
+    if (!parsed.success) return c.json({ error: "Paste the full Google callback URL." }, 400);
 
     try {
       const refreshToken = await exchangeAntigravityCallback(parsed.data.callbackUrl);
-      const models = [...new Set(parsed.data.models)];
       let added = 0;
-      for (const model of models) {
+      for (const { id: model } of ANTIGRAVITY_SUPPORTED_MODELS) {
         const existing = apiKeyPool.getAll().find((entry) =>
           entry.provider === "antigravity" && entry.model === model && entry.apiKey === refreshToken,
         );
@@ -67,8 +117,11 @@ export function createAuthRoutes(
       }
       return c.json({ success: true, added });
     } catch (err) {
-      const message = err instanceof Error ? err.message : "Antigravity authorization failed.";
-      const status = message.includes("HTTP ") ? 502 : 400;
+      const isNetworkError = err instanceof Error && (err.message === "fetch failed" || err.name === "TimeoutError");
+      const message = isNetworkError
+        ? "Could not reach Google's OAuth service. Check the configured proxy or network and try again."
+        : err instanceof Error ? err.message : "Antigravity authorization failed.";
+      const status = isNetworkError || message.includes("HTTP ") ? 502 : 400;
       return c.json({ error: message }, status);
     }
   });
