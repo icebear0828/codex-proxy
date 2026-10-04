@@ -22,6 +22,7 @@ export function useAccounts() {
   const [addInfo, setAddInfo] = useState("");
   const [addError, setAddError] = useState("");
   const [addAuthUrl, setAddAuthUrl] = useState("");
+  const [antigravityAuthUrl, setAntigravityAuthUrl] = useState("");
   const [fallbackUpstream, setFallbackUpstream] = useState<FallbackUpstreamPublic | null>(null);
   const [fallbackActive, setFallbackActive] = useState(false);
   const [persistenceHealth, setPersistenceHealth] = useState<PersistenceHealth>({ ok: true });
@@ -94,6 +95,7 @@ export function useAccounts() {
     setAddInfo("");
     setAddError("");
     setAddAuthUrl("");
+    setAntigravityAuthUrl("");
     try {
       const resp = await fetch("/auth/login-start", { method: "POST" });
       const data = await resp.json();
@@ -161,6 +163,45 @@ export function useAccounts() {
     setAddInfo("");
     setAddError("");
     setAddAuthUrl("");
+    setAntigravityAuthUrl("");
+  }, []);
+
+  const startAntigravityOAuth = useCallback(async () => {
+    setAddError("");
+    try {
+      const resp = await fetch("/auth/antigravity/login-start", { method: "POST" });
+      const data = await resp.json();
+      if (!resp.ok || typeof data.authUrl !== "string") {
+        throw new Error(data.error || "failedStartLogin");
+      }
+      setAntigravityAuthUrl(data.authUrl);
+    } catch (err) {
+      setAddError(err instanceof Error ? err.message : "failedStartLogin");
+    }
+  }, []);
+
+  const submitAntigravityOAuth = useCallback(async (callbackUrl: string, models: string[]): Promise<boolean> => {
+    setAddInfo("");
+    setAddError("");
+    try {
+      const resp = await fetch("/auth/antigravity/code-relay", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ callbackUrl, models }),
+      });
+      const data = await resp.json();
+      if (!resp.ok || !data.success) {
+        setAddError(data.error || "failedExchangeCode");
+        return false;
+      }
+      setAddVisible(false);
+      setAddInfo("antigravityAccountAdded");
+      setAntigravityAuthUrl("");
+      return true;
+    } catch (err) {
+      setAddError("networkError" + (err instanceof Error ? err.message : String(err)));
+      return false;
+    }
   }, []);
 
   const submitRelay = useCallback(
@@ -426,6 +467,7 @@ export function useAccounts() {
     addInfo,
     addError,
     addAuthUrl,
+    antigravityAuthUrl,
     fallbackUpstream,
     fallbackActive,
     refreshFallbackUpstream,
@@ -439,6 +481,8 @@ export function useAccounts() {
     cancelAdd,
     submitRelay,
     addByRefreshToken,
+    startAntigravityOAuth,
+    submitAntigravityOAuth,
     deleteAccount,
     exportAccounts,
     importAccounts,

@@ -8,9 +8,10 @@ import { withFetchDispatcher } from "./fetch-dispatcher.js";
 import { translateCodexToGeminiRequest } from "../translation/codex-request-to-gemini.js";
 import { isRecord } from "../translation/shared-utils.js";
 
-const DEFAULT_OAUTH_CLIENT_ID = "1071006060591-tmhssin2h21lcre235vtolojh4g403ep.apps.googleusercontent.com";
-const DEFAULT_OAUTH_CLIENT_SECRET = "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";
-const TOKEN_URL = "https://oauth2.googleapis.com/token";
+export const ANTIGRAVITY_DEFAULT_OAUTH_CLIENT_ID = "1071006060591-tmhssin2h21lcre235vtolojh4g403ep.apps.googleusercontent.com";
+export const ANTIGRAVITY_DEFAULT_OAUTH_CLIENT_SECRET = "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";
+export const ANTIGRAVITY_OAUTH_TOKEN_URL = "https://oauth2.googleapis.com/token";
+const TOKEN_URL = ANTIGRAVITY_OAUTH_TOKEN_URL;
 const DEFAULT_BASE_URL = "https://cloudcode-pa.googleapis.com";
 const DEFAULT_USER_AGENT_VERSION = "2.9.1";
 const IDENTITY_INSTRUCTION = "You are Antigravity, an AI coding assistant.";
@@ -111,10 +112,10 @@ export class AntigravityUpstream implements UpstreamAdapter {
   }
 
   private async refreshAccessToken(): Promise<string> {
-    const clientSecret = process.env.ANTIGRAVITY_OAUTH_CLIENT_SECRET?.trim() || DEFAULT_OAUTH_CLIENT_SECRET;
+    const clientSecret = process.env.ANTIGRAVITY_OAUTH_CLIENT_SECRET?.trim() || ANTIGRAVITY_DEFAULT_OAUTH_CLIENT_SECRET;
 
     const form = new URLSearchParams({
-      client_id: process.env.ANTIGRAVITY_OAUTH_CLIENT_ID?.trim() || DEFAULT_OAUTH_CLIENT_ID,
+      client_id: process.env.ANTIGRAVITY_OAUTH_CLIENT_ID?.trim() || ANTIGRAVITY_DEFAULT_OAUTH_CLIENT_ID,
       client_secret: clientSecret,
       refresh_token: this.refreshToken,
       grant_type: "refresh_token",
