@@ -206,6 +206,24 @@ export class ApiKeyPool {
     return true;
   }
 
+  removeAntigravityAccount(id: string): boolean {
+    const target = this.entries.find((entry) => entry.id === id && entry.provider === "antigravity");
+    if (!target) return false;
+    this.entries = this.entries.filter((entry) => entry.provider !== "antigravity" || entry.apiKey !== target.apiKey);
+    this.persist();
+    return true;
+  }
+
+  setAntigravityAccountStatus(id: string, status: ApiKeyStatus): boolean {
+    const target = this.entries.find((entry) => entry.id === id && entry.provider === "antigravity");
+    if (!target) return false;
+    for (const entry of this.entries) {
+      if (entry.provider === "antigravity" && entry.apiKey === target.apiKey) entry.status = status;
+    }
+    this.persist();
+    return true;
+  }
+
   setLabel(id: string, label: string | null): boolean {
     const entry = this.entries.find((e) => e.id === id);
     if (!entry) return false;

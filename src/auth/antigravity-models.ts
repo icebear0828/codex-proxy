@@ -1,0 +1,47 @@
+export interface AntigravitySupportedModel {
+  id: string;
+  displayName: string;
+  family: "claude" | "gemini";
+}
+
+export const ANTIGRAVITY_SUPPORTED_MODELS: AntigravitySupportedModel[] = [
+  { id: "claude-fable-5-1", displayName: "Claude Fable 5.1", family: "claude" },
+  { id: "claude-fable-5", displayName: "Claude Fable 5", family: "claude" },
+  { id: "claude-opus-4-5-thinking", displayName: "Claude Opus 4.5 Thinking", family: "claude" },
+  { id: "claude-sonnet-4-5", displayName: "Claude Sonnet 4.5", family: "claude" },
+  { id: "claude-sonnet-4-5-thinking", displayName: "Claude Sonnet 4.5 Thinking", family: "claude" },
+  { id: "claude-opus-4-6", displayName: "Claude Opus 4.6", family: "claude" },
+  { id: "claude-opus-4-6-thinking", displayName: "Claude Opus 4.6 Thinking", family: "claude" },
+  { id: "claude-opus-4-7", displayName: "Claude Opus 4.7", family: "claude" },
+  { id: "claude-opus-4-8", displayName: "Claude Opus 4.8", family: "claude" },
+  { id: "claude-sonnet-4-6", displayName: "Claude Sonnet 4.6", family: "claude" },
+  { id: "gemini-2.5-flash", displayName: "Gemini 2.5 Flash", family: "gemini" },
+  { id: "gemini-2.5-flash-image", displayName: "Gemini 2.5 Flash Image", family: "gemini" },
+  { id: "gemini-2.5-flash-image-preview", displayName: "Gemini 2.5 Flash Image Preview", family: "gemini" },
+  { id: "gemini-2.5-flash-lite", displayName: "Gemini 2.5 Flash Lite", family: "gemini" },
+  { id: "gemini-2.5-flash-thinking", displayName: "Gemini 2.5 Flash Thinking", family: "gemini" },
+  { id: "gemini-3-flash", displayName: "Gemini 3 Flash", family: "gemini" },
+  { id: "gemini-3-pro-low", displayName: "Gemini 3 Pro Low", family: "gemini" },
+  { id: "gemini-3-pro-high", displayName: "Gemini 3 Pro High", family: "gemini" },
+  { id: "gemini-3.1-pro-low", displayName: "Gemini 3.1 Pro Low", family: "gemini" },
+  { id: "gemini-3.1-pro-high", displayName: "Gemini 3.1 Pro High", family: "gemini" },
+  { id: "gemini-3.1-flash-image", displayName: "Gemini 3.1 Flash Image", family: "gemini" },
+  { id: "gemini-3.1-flash-image-preview", displayName: "Gemini 3.1 Flash Image Preview", family: "gemini" },
+  { id: "gemini-3.6-flash", displayName: "Gemini 3.6 Flash", family: "gemini" },
+  { id: "gemini-3.6-flash-high", displayName: "Gemini 3.6 Flash High", family: "gemini" },
+  { id: "gemini-3.6-flash-low", displayName: "Gemini 3.6 Flash Low", family: "gemini" },
+  { id: "gemini-3.6-flash-medium", displayName: "Gemini 3.6 Flash Medium", family: "gemini" },
+  { id: "gemini-3.6-flash-tiered", displayName: "Gemini 3.6 Flash Tiered", family: "gemini" },
+  { id: "gemini-3.7-flash", displayName: "Gemini 3.7 Flash", family: "gemini" },
+  { id: "gemini-3.7-flash-high", displayName: "Gemini 3.7 Flash High", family: "gemini" },
+  { id: "gemini-3.7-flash-low", displayName: "Gemini 3.7 Flash Low", family: "gemini" },
+  { id: "gemini-3.7-flash-medium", displayName: "Gemini 3.7 Flash Medium", family: "gemini" },
+  { id: "gemini-3.7-flash-tiered", displayName: "Gemini 3.7 Flash Tiered", family: "gemini" },
+  { id: "gemini-3.8-flash", displayName: "Gemini 3.8 Flash", family: "gemini" },
+  { id: "gemini-3.8-flash-high", displayName: "Gemini 3.8 Flash High", family: "gemini" },
+  { id: "gemini-3.8-flash-low", displayName: "Gemini 3.8 Flash Low", family: "gemini" },
+  { id: "gemini-3.8-flash-medium", displayName: "Gemini 3.8 Flash Medium", family: "gemini" },
+  { id: "gemini-3.8-flash-tiered", displayName: "Gemini 3.8 Flash Tiered", family: "gemini" },
+  { id: "gemini-3-pro-preview", displayName: "Gemini 3 Pro Preview", family: "gemini" },
+  { id: "gemini-3-pro-image", displayName: "Gemini 3 Pro Image", family: "gemini" },
+];

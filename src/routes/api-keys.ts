@@ -215,7 +215,7 @@ export function createApiKeyRoutes(pool: ApiKeyPool, modelCache = new ApiKeyMode
   // ── List ──────────────────────────────────────────────────────
 
   app.get("/auth/api-keys", (c) => {
-    return c.json({ keys: pool.exportAll(false) });
+    return c.json({ keys: pool.exportAll(false).filter((entry) => entry.provider !== "antigravity") });
   });
 
   // ── Fetch provider models ──────────────────────────────────────

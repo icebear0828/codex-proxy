@@ -7,6 +7,7 @@ import { Header } from "./components/Header";
 import { UpdateModal } from "./components/UpdateModal";
 import { AddAccount } from "./components/AddAccount";
 import { AccountList } from "./components/AccountList";
+import { AntigravityAccounts } from "./components/AntigravityAccounts";
 import { PoolOverview } from "./components/PoolOverview";
 import { SettingsTab } from "./components/SettingsTab";
 import { ProxyPool } from "./components/ProxyPool";
@@ -165,6 +166,7 @@ function Dashboard() {
             addError={accounts.addError}
             authUrl={accounts.addAuthUrl}
             antigravityAuthUrl={accounts.antigravityAuthUrl}
+            antigravityModels={accounts.antigravityModels}
             onStartAntigravityOAuth={accounts.startAntigravityOAuth}
             onSubmitAntigravityOAuth={accounts.submitAntigravityOAuth}
             fallbackConfigured={!!accounts.fallbackUpstream}
@@ -178,6 +180,12 @@ function Dashboard() {
               <PoolOverview
                 accounts={accounts.list}
                 creditsPerUsd={generalSettings.data?.credits_per_usd}
+              />
+              <AntigravityAccounts
+                accounts={accounts.antigravityAccounts}
+                onAdd={accounts.startAdd}
+                onDelete={accounts.deleteAntigravityAccount}
+                onToggleStatus={accounts.toggleAntigravityAccountStatus}
               />
               <AccountList
                 accounts={accounts.list}

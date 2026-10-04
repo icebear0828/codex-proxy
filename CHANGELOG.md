@@ -8,7 +8,17 @@
 
 ## [Unreleased]
 
-> 暂无已记录的变更。
+### Changed
+
+- Antigravity OAuth 账号改由首页账号区管理；API Keys 页面不再提供 Antigravity 手动录入入口，已有 Antigravity 条目也不再显示在该列表中。（`src/routes/api-keys.ts`、`web/src/components/ApiKeyManager.tsx`）
+
+### Added
+
+- 首页新增 Antigravity OAuth 账号区，支持按账号启用、停用和整组移除；授权成功后自动登记 Sub2API 支持的 Claude 与 Gemini 模型，添加弹窗显示模型清单和操作结果。（`src/auth/antigravity-models.ts`、`src/routes/auth.ts`、`web/src/App.tsx`、`web/src/components/AntigravityAccounts.tsx`、`web/src/components/AddAccount.tsx`）
+
+### Fixed
+
+- Antigravity OAuth 授权码换取令牌时使用程序自动探测到的代理；Google 网络不可达时提示检查代理或网络。（`src/proxy/fetch-dispatcher.ts`、`src/routes/auth.ts`）
 
 ## [v2.1.x](https://github.com/icebear0828/codex-proxy/releases?q=2.1) - 2026-09-01 至 2026-09-07
 
