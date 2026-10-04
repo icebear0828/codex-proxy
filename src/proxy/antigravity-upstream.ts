@@ -13,6 +13,7 @@ export const ANTIGRAVITY_DEFAULT_OAUTH_CLIENT_SECRET = "GOCSPX-K58FWR486LdLJ1mLB
 export const ANTIGRAVITY_OAUTH_TOKEN_URL = "https://oauth2.googleapis.com/token";
 const TOKEN_URL = ANTIGRAVITY_OAUTH_TOKEN_URL;
 const DEFAULT_BASE_URL = "https://cloudcode-pa.googleapis.com";
+const DAILY_BASE_URL = "https://daily-cloudcode-pa.googleapis.com";
 const DEFAULT_USER_AGENT_VERSION = "2.9.1";
 const IDENTITY_INSTRUCTION = "You are Antigravity, an AI coding assistant.";
 const CODEX_MODEL_IDENTITY = /^\s*You are Codex, a coding agent based on GPT-\d+(?:\.\d+)*\.?\s*/i;
@@ -46,6 +47,11 @@ function sessionId(req: CodexResponsesRequest): string {
 function modelId(model: string): string {
   const colon = model.indexOf(":");
   return colon > 0 ? model.slice(colon + 1) : model;
+}
+
+function isEndpointRateLimit(body: string): boolean {
+  const message = body.toLowerCase();
+  return message.includes("resource has been exhausted") && !message.includes("capacity on this model");
 }
 
 function projectIdFrom(value: unknown): string | null {
@@ -204,8 +210,8 @@ export class AntigravityUpstream implements UpstreamAdapter {
   }
 
   private async sendCloudCode(action: string, body: string, signal: AbortSignal): Promise<Response> {
-    const send = async (accessToken: string) => fetch(
-      `${this.baseUrl}/v1internal:${action}${action === "streamGenerateContent" ? "?alt=sse" : ""}`,
+    const send = async (accessToken: string, baseUrl: string) => fetch(
+      `${baseUrl}/v1internal:${action}${action === "streamGenerateContent" ? "?alt=sse" : ""}`,
       withFetchDispatcher({
         method: "POST",
         headers: {
@@ -219,10 +225,30 @@ export class AntigravityUpstream implements UpstreamAdapter {
       }),
     );
 
-    let response = await send(await this.getAccessToken());
-    if (response.status === 401) {
-      if (response.body) await response.body.cancel().catch(() => undefined);
-      response = await send(await this.getAccessToken(true));
+    const sendWithRefresh = async (baseUrl: string): Promise<Response> => {
+      let response = await send(await this.getAccessToken(), baseUrl);
+      if (response.status === 401) {
+        if (response.body) await response.body.cancel().catch(() => undefined);
+        response = await send(await this.getAccessToken(true), baseUrl);
+      }
+      return response;
+    };
+
+    const response = await sendWithRefresh(this.baseUrl);
+    if (response.status === 429 && this.baseUrl === DEFAULT_BASE_URL) {
+      const errorBody = await response.clone().text().catch(() => "");
+      if (isEndpointRateLimit(errorBody)) {
+        try {
+          const fallback = await sendWithRefresh(DAILY_BASE_URL);
+          if (fallback.status !== 401) {
+            await response.body?.cancel().catch(() => undefined);
+            return fallback;
+          }
+          await fallback.body?.cancel().catch(() => undefined);
+        } catch (error) {
+          if (signal.aborted) throw error;
+        }
+      }
     }
     return response;
   }

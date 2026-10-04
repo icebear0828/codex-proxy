@@ -8,7 +8,9 @@
 
 ## [Unreleased]
 
-> 暂无已记录的变更。
+### Fixed
+
+- Antigravity 遇到 Cloud Code 端点级 `Resource has been exhausted` 限流时自动切换备用 daily 端点重试；模型容量限流保持原样。
 
 ## [v2.1.x](https://github.com/icebear0828/codex-proxy/releases?q=2.1) - 2026-09-01 至 2026-09-07
 
