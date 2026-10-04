@@ -8,22 +8,33 @@
 
 ## [Unreleased]
 
+> 暂无已记录的变更。
+
+## [v2.1.x](https://github.com/icebear0828/codex-proxy/releases?q=2.1) - 2026-09-01 至 2026-09-07
+
 ### Changed
 
 - Antigravity OAuth 账号改由首页账号区管理；API Keys 页面不再提供 Antigravity 手动录入入口，已有 Antigravity 条目也不再显示在该列表中。（`src/routes/api-keys.ts`、`web/src/components/ApiKeyManager.tsx`）
 
+- Antigravity OAuth 使用内置 client secret，常规使用无需设置 `ANTIGRAVITY_OAUTH_CLIENT_SECRET`；该变量仍可用于覆盖默认凭据。（`src/proxy/antigravity-upstream.ts`、`.env.example`、`README.md`）
+
+- API Keys 第三方供应商模型列表缓存 TTL 从 7 天缩短至 1 小时；`POST /auth/api-keys/models` 新增 `force` 参数强制绕过缓存，响应新增 `fetchedAt` / `fromCache` / `stale` 字段；非强制刷新遇上游故障时降级返回过期缓存（`stale` 标记）而不是直接退回手动输入。（`src/auth/api-key-model-cache.ts`、`src/routes/api-keys.ts`）
+
+- API Keys 添加面板模型清单新增手动「刷新」按钮与模型筛选框，显示模型数量与更新时间；刷新失败时保留当前列表。（`web/src/components/ApiKeyManager.tsx`、`shared/hooks/use-api-keys.ts`）
+
+- API Keys 添加表单「供应商」标签更名为「供应商类型」；添加接口跳过已存在的（模型, key）组合并返回 `duplicates` 计数，同模型不同 key 仍允许添加以支持轮询。（`src/routes/api-keys.ts`、`shared/i18n/translations.ts`）
+
+- No-Node Lite 制品格式从 tar.xz 改为 zip：Python zipfile deflate -9 极限压缩、条目确定性排序，`codex-proxy.sh` 以 0755 权限位写入；产物更名为 `codex-proxy-<版本>-no-node-lite-all-platforms.zip`，打包现依赖 Python 3。（`scripts/portable/build-portable.mjs`、`scripts/portable/test-portable.mjs`、`.github/workflows/lite-ci.yml`、`.github/workflows/release.yml`、`README.md` 及各语言版本）
+
+- 统一各页面工具栏按钮风格：管理账号（`AccountBulkActions`）、API Keys（`ApiKeyManager`）、代理池（`ProxyPool`）、错误页面（`ErrorsPage`）的顶部与行内按钮全部改用 `accountToolbarControlClass` / `accountToolbarIconClass`，与首页账号列表工具栏保持一致；代理池及错误页面的文字操作按钮改为纯图标按钮（tooltip 保留文字），批量操作栏按钮样式一致化。（`web/src/components/AccountBulkActions.tsx`、`web/src/components/ApiKeyManager.tsx`、`web/src/components/ProxyPool.tsx`、`web/src/pages/AccountManagement.tsx`、`web/src/pages/ErrorsPage.tsx`）
+
+- 官方模型识别改为按名称形态前缀放行（`gpt*` / `codex*` / `oN*`），不再要求模型已收录于本地 catalog：当后端/账号尚未下发的新官方模型（如 `gpt-6-astra`）被客户端请求时，不再返回 `404 model_not_found` 或静默回退默认模型，而是按原名透传交由上游裁决；`resolveModelId` 对官方形态模型原样解析、不回退默认。边界保持不变：非官方形态的未知模型仍 `404`，裸 `codex` 哨兵仍解析为默认模型（`src/models/model-store.ts`）。
+
+- 点击「添加账户」不再立即弹出授权网页，改为弹出对话框展示授权 URL，提供「复制」与「打开链接」按钮，由用户自行选择打开时机；下方保留 RT（Refresh Token）输入与导入入口。（`web/src/components/AddAccount.tsx`、`shared/hooks/use-accounts.ts`）
+
 ### Added
 
 - 首页新增 Antigravity OAuth 账号区，支持按账号启用、停用和整组移除；授权成功后自动登记 Sub2API 支持的 Claude 与 Gemini 模型，添加弹窗显示模型清单和操作结果。（`src/auth/antigravity-models.ts`、`src/routes/auth.ts`、`web/src/App.tsx`、`web/src/components/AntigravityAccounts.tsx`、`web/src/components/AddAccount.tsx`）
-
-### Fixed
-
-- Antigravity 请求会按上游兼容方式处理中性化后的 Claude Code / Codex 身份提示，并始终携带 Cloud Code 所需的工具配置和稳定会话 ID。（`src/proxy/antigravity-upstream.ts`）
-- Antigravity OAuth 授权码换取令牌时使用程序自动探测到的代理；Google 网络不可达时提示检查代理或网络。（`src/proxy/fetch-dispatcher.ts`、`src/routes/auth.ts`）
-
-## [v2.1.x](https://github.com/icebear0828/codex-proxy/releases?q=2.1) - 2026-09-01 至 2026-09-07
-
-### Added
 
 - 主页「添加账户」弹窗新增 Antigravity Google OAuth 登录：使用 PKCE 生成授权链接，登录后粘贴浏览器的完整 localhost 回调 URL 即可交换并保存刷新令牌；默认绑定 Claude Sonnet 模型，也可填写多个模型 ID。（`src/auth/antigravity-oauth.ts`、`src/routes/auth.ts`、`web/src/components/AddAccount.tsx`）
 
@@ -76,25 +87,10 @@
 
 - 新增「后备上游 (API Key)」账户类型：配置一个 baseUrl + apiKey，固定走 Responses 接口，仅在所有账号均不可用时作为最后兜底启用；添加账户弹窗可添加，账户列表末尾独占一行展示，支持卡片上编辑/删除，仅允许配置一个。（`src/auth/fallback-upstream.ts`、`src/routes/accounts.ts`、`src/routes/shared/proxy-handler.ts`、`web/src/components/FallbackUpstreamCard.tsx`、`web/src/components/AddAccount.tsx`）
 
-### Changed
-
-- Antigravity OAuth 使用内置 client secret，常规使用无需设置 `ANTIGRAVITY_OAUTH_CLIENT_SECRET`；该变量仍可用于覆盖默认凭据。（`src/proxy/antigravity-upstream.ts`、`.env.example`、`README.md`）
-
-- API Keys 第三方供应商模型列表缓存 TTL 从 7 天缩短至 1 小时；`POST /auth/api-keys/models` 新增 `force` 参数强制绕过缓存，响应新增 `fetchedAt` / `fromCache` / `stale` 字段；非强制刷新遇上游故障时降级返回过期缓存（`stale` 标记）而不是直接退回手动输入。（`src/auth/api-key-model-cache.ts`、`src/routes/api-keys.ts`）
-
-- API Keys 添加面板模型清单新增手动「刷新」按钮与模型筛选框，显示模型数量与更新时间；刷新失败时保留当前列表。（`web/src/components/ApiKeyManager.tsx`、`shared/hooks/use-api-keys.ts`）
-
-- API Keys 添加表单「供应商」标签更名为「供应商类型」；添加接口跳过已存在的（模型, key）组合并返回 `duplicates` 计数，同模型不同 key 仍允许添加以支持轮询。（`src/routes/api-keys.ts`、`shared/i18n/translations.ts`）
-
-- No-Node Lite 制品格式从 tar.xz 改为 zip：Python zipfile deflate -9 极限压缩、条目确定性排序，`codex-proxy.sh` 以 0755 权限位写入；产物更名为 `codex-proxy-<版本>-no-node-lite-all-platforms.zip`，打包现依赖 Python 3。（`scripts/portable/build-portable.mjs`、`scripts/portable/test-portable.mjs`、`.github/workflows/lite-ci.yml`、`.github/workflows/release.yml`、`README.md` 及各语言版本）
-
-- 统一各页面工具栏按钮风格：管理账号（`AccountBulkActions`）、API Keys（`ApiKeyManager`）、代理池（`ProxyPool`）、错误页面（`ErrorsPage`）的顶部与行内按钮全部改用 `accountToolbarControlClass` / `accountToolbarIconClass`，与首页账号列表工具栏保持一致；代理池及错误页面的文字操作按钮改为纯图标按钮（tooltip 保留文字），批量操作栏按钮样式一致化。（`web/src/components/AccountBulkActions.tsx`、`web/src/components/ApiKeyManager.tsx`、`web/src/components/ProxyPool.tsx`、`web/src/pages/AccountManagement.tsx`、`web/src/pages/ErrorsPage.tsx`）
-
-- 官方模型识别改为按名称形态前缀放行（`gpt*` / `codex*` / `oN*`），不再要求模型已收录于本地 catalog：当后端/账号尚未下发的新官方模型（如 `gpt-6-astra`）被客户端请求时，不再返回 `404 model_not_found` 或静默回退默认模型，而是按原名透传交由上游裁决；`resolveModelId` 对官方形态模型原样解析、不回退默认。边界保持不变：非官方形态的未知模型仍 `404`，裸 `codex` 哨兵仍解析为默认模型（`src/models/model-store.ts`）。
-
-- 点击「添加账户」不再立即弹出授权网页，改为弹出对话框展示授权 URL，提供「复制」与「打开链接」按钮，由用户自行选择打开时机；下方保留 RT（Refresh Token）输入与导入入口。（`web/src/components/AddAccount.tsx`、`shared/hooks/use-accounts.ts`）
-
 ### Fixed
+
+- Antigravity 请求会按上游兼容方式处理中性化后的 Claude Code / Codex 身份提示，并始终携带 Cloud Code 所需的工具配置和稳定会话 ID。（`src/proxy/antigravity-upstream.ts`）
+- Antigravity OAuth 授权码换取令牌时使用程序自动探测到的代理；Google 网络不可达时提示检查代理或网络。（`src/proxy/fetch-dispatcher.ts`、`src/routes/auth.ts`）
 
 - 修复 `/v1/images/generations` 被同名路由静默遮蔽的问题：API-key 辅助端点引入后，`responsesRoutes` 先于 `imagesRoutes` 挂载且 Hono 同路径先注册者胜出，导致账号登录模式下该端点恒返回 400 `unsupported_codex_auxiliary_route`，与 API.md 文档描述的账号模式生图流程不符。现在 Images 两条路由（generations / edits）由 `createImagesRoutes` 独家注册并按模型路由分发：模型命中声明 Codex JSON 辅助能力的 API-key provider 时继续逐字节透传给上游 `/images/*`（行为与原 aux 通道一致），其余可路由模型走账号模式 `image_generation` 工具转换；未路由模型返回 404 `model_not_found`。（`src/routes/images.ts`、`src/routes/responses.ts`、`src/index.ts`、`tests/e2e/images.test.ts`、`tests/unit/routes/responses-compact.test.ts`）
 
