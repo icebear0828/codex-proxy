@@ -1,4 +1,4 @@
-import { randomUUID } from "crypto";
+import { createHash, randomUUID } from "crypto";
 import type { UpstreamAdapter } from "./upstream-adapter.js";
 import type { CodexResponsesRequest, CodexSSEEvent } from "./codex-types.js";
 import { CodexApiError } from "./codex-types.js";
@@ -15,6 +15,33 @@ const TOKEN_URL = ANTIGRAVITY_OAUTH_TOKEN_URL;
 const DEFAULT_BASE_URL = "https://cloudcode-pa.googleapis.com";
 const DEFAULT_USER_AGENT_VERSION = "2.9.1";
 const IDENTITY_INSTRUCTION = "You are Antigravity, an AI coding assistant.";
+const CODEX_MODEL_IDENTITY = /^\s*You are Codex, a coding agent based on GPT-\d+(?:\.\d+)*\.?\s*/i;
+const CLAUDE_CODE_IDENTITY = /^\s*You are Claude Code, Anthropic['’]s official CLI for Claude\.?([ \t\r\n]*)/i;
+const CLAUDE_AGENT_IDENTITY = /^\s*You are a Claude agent, built on Anthropic['’]s Claude Agent SDK\.?([ \t\r\n]*)/i;
+
+function normalizeSystemIdentity(text: string): string {
+  return text
+    .replace(CODEX_MODEL_IDENTITY, "")
+    .replace(CLAUDE_CODE_IDENTITY, "You are an AI agent.$1")
+    .replace(CLAUDE_AGENT_IDENTITY, "You are an AI agent.$1")
+    .trimStart();
+}
+
+function sessionId(req: CodexResponsesRequest): string {
+  const firstUserMessage = req.input.find((item) => "role" in item && item.role === "user");
+  const firstUserText = firstUserMessage
+    ? typeof firstUserMessage.content === "string"
+      ? firstUserMessage.content
+      : firstUserMessage.content
+        .filter((part) => part.type === "input_text")
+        .map((part) => part.text)
+        .join("\n")
+    : "";
+  const seed = req.prompt_cache_key?.trim() || firstUserText || randomUUID();
+  const sessionNumber = createHash("sha256").update(seed).digest().readBigUInt64BE(0)
+    & 0x7fff_ffff_ffff_ffffn;
+  return `-${sessionNumber.toString()}`;
+}
 
 function modelId(model: string): string {
   const colon = model.indexOf(":");
@@ -59,15 +86,27 @@ export class AntigravityUpstream implements UpstreamAdapter {
 
   async createResponse(req: CodexResponsesRequest, signal: AbortSignal): Promise<Response> {
     const model = modelId(req.model);
-    const geminiRequest = translateCodexToGeminiRequest(req);
+    const geminiRequest = translateCodexToGeminiRequest({
+      ...req,
+      instructions: typeof req.instructions === "string"
+        ? normalizeSystemIdentity(req.instructions)
+        : req.instructions,
+    });
     const requestPayload: Record<string, unknown> = { ...geminiRequest };
     const systemInstruction = requestPayload.system_instruction;
     delete requestPayload.system_instruction;
-    const parts = isRecord(systemInstruction) && Array.isArray(systemInstruction.parts)
+    const parts: unknown[] = isRecord(systemInstruction) && Array.isArray(systemInstruction.parts)
       ? systemInstruction.parts
       : [];
+    const cleanedParts = parts.map((part) => isRecord(part) && typeof part.text === "string"
+      ? { ...part, text: normalizeSystemIdentity(part.text) }
+      : part);
     requestPayload.systemInstruction = {
-      parts: [{ text: IDENTITY_INSTRUCTION }, ...parts],
+      parts: [{ text: IDENTITY_INSTRUCTION }, ...cleanedParts],
+    };
+    requestPayload.sessionId = sessionId(req);
+    requestPayload.toolConfig = {
+      functionCallingConfig: { mode: "VALIDATED" },
     };
 
     const projectId = await this.getProjectId(signal);

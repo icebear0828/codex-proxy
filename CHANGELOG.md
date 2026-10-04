@@ -18,6 +18,7 @@
 
 ### Fixed
 
+- Antigravity 请求会按上游兼容方式处理中性化后的 Claude Code / Codex 身份提示，并始终携带 Cloud Code 所需的工具配置和稳定会话 ID。（`src/proxy/antigravity-upstream.ts`）
 - Antigravity OAuth 授权码换取令牌时使用程序自动探测到的代理；Google 网络不可达时提示检查代理或网络。（`src/proxy/fetch-dispatcher.ts`、`src/routes/auth.ts`）
 
 ## [v2.1.x](https://github.com/icebear0828/codex-proxy/releases?q=2.1) - 2026-09-01 至 2026-09-07
