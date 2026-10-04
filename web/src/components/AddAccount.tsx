@@ -7,19 +7,25 @@ interface AddAccountProps {
   onCancel: () => void;
   onSubmitRelay: (callbackUrl: string) => Promise<void>;
   onAddByRefreshToken: (refreshToken: string) => Promise<string | null>;
+  onStartAntigravityOAuth: () => Promise<void>;
+  onSubmitAntigravityOAuth: (callbackUrl: string, models: string[]) => Promise<boolean>;
   addInfo: string;
   addError: string;
   authUrl: string;
+  antigravityAuthUrl: string;
   fallbackConfigured: boolean;
   onAddFallbackUpstream: (baseUrl: string, apiKey: string) => Promise<string | null>;
 }
 
-export function AddAccount({ visible, onCancel, onSubmitRelay, onAddByRefreshToken, addInfo, addError, authUrl, fallbackConfigured, onAddFallbackUpstream }: AddAccountProps) {
+export function AddAccount({ visible, onCancel, onSubmitRelay, onAddByRefreshToken, onStartAntigravityOAuth, onSubmitAntigravityOAuth, addInfo, addError, authUrl, antigravityAuthUrl, fallbackConfigured, onAddFallbackUpstream }: AddAccountProps) {
   const t = useT();
   const [input, setInput] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [rtInput, setRtInput] = useState("");
   const [rtSubmitting, setRtSubmitting] = useState(false);
+  const [antigravityCallback, setAntigravityCallback] = useState("");
+  const [antigravityModels, setAntigravityModels] = useState("claude-sonnet-4-5");
+  const [antigravitySubmitting, setAntigravitySubmitting] = useState(false);
   const [copied, setCopied] = useState(false);
   const [fbBaseUrl, setFbBaseUrl] = useState("");
   const [fbApiKey, setFbApiKey] = useState("");
@@ -45,6 +51,25 @@ export function AddAccount({ visible, onCancel, onSubmitRelay, onAddByRefreshTok
   const handleRtKeyDown = useCallback((e: KeyboardEvent) => {
     if (e.key === "Enter") handleRtSubmit();
   }, [handleRtSubmit]);
+
+  const handleAntigravitySubmit = useCallback(async () => {
+    const callbackUrl = antigravityCallback.trim();
+    const models = [...new Set(antigravityModels.split(",").map((model) => model.trim()).filter(Boolean))];
+    if (!callbackUrl || models.length === 0) return;
+    setAntigravitySubmitting(true);
+    try {
+      if (await onSubmitAntigravityOAuth(callbackUrl, models)) {
+        setAntigravityCallback("");
+        setAntigravityModels("claude-sonnet-4-5");
+      }
+    } finally {
+      setAntigravitySubmitting(false);
+    }
+  }, [antigravityCallback, antigravityModels, onSubmitAntigravityOAuth]);
+
+  const handleAntigravityKeyDown = useCallback((e: KeyboardEvent) => {
+    if (e.key === "Enter") void handleAntigravitySubmit();
+  }, [handleAntigravitySubmit]);
 
   const handleCopyUrl = useCallback(async () => {
     try {
@@ -129,6 +154,64 @@ export function AddAccount({ visible, onCancel, onSubmitRelay, onAddByRefreshTok
               </button>
             </div>
           )}
+
+          <div class="pt-3 border-t border-gray-100 dark:border-border-dark space-y-3">
+            <div>
+              <h3 class="text-sm font-semibold text-slate-700 dark:text-text-main">{t("antigravityHomeTitle")}</h3>
+              <p class="text-xs text-slate-500 dark:text-text-dim mt-1">{t("antigravityHomeHint")}</p>
+            </div>
+            {!antigravityAuthUrl ? (
+              <button
+                onClick={() => { void onStartAntigravityOAuth(); }}
+                class="px-4 py-2.5 bg-primary-action hover:bg-primary-action-hover text-white text-sm font-semibold rounded-lg transition-colors shadow-sm active:scale-[0.98]"
+              >
+                {t("antigravityStartLogin")}
+              </button>
+            ) : (
+              <>
+                <div class="flex gap-2">
+                  <input
+                    type="text"
+                    value={antigravityAuthUrl}
+                    readOnly
+                    onFocus={(e) => e.currentTarget.select()}
+                    class="flex-1 min-w-0 px-3 py-2.5 bg-slate-50 dark:bg-bg-dark border border-gray-200 dark:border-border-dark rounded-lg text-xs font-mono text-slate-600 dark:text-text-main"
+                  />
+                  <button
+                    onClick={() => window.open(antigravityAuthUrl, "antigravity_oauth", "width=600,height=700,scrollbars=yes")}
+                    class="px-3 py-2.5 bg-primary-action hover:bg-primary-action-hover text-white text-sm font-semibold rounded-lg"
+                  >
+                    {t("antigravityOpenLogin")}
+                  </button>
+                </div>
+                <input
+                  type="text"
+                  value={antigravityCallback}
+                  onInput={(e) => setAntigravityCallback((e.target as HTMLInputElement).value)}
+                  onKeyDown={handleAntigravityKeyDown}
+                  placeholder={t("antigravityCallbackPlaceholder")}
+                  class="w-full px-3 py-2.5 bg-slate-50 dark:bg-bg-dark border border-gray-200 dark:border-border-dark rounded-lg text-sm font-mono text-slate-600 dark:text-text-main"
+                />
+                <div class="flex flex-wrap items-center gap-2">
+                  <label class="text-xs text-slate-500 dark:text-text-dim">{t("antigravityModelsLabel")}</label>
+                  <input
+                    type="text"
+                    value={antigravityModels}
+                    onInput={(e) => setAntigravityModels((e.target as HTMLInputElement).value)}
+                    placeholder="claude-sonnet-4-5, gemini-..."
+                    class="flex-1 min-w-[220px] px-3 py-2 bg-slate-50 dark:bg-bg-dark border border-gray-200 dark:border-border-dark rounded-lg text-sm font-mono text-slate-600 dark:text-text-main"
+                  />
+                  <button
+                    onClick={() => { void handleAntigravitySubmit(); }}
+                    disabled={antigravitySubmitting || !antigravityCallback.trim() || !antigravityModels.trim()}
+                    class="px-4 py-2.5 bg-primary-action hover:bg-primary-action-hover text-white text-sm font-semibold rounded-lg disabled:opacity-40"
+                  >
+                    {antigravitySubmitting ? t("antigravityExchanging") : t("antigravitySubmitCode")}
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
 
           {/* Refresh token direct add */}
           <div class="pt-3 border-t border-gray-100 dark:border-border-dark">

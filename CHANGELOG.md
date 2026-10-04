@@ -8,7 +8,9 @@
 
 ## [Unreleased]
 
-> 暂无已记录的变更。
+### Added
+
+- 主页「添加账户」弹窗新增 Antigravity Google OAuth 登录：使用 PKCE 生成授权链接，登录后粘贴浏览器的完整 localhost 回调 URL 即可交换并保存刷新令牌；默认绑定 Claude Sonnet 模型，也可填写多个模型 ID。（`src/auth/antigravity-oauth.ts`、`src/routes/auth.ts`、`web/src/components/AddAccount.tsx`）
 
 ## [v2.1.x](https://github.com/icebear0828/codex-proxy/releases?q=2.1) - 2026-09-01 至 2026-09-07
 

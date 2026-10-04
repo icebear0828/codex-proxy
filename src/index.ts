@@ -195,7 +195,7 @@ export async function startServer(options?: StartOptions): Promise<ServerHandle>
   const fallbackUpstreamStore = new FallbackUpstreamStore();
 
   // Mount routes
-  const authRoutes = createAuthRoutes(accountPool, refreshScheduler);
+  const authRoutes = createAuthRoutes(accountPool, refreshScheduler, apiKeyPool);
   const accountRoutes = createAccountRoutes(accountPool, refreshScheduler, cookieJar, proxyPool, fallbackUpstreamStore);
   const chatRoutes = createChatRoutes(accountPool, cookieJar, proxyPool, upstreamRouter, clientKeyPool, fallbackUpstreamStore);
   const messagesRoutes = createMessagesRoutes(accountPool, cookieJar, proxyPool, upstreamRouter, clientKeyPool, fallbackUpstreamStore);

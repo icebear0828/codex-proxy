@@ -164,6 +164,9 @@ function Dashboard() {
             addInfo={accounts.addInfo}
             addError={accounts.addError}
             authUrl={accounts.addAuthUrl}
+            antigravityAuthUrl={accounts.antigravityAuthUrl}
+            onStartAntigravityOAuth={accounts.startAntigravityOAuth}
+            onSubmitAntigravityOAuth={accounts.submitAntigravityOAuth}
             fallbackConfigured={!!accounts.fallbackUpstream}
             onAddFallbackUpstream={accounts.addFallbackUpstream}
           />
