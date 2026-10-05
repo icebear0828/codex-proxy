@@ -8,13 +8,13 @@
 
 ## [Unreleased]
 
-### Fixed
-
-- Antigravity OAuth 按 Google Cloud Code 返回的套餐选择请求端点：Pro / Ultra 账号使用 daily 端点，Free 账号仍使用 production 端点；loadCodeAssist 在生产端点遇到连接失败或 408 / 404 / 429 / 5xx 时回退到 daily，显式配置的 Base URL 保持优先。修复 CRLF SSE 分块解析，避免上游返回 HTTP 200 但下游收到空响应。（src/proxy/antigravity-upstream.ts、src/proxy/codex-sse.ts）
+> 暂无已记录的变更。
 
 ## [v2.1.x](https://github.com/icebear0828/codex-proxy/releases?q=2.1) - 2026-09-01 至 2026-09-07
 
 ### Fixed
+
+- Antigravity OAuth 按 Google Cloud Code 返回的套餐选择请求端点：Pro / Ultra 账号使用 daily 端点，Free 账号仍使用 production 端点；loadCodeAssist 在生产端点遇到连接失败或 408 / 404 / 429 / 5xx 时回退到 daily，显式配置的 Base URL 保持优先。修复 CRLF SSE 分块解析，避免上游返回 HTTP 200 但下游收到空响应。（src/proxy/antigravity-upstream.ts、src/proxy/codex-sse.ts）
 
 - Antigravity 遇到 Cloud Code 端点级 `Resource has been exhausted` 限流时自动切换备用 daily 端点重试；模型容量限流保持原样。
 
