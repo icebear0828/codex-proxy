@@ -80,6 +80,11 @@ function shouldFallbackCodeAssist(statusCode: number): boolean {
   return statusCode === 408 || statusCode === 404 || statusCode === 429 || statusCode >= 500;
 }
 
+function isEndpointRateLimit(body: string): boolean {
+  const message = body.toLowerCase();
+  return message.includes("resource has been exhausted") && !message.includes("capacity on this model");
+}
+
 export class AntigravityUpstream implements UpstreamAdapter {
   readonly tag = "antigravity";
   private baseUrl: string;
@@ -257,8 +262,8 @@ export class AntigravityUpstream implements UpstreamAdapter {
   }
 
   private async sendCloudCode(action: string, body: string, signal: AbortSignal, baseUrl = this.baseUrl): Promise<Response> {
-    const send = async (accessToken: string) => fetch(
-      `${baseUrl}/v1internal:${action}${action === "streamGenerateContent" ? "?alt=sse" : ""}`,
+    const send = async (accessToken: string, targetBaseUrl: string) => fetch(
+      `${targetBaseUrl}/v1internal:${action}${action === "streamGenerateContent" ? "?alt=sse" : ""}`,
       withFetchDispatcher({
         method: "POST",
         headers: {
@@ -272,10 +277,30 @@ export class AntigravityUpstream implements UpstreamAdapter {
       }),
     );
 
-    let response = await send(await this.getAccessToken());
-    if (response.status === 401) {
-      if (response.body) await response.body.cancel().catch(() => undefined);
-      response = await send(await this.getAccessToken(true));
+    const sendWithRefresh = async (targetBaseUrl: string): Promise<Response> => {
+      let response = await send(await this.getAccessToken(), targetBaseUrl);
+      if (response.status === 401) {
+        if (response.body) await response.body.cancel().catch(() => undefined);
+        response = await send(await this.getAccessToken(true), targetBaseUrl);
+      }
+      return response;
+    };
+
+    const response = await sendWithRefresh(baseUrl);
+    if (action === "streamGenerateContent" && baseUrl === DEFAULT_BASE_URL && response.status === 429) {
+      const errorBody = await response.clone().text().catch(() => "");
+      if (isEndpointRateLimit(errorBody)) {
+        try {
+          const fallback = await sendWithRefresh(DAILY_BASE_URL);
+          if (fallback.status !== 401) {
+            await response.body?.cancel().catch(() => undefined);
+            return fallback;
+          }
+          await fallback.body?.cancel().catch(() => undefined);
+        } catch (error) {
+          if (signal.aborted) throw error;
+        }
+      }
     }
     return response;
   }
