@@ -2,9 +2,9 @@ name: CI - Quality gate
 
 on:
   pull_request:
-    branches: [dev, master]
+    branches: [dev, main]
   push:
-    branches: [dev, master]
+    branches: [dev, main]
 
 concurrency:
   group: ci-quality-${{ github.ref }}

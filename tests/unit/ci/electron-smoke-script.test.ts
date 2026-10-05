@@ -19,7 +19,7 @@ const ROOT = resolve(__dirname, "..", "..", "..");
 const SCRIPT = resolve(ROOT, ".github", "scripts", "electron-smoke.sh");
 const WINDOWS_SCRIPT = resolve(ROOT, ".github", "scripts", "electron-smoke.ps1");
 const RELEASE_WORKFLOW = resolve(ROOT, ".github", "workflows", "release.yml");
-const PROMOTE_WORKFLOW = resolve(ROOT, ".github", "workflows", "promote-dev-to-master.yml");
+const PROMOTE_WORKFLOW = resolve(ROOT, ".github", "workflows", "promote-dev-to-main.yml");
 
 interface RunResult {
   status: number;
@@ -184,11 +184,11 @@ describe("release workflow smoke wiring", () => {
 });
 
 describe("promote workflow fast-forward gate", () => {
-  it("fails the run instead of reporting success when master cannot fast-forward to dev", () => {
+  it("fails the run instead of reporting success when main cannot fast-forward to dev", () => {
     const workflow = readFileSync(PROMOTE_WORKFLOW, "utf-8");
     const block = stepBlock(workflow, "Check fast-forward possible");
 
-    expect(block).toContain("master has commits not in dev");
+    expect(block).toContain("main has commits not in dev");
     expect(block).toContain("exit 1");
   });
 });

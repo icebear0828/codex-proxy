@@ -2,7 +2,7 @@ name: Publish Docker Image
 
 on:
   push:
-    branches: [master]
+    branches: [main]
   workflow_dispatch:
     inputs:
       tag:
@@ -25,7 +25,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           # Version images must be built from the tagged source, not whatever
-          # master currently points at. Branch pushes (e.g. the 14:00 UTC
+          # main currently points at. Branch pushes (e.g. the 14:00 UTC
           # promote) only refresh `latest` + a sha tag — the old behavior
           # ("max(package.json, latest stable tag)") rebuilt vX.Y.Z from
           # newer-than-tag code and silently clobbered the version image.
@@ -53,14 +53,14 @@ jobs:
           SHORT_SHA=$(git rev-parse --short=7 HEAD)
 
           # Re-tagging `latest` is only safe when we're building the current
-          # master tip. A manual dispatch of an OLD tag (re-publishing a
+          # main tip. A manual dispatch of an OLD tag (re-publishing a
           # version image) must not silently move `latest` backwards.
           PUSH_LATEST=true
           if [ -n "$TAG_INPUT" ]; then
-            git fetch origin master --depth=1 >/dev/null 2>&1 || true
-            MASTER_SHA=$(git rev-parse FETCH_HEAD 2>/dev/null || echo "")
-            if [ "$(git rev-parse HEAD)" != "$MASTER_SHA" ]; then
-              echo "tag $TAG_INPUT is not the master tip, skipping latest"
+            git fetch origin main --depth=1 >/dev/null 2>&1 || true
+            MAIN_SHA=$(git rev-parse FETCH_HEAD 2>/dev/null || echo "")
+            if [ "$(git rev-parse HEAD)" != "$MAIN_SHA" ]; then
+              echo "tag $TAG_INPUT is not the main tip, skipping latest"
               PUSH_LATEST=false
             fi
           fi
@@ -220,10 +220,10 @@ jobs:
 
           PUSH_LATEST=true
           if [ -n "$TAG_INPUT" ]; then
-            git fetch origin master --depth=1 >/dev/null 2>&1 || true
-            MASTER_SHA=$(git rev-parse FETCH_HEAD 2>/dev/null || echo "")
-            if [ "$(git rev-parse HEAD)" != "$MASTER_SHA" ]; then
-              echo "tag $TAG_INPUT is not the master tip, skipping latest-lite"
+            git fetch origin main --depth=1 >/dev/null 2>&1 || true
+            MAIN_SHA=$(git rev-parse FETCH_HEAD 2>/dev/null || echo "")
+            if [ "$(git rev-parse HEAD)" != "$MAIN_SHA" ]; then
+              echo "tag $TAG_INPUT is not the main tip, skipping latest-lite"
               PUSH_LATEST=false
             fi
           fi

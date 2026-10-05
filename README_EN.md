@@ -116,8 +116,8 @@ For environment variables, auto-updates and more options, use the compose setup:
 
 ```bash
 mkdir codex-proxy && cd codex-proxy
-curl -O https://raw.githubusercontent.com/icebear0828/codex-proxy/master/docker-compose.yml
-curl -O https://raw.githubusercontent.com/icebear0828/codex-proxy/master/.env.example
+curl -O https://raw.githubusercontent.com/icebear0828/codex-proxy/main/docker-compose.yml
+curl -O https://raw.githubusercontent.com/icebear0828/codex-proxy/main/.env.example
 cp .env.example .env
 docker compose up -d
 # Open http://localhost:8080 to log in

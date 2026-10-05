@@ -251,7 +251,7 @@ describe("E2E: self-update routes", () => {
         .mockResolvedValueOnce({ stdout: "abc1234\n", stderr: "" })  // rev-parse HEAD
         .mockResolvedValueOnce({ stdout: "", stderr: "" })            // git fetch
         .mockResolvedValueOnce({ stdout: "0\n", stderr: "" })        // rev-list --count
-        .mockResolvedValueOnce({ stdout: "abc1234\n", stderr: "" }); // rev-parse origin/master
+        .mockResolvedValueOnce({ stdout: "abc1234\n", stderr: "" }); // rev-parse origin/main
 
       const app = await buildApp();
       const res = await app.request("/admin/check-update", { method: "POST" });
@@ -361,7 +361,7 @@ describe("E2E: self-update routes", () => {
     it("streams SSE progress: pull → install → build → restart", async () => {
       _execFileAsync.mockReset();
       _execFileAsync
-        .mockResolvedValueOnce({ stdout: "master\n", stderr: "" }) // branch
+        .mockResolvedValueOnce({ stdout: "main\n", stderr: "" }) // branch
         .mockResolvedValueOnce({ stdout: "", stderr: "" })          // clean tree
         .mockResolvedValue({ stdout: "", stderr: "" });
 
@@ -395,7 +395,7 @@ describe("E2E: self-update routes", () => {
     it("reports error when git pull fails", async () => {
       _execFileAsync.mockReset();
       _execFileAsync
-        .mockResolvedValueOnce({ stdout: "master\n", stderr: "" }) // branch
+        .mockResolvedValueOnce({ stdout: "main\n", stderr: "" }) // branch
         .mockResolvedValueOnce({ stdout: "", stderr: "" })          // clean tree
         .mockRejectedValueOnce(new Error("git pull failed"));       // git pull
 
@@ -413,7 +413,7 @@ describe("E2E: self-update routes", () => {
     it("reports error when npm install fails", async () => {
       _execFileAsync.mockReset();
       _execFileAsync
-        .mockResolvedValueOnce({ stdout: "master\n", stderr: "" }) // branch
+        .mockResolvedValueOnce({ stdout: "main\n", stderr: "" }) // branch
         .mockResolvedValueOnce({ stdout: "", stderr: "" })          // clean tree
         .mockResolvedValueOnce({ stdout: "", stderr: "" })          // git pull
         .mockRejectedValueOnce(new Error("npm ERR! ERESOLVE"));     // npm install
@@ -437,7 +437,7 @@ describe("E2E: self-update routes", () => {
     it("reports error when build fails", async () => {
       _execFileAsync.mockReset();
       _execFileAsync
-        .mockResolvedValueOnce({ stdout: "master\n", stderr: "" })     // branch
+        .mockResolvedValueOnce({ stdout: "main\n", stderr: "" })     // branch
         .mockResolvedValueOnce({ stdout: "", stderr: "" })              // clean tree
         .mockResolvedValueOnce({ stdout: "", stderr: "" })              // git pull
         .mockResolvedValueOnce({ stdout: "", stderr: "" })              // npm install
@@ -464,7 +464,7 @@ describe("E2E: self-update routes", () => {
 
       _execFileAsync.mockReset();
       _execFileAsync
-        .mockResolvedValueOnce({ stdout: "master\n", stderr: "" })
+        .mockResolvedValueOnce({ stdout: "main\n", stderr: "" })
         .mockResolvedValueOnce({ stdout: "", stderr: "" })
         .mockResolvedValue({ stdout: "", stderr: "" });
 

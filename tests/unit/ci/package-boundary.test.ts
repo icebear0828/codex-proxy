@@ -130,15 +130,15 @@ describe("root package boundary", () => {
     expect(asarLockPackage.dev).toBeUndefined();
   });
 
-  it("keeps the stable release bump workflow tag-only (no version commit onto master)", () => {
+  it("keeps the stable release bump workflow tag-only (no version commit onto main)", () => {
     const workflow = readFileSync(resolve(ROOT, ".github/workflows/bump-electron.yml"), "utf-8");
-    // Tag-only contract: bump must NOT commit a version bump or push master.
-    // A version-bump commit on master can't FF back to an always-ahead dev,
+    // Tag-only contract: bump must NOT commit a version bump or push main.
+    // A version-bump commit on main can't FF back to an always-ahead dev,
     // which kept breaking promote and regressed package.json on the next
-    // dev→master reconcile. Version ships from the tag (release.yml
+    // dev→main reconcile. Version ships from the tag (release.yml
     // extraMetadata.version), mirroring bump-electron-beta.yml.
     expect(workflow).not.toContain('git commit -m "chore: bump version');
-    expect(workflow).not.toContain("git push origin master");
+    expect(workflow).not.toContain("git push origin main");
     expect(workflow).not.toContain("Sync bump commit back to dev");
     // It must still create and push the release tag.
     expect(workflow).toContain('git tag -a "$NEW_TAG"');
@@ -188,14 +188,14 @@ describe("root package boundary", () => {
     const workflow = readFileSync(workflowPath, "utf-8");
     expect(workflow).toContain("pull_request:");
     expect(workflow).toContain("push:");
-    expect(workflow).toContain("branches: [dev, master]");
+    expect(workflow).toContain("branches: [dev, main]");
     expect(workflow).toContain("npm ci");
     expect(workflow).toContain("tests/unit/ci/package-boundary.test.ts");
     expect(workflow).toContain("tests/unit/update-scripts-path.test.ts");
     expect(workflow).toContain("tests/unit/update-checker.test.ts");
     expect(workflow).toContain("npm run typecheck:scripts");
 
-    const promote = readFileSync(resolve(ROOT, ".github/workflows/promote-dev-to-master.yml"), "utf-8");
+    const promote = readFileSync(resolve(ROOT, ".github/workflows/promote-dev-to-main.yml"), "utf-8");
     expect(promote).toContain('if [ "$STATUS" = "green" ]; then');
     expect(promote).not.toContain("no-checks");
   });

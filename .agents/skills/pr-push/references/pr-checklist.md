@@ -4,7 +4,7 @@ Walk this list before opening the PR. Anything left unchecked needs a written re
 
 ## Branch & target
 
-- [ ] Current branch is NOT `dev`, `master`, or `main`
+- [ ] Current branch is NOT `dev` or `main`
 - [ ] Branch is rebased on (or fast-forwardable to) `origin/dev`
 - [ ] PR target = `dev`
 

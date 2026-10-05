@@ -117,8 +117,8 @@ Linux x64 版には glibc 用と musl 用の TLS native addon が含まれてい
 
 ```bash
 mkdir codex-proxy && cd codex-proxy
-curl -O https://raw.githubusercontent.com/icebear0828/codex-proxy/master/docker-compose.yml
-curl -O https://raw.githubusercontent.com/icebear0828/codex-proxy/master/.env.example
+curl -O https://raw.githubusercontent.com/icebear0828/codex-proxy/main/docker-compose.yml
+curl -O https://raw.githubusercontent.com/icebear0828/codex-proxy/main/.env.example
 cp .env.example .env
 docker compose up -d
 # http://localhost:8080 を開いてログイン

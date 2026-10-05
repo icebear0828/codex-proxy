@@ -160,8 +160,8 @@ docker run -d --name codex-proxy --restart unless-stopped \
 
 ```bash
 mkdir codex-proxy && cd codex-proxy
-curl -O https://raw.githubusercontent.com/icebear0828/codex-proxy/master/docker-compose.yml
-curl -O https://raw.githubusercontent.com/icebear0828/codex-proxy/master/.env.example
+curl -O https://raw.githubusercontent.com/icebear0828/codex-proxy/main/docker-compose.yml
+curl -O https://raw.githubusercontent.com/icebear0828/codex-proxy/main/.env.example
 cp .env.example .env
 docker compose up -d
 # 打开 http://localhost:8080 登录

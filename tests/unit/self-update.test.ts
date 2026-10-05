@@ -235,7 +235,7 @@ describe("self-update", () => {
         .mockResolvedValueOnce({ stdout: "abc1234\n", stderr: "" }) // rev-parse HEAD
         .mockResolvedValueOnce({ stdout: "", stderr: "" })          // git fetch
         .mockResolvedValueOnce({ stdout: "0\n", stderr: "" })       // rev-list --count
-        .mockResolvedValueOnce({ stdout: "abc1234\n", stderr: "" }); // rev-parse origin/master
+        .mockResolvedValueOnce({ stdout: "abc1234\n", stderr: "" }); // rev-parse origin/main
 
       const { checkProxySelfUpdate } = await importFresh();
       const result = await checkProxySelfUpdate();
@@ -250,7 +250,7 @@ describe("self-update", () => {
         .mockResolvedValueOnce({ stdout: "aaa1111\n", stderr: "" }) // rev-parse HEAD
         .mockResolvedValueOnce({ stdout: "", stderr: "" })          // git fetch
         .mockResolvedValueOnce({ stdout: "3\n", stderr: "" })       // rev-list --count
-        .mockResolvedValueOnce({ stdout: "bbb2222\n", stderr: "" }) // rev-parse origin/master
+        .mockResolvedValueOnce({ stdout: "bbb2222\n", stderr: "" }) // rev-parse origin/main
         .mockResolvedValueOnce({                                     // git log
           stdout: "ccc3333 fix: bug\nddd4444 feat: new\neee5555 chore: cleanup\n",
           stderr: "",
@@ -567,18 +567,18 @@ describe("self-update", () => {
       vi.useRealTimers();
     });
 
-    // Default mock for the happy path: branch=master, clean tree, then any
+    // Default mock for the happy path: branch=main, clean tree, then any
     // subsequent git/npm calls succeed silently.
-    function mockCleanMaster(): void {
+    function mockCleanMain(): void {
       _execFileAsync.mockReset();
       _execFileAsync
-        .mockResolvedValueOnce({ stdout: "master\n", stderr: "" }) // rev-parse --abbrev-ref HEAD
+        .mockResolvedValueOnce({ stdout: "main\n", stderr: "" }) // rev-parse --abbrev-ref HEAD
         .mockResolvedValueOnce({ stdout: "", stderr: "" })          // status --porcelain
         .mockResolvedValue({ stdout: "", stderr: "" });             // remaining steps
     }
 
-    it("runs git pull + npm install + npm run build on clean master", async () => {
-      mockCleanMaster();
+    it("runs git pull + npm install + npm run build on clean main", async () => {
+      mockCleanMain();
 
       const { applyProxySelfUpdate } = await importFresh();
       const result = await applyProxySelfUpdate();
@@ -594,7 +594,7 @@ describe("self-update", () => {
       expect(checkoutCalls).toHaveLength(0);
     });
 
-    it("refuses to update when on a non-master branch", async () => {
+    it("refuses to update when on a non-main branch", async () => {
       _execFileAsync.mockReset();
       _execFileAsync.mockResolvedValueOnce({ stdout: "dev\n", stderr: "" }); // branch=dev
 
@@ -602,12 +602,12 @@ describe("self-update", () => {
       const result = await applyProxySelfUpdate();
       expect(result.started).toBe(false);
       expect(result.error).toContain("dev");
-      expect(result.error).toContain("master/main");
+      expect(result.error).toContain("only main");
       // Only the branch check should have run — no destructive ops attempted
       expect(_execFileAsync).toHaveBeenCalledTimes(1);
     });
 
-    it("accepts 'main' as well as 'master'", async () => {
+    it("accepts 'main'", async () => {
       _execFileAsync.mockReset();
       _execFileAsync
         .mockResolvedValueOnce({ stdout: "main\n", stderr: "" }) // branch=main
@@ -622,7 +622,7 @@ describe("self-update", () => {
     it("refuses to update when working tree has uncommitted changes", async () => {
       _execFileAsync.mockReset();
       _execFileAsync
-        .mockResolvedValueOnce({ stdout: "master\n", stderr: "" })          // branch=master
+        .mockResolvedValueOnce({ stdout: "main\n", stderr: "" })          // branch=main
         .mockResolvedValueOnce({ stdout: " M src/foo.ts\n", stderr: "" });  // dirty
 
       const { applyProxySelfUpdate } = await importFresh();
@@ -636,7 +636,7 @@ describe("self-update", () => {
     it("returns error when git pull fails", async () => {
       _execFileAsync.mockReset();
       _execFileAsync
-        .mockResolvedValueOnce({ stdout: "master\n", stderr: "" })
+        .mockResolvedValueOnce({ stdout: "main\n", stderr: "" })
         .mockResolvedValueOnce({ stdout: "", stderr: "" })
         .mockRejectedValueOnce(new Error("git pull failed"));
 
@@ -651,7 +651,7 @@ describe("self-update", () => {
       let resolveFirst: (() => void) | undefined;
       _execFileAsync.mockImplementationOnce(
         () => new Promise<{ stdout: string; stderr: string }>((resolve) => {
-          resolveFirst = () => resolve({ stdout: "master\n", stderr: "" });
+          resolveFirst = () => resolve({ stdout: "main\n", stderr: "" });
         }),
       );
 
