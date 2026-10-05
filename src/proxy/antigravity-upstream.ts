@@ -13,6 +13,7 @@ export const ANTIGRAVITY_DEFAULT_OAUTH_CLIENT_SECRET = "GOCSPX-K58FWR486LdLJ1mLB
 export const ANTIGRAVITY_OAUTH_TOKEN_URL = "https://oauth2.googleapis.com/token";
 const TOKEN_URL = ANTIGRAVITY_OAUTH_TOKEN_URL;
 const DEFAULT_BASE_URL = "https://cloudcode-pa.googleapis.com";
+const DAILY_BASE_URL = "https://daily-cloudcode-pa.googleapis.com";
 const DEFAULT_USER_AGENT_VERSION = "2.9.1";
 const IDENTITY_INSTRUCTION = "You are Antigravity, an AI coding assistant.";
 const CODEX_MODEL_IDENTITY = /^\s*You are Codex, a coding agent based on GPT-\d+(?:\.\d+)*\.?\s*/i;
@@ -60,23 +61,46 @@ function projectIdFrom(value: unknown): string | null {
   return null;
 }
 
+function tierIdFrom(value: unknown): string | null {
+  if (!isRecord(value)) return null;
+  for (const key of ["paidTier", "currentTier"]) {
+    const tier = value[key];
+    if (typeof tier === "string" && tier.trim()) return tier.trim();
+    if (isRecord(tier) && typeof tier.id === "string" && tier.id.trim()) return tier.id.trim();
+  }
+  return null;
+}
+
+function isPaidTier(value: unknown): boolean {
+  const tierId = tierIdFrom(value)?.toLowerCase();
+  return tierId === "g1-pro-tier" || tierId === "g1-ultra-tier";
+}
+
+function shouldFallbackCodeAssist(statusCode: number): boolean {
+  return statusCode === 408 || statusCode === 404 || statusCode === 429 || statusCode >= 500;
+}
+
 export class AntigravityUpstream implements UpstreamAdapter {
   readonly tag = "antigravity";
-  private readonly baseUrl: string;
+  private baseUrl: string;
+  private readonly baseUrlConfigured: boolean;
   private readonly userAgent: string;
   private readonly streamParser = new GeminiUpstream("", DEFAULT_BASE_URL);
   private accessToken = "";
   private accessTokenExpiresAt = 0;
   private refreshPromise: Promise<string> | null = null;
   private resolvedProjectId: string | null;
+  private accountInfoResolved = false;
 
   constructor(
     private readonly refreshToken: string,
     projectId?: string,
-    baseUrl = DEFAULT_BASE_URL,
+    baseUrl?: string,
   ) {
     this.resolvedProjectId = projectId?.trim() || null;
-    this.baseUrl = baseUrl.replace(/\/+$/, "") || DEFAULT_BASE_URL;
+    const configuredBaseUrl = baseUrl?.trim().replace(/\/+$/, "") ?? "";
+    this.baseUrlConfigured = configuredBaseUrl.length > 0;
+    this.baseUrl = configuredBaseUrl || DEFAULT_BASE_URL;
     const configuredVersion = process.env.ANTIGRAVITY_USER_AGENT_VERSION?.trim() ?? "";
     const version = /^\d+\.\d+\.\d+$/.test(configuredVersion)
       ? configuredVersion
@@ -180,32 +204,61 @@ export class AntigravityUpstream implements UpstreamAdapter {
   }
 
   private async getProjectId(signal: AbortSignal): Promise<string> {
-    if (this.resolvedProjectId) return this.resolvedProjectId;
-    const response = await this.sendCloudCode("loadCodeAssist", JSON.stringify({
+    if (this.accountInfoResolved && this.resolvedProjectId) return this.resolvedProjectId;
+    const body = JSON.stringify({
       metadata: {
         ideType: "ANTIGRAVITY",
         ideVersion: this.userAgent.split("/")[1].split(" ")[0],
         ideName: "antigravity",
       },
-    }), signal);
+    });
+    let response: Response;
+    try {
+      response = await this.loadCodeAssist(body, signal);
+    } catch (error) {
+      if (this.resolvedProjectId) {
+        this.accountInfoResolved = true;
+        return this.resolvedProjectId;
+      }
+      throw error;
+    }
     const data: unknown = await response.json().catch(() => null);
     if (!response.ok) {
+      if (this.resolvedProjectId) {
+        this.accountInfoResolved = true;
+        return this.resolvedProjectId;
+      }
       const detail = isRecord(data) && isRecord(data.error) && typeof data.error.message === "string"
         ? data.error.message
         : `Antigravity project discovery failed (HTTP ${response.status})`;
       throw new CodexApiError(response.status, detail, response.headers);
     }
+    this.accountInfoResolved = true;
+    if (!this.baseUrlConfigured && isPaidTier(data)) this.baseUrl = DAILY_BASE_URL;
     const discovered = projectIdFrom(data);
-    if (!discovered) {
+    if (discovered) this.resolvedProjectId ??= discovered;
+    if (!this.resolvedProjectId) {
       throw new CodexApiError(422, "Antigravity did not return a Cloud Code project. Enter the account's Google project ID in its settings.");
     }
-    this.resolvedProjectId = discovered;
-    return discovered;
+    return this.resolvedProjectId;
   }
 
-  private async sendCloudCode(action: string, body: string, signal: AbortSignal): Promise<Response> {
+  private async loadCodeAssist(body: string, signal: AbortSignal): Promise<Response> {
+    const canFallback = !this.baseUrlConfigured && this.baseUrl === DEFAULT_BASE_URL;
+    if (!canFallback) return this.sendCloudCode("loadCodeAssist", body, signal);
+    try {
+      const response = await this.sendCloudCode("loadCodeAssist", body, signal);
+      if (response.ok || !shouldFallbackCodeAssist(response.status)) return response;
+      await response.body?.cancel().catch(() => undefined);
+    } catch (error) {
+      if (signal.aborted) throw error;
+    }
+    return this.sendCloudCode("loadCodeAssist", body, signal, DAILY_BASE_URL);
+  }
+
+  private async sendCloudCode(action: string, body: string, signal: AbortSignal, baseUrl = this.baseUrl): Promise<Response> {
     const send = async (accessToken: string) => fetch(
-      `${this.baseUrl}/v1internal:${action}${action === "streamGenerateContent" ? "?alt=sse" : ""}`,
+      `${baseUrl}/v1internal:${action}${action === "streamGenerateContent" ? "?alt=sse" : ""}`,
       withFetchDispatcher({
         method: "POST",
         headers: {
