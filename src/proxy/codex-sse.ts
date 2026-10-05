@@ -66,7 +66,7 @@ export async function* parseSSEStream(
       const { done, value } = await reader.read();
       if (done) break;
 
-      buffer += value;
+      buffer = (buffer + value).replace(/\r\n/g, "\n");
       if (buffer.length > MAX_SSE_BUFFER) {
         throw new Error(`SSE buffer exceeded ${MAX_SSE_BUFFER} bytes — aborting stream`);
       }

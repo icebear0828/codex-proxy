@@ -49,11 +49,6 @@ function modelId(model: string): string {
   return colon > 0 ? model.slice(colon + 1) : model;
 }
 
-function isEndpointRateLimit(body: string): boolean {
-  const message = body.toLowerCase();
-  return message.includes("resource has been exhausted") && !message.includes("capacity on this model");
-}
-
 function projectIdFrom(value: unknown): string | null {
   if (!isRecord(value)) return null;
   const project = value.cloudaicompanionProject;
@@ -66,23 +61,51 @@ function projectIdFrom(value: unknown): string | null {
   return null;
 }
 
+function tierIdFrom(value: unknown): string | null {
+  if (!isRecord(value)) return null;
+  for (const key of ["paidTier", "currentTier"]) {
+    const tier = value[key];
+    if (typeof tier === "string" && tier.trim()) return tier.trim();
+    if (isRecord(tier) && typeof tier.id === "string" && tier.id.trim()) return tier.id.trim();
+  }
+  return null;
+}
+
+function isPaidTier(value: unknown): boolean {
+  const tierId = tierIdFrom(value)?.toLowerCase();
+  return tierId === "g1-pro-tier" || tierId === "g1-ultra-tier";
+}
+
+function shouldFallbackCodeAssist(statusCode: number): boolean {
+  return statusCode === 408 || statusCode === 404 || statusCode === 429 || statusCode >= 500;
+}
+
+function isEndpointRateLimit(body: string): boolean {
+  const message = body.toLowerCase();
+  return message.includes("resource has been exhausted") && !message.includes("capacity on this model");
+}
+
 export class AntigravityUpstream implements UpstreamAdapter {
   readonly tag = "antigravity";
-  private readonly baseUrl: string;
+  private baseUrl: string;
+  private readonly baseUrlConfigured: boolean;
   private readonly userAgent: string;
   private readonly streamParser = new GeminiUpstream("", DEFAULT_BASE_URL);
   private accessToken = "";
   private accessTokenExpiresAt = 0;
   private refreshPromise: Promise<string> | null = null;
   private resolvedProjectId: string | null;
+  private accountInfoResolved = false;
 
   constructor(
     private readonly refreshToken: string,
     projectId?: string,
-    baseUrl = DEFAULT_BASE_URL,
+    baseUrl?: string,
   ) {
     this.resolvedProjectId = projectId?.trim() || null;
-    this.baseUrl = baseUrl.replace(/\/+$/, "") || DEFAULT_BASE_URL;
+    const configuredBaseUrl = baseUrl?.trim().replace(/\/+$/, "") ?? "";
+    this.baseUrlConfigured = configuredBaseUrl.length > 0;
+    this.baseUrl = configuredBaseUrl || DEFAULT_BASE_URL;
     const configuredVersion = process.env.ANTIGRAVITY_USER_AGENT_VERSION?.trim() ?? "";
     const version = /^\d+\.\d+\.\d+$/.test(configuredVersion)
       ? configuredVersion
@@ -186,32 +209,61 @@ export class AntigravityUpstream implements UpstreamAdapter {
   }
 
   private async getProjectId(signal: AbortSignal): Promise<string> {
-    if (this.resolvedProjectId) return this.resolvedProjectId;
-    const response = await this.sendCloudCode("loadCodeAssist", JSON.stringify({
+    if (this.accountInfoResolved && this.resolvedProjectId) return this.resolvedProjectId;
+    const body = JSON.stringify({
       metadata: {
         ideType: "ANTIGRAVITY",
         ideVersion: this.userAgent.split("/")[1].split(" ")[0],
         ideName: "antigravity",
       },
-    }), signal);
+    });
+    let response: Response;
+    try {
+      response = await this.loadCodeAssist(body, signal);
+    } catch (error) {
+      if (this.resolvedProjectId) {
+        this.accountInfoResolved = true;
+        return this.resolvedProjectId;
+      }
+      throw error;
+    }
     const data: unknown = await response.json().catch(() => null);
     if (!response.ok) {
+      if (this.resolvedProjectId) {
+        this.accountInfoResolved = true;
+        return this.resolvedProjectId;
+      }
       const detail = isRecord(data) && isRecord(data.error) && typeof data.error.message === "string"
         ? data.error.message
         : `Antigravity project discovery failed (HTTP ${response.status})`;
       throw new CodexApiError(response.status, detail, response.headers);
     }
+    this.accountInfoResolved = true;
+    if (!this.baseUrlConfigured && isPaidTier(data)) this.baseUrl = DAILY_BASE_URL;
     const discovered = projectIdFrom(data);
-    if (!discovered) {
+    if (discovered) this.resolvedProjectId ??= discovered;
+    if (!this.resolvedProjectId) {
       throw new CodexApiError(422, "Antigravity did not return a Cloud Code project. Enter the account's Google project ID in its settings.");
     }
-    this.resolvedProjectId = discovered;
-    return discovered;
+    return this.resolvedProjectId;
   }
 
-  private async sendCloudCode(action: string, body: string, signal: AbortSignal): Promise<Response> {
-    const send = async (accessToken: string, baseUrl: string) => fetch(
-      `${baseUrl}/v1internal:${action}${action === "streamGenerateContent" ? "?alt=sse" : ""}`,
+  private async loadCodeAssist(body: string, signal: AbortSignal): Promise<Response> {
+    const canFallback = !this.baseUrlConfigured && this.baseUrl === DEFAULT_BASE_URL;
+    if (!canFallback) return this.sendCloudCode("loadCodeAssist", body, signal);
+    try {
+      const response = await this.sendCloudCode("loadCodeAssist", body, signal);
+      if (response.ok || !shouldFallbackCodeAssist(response.status)) return response;
+      await response.body?.cancel().catch(() => undefined);
+    } catch (error) {
+      if (signal.aborted) throw error;
+    }
+    return this.sendCloudCode("loadCodeAssist", body, signal, DAILY_BASE_URL);
+  }
+
+  private async sendCloudCode(action: string, body: string, signal: AbortSignal, baseUrl = this.baseUrl): Promise<Response> {
+    const send = async (accessToken: string, targetBaseUrl: string) => fetch(
+      `${targetBaseUrl}/v1internal:${action}${action === "streamGenerateContent" ? "?alt=sse" : ""}`,
       withFetchDispatcher({
         method: "POST",
         headers: {
@@ -225,17 +277,17 @@ export class AntigravityUpstream implements UpstreamAdapter {
       }),
     );
 
-    const sendWithRefresh = async (baseUrl: string): Promise<Response> => {
-      let response = await send(await this.getAccessToken(), baseUrl);
+    const sendWithRefresh = async (targetBaseUrl: string): Promise<Response> => {
+      let response = await send(await this.getAccessToken(), targetBaseUrl);
       if (response.status === 401) {
         if (response.body) await response.body.cancel().catch(() => undefined);
-        response = await send(await this.getAccessToken(true), baseUrl);
+        response = await send(await this.getAccessToken(true), targetBaseUrl);
       }
       return response;
     };
 
-    const response = await sendWithRefresh(this.baseUrl);
-    if (response.status === 429 && this.baseUrl === DEFAULT_BASE_URL) {
+    const response = await sendWithRefresh(baseUrl);
+    if (action === "streamGenerateContent" && baseUrl === DEFAULT_BASE_URL && response.status === 429) {
       const errorBody = await response.clone().text().catch(() => "");
       if (isEndpointRateLimit(errorBody)) {
         try {

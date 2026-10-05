@@ -91,6 +91,26 @@ describe("parseSSEStream", () => {
     expect(events[1].event).toBe("response.done");
   });
 
+  it("handles CRLF delimiters split across chunks", async () => {
+    const encoder = new TextEncoder();
+    const chunks = [
+      "data: {\"id\":\"r1\"}\r",
+      "\n\r\ndata: {\"id\":\"r2\"}\r\n\r\n",
+    ];
+    const response = new Response(new ReadableStream({
+      start(controller) {
+        for (const chunk of chunks) controller.enqueue(encoder.encode(chunk));
+        controller.close();
+      },
+    }));
+    const events = [];
+    for await (const event of parseSSEStream(response)) events.push(event);
+    expect(events).toEqual([
+      { event: "", data: { id: "r1" } },
+      { event: "", data: { id: "r2" } },
+    ]);
+  });
+
   it("handles non-SSE response as error event", async () => {
     const json = '{"detail":"unauthorized"}';
     const events = [];
