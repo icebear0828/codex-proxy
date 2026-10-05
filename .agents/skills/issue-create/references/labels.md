@@ -13,7 +13,7 @@ The complete catalog of labels currently defined on the repo. Apply only labels 
 | `duplicate` | #cfd3d7 | Already filed elsewhere — set after triage, not on creation |
 | `invalid` | #e4e669 | Not actionable or out of scope — set after triage |
 | `wontfix` | #ffffff | Acknowledged but will not be addressed — set after triage |
-| `sync-conflict` | #d73a4a | `master → electron` auto-sync merge conflict — used by automation, not for human-filed issues |
+| `sync-conflict` | #d73a4a | `main → electron` auto-sync merge conflict — used by automation, not for human-filed issues |
 
 ## Application rules for the skill
 

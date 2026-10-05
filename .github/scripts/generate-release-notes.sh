@@ -10,7 +10,7 @@ fi
 # Mirrors SKIP_RELEASE_PATTERN in bump-electron(-beta).yml so the notes never
 # list commits that wouldn't have triggered a release on their own.
 release_notes_filter='^(chore|docs|ci|test|refactor|style)(\(.*\))?:'
-promotion_filter='^(fix: promote dev release fixes to master|chore: promote dev to master)'
+promotion_filter='^(fix: promote dev release fixes to main|chore: promote dev to main)'
 
 find_previous_tag() {
   if [[ "$TAG" == *-* ]]; then
@@ -46,7 +46,7 @@ build_body() {
 dev_tree_matches_release_payload() {
   git show-ref --verify --quiet refs/remotes/origin/dev || return 1
   # Stable tags created after a manual squash promotion may add only release
-  # metadata on master (README/package version files). If all runtime/source
+  # metadata on main (README/package version files). If all runtime/source
   # files match dev, dev has the real PR history that the squash hid.
   git diff --quiet "$TAG" refs/remotes/origin/dev -- . \
     ':(exclude)README.md' \

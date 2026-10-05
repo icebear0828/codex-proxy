@@ -56,7 +56,7 @@ function commitAll(cwd: string, message: string): void {
 
 function createRepo(): string {
   const cwd = mkdtempSync(join(tmpdir(), "codex-proxy-release-notes-test-"));
-  git(cwd, ["init", "-b", "master"]);
+  git(cwd, ["init", "-b", "main"]);
   git(cwd, ["config", "user.name", "Test User"]);
   git(cwd, ["config", "user.email", "test@example.com"]);
   writeText(cwd, "README.md", "initial\n");
@@ -78,9 +78,9 @@ function createSquashPromotionRepo(): string {
   commitAll(cwd, "feat: user-visible helper feature (#11)");
   git(cwd, ["update-ref", "refs/remotes/origin/dev", "dev"]);
 
-  git(cwd, ["checkout", "master"]);
+  git(cwd, ["checkout", "main"]);
   git(cwd, ["read-tree", "--reset", "-u", "dev"]);
-  commitAll(cwd, "fix: promote dev release fixes to master");
+  commitAll(cwd, "fix: promote dev release fixes to main");
   writeText(cwd, "README.md", "synced readme\n");
   writeText(cwd, "package.json", "{\"version\":\"1.0.1\"}\n");
   writeText(cwd, "package-lock.json", "{\"version\":\"1.0.1\",\"packages\":{\"\":{\"version\":\"1.0.1\"},\"packages/electron\":{\"version\":\"1.0.1\"}}}\n");
@@ -189,8 +189,8 @@ describeIfBash("generate-release-notes.sh bash behavior", () => {
     commitAll(cwd, "feat: v2 feature work");
     git(cwd, ["tag", "v2.0.0-beta.1"]);
 
-    // Go back to master (which is at v1.0.1) and make a new commit for v1.0.2-beta.1
-    git(cwd, ["checkout", "master"]);
+    // Go back to main (which is at v1.0.1) and make a new commit for v1.0.2-beta.1
+    git(cwd, ["checkout", "main"]);
     writeText(cwd, "src/app.txt", "v1.0.2 fix\n");
     commitAll(cwd, "fix: critical v1.0.2 bugfix (#100)");
     git(cwd, ["tag", "v1.0.2-beta.1"]);

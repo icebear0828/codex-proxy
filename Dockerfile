@@ -57,7 +57,7 @@ RUN cd web && npm ci
 COPY . .
 
 # Release tags are authoritative for Docker images, while package.json on the
-# tagged master commit may intentionally lag behind under the tag-only release
+# tagged main commit may intentionally lag behind under the tag-only release
 # flow. Keep package metadata inside the image aligned with the baked version.
 RUN if [ "$PROXY_VERSION" != "unknown" ]; then \
       node .github/scripts/sync-package-version.mjs "$PROXY_VERSION"; \

@@ -44,11 +44,11 @@ function commitAt(cwd: string, message: string, epoch: number, file = "file.txt"
 
 function createRepo(): string {
   const cwd = mkdtempSync(join(tmpdir(), "codex-proxy-promote-test-"));
-  git(cwd, ["init", "-b", "master"]);
+  git(cwd, ["init", "-b", "main"]);
   git(cwd, ["config", "user.name", "Test User"]);
   git(cwd, ["config", "user.email", "test@example.com"]);
   commitAt(cwd, "chore: base", NOW - 10 * DAY);
-  git(cwd, ["update-ref", "refs/remotes/origin/master", "HEAD"]);
+  git(cwd, ["update-ref", "refs/remotes/origin/main", "HEAD"]);
   git(cwd, ["checkout", "-b", "dev"]);
   return cwd;
 }
@@ -59,7 +59,7 @@ function run(cwd: string, env: Record<string, string> = {}): string[] {
     encoding: "utf-8",
     env: {
       ...process.env,
-      MASTER_REF: "refs/remotes/origin/master",
+      MAIN_REF: "refs/remotes/origin/main",
       DEV_REF: "dev",
       NOW_EPOCH: String(NOW),
       ...env,
@@ -80,7 +80,7 @@ describeIfBash("select-promote-candidate.sh", () => {
     expect(run(cwd)).toEqual([sha]);
   });
 
-  it("returns empty when nothing on dev is ahead of master", () => {
+  it("returns empty when nothing on dev is ahead of main", () => {
     const cwd = createRepo();
     expect(run(cwd)).toEqual([]);
   });
@@ -104,20 +104,20 @@ describeIfBash("select-promote-candidate.sh", () => {
     expect(candidates).toHaveLength(2);
   });
 
-  it("filters first-parent commits that are not descendants of master (sync-back merge)", () => {
-    // master gets a hotfix AFTER dev branched; dev then merges master back in
+  it("filters first-parent commits that are not descendants of main (sync-back merge)", () => {
+    // main gets a hotfix AFTER dev branched; dev then merges main back in
     // (the repo's documented drift-recovery flow). Aged dev commits below the
-    // sync-back merge are NOT fast-forwards of master and must be excluded.
+    // sync-back merge are NOT fast-forwards of main and must be excluded.
     const cwd = createRepo();
-    const belowMerge = commitAt(cwd, "fix: aged, predates master hotfix", NOW - 3 * DAY);
+    const belowMerge = commitAt(cwd, "fix: aged, predates main hotfix", NOW - 3 * DAY);
 
-    git(cwd, ["checkout", "master"]);
-    commitAt(cwd, "fix: hotfix directly on master", NOW - 2 * DAY - HOUR, "hotfix.txt");
-    git(cwd, ["update-ref", "refs/remotes/origin/master", "HEAD"]);
+    git(cwd, ["checkout", "main"]);
+    commitAt(cwd, "fix: hotfix directly on main", NOW - 2 * DAY - HOUR, "hotfix.txt");
+    git(cwd, ["update-ref", "refs/remotes/origin/main", "HEAD"]);
 
     git(cwd, ["checkout", "dev"]);
     const mergeDate = `${NOW - 2 * DAY} +0000`;
-    git(cwd, ["merge", "--no-ff", "-m", "chore: sync master back into dev", "refs/remotes/origin/master"], {
+    git(cwd, ["merge", "--no-ff", "-m", "chore: sync main back into dev", "refs/remotes/origin/main"], {
       GIT_AUTHOR_DATE: mergeDate,
       GIT_COMMITTER_DATE: mergeDate,
     });
@@ -137,7 +137,7 @@ describeIfBash("select-promote-candidate.sh", () => {
   it("fails loudly on a missing ref instead of emitting an empty candidate list", () => {
     const cwd = createRepo();
     commitAt(cwd, "fix: aged", NOW - 2 * DAY);
-    expect(() => run(cwd, { MASTER_REF: "refs/remotes/origin/nonexistent" })).toThrow();
+    expect(() => run(cwd, { MAIN_REF: "refs/remotes/origin/nonexistent" })).toThrow();
   });
 
   it("FORCE=true bypasses soak and returns dev HEAD", () => {

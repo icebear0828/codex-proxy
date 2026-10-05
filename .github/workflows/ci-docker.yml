@@ -15,7 +15,7 @@ on:
       - "config/**"
       - "scripts/**"
   push:
-    branches: [master]
+    branches: [main]
     paths:
       - "Dockerfile"
       - "docker-entrypoint.sh"

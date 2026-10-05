@@ -1,4 +1,4 @@
-name: Promote dev → master
+name: Promote dev → main
 
 on:
   schedule:
@@ -40,33 +40,33 @@ jobs:
             echo "ok=false" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Fetch master and dev
+      - name: Fetch main and dev
         if: steps.dev_exists.outputs.ok == 'true'
         run: |
-          git fetch origin master:refs/remotes/origin/master --tags
+          git fetch origin main:refs/remotes/origin/main --tags
           git fetch origin dev:refs/remotes/origin/dev
 
       - name: Check ahead-count
         id: ahead
         if: steps.dev_exists.outputs.ok == 'true'
         run: |
-          AHEAD=$(git rev-list --count origin/master..origin/dev)
+          AHEAD=$(git rev-list --count origin/main..origin/dev)
           echo "ahead=$AHEAD" >> "$GITHUB_OUTPUT"
           if [ "$AHEAD" -eq 0 ]; then
-            echo "::notice::dev is not ahead of master, nothing to promote"
+            echo "::notice::dev is not ahead of main, nothing to promote"
           else
-            echo "dev is $AHEAD commit(s) ahead of master"
+            echo "dev is $AHEAD commit(s) ahead of main"
           fi
 
       - name: Check fast-forward possible
         id: ff
         if: steps.ahead.outputs.ahead != '0'
         run: |
-          if git merge-base --is-ancestor origin/master origin/dev; then
+          if git merge-base --is-ancestor origin/main origin/dev; then
             echo "ok=true" >> "$GITHUB_OUTPUT"
           else
             echo "ok=false" >> "$GITHUB_OUTPUT"
-            echo "::warning::master has commits not in dev — manual rebase needed (likely a hotfix landed directly on master)"
+            echo "::warning::main has commits not in dev — manual rebase needed (likely a hotfix landed directly on main)"
             exit 1
           fi
 
@@ -77,7 +77,7 @@ jobs:
           FORCE: ${{ inputs.force_skip_soak }}
         run: |
           # Old rule required dev HEAD itself to be >= 24h old; during active
-          # weeks every push reset the clock and master starved. The script
+          # weeks every push reset the clock and main starved. The script
           # instead emits the newest first-parent dev commits older than 24h
           # (newest first) — fresh commits keep soaking and ride tomorrow.
           CANDIDATES=$(bash .github/scripts/select-promote-candidate.sh)
@@ -124,15 +124,15 @@ jobs:
             echo "ok=false" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Fast-forward push dev → master
+      - name: Fast-forward push dev → main
         if: steps.ci.outputs.ok == 'true'
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           DEV_SHA="${{ steps.ci.outputs.dev_sha }}"
-          echo "Promoting $DEV_SHA to master"
-          git push origin "${DEV_SHA}:refs/heads/master"
-          echo "::notice::Promoted dev ($DEV_SHA) to master. bump-electron.yml will pick it up on the next 16:00 UTC tick."
+          echo "Promoting $DEV_SHA to main"
+          git push origin "${DEV_SHA}:refs/heads/main"
+          echo "::notice::Promoted dev ($DEV_SHA) to main. bump-electron.yml will pick it up on the next 16:00 UTC tick."
 
       - name: Notify promotion
         if: steps.ci.outputs.ok == 'true'
@@ -140,20 +140,20 @@ jobs:
           NOTIFY_WEBHOOK_URL: ${{ secrets.NOTIFY_WEBHOOK_URL }}
         run: |
           bash .github/scripts/notify-webhook.sh \
-            "🚀 Promoted dev (${{ steps.ci.outputs.dev_sha }}) to master — stable bump at 16:00 UTC"
+            "🚀 Promoted dev (${{ steps.ci.outputs.dev_sha }}) to main — stable bump at 16:00 UTC"
 
       - name: Trigger docker publish
         # GITHUB_TOKEN-driven pushes do not fire downstream workflows (anti-recursion
-        # guard), so docker-publish.yml's `on: push: branches: [master]` would
+        # guard), so docker-publish.yml's `on: push: branches: [main]` would
         # otherwise stay silent after every promotion. workflow_dispatch is one of
         # the few events GITHUB_TOKEN is allowed to trigger.
         if: steps.ci.outputs.ok == 'true'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: gh workflow run docker-publish.yml --ref master
+        run: gh workflow run docker-publish.yml --ref main
 
   # If the promote job fails (most commonly the ff-precondition check exiting 1
-  # because master drifted ahead of dev), open a tracking issue so the breakage
+  # because main drifted ahead of dev), open a tracking issue so the breakage
   # is visible instead of silently piling up for weeks. Soak/CI-not-green are
   # normal skips that keep the job green, so they do not trigger this.
   notify-ff-failure:
@@ -175,7 +175,7 @@ jobs:
           NOTIFY_WEBHOOK_URL: ${{ secrets.NOTIFY_WEBHOOK_URL }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
-          bash .github/scripts/notify-webhook.sh "❌ promote dev→master job failed: $RUN_URL"
+          bash .github/scripts/notify-webhook.sh "❌ promote dev→main job failed: $RUN_URL"
 
       - name: Open tracking issue on promote failure
         env:
@@ -183,7 +183,7 @@ jobs:
           REPO: ${{ github.repository }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
-          TITLE="⚠️ promote-dev→master 卡住：fast-forward 前提被破坏"
+          TITLE="⚠️ promote-dev→main 卡住：fast-forward 前提被破坏"
           EXISTING=$(gh issue list --repo "$REPO" --state open \
             --search "$TITLE in:title" --json number --jq '.[0].number // empty')
           if [ -n "$EXISTING" ]; then
@@ -191,10 +191,10 @@ jobs:
             exit 0
           fi
           gh issue create --repo "$REPO" --title "$TITLE" --body \
-          "\`promote-dev-to-master.yml\` 失败：master 有 dev 没有的提交，ff-promote 链路中断，dev 无法晋升到 master。
+          "\`promote-dev-to-main.yml\` 失败：main 有 dev 没有的提交，ff-promote 链路中断，dev 无法晋升到 main。
 
-          常见近因：master 侧自动产物（changelog→README sync、version bump、promote merge commit）未回流 dev，逐周漂移。
+          常见近因：main 侧自动产物（changelog→README sync、version bump、promote merge commit）未回流 dev，逐周漂移。
 
-          恢复方法：\`git merge -s ours origin/master\` 把 master 记为已合并（树取 dev），走 PR 进 dev，即可恢复 ff 前提。
+          恢复方法：\`git merge -s ours origin/main\` 把 main 记为已合并（树取 dev），走 PR 进 dev，即可恢复 ff 前提。
 
           失败 run：$RUN_URL"

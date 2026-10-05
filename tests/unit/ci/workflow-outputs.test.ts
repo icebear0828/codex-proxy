@@ -46,7 +46,7 @@ describe("workflow output references are satisfied", () => {
     "bump-electron.yml",
     "bump-electron-beta.yml",
     "release.yml",
-    "promote-dev-to-master.yml",
+    "promote-dev-to-main.yml",
     "lite-ci.yml",
     "ci-docker.yml",
   ];

@@ -4,7 +4,7 @@ description: >-
   Package the current working changes into a standards-compliant codex-proxy pull request:
   branch hygiene, commit message linting, CHANGELOG prompt, conventional commit, push, and `gh pr create` against the `dev` branch.
   TRIGGER when: user asks to "push a PR", "open a PR", "create PR", "ship this", "推 PR", "开 PR", "提交 PR".
-  DO NOT TRIGGER when: user only wants to commit without pushing; user explicitly wants to push directly to master/main; user wants to merge, rebase, or close an existing PR (use `gh pr merge` / `gh pr close` directly).
+  DO NOT TRIGGER when: user only wants to commit without pushing; user explicitly wants to push directly to main; user wants to merge, rebase, or close an existing PR (use `gh pr merge` / `gh pr close` directly).
 allowed-tools:
   - "Bash"
   - "Read"
@@ -19,7 +19,7 @@ Turn the current working tree into a clean PR targeting `dev`. This skill enforc
 
 ## Overview
 
-Codex-proxy uses a `dev` → `master` promotion flow with strict commit conventions, CHANGELOG discipline, and a pre-push validation hook. This skill walks the maintainer through an interview, makes the commit, runs the push (letting the hook gate quality), and opens the PR. It explicitly stops before merge — review and merge are separate human decisions.
+Codex-proxy uses a `dev` → `main` promotion flow with strict commit conventions, CHANGELOG discipline, and a pre-push validation hook. This skill walks the maintainer through an interview, makes the commit, runs the push (letting the hook gate quality), and opens the PR. It explicitly stops before merge — review and merge are separate human decisions.
 
 ## When to Use
 
@@ -28,8 +28,8 @@ Codex-proxy uses a `dev` → `master` promotion flow with strict commit conventi
 
 ## Important Rules
 
-1. **Target branch is always `dev`.** Never open a PR against `master` or `main` unless the user explicitly states "target master" with a written reason. The `master` branch is fast-forwarded by the `promote-dev-to-master.yml` workflow — manual PRs to `master` break that contract.
-2. **Never commit on `dev`, `master`, or `main` directly.** If `git branch --show-current` is one of these, stop and ask the user to name a feature branch (`git switch -c <name>`).
+1. **Target branch is always `dev`.** Never open a PR against `main` unless the user explicitly states "target main" with a written reason. The `main` branch is fast-forwarded by the `promote-dev-to-main.yml` workflow — manual PRs to `main` break that contract.
+2. **Never commit on `dev` or `main` directly.** If `git branch --show-current` is one of these, stop and ask the user to name a feature branch (`git switch -c <name>`).
 3. **Never use `git add -A`, `git add .`, or `git add -f`.** Stage files by explicit path. `-f` overrides `.gitignore` and has been the cause of secret leaks elsewhere.
 4. **Never pass `--no-verify` to `git commit` or `git push`.** The hook is the gate. If it fails, fix the underlying issue, do not bypass.
 5. **Stop after `gh pr create`.** Do not merge, do not approve, do not enable auto-merge. Pushing a PR and merging a PR are two human decisions.
@@ -70,10 +70,10 @@ Do **NOT** proceed to Phase 2 until the user has explicitly confirmed (a) commit
 
 ### Phase 2: Branch hygiene
 
-**Goal:** Make sure the commit lands on a feature branch, not on `dev`/`master`.
+**Goal:** Make sure the commit lands on a feature branch, not on `dev`/`main`.
 
 1. Check `git branch --show-current`.
-2. If the current branch is `dev`, `master`, or `main`:
+2. If the current branch is `dev` or `main`:
    - Stop. Ask the user to provide a feature branch name (suggest one derived from the commit summary, kebab-case, ≤40 chars).
    - Run `git switch -c <name>`. Do not auto-pick a name without confirmation.
 3. If the current branch is a feature branch but is not based on up-to-date `origin/dev`:
@@ -155,6 +155,6 @@ Do **NOT** proceed to Phase 2 until the user has explicitly confirmed (a) commit
 - Do not assume the user wants every modified file in the PR — ask.
 - Do not auto-write the CHANGELOG entry without showing it for approval first.
 - Do not retry a failing pre-push hook with `--no-verify`.
-- Do not open the PR against `master` even if the user is on a branch named `master-fix-X` — branch name does not imply target.
+- Do not open the PR against `main` even if the user is on a branch named `main-fix-X` — branch name does not imply target.
 - Do not silently rebase. If the branch needs rebase against `origin/dev`, ask first.
 - Do not chain `gh pr create` with `gh pr merge`. Two separate decisions.

@@ -160,7 +160,7 @@ export function getProxyInfo(): ProxyInfo {
       } catch { /* try the next package metadata location */ }
     }
 
-    // Pick whichever is higher (tag on electron branch may be unreachable from master)
+    // Pick whichever is higher (tag on electron branch may be unreachable from main)
     if (tagVersion && pkgVersion) {
       version = pkgVersion.localeCompare(tagVersion, undefined, { numeric: true }) > 0
         ? pkgVersion : tagVersion;
@@ -224,11 +224,11 @@ export function getCachedProxyUpdateResult(): ProxySelfUpdateResult | null {
   return _cachedResult;
 }
 
-/** Get commit log between HEAD and origin/master. */
+/** Get commit log between HEAD and origin/main. */
 async function getCommitLog(cwd: string): Promise<CommitInfo[]> {
   try {
     const { stdout } = await execFileAsync(
-      "git", ["log", "HEAD..origin/master", "--oneline", "--format=%h %s"],
+      "git", ["log", "HEAD..origin/main", "--oneline", "--format=%h %s"],
       { cwd, timeout: 10000 },
     );
     return stdout.trim().split("\n")
@@ -245,11 +245,11 @@ async function getCommitLog(cwd: string): Promise<CommitInfo[]> {
   }
 }
 
-/** Extract [Unreleased] section from CHANGELOG.md on origin/master. */
+/** Extract [Unreleased] section from CHANGELOG.md on origin/main. */
 async function getRemoteChangelog(cwd: string): Promise<string | null> {
   try {
     const { stdout } = await execFileAsync(
-      "git", ["show", "origin/master:CHANGELOG.md"],
+      "git", ["show", "origin/main:CHANGELOG.md"],
       { cwd, timeout: 5000 },
     );
     const marker = "## [Unreleased]";
@@ -407,7 +407,7 @@ export async function checkProxySelfUpdate(): Promise<ProxySelfUpdateResult> {
     } catch { /* ignore */ }
 
     try {
-      await execFileAsync("git", ["fetch", "origin", "master", "--quiet"], { cwd, timeout: 30000 });
+      await execFileAsync("git", ["fetch", "origin", "main", "--quiet"], { cwd, timeout: 30000 });
     } catch (err) {
       console.warn("[SelfUpdate] git fetch failed:", err instanceof Error ? err.message : err);
       const result: ProxySelfUpdateResult = {
@@ -422,12 +422,12 @@ export async function checkProxySelfUpdate(): Promise<ProxySelfUpdateResult> {
     let latestCommit: string | null = null;
     try {
       const { stdout: countOut } = await execFileAsync(
-        "git", ["rev-list", "HEAD..origin/master", "--count"], { cwd, timeout: 5000 },
+        "git", ["rev-list", "HEAD..origin/main", "--count"], { cwd, timeout: 5000 },
       );
       commitsBehind = parseInt(countOut.trim(), 10) || 0;
 
       const { stdout: latestOut } = await execFileAsync(
-        "git", ["rev-parse", "--short", "origin/master"], { cwd, timeout: 5000 },
+        "git", ["rev-parse", "--short", "origin/main"], { cwd, timeout: 5000 },
       );
       latestCommit = latestOut.trim() || null;
     } catch { /* ignore */ }
@@ -513,16 +513,16 @@ export async function applyProxySelfUpdate(
   const report = onProgress ?? (() => {});
 
   try {
-    // Safety: refuse to auto-update on a non-master branch. Pulling master
+    // Safety: refuse to auto-update on a non-main branch. Pulling main
     // into dev (or any other branch) corrupts the branch model and breaks
-    // the dev→master promote workflow.
+    // the dev→main promote workflow.
     const { stdout: branchOut } = await execFileAsync(
       "git", ["rev-parse", "--abbrev-ref", "HEAD"], { cwd, timeout: 5000 },
     );
     const currentBranch = branchOut.trim();
-    if (currentBranch !== "master" && currentBranch !== "main") {
+    if (currentBranch !== "main") {
       _proxyUpdateInProgress = false;
-      const msg = `Refusing to auto-update on branch '${currentBranch}' — only master/main are eligible. Switch branches or update manually.`;
+      const msg = `Refusing to auto-update on branch '${currentBranch}' — only main is eligible. Switch branches or update manually.`;
       console.warn(`[SelfUpdate] ${msg}`);
       return { started: false, error: msg };
     }
@@ -542,7 +542,7 @@ export async function applyProxySelfUpdate(
 
     report("pull", "running");
     console.log("[SelfUpdate] Pulling latest code...");
-    await execFileAsync("git", ["pull", "origin", "master"], { cwd, timeout: 60000 });
+    await execFileAsync("git", ["pull", "origin", "main"], { cwd, timeout: 60000 });
     report("pull", "done");
 
     report("install", "running");

@@ -5,7 +5,7 @@ on:
     - cron: "0 16 * * *"   # UTC 16:00 = 北京时间 00:00，每天兜底一次（即使没有 push）
   push:
     branches:
-      - master   # dev 被手动合并到 master 时立即 bump + 发版，无需等定时
+      - main   # dev 被手动合并到 main 时立即 bump + 发版，无需等定时
   workflow_dispatch:
 
 concurrency:
@@ -23,7 +23,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-          ref: master
+          ref: main
 
       - name: Check for new commits since last tag
         id: check
@@ -107,13 +107,13 @@ jobs:
             exit 0
           fi
 
-          # Tag-only on master: the release version is read from the tag
+          # Tag-only on main: the release version is read from the tag
           # (release.yml extraMetadata.version). We deliberately do NOT commit
-          # package.json onto master — a version-bump commit there would break
-          # the dev→master fast-forward promote precondition (master would get
+          # package.json onto main — a version-bump commit there would break
+          # the dev→main fast-forward promote precondition (main would get
           # a commit dev lacks). Instead, the version is written back to dev in
           # the "Sync version to dev" step below, so dev always stays ahead of
-          # master by that version-sync commit and promote keeps its FF.
+          # main by that version-sync commit and promote keeps its FF.
           # major.minor (series) is maintained by developers on dev and flows
           # in via promote; patch is owned entirely by the tag. This mirrors
           # bump-electron-beta.yml, which has always been tag-only.
@@ -150,7 +150,7 @@ jobs:
           NEW_TAG: ${{ steps.bump.outputs.new_tag }}
         # tag input → docker-publish builds FROM the tag and also publishes
         # the ghcr.io vX.Y.Z version image (branch pushes are latest-only).
-        run: gh workflow run docker-publish.yml --ref master -f tag="$NEW_TAG"
+        run: gh workflow run docker-publish.yml --ref main -f tag="$NEW_TAG"
 
       - name: Trigger npm publish
         # npm-publish.yml has the same problem as docker-publish.yml above:
@@ -167,9 +167,9 @@ jobs:
 
       - name: Sync version to dev (after new stable tag)
         # Only runs when a new tag was actually created. The version is written
-        # back to dev (not master): master's package.json always flows up from
-        # dev via promote ff, so a direct master commit would break that FF.
-        # Dev stays ahead of master by this version-sync commit instead.
+        # back to dev (not main): main's package.json always flows up from
+        # dev via promote ff, so a direct main commit would break that FF.
+        # Dev stays ahead of main by this version-sync commit instead.
         if: steps.bump.outputs.new_tag != ''
         env:
           NEW_TAG: ${{ steps.bump.outputs.new_tag }}
@@ -177,7 +177,7 @@ jobs:
           set -euo pipefail
           NEW_VERSION="${NEW_TAG#v}"
 
-          # checkout by default only carries master history — fetch dev explicitly.
+          # checkout by default only carries main history — fetch dev explicitly.
           git fetch origin dev:refs/remotes/origin/dev
           git switch --detach origin/dev
 

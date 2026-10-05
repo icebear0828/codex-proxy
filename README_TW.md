@@ -112,8 +112,8 @@ Linux x64 Lite 同時包含 glibc 與 musl TLS native addon，可用於常見 Li
 
 ```bash
 mkdir codex-proxy && cd codex-proxy
-curl -O https://raw.githubusercontent.com/icebear0828/codex-proxy/master/docker-compose.yml
-curl -O https://raw.githubusercontent.com/icebear0828/codex-proxy/master/.env.example
+curl -O https://raw.githubusercontent.com/icebear0828/codex-proxy/main/docker-compose.yml
+curl -O https://raw.githubusercontent.com/icebear0828/codex-proxy/main/.env.example
 cp .env.example .env
 docker compose up -d
 # 打開 http://localhost:8080 登入
