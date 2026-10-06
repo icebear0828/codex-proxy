@@ -76,6 +76,8 @@ export class GeminiUpstream implements UpstreamAdapter {
     let sentCreated = false;
     let inputTokens = 0;
     let outputTokens = 0;
+    let sawFinishReason = false;
+    let producedOutput = false;
     // Gemini surfaces explicit-cache hits as `cachedContentTokenCount`.
     let cachedTokens = 0;
 
@@ -109,6 +111,9 @@ export class GeminiUpstream implements UpstreamAdapter {
       const candidates = Array.isArray(chunk.candidates) ? chunk.candidates : [];
       for (const candidate of candidates) {
         if (!isRecord(candidate)) continue;
+        if (typeof candidate.finishReason === "string" && candidate.finishReason !== "") {
+          sawFinishReason = true;
+        }
         const content = isRecord(candidate.content) ? candidate.content : null;
         if (!content) continue;
 
@@ -119,11 +124,13 @@ export class GeminiUpstream implements UpstreamAdapter {
           if (!isRecord(part)) continue;
 
           if (typeof part.text === "string" && part.text.length > 0) {
+            producedOutput = true;
             yield {
               event: "response.output_text.delta",
               data: { delta: part.text },
             };
           } else if (isRecord(part.functionCall)) {
+            producedOutput = true;
             const fc = part.functionCall;
             const toolId = `call_${randomUUID().slice(0, 8)}`;
             const toolName = typeof fc.name === "string" ? fc.name : "";
@@ -160,6 +167,13 @@ export class GeminiUpstream implements UpstreamAdapter {
           }
         }
       }
+    }
+
+    if (!sawFinishReason) {
+      throw new Error("Gemini stream ended before the upstream reported a candidate finish reason");
+    }
+    if (!producedOutput) {
+      throw new Error("Gemini upstream completed without producing text or a tool call");
     }
 
     yield {
