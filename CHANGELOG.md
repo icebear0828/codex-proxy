@@ -8,13 +8,13 @@
 
 ## [Unreleased]
 
-### Fixed
-
-- Antigravity/Gemini 流只有在上游报告终止原因且产生文本或工具调用后才标记成功；提前结束和空输出会作为流错误返回，避免 Claude Code 收到伪成功的空响应。（`src/proxy/gemini-upstream.ts`）
+> 暂无已记录的变更。
 
 ## [v2.1.x](https://github.com/icebear0828/codex-proxy/releases?q=2.1) - 2026-09-01 至 2026-09-07
 
 ### Fixed
+
+- Antigravity/Gemini 流只有在上游报告终止原因且产生文本或工具调用后才标记成功；提前结束和空输出会作为流错误返回，避免 Claude Code 收到伪成功的空响应。（`src/proxy/gemini-upstream.ts`）
 
 - Antigravity OAuth 按 Google Cloud Code 返回的套餐选择请求端点：Pro / Ultra 账号使用 daily 端点，Free 账号仍使用 production 端点；loadCodeAssist 在生产端点遇到连接失败或 408 / 404 / 429 / 5xx 时回退到 daily，显式配置的 Base URL 保持优先。修复 CRLF SSE 分块解析，避免上游返回 HTTP 200 但下游收到空响应。（src/proxy/antigravity-upstream.ts、src/proxy/codex-sse.ts）
 
