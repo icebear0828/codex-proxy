@@ -8,7 +8,9 @@
 
 ## [Unreleased]
 
-> 暂无已记录的变更。
+### Fixed
+
+- Antigravity/Gemini 流只有在上游报告终止原因且产生文本或工具调用后才标记成功；提前结束和空输出会作为流错误返回，避免 Claude Code 收到伪成功的空响应。（`src/proxy/gemini-upstream.ts`）
 
 ## [v2.1.x](https://github.com/icebear0828/codex-proxy/releases?q=2.1) - 2026-09-01 至 2026-09-07
 

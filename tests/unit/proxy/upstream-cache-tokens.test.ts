@@ -214,7 +214,7 @@ describe("GeminiUpstream — cache_tokens extraction", () => {
     // Gemini SSE: each data line is a GenerateContentResponse JSON.
     const sse = [
       "data: " + JSON.stringify({
-        candidates: [{ content: { parts: [{ text: "hello" }] } }],
+        candidates: [{ finishReason: "STOP", content: { parts: [{ text: "hello" }] } }],
         usageMetadata: {
           promptTokenCount: 1000,
           candidatesTokenCount: 20,
@@ -237,7 +237,7 @@ describe("GeminiUpstream — cache_tokens extraction", () => {
   it("emits empty input_tokens_details when upstream omits cachedContentTokenCount", async () => {
     const sse = [
       "data: " + JSON.stringify({
-        candidates: [{ content: { parts: [{ text: "x" }] } }],
+        candidates: [{ finishReason: "STOP", content: { parts: [{ text: "x" }] } }],
         usageMetadata: { promptTokenCount: 50, candidatesTokenCount: 5 },
       }),
       "",
