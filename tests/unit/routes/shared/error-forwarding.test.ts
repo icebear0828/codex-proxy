@@ -17,7 +17,8 @@ vi.mock("@src/proxy/codex-api.js", () => {
   class CodexApiError extends Error {
     status: number;
     body: string;
-    constructor(status: number, body: string) {
+    headers: Headers | undefined;
+    constructor(status: number, body: string, headers?: Headers) {
       let detail: string;
       try {
         const parsed = JSON.parse(body);
@@ -28,6 +29,7 @@ vi.mock("@src/proxy/codex-api.js", () => {
       super(`Codex API error (${status}): ${detail}`);
       this.status = status;
       this.body = body;
+      this.headers = headers;
     }
   }
 
@@ -207,6 +209,25 @@ describe("handleDirectRequest error forwarding", () => {
     const body = await res.json();
     expect(body.error.type).toBe("rate_limit_error");
     expect(fmt.format429).not.toHaveBeenCalled();
+  });
+
+  it("forwards upstream Retry-After on 429 responses", async () => {
+    mockUpstreamCreate = () => Promise.reject(new CodexApiError(
+      429,
+      JSON.stringify({ error: { message: "Resource has been exhausted" } }),
+      new Headers({ "Retry-After": "60" }),
+    ));
+
+    const app = new Hono();
+    const upstream = createMockUpstream({ tag: "antigravity" });
+    const req = { ...createDefaultRequest(), isStreaming: true };
+    const fmt = createMockFormatAdapter();
+
+    app.post("/test", (c) => handleDirectRequest({ c, upstream: upstream as never, req, fmt }));
+
+    const res = await app.request("/test", { method: "POST" });
+    expect(res.status).toBe(429);
+    expect(res.headers.get("retry-after")).toBe("60");
   });
 
   it("falls back to format429 for non-JSON 429", async () => {

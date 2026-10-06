@@ -8,7 +8,9 @@
 
 ## [Unreleased]
 
-> 暂无已记录的变更。
+### Fixed
+
+- 修复流式 API-key 上游错误被包装成 HTTP 200 的问题，保留真实错误状态；上游返回 429 时透传 `Retry-After`，让 Claude Code 等客户端按配额恢复时间退避。（`src/routes/shared/direct-request-handler.ts`）
 
 ## [v2.1.x](https://github.com/icebear0828/codex-proxy/releases?q=2.1) - 2026-09-01 至 2026-09-07
 
