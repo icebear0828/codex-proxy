@@ -798,6 +798,8 @@ for await (const chunk of stream) {
 
 > **重要**：不要直接修改 `config/default.yaml`，该文件会在版本更新时被覆盖。自定义配置请通过 Dashboard 设置面板修改（自动保存到 `data/local.yaml`），或手动创建 `data/local.yaml` 写入需要覆盖的字段。`data/` 目录不受更新影响。
 
+> **Docker 部署的差异**：容器启动时只从镜像内的默认配置**按文件补种**缺失项（`cp -rn`，只补不覆盖）。因此升级镜像后新增的默认配置文件（如 `model-pricing.yaml`）会自动出现在已有配置卷中，而你改过的文件不会被覆盖；反过来说，`config/` 卷里已存在的旧默认值也不会随镜像更新。无论哪种部署方式，自定义配置都请写入 `data/local.yaml`。
+
 ### CORS 允许主机
 
 通过环境变量 `CORS_ALLOWED_HOSTS` 可以配置允许跨域访问的主机列表，对应配置文件中的 `server.cors` 字段。多个主机名用逗号分隔：

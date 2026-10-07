@@ -14,7 +14,9 @@ bin/*
 .env.*
 !.env.example
 *.log
-logs/
+# Runtime log output at the repo root only — a bare `logs/` also matched
+# source directories such as src/logs/ and tests/unit/logs/.
+/logs/
 .asar-out/
 tmp/
 .claude/*
