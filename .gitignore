@@ -11,13 +11,34 @@ docs/*
 bin/*
 !bin/README.md
 .env
+.env.*
+!.env.example
 *.log
+logs/
 .asar-out/
 tmp/
 .claude/*
 !.claude/skills/
+
+# Native addon build output (built via `cd native && npm install && npm run build`)
 native/target/
-native/codex-tls.linux-*.node
+native/*.node
+
+# Test / tooling output
+coverage/
+*.tsbuildinfo
+.eslintcache
+*.tgz
+
+# Local CI run-log dumps
+/run-logs*.txt
+
+# OS / editor junk
+.DS_Store
+Thumbs.db
+desktop.ini
+.idea/
+.vscode/
 
 # Maintenance scripts (private)
 scripts/manual-test/
