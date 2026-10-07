@@ -40,7 +40,13 @@ if [ -d "$DEFAULTS_DIR" ]; then
   if mkdir -p "$CONFIG_DIR"; then
     seed_config_defaults "$DEFAULTS_DIR" "$CONFIG_DIR"
     after=$(find "$CONFIG_DIR" -type f 2>/dev/null | wc -l | tr -d ' ')
-    echo "[Init] Config defaults: $((after - before)) missing file(s) seeded from the image (existing files preserved)"
+    seeded=$((after - before))
+    # Stay quiet when there is nothing to do: tooling reads this container's
+    # stdout (e.g. the image smoke test parsing a version), so a no-op start
+    # must not add noise.
+    if [ "$seeded" -gt 0 ]; then
+      echo "[Init] Config defaults: $seeded missing file(s) seeded from the image (existing files preserved)"
+    fi
   else
     echo "[Init] WARNING: could not create $CONFIG_DIR — continuing with the existing config volume" >&2
   fi
