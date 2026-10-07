@@ -170,6 +170,28 @@ describeIfShell.each(ENTRYPOINTS)("config seeding in %s", (entrypoint) => {
     expect(readFileSync(join(fixture.configDir, "default.yaml"), "utf8")).toBe("user\n");
   });
 
+  it("stays quiet when the volume already has every default file", () => {
+    const fixture = makeFixture({
+      defaults: {
+        "default.yaml": "image: default\n",
+        "model-pricing.yaml": "models: {}\n",
+        "prompts/p.md": "new prompt\n",
+      },
+      config: {
+        "default.yaml": "user-edited: true\n",
+        "model-pricing.yaml": "models: {}\n",
+        "prompts/p.md": "new prompt\n",
+      },
+    });
+
+    const out = runSeedBlock(entrypoint, fixture);
+
+    // Tooling reads this container's stdout (the image smoke test parses a
+    // version out of it), so a no-op start must not print anything.
+    expect(out).toBe("");
+    expect(readFileSync(join(fixture.configDir, "default.yaml"), "utf8")).toBe("user-edited: true\n");
+  });
+
   it("warns instead of failing when the config volume cannot be created", () => {
     const fixture = makeFixture({
       defaults: { "default.yaml": "d\n" },
