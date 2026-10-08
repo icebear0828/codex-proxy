@@ -3,7 +3,7 @@ import type { CookieJar } from "../../proxy/cookie-jar.js";
 import type { CodexFingerprintMode } from "../../auth/types.js";
 import type { ProxyPool } from "../../proxy/proxy-pool.js";
 import type { UsageInfo } from "../../translation/codex-event-extractor.js";
-import { calculateUsageCostUsd, loadPricingCatalog, resolveModelPricing } from "../../auth/usage-pricing.js";
+import { calculateUsageCostUsd, loadPricingCatalog, resolveModelPricing, warnPricingLoadFailure } from "../../auth/usage-pricing.js";
 
 let pricingCatalog: ReturnType<typeof loadPricingCatalog> | null = null;
 
@@ -22,11 +22,11 @@ export function annotateUsageCost(model: string | undefined, usage: UsageInfo | 
     if (!resolveModelPricing(model, catalog)) return usage;
     estimatedCost = calculateUsageCostUsd(model, usage, catalog);
   } catch (err) {
-    // Test fixtures and minimal deployments may not ship the optional catalog.
-    // Preserve the legacy release payload until pricing data is available.
-    if (err instanceof Error && !err.message.includes("ENOENT")) {
-      console.warn(`[UsagePricing] Failed to calculate cost for model ${model}:`, err.message);
-    }
+    // A missing or invalid catalog is a deployment problem worth surfacing —
+    // it silently turned every estimated cost into zero before (#837). The
+    // warning is deduplicated inside usage-pricing, so the per-request retry
+    // stays quiet while the file is absent.
+    warnPricingLoadFailure(err);
     return usage;
   }
   return { ...usage, model, estimated_cost_usd: estimatedCost };

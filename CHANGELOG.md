@@ -8,7 +8,13 @@
 
 ## [Unreleased]
 
-> 暂无已记录的变更。
+### Fixed
+
+- 修复 Docker 部署下已有配置卷永远拿不到镜像新增默认文件的问题（#837）:标准版与 Lite 版 entrypoint 此前只在配置目录**完全为空**时从镜像 `/defaults` 复制一次，配置卷一旦被播种过，后续镜像升级新增的配置文件（如 `model-pricing.yaml`）就再也不会进入运行时配置目录——表现为 token 统计正常但估算成本恒为 0，旧版 `models.yaml` 等默认值同样不会更新。现在每次启动都按文件补种:递归 `cp -rn`（no-clobber）只补齐缺失文件，用户改过的文件与旧默认值一概不覆盖，嵌套新增文件（如 `prompts/` 目录内新增的提示词）同样补齐，并输出本次补种文件数;补种失败（目录不可创建或不可写）只告警、不阻断启动。路径可用 `CODEX_ENTRYPOINT_DEFAULTS_DIR` / `CODEX_ENTRYPOINT_CONFIG_DIR` 覆盖。（`docker-entrypoint.sh`、`scripts/docker/lite-entrypoint.sh`、`tests/unit/ci/docker-entrypoint-seed.test.ts`）
+
+- 修复价格表加载失败完全静默、且失败产生的空价格表被进程永久缓存的问题（#837）:`src/logs/metrics.ts` 的 `getCatalog()` 捕获异常后静默把价格表设为 `{}` 并永久缓存，`annotateUsageCost()` 也特意吞掉 ENOENT 警告，用户容易把「价格表没加载」误认为「成本真的是 0」。现在加载失败会带实际文件路径与原因告警（按路径+原因去重、5 分钟冷却，避免每请求刷屏），空表只缓存 60 秒后重试，把缺失文件补进配置卷后无需重启即可恢复计价并输出恢复日志。（`src/auth/usage-pricing.ts`、`src/logs/metrics.ts`、`src/routes/shared/proxy-handler-utils.ts`、`tests/unit/logs/metrics.test.ts`）
+
+> 暂无其他已记录的变更。
 
 ## [v2.1.x](https://github.com/icebear0828/codex-proxy/releases?q=2.1) - 2026-09-01 至 2026-09-07
 

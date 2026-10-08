@@ -1,4 +1,4 @@
-import { calculateUsageCostUsd, loadPricingCatalog, type PricingCatalog, type UsageCostInput } from "../auth/usage-pricing.js";
+import { calculateUsageCostUsd, loadPricingCatalog, warnPricingLoadFailure, type PricingCatalog, type UsageCostInput } from "../auth/usage-pricing.js";
 import type { UsageInfo } from "../translation/codex-event-extractor.js";
 
 export interface LogMetrics {
@@ -25,20 +25,37 @@ export interface CalculateLogMetricsOptions {
 }
 
 let cachedCatalog: PricingCatalog | null = null;
+/** Epoch ms before which a previously failed load is not retried. */
+let catalogRetryAfter = 0;
+
+const EMPTY_PRICING_CATALOG: PricingCatalog = {};
+const PRICING_RETRY_MS = 60_000;
 
 function getCatalog(): PricingCatalog {
-  if (!cachedCatalog) {
-    try {
-      cachedCatalog = loadPricingCatalog();
-    } catch {
-      cachedCatalog = {};
+  if (cachedCatalog) return cachedCatalog;
+  if (Date.now() < catalogRetryAfter) return EMPTY_PRICING_CATALOG;
+  try {
+    cachedCatalog = loadPricingCatalog();
+    if (catalogRetryAfter !== 0) {
+      catalogRetryAfter = 0;
+      console.info("[pricing] pricing catalog loaded — estimated costs are available again");
     }
+  } catch (err) {
+    // Surface the failure with the actual file path instead of pricing every
+    // request at zero without a trace, and retry after a cooldown rather than
+    // caching the empty fallback for the lifetime of the process: a user can
+    // drop the missing file into the config volume and costs recover without a
+    // restart (#837).
+    warnPricingLoadFailure(err);
+    catalogRetryAfter = Date.now() + PRICING_RETRY_MS;
+    return EMPTY_PRICING_CATALOG;
   }
   return cachedCatalog;
 }
 
 export function resetPricingCatalogCache(): void {
   cachedCatalog = null;
+  catalogRetryAfter = 0;
 }
 
 export function calculateLogMetrics(options: CalculateLogMetricsOptions): LogMetrics {

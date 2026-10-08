@@ -61,6 +61,35 @@ export function loadPricingCatalog(configDir = getConfigDir()): PricingCatalog {
   return createPricingCatalog(entries);
 }
 
+const PRICING_WARN_COOLDOWN_MS = 5 * 60_000;
+const lastPricingWarnAt = new Map<string, number>();
+
+/**
+ * Report a pricing-catalog load failure with the resolved file path.
+ *
+ * Missing or invalid pricing used to degrade every estimated cost to zero with
+ * no trace at all (#837); callers that swallow the load error must call this so
+ * the condition is at least visible to the operator. Warnings are deduplicated
+ * per (path, reason), so a caller that retries on every request stays quiet.
+ */
+export function warnPricingLoadFailure(error: unknown, configDir = getConfigDir()): void {
+  const path = resolve(configDir, PRICE_FILE);
+  const reason = error instanceof Error ? error.message : String(error);
+  const signature = `${path}|${reason}`;
+  const now = Date.now();
+  const last = lastPricingWarnAt.get(signature);
+  if (last !== undefined && now - last < PRICING_WARN_COOLDOWN_MS) return;
+  lastPricingWarnAt.set(signature, now);
+  console.warn(
+    `[pricing] cannot load ${path}: ${reason} — usage is still recorded, but estimated costs stay unavailable until the file loads`,
+  );
+}
+
+/** Test hook: clear the pricing-warning dedupe state. */
+export function resetPricingLoadWarnings(): void {
+  lastPricingWarnAt.clear();
+}
+
 export function resolveModelPricing(model: string, catalog: PricingCatalog): ModelPricing | null {
   const normalized = model.trim();
   if (!normalized) return null;
