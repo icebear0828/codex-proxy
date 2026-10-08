@@ -8,7 +8,9 @@
 
 ## [Unreleased]
 
-> 暂无已记录的变更。
+### Changed
+
+- 测试命令现按宿主系统自动选择 Windows 或 Linux suite，并保留显式平台命令；两套共用测试发现和用例，Windows CI 同时运行 root 与 web suite。（`vitest.config.ts`、`vitest.shared-config.ts`、`.github/workflows/ci-quality.yml`）
 
 ## [v2.1.x](https://github.com/icebear0828/codex-proxy/releases?q=2.1) - 2026-09-01 至 2026-09-07
 
