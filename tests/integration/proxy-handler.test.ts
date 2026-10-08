@@ -302,21 +302,37 @@ describe("proxy-handler integration", () => {
     }
   });
 
-  it("does not escape a tier restriction through the API-key fallback", async () => {
-    vi.mocked(getConfig).mockReturnValueOnce({ auth: {
-      service_tier_routing: { ultrafast: { account_ids: ["reserved"] } },
-    }, model: {} } as never).mockReturnValueOnce({ auth: {
+  it("does not escape a downgraded tier restriction through API-key fallback", async () => {
+    vi.mocked(getConfig).mockReturnValue({ auth: {
       service_tier_routing: { ultrafast: { account_ids: ["reserved"] } },
     }, model: {} } as never);
+    mockCreateResponse = async () => {
+      throw new CodexApiError(429, JSON.stringify({ error: { type: "usage_limit_reached", resets_in_seconds: 60 } }));
+    };
     const get = vi.fn(() => ({ apiKey: "secret", baseUrl: "https://upstream.invalid" }));
     const req = createDefaultRequest();
     req.codexRequest.service_tier = "ultrafast";
+    const pool = createMockAccountPool({
+      acquire: vi.fn()
+        .mockReturnValueOnce({ entryId: "reserved", token: "t", accountId: "reserved", serviceTier: "default" })
+        .mockReturnValue(null),
+    });
+    const { app } = buildTestApp({ req, accountPool: pool,
+      fallbackUpstream: { get } as unknown as FallbackUpstreamStore });
+    expect((await app.request("/test", { method: "POST" })).status).toBe(429);
+    expect(req.codexRequest.service_tier).toBe("default");
+    expect(get).not.toHaveBeenCalled();
+  });
+
+  it("keeps API-key fallback available without a tier restriction", async () => {
+    const get = vi.fn(() => ({ apiKey: "secret", baseUrl: "https://upstream.invalid" }));
+    const req = createDefaultRequest();
     const { app } = buildTestApp({
       req, accountPool: createMockAccountPool({ acquire: vi.fn(() => null) }),
       fallbackUpstream: { get } as unknown as FallbackUpstreamStore,
     });
-    expect((await app.request("/test", { method: "POST" })).status).toBe(503);
-    expect(get).not.toHaveBeenCalled();
+    expect((await app.request("/test", { method: "POST" })).status).toBe(502);
+    expect(get).toHaveBeenCalledOnce();
   });
 
   // 1. No account available

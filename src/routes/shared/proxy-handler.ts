@@ -78,8 +78,9 @@ async function respondNoAccountOrFallback(
   options: HandleProxyRequestOptions,
   req: ProxyRequest,
   fmt: FormatAdapter,
+  tierRestricted: boolean,
 ): Promise<Response> {
-  const fallback = getServiceTierAccountRule(req.codexRequest.service_tier)
+  const fallback = tierRestricted
     ? undefined
     : options.fallbackUpstream?.get();
   if (fallback) {
@@ -110,9 +111,10 @@ async function respondProxyErrorOrFallback(
   fmt: FormatAdapter,
   status: number,
   message: string,
-  useFormat429?: boolean,
+  useFormat429: boolean | undefined,
+  tierRestricted: boolean,
 ): Promise<Response> {
-  const fallback = getServiceTierAccountRule(req.codexRequest.service_tier)
+  const fallback = tierRestricted
     ? undefined
     : options.fallbackUpstream?.get();
   if (fallback) {
@@ -135,7 +137,9 @@ export async function handleProxyRequest(options: HandleProxyRequestOptions): Pr
   c.set("logForwarded", true);
   const forcedTier = getModelServiceTierOverride(req.codexRequest.model);
   if (forcedTier !== undefined) req.codexRequest.service_tier = forcedTier;
-
+  // Keep the original route constraint even if account acquisition downgrades
+  // service_tier to `default`; API-key fallback must not escape that constraint.
+  const tierRestricted = Boolean(getServiceTierAccountRule(req.codexRequest.service_tier));
 
   const affinityMap = getSessionAffinityMap();
   const requestId = c.get("requestId") ?? randomUUID().slice(0, 8);
@@ -159,7 +163,7 @@ export async function handleProxyRequest(options: HandleProxyRequestOptions): Pr
   // Single acquire call — preferredEntryId is a hint, not a hard requirement
   let acquired = acquireAccount(accountPool, req.codexRequest.model, undefined, fmt.tag, sessionContext.preferredEntryId ?? undefined, req.codexRequest.service_tier);
   if (!acquired) {
-    return respondNoAccountOrFallback(options, req, fmt);
+    return respondNoAccountOrFallback(options, req, fmt, tierRestricted);
   }
 
   // ── Drift-Defense & Verification Loop ──
@@ -168,7 +172,7 @@ export async function handleProxyRequest(options: HandleProxyRequestOptions): Pr
   const MAX_VERIFY_ATTEMPTS = 5;
   let verifyAttempts = 0;
   for (;;) {
-    if (!acquired) return respondNoAccountOrFallback(options, req, fmt);
+    if (!acquired) return respondNoAccountOrFallback(options, req, fmt, tierRestricted);
     const entry = accountPool.getEntry(acquired.entryId);
     if (entry?.quotaVerifyRequired) {
       const verifyingEntryId = acquired.entryId;
@@ -193,12 +197,12 @@ export async function handleProxyRequest(options: HandleProxyRequestOptions): Pr
           verifyAttempts++;
           if (verifyAttempts >= MAX_VERIFY_ATTEMPTS) {
             console.warn(`[${fmt.tag}] ⚠️ Drift-defense hit MAX_VERIFY_ATTEMPTS (${MAX_VERIFY_ATTEMPTS}). Giving up to avoid excess upstream calls.`);
-            return respondNoAccountOrFallback(options, req, fmt);
+            return respondNoAccountOrFallback(options, req, fmt, tierRestricted);
           }
 
           acquired = acquireAccount(accountPool, req.codexRequest.model, verifiedExcludeIds, fmt.tag, sessionContext.preferredEntryId ?? undefined, req.codexRequest.service_tier);
           if (!acquired) {
-            return respondNoAccountOrFallback(options, req, fmt);
+            return respondNoAccountOrFallback(options, req, fmt, tierRestricted);
           }
           continue; // Loop back to check the newly acquired account
         }
@@ -212,7 +216,7 @@ export async function handleProxyRequest(options: HandleProxyRequestOptions): Pr
     break; // Verified or no verification required, proceed!
   }
 
-  if (!acquired) return respondNoAccountOrFallback(options, req, fmt);
+  if (!acquired) return respondNoAccountOrFallback(options, req, fmt, tierRestricted);
   if (acquired.serviceTier) req.codexRequest.service_tier = acquired.serviceTier;
   let { entryId } = acquired;
   // First account this request acquired; later attempts that switch to another
@@ -547,6 +551,7 @@ export async function handleProxyRequest(options: HandleProxyRequestOptions): Pr
                 errorRetryTransition.status,
                 errorRetryTransition.message,
                 errorRetryTransition.useFormat429,
+                tierRestricted,
               );
             }
             return respondWithProxyError({
