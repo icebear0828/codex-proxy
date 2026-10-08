@@ -8,13 +8,13 @@
 
 ## [Unreleased]
 
-### Changed
-
-- 测试命令现按宿主系统自动选择 Windows 或 Linux suite，并保留显式平台命令；两套共用测试发现和用例，Windows CI 同时运行 root 与 web suite。（`vitest.config.ts`、`vitest.shared-config.ts`、`.github/workflows/ci-quality.yml`）
+> 暂无已记录的变更。
 
 ## [v2.1.x](https://github.com/icebear0828/codex-proxy/releases?q=2.1) - 2026-09-01 至 2026-09-07
 
 ### Changed
+
+- 测试命令现按宿主系统自动选择 Windows 或 Linux suite，并保留显式平台命令；两套共用测试发现和用例，Windows CI 同时运行 root 与 web suite。（`vitest.config.ts`、`vitest.shared-config.ts`、`.github/workflows/ci-quality.yml`）
 
 - 仓库不再跟踪预编译的 native addon（`native/codex-tls.*.node`）与 CI 运行日志转储（`run-logs*.txt`）。这些是构建产物而非源码：各平台流水线都会重新编译 addon，源码运行也一直要求先执行 `cd native && npm install && npm run build`（README 已有说明），继续跟踪只会让过期的二进制被反复打包进发布产物。同时补齐 `.gitignore`（`logs/`、`coverage/`、`*.tgz`、`.env.*`、系统与编辑器临时文件等），避免同类文件再次误入库。
 
