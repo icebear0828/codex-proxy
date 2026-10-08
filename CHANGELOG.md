@@ -8,19 +8,13 @@
 
 ## [Unreleased]
 
-### Fixed
-
-- 修复显式 `previous_response_id` 会话在拥有它的池内 WebSocket 死亡后被本地永久判死的问题（#789）:此前 `acquireForResponse` 以 `missing_owner` / `dead` / `expired` / `transport` 旁路后直接抛 `PreviousResponseWebSocketError`,而显式续传既被排除在 strip-retry 之外(剥离会丢历史)、也不适用状态码 0 传输重试,错误一路落到兜底 502——同一会话后续每一轮都复用同一个死 id 反复 502,换模型也无法恢复,只能新开会话。现在这类"本地 owner 丢失但上游链可能完好"(响应通常在池连接死亡前已建成)的旁路会在全新 recovery WS 上原样重试同一次请求(不改动 prev id / 输入 / 账号),由上游裁决 id 是否仍有效;若上游返回 not-found,既有失效逻辑照常清除本地映射。`busy`(活兄弟分支串行化护栏)与 `account_mismatch` / `disabled` / `no_key`(跨账号 fail-closed 护栏)维持原语义不重试;每个请求最多重连一次,防止循环。(`src/routes/shared/proxy-retry-classifier.ts`、`src/routes/shared/proxy-handler.ts`、`tests/unit/routes/shared/proxy-retry-classifier.test.ts`)
-
-### Added
-
-- 上游传输弱网韧性三件套（状态码 0 重试、流空闲看门狗、原生层请求取消）：其一,上游建流阶段的状态码 0 传输失败（连接被重置/拒绝等）现在按指数退避自动重试（默认 2 次,客户端断开即停止,`PreviousResponseWebSocketError` 续链错误不适用）,重试耗尽后以 502 干净报错,不再直接把传输失败当作"无可用账号";其二,新增 `tls.stream_idle_timeout_ms`（默认 120s,0 关闭）上游无进度看门狗,同时覆盖两阶段——响应 header 迟迟不到（预 header 挂起,超时后取消上游 send 并按可重试传输失败处理）与 body 字节间静默（首个 body 字节起计时,首 token 前的合法思考停顿不会被误杀）,触发后按流提前断开暴露给客户端并归因日志;其三,rustls 原生层新增 inflight 注册表与 `httpCancel(requestId)` 绑定（tokio watch 通道贯穿 header 与 body 两阶段）,看门狗触发/客户端断开/下游流取消/预 header 超时四条路径都会终止上游请求并回收连接,旧版 addon 无此导出时自动降级为原行为。netlab 弱网实验环境（`tests/netlab/`,mock 上游 + toxiproxy 注入 + 隔离 runtime）提供可重复场景与"连接回收"验收（mock `openConnections` 归零断言）,新增 `npm run netlab:baseline` 命令与 `scripts/native/smoke-addon.mjs` ABI 冒烟,`.github/workflows/native-ci-matrix.yml` 支持 fork 侧 win-msvc/linux-musl/darwin-arm64 三平台 addon 矩阵验证。（`src/tls/native-transport.ts`、`native/src/lib.rs`、`src/routes/shared/`、`src/config-schema.ts`、`config/default.yaml`、`tests/netlab/`、`scripts/native/`、`.github/workflows/native-ci-matrix.yml`）
-
-> 暂无其他已记录的变更。
+> 暂无已记录的变更。
 
 ## [v2.1.x](https://github.com/icebear0828/codex-proxy/releases?q=2.1) - 2026-09-01 至 2026-09-07
 
 ### Fixed
+
+- 修复显式 `previous_response_id` 会话在拥有它的池内 WebSocket 死亡后被本地永久判死的问题（#789）:此前 `acquireForResponse` 以 `missing_owner` / `dead` / `expired` / `transport` 旁路后直接抛 `PreviousResponseWebSocketError`,而显式续传既被排除在 strip-retry 之外(剥离会丢历史)、也不适用状态码 0 传输重试,错误一路落到兜底 502——同一会话后续每一轮都复用同一个死 id 反复 502,换模型也无法恢复,只能新开会话。现在这类"本地 owner 丢失但上游链可能完好"(响应通常在池连接死亡前已建成)的旁路会在全新 recovery WS 上原样重试同一次请求(不改动 prev id / 输入 / 账号),由上游裁决 id 是否仍有效;若上游返回 not-found,既有失效逻辑照常清除本地映射。`busy`(活兄弟分支串行化护栏)与 `account_mismatch` / `disabled` / `no_key`(跨账号 fail-closed 护栏)维持原语义不重试;每个请求最多重连一次,防止循环。(`src/routes/shared/proxy-retry-classifier.ts`、`src/routes/shared/proxy-handler.ts`、`tests/unit/routes/shared/proxy-retry-classifier.test.ts`)
 
 - 修复 Docker 部署下已有配置卷永远拿不到镜像新增默认文件的问题（#837）:标准版与 Lite 版 entrypoint 此前只在配置目录**完全为空**时从镜像 `/defaults` 复制一次，配置卷一旦被播种过，后续镜像升级新增的配置文件（如 `model-pricing.yaml`）就再也不会进入运行时配置目录——表现为 token 统计正常但估算成本恒为 0，旧版 `models.yaml` 等默认值同样不会更新。现在每次启动都按文件补种:递归 `cp -rn`（no-clobber）只补齐缺失文件，用户改过的文件与旧默认值一概不覆盖，嵌套新增文件（如 `prompts/` 目录内新增的提示词）同样补齐，并输出本次补种文件数;补种失败（目录不可创建或不可写）只告警、不阻断启动。路径可用 `CODEX_ENTRYPOINT_DEFAULTS_DIR` / `CODEX_ENTRYPOINT_CONFIG_DIR` 覆盖。（`docker-entrypoint.sh`、`scripts/docker/lite-entrypoint.sh`、`tests/unit/ci/docker-entrypoint-seed.test.ts`）
 
@@ -72,33 +66,11 @@
 
 - 移除 Dashboard 顶部导航栏与侧栏重复展示的「服务运行中」状态徽标（`web/src/components/Header.tsx`）。
 
-### Changed
-
-- 测试命令现按宿主系统自动选择 Windows 或 Linux suite，并保留显式平台命令；两套共用测试发现和用例，Windows CI 同时运行 root 与 web suite。（`vitest.config.ts`、`vitest.shared-config.ts`、`.github/workflows/ci-quality.yml`）
-
-- 仓库不再跟踪预编译的 native addon（`native/codex-tls.*.node`）与 CI 运行日志转储（`run-logs*.txt`）。这些是构建产物而非源码：各平台流水线都会重新编译 addon，源码运行也一直要求先执行 `cd native && npm install && npm run build`（README 已有说明），继续跟踪只会让过期的二进制被反复打包进发布产物。同时补齐 `.gitignore`（`logs/`、`coverage/`、`*.tgz`、`.env.*`、系统与编辑器临时文件等），避免同类文件再次误入库。
-
-- 仓库不再跟踪预编译的 native addon（`native/codex-tls.*.node`）与 CI 运行日志转储（`run-logs*.txt`）。这些是构建产物而非源码：各平台流水线都会重新编译 addon，源码运行也一直要求先执行 `cd native && npm install && npm run build`（README 已有说明），继续跟踪只会让过期的二进制被反复打包进发布产物。同时补齐 `.gitignore`（`logs/`、`coverage/`、`*.tgz`、`.env.*`、系统与编辑器临时文件等），避免同类文件再次误入库。
-
-- Antigravity OAuth 账号改由首页账号区管理；API Keys 页面不再提供 Antigravity 手动录入入口，已有 Antigravity 条目也不再显示在该列表中。（`src/routes/api-keys.ts`、`web/src/components/ApiKeyManager.tsx`）
-
-- Antigravity OAuth 使用内置 client secret，常规使用无需设置 `ANTIGRAVITY_OAUTH_CLIENT_SECRET`；该变量仍可用于覆盖默认凭据。（`src/proxy/antigravity-upstream.ts`、`.env.example`、`README.md`）
-
-- API Keys 第三方供应商模型列表缓存 TTL 从 7 天缩短至 1 小时；`POST /auth/api-keys/models` 新增 `force` 参数强制绕过缓存，响应新增 `fetchedAt` / `fromCache` / `stale` 字段；非强制刷新遇上游故障时降级返回过期缓存（`stale` 标记）而不是直接退回手动输入。（`src/auth/api-key-model-cache.ts`、`src/routes/api-keys.ts`）
-
-- API Keys 添加面板模型清单新增手动「刷新」按钮与模型筛选框，显示模型数量与更新时间；刷新失败时保留当前列表。（`web/src/components/ApiKeyManager.tsx`、`shared/hooks/use-api-keys.ts`）
-
-- API Keys 添加表单「供应商」标签更名为「供应商类型」；添加接口跳过已存在的（模型, key）组合并返回 `duplicates` 计数，同模型不同 key 仍允许添加以支持轮询。（`src/routes/api-keys.ts`、`shared/i18n/translations.ts`）
-
-- No-Node Lite 制品格式从 tar.xz 改为 zip：Python zipfile deflate -9 极限压缩、条目确定性排序，`codex-proxy.sh` 以 0755 权限位写入；产物更名为 `codex-proxy-<版本>-no-node-lite-all-platforms.zip`，打包现依赖 Python 3。（`scripts/portable/build-portable.mjs`、`scripts/portable/test-portable.mjs`、`.github/workflows/lite-ci.yml`、`.github/workflows/release.yml`、`README.md` 及各语言版本）
-
-- 统一各页面工具栏按钮风格：管理账号（`AccountBulkActions`）、API Keys（`ApiKeyManager`）、代理池（`ProxyPool`）、错误页面（`ErrorsPage`）的顶部与行内按钮全部改用 `accountToolbarControlClass` / `accountToolbarIconClass`，与首页账号列表工具栏保持一致；代理池及错误页面的文字操作按钮改为纯图标按钮（tooltip 保留文字），批量操作栏按钮样式一致化。（`web/src/components/AccountBulkActions.tsx`、`web/src/components/ApiKeyManager.tsx`、`web/src/components/ProxyPool.tsx`、`web/src/pages/AccountManagement.tsx`、`web/src/pages/ErrorsPage.tsx`）
-
-- 官方模型识别改为按名称形态前缀放行（`gpt*` / `codex*` / `oN*`），不再要求模型已收录于本地 catalog：当后端/账号尚未下发的新官方模型（如 `gpt-6-astra`）被客户端请求时，不再返回 `404 model_not_found` 或静默回退默认模型，而是按原名透传交由上游裁决；`resolveModelId` 对官方形态模型原样解析、不回退默认。边界保持不变：非官方形态的未知模型仍 `404`，裸 `codex` 哨兵仍解析为默认模型（`src/models/model-store.ts`）。
-
-- 点击「添加账户」不再立即弹出授权网页，改为弹出对话框展示授权 URL，提供「复制」与「打开链接」按钮，由用户自行选择打开时机；下方保留 RT（Refresh Token）输入与导入入口。（`web/src/components/AddAccount.tsx`、`shared/hooks/use-accounts.ts`）
-
 ### Added
+
+- 上游传输弱网韧性三件套（状态码 0 重试、流空闲看门狗、原生层请求取消）：其一,上游建流阶段的状态码 0 传输失败（连接被重置/拒绝等）现在按指数退避自动重试（默认 2 次,客户端断开即停止,`PreviousResponseWebSocketError` 续链错误不适用）,重试耗尽后以 502 干净报错,不再直接把传输失败当作"无可用账号";其二,新增 `tls.stream_idle_timeout_ms`（默认 120s,0 关闭）上游无进度看门狗,同时覆盖两阶段——响应 header 迟迟不到（预 header 挂起,超时后取消上游 send 并按可重试传输失败处理）与 body 字节间静默（首个 body 字节起计时,首 token 前的合法思考停顿不会被误杀）,触发后按流提前断开暴露给客户端并归因日志;其三,rustls 原生层新增 inflight 注册表与 `httpCancel(requestId)` 绑定（tokio watch 通道贯穿 header 与 body 两阶段）,看门狗触发/客户端断开/下游流取消/预 header 超时四条路径都会终止上游请求并回收连接,旧版 addon 无此导出时自动降级为原行为。netlab 弱网实验环境（`tests/netlab/`,mock 上游 + toxiproxy 注入 + 隔离 runtime）提供可重复场景与"连接回收"验收（mock `openConnections` 归零断言）,新增 `npm run netlab:baseline` 命令与 `scripts/native/smoke-addon.mjs` ABI 冒烟,`.github/workflows/native-ci-matrix.yml` 支持 fork 侧 win-msvc/linux-musl/darwin-arm64 三平台 addon 矩阵验证。（`src/tls/native-transport.ts`、`native/src/lib.rs`、`src/routes/shared/`、`src/config-schema.ts`、`config/default.yaml`、`tests/netlab/`、`scripts/native/`、`.github/workflows/native-ci-matrix.yml`）
+
+> 暂无其他已记录的变更。
 
 - 首页新增 Antigravity OAuth 账号区，支持按账号启用、停用和整组移除；授权成功后自动登记 Sub2API 支持的 Claude 与 Gemini 模型，添加弹窗显示模型清单和操作结果。（`src/auth/antigravity-models.ts`、`src/routes/auth.ts`、`web/src/App.tsx`、`web/src/components/AntigravityAccounts.tsx`、`web/src/components/AddAccount.tsx`）
 
@@ -152,6 +124,32 @@
 - 控制台新增日語 (ja)、繁體中文 (台灣, zh-TW)、繁體中文 (香港, zh-HK) 完整語言字典與本地化支援，並將頂部導航列語言切換升級為多語言下拉選擇器（`shared/i18n/`、`web/src/components/Header.tsx`、`shared/utils/format.ts`）。
 
 - 新增「后备上游 (API Key)」账户类型：配置一个 baseUrl + apiKey，固定走 Responses 接口，仅在所有账号均不可用时作为最后兜底启用；添加账户弹窗可添加，账户列表末尾独占一行展示，支持卡片上编辑/删除，仅允许配置一个。（`src/auth/fallback-upstream.ts`、`src/routes/accounts.ts`、`src/routes/shared/proxy-handler.ts`、`web/src/components/FallbackUpstreamCard.tsx`、`web/src/components/AddAccount.tsx`）
+
+### Changed
+
+- 测试命令现按宿主系统自动选择 Windows 或 Linux suite，并保留显式平台命令；两套共用测试发现和用例，Windows CI 同时运行 root 与 web suite。（`vitest.config.ts`、`vitest.shared-config.ts`、`.github/workflows/ci-quality.yml`）
+
+- 仓库不再跟踪预编译的 native addon（`native/codex-tls.*.node`）与 CI 运行日志转储（`run-logs*.txt`）。这些是构建产物而非源码：各平台流水线都会重新编译 addon，源码运行也一直要求先执行 `cd native && npm install && npm run build`（README 已有说明），继续跟踪只会让过期的二进制被反复打包进发布产物。同时补齐 `.gitignore`（`logs/`、`coverage/`、`*.tgz`、`.env.*`、系统与编辑器临时文件等），避免同类文件再次误入库。
+
+- 仓库不再跟踪预编译的 native addon（`native/codex-tls.*.node`）与 CI 运行日志转储（`run-logs*.txt`）。这些是构建产物而非源码：各平台流水线都会重新编译 addon，源码运行也一直要求先执行 `cd native && npm install && npm run build`（README 已有说明），继续跟踪只会让过期的二进制被反复打包进发布产物。同时补齐 `.gitignore`（`logs/`、`coverage/`、`*.tgz`、`.env.*`、系统与编辑器临时文件等），避免同类文件再次误入库。
+
+- Antigravity OAuth 账号改由首页账号区管理；API Keys 页面不再提供 Antigravity 手动录入入口，已有 Antigravity 条目也不再显示在该列表中。（`src/routes/api-keys.ts`、`web/src/components/ApiKeyManager.tsx`）
+
+- Antigravity OAuth 使用内置 client secret，常规使用无需设置 `ANTIGRAVITY_OAUTH_CLIENT_SECRET`；该变量仍可用于覆盖默认凭据。（`src/proxy/antigravity-upstream.ts`、`.env.example`、`README.md`）
+
+- API Keys 第三方供应商模型列表缓存 TTL 从 7 天缩短至 1 小时；`POST /auth/api-keys/models` 新增 `force` 参数强制绕过缓存，响应新增 `fetchedAt` / `fromCache` / `stale` 字段；非强制刷新遇上游故障时降级返回过期缓存（`stale` 标记）而不是直接退回手动输入。（`src/auth/api-key-model-cache.ts`、`src/routes/api-keys.ts`）
+
+- API Keys 添加面板模型清单新增手动「刷新」按钮与模型筛选框，显示模型数量与更新时间；刷新失败时保留当前列表。（`web/src/components/ApiKeyManager.tsx`、`shared/hooks/use-api-keys.ts`）
+
+- API Keys 添加表单「供应商」标签更名为「供应商类型」；添加接口跳过已存在的（模型, key）组合并返回 `duplicates` 计数，同模型不同 key 仍允许添加以支持轮询。（`src/routes/api-keys.ts`、`shared/i18n/translations.ts`）
+
+- No-Node Lite 制品格式从 tar.xz 改为 zip：Python zipfile deflate -9 极限压缩、条目确定性排序，`codex-proxy.sh` 以 0755 权限位写入；产物更名为 `codex-proxy-<版本>-no-node-lite-all-platforms.zip`，打包现依赖 Python 3。（`scripts/portable/build-portable.mjs`、`scripts/portable/test-portable.mjs`、`.github/workflows/lite-ci.yml`、`.github/workflows/release.yml`、`README.md` 及各语言版本）
+
+- 统一各页面工具栏按钮风格：管理账号（`AccountBulkActions`）、API Keys（`ApiKeyManager`）、代理池（`ProxyPool`）、错误页面（`ErrorsPage`）的顶部与行内按钮全部改用 `accountToolbarControlClass` / `accountToolbarIconClass`，与首页账号列表工具栏保持一致；代理池及错误页面的文字操作按钮改为纯图标按钮（tooltip 保留文字），批量操作栏按钮样式一致化。（`web/src/components/AccountBulkActions.tsx`、`web/src/components/ApiKeyManager.tsx`、`web/src/components/ProxyPool.tsx`、`web/src/pages/AccountManagement.tsx`、`web/src/pages/ErrorsPage.tsx`）
+
+- 官方模型识别改为按名称形态前缀放行（`gpt*` / `codex*` / `oN*`），不再要求模型已收录于本地 catalog：当后端/账号尚未下发的新官方模型（如 `gpt-6-astra`）被客户端请求时，不再返回 `404 model_not_found` 或静默回退默认模型，而是按原名透传交由上游裁决；`resolveModelId` 对官方形态模型原样解析、不回退默认。边界保持不变：非官方形态的未知模型仍 `404`，裸 `codex` 哨兵仍解析为默认模型（`src/models/model-store.ts`）。
+
+- 点击「添加账户」不再立即弹出授权网页，改为弹出对话框展示授权 URL，提供「复制」与「打开链接」按钮，由用户自行选择打开时机；下方保留 RT（Refresh Token）输入与导入入口。（`web/src/components/AddAccount.tsx`、`shared/hooks/use-accounts.ts`）
 
 ### Removed
 
