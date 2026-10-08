@@ -132,6 +132,23 @@ describeIfShell.each(ENTRYPOINTS)("config seeding in %s", (entrypoint) => {
     expect(out).toContain("2 missing file(s) seeded");
   });
 
+  it("keeps root-level files in the config root after a nested directory", () => {
+    const fixture = makeFixture({
+      // The sorted directory is visited before the root-level file.
+      defaults: {
+        "a-prompts/p.md": "nested prompt\n",
+        "z-default.yaml": "root default\n",
+      },
+      config: {},
+    });
+
+    runSeedBlock(entrypoint, fixture);
+
+    expect(readFileSync(join(fixture.configDir, "z-default.yaml"), "utf8")).toBe("root default\n");
+    expect(readFileSync(join(fixture.configDir, "a-prompts", "p.md"), "utf8")).toBe("nested prompt\n");
+    expect(existsSync(join(fixture.configDir, "a-prompts", "z-default.yaml"))).toBe(false);
+  });
+
   it("seeds a fully empty volume", () => {
     const fixture = makeFixture({
       defaults: { "default.yaml": "d\n", "model-pricing.yaml": "p\n" },

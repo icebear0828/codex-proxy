@@ -36,7 +36,9 @@ seed_config_defaults() {
     name=$(basename "$entry")
     if [ -d "$entry" ]; then
       if mkdir -p "$dst_dir/$name" 2>/dev/null; then
-        seed_config_defaults "$entry" "$dst_dir/$name"
+        # Run recursive calls in a subshell: POSIX sh has no portable `local`,
+        # and the child must not overwrite this frame's loop variables.
+        ( seed_config_defaults "$entry" "$dst_dir/$name" )
       else
         echo "[Init] WARNING: cannot create $dst_dir/$name — skipping that subtree" >&2
       fi
