@@ -34,6 +34,7 @@ import { validateClientKeyModel } from "./shared/proxy-handler-utils.js";
 import { summarizeRequestForLog } from "../logs/request-summary.js";
 import { resolveDefaultTools, mergeDefaultTools } from "./shared/default-tools.js";
 import { isRecord } from "../translation/shared-utils.js";
+import { getApiKeyLogAccount } from "./shared/log-account.js";
 
 function makeError(
   type: AnthropicErrorType,
@@ -246,7 +247,8 @@ export function createMessagesRoutes(
         model: directModel,
         codexRequest: { ...codexRequest, model: directModel },
       };
-      return handleDirectRequest({ c, upstream: routeMatch.adapter, req: directReq, fmt });
+      const account = getApiKeyLogAccount(routeMatch.kind === "api-key" ? routeMatch.entry : undefined);
+      return handleDirectRequest({ c, upstream: routeMatch.adapter, req: directReq, fmt, account });
     }
 
     return handleProxyRequest({ c, accountPool, cookieJar, req: proxyReq, fmt, proxyPool, fallbackUpstream });

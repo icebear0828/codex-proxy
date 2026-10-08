@@ -3,7 +3,7 @@ import type { UpstreamAdapter } from "./upstream-adapter.js";
 import type { CodexResponsesRequest, CodexSSEEvent } from "./codex-types.js";
 import { CodexApiError } from "./codex-types.js";
 import { classifyRawUpstreamError } from "./error-classification.js";
-import { GeminiUpstream } from "./gemini-upstream.js";
+import { EMPTY_GEMINI_RESPONSE_ERROR, GeminiUpstream } from "./gemini-upstream.js";
 import { withFetchDispatcher } from "./fetch-dispatcher.js";
 import { translateCodexToGeminiRequest } from "../translation/codex-request-to-gemini.js";
 import { isRecord } from "../translation/shared-utils.js";
@@ -87,6 +87,7 @@ function isEndpointRateLimit(body: string): boolean {
 
 export class AntigravityUpstream implements UpstreamAdapter {
   readonly tag = "antigravity";
+  readonly logPath = "/v1internal:streamGenerateContent?alt=sse";
   private baseUrl: string;
   private readonly baseUrlConfigured: boolean;
   private readonly userAgent: string;
@@ -96,6 +97,7 @@ export class AntigravityUpstream implements UpstreamAdapter {
   private refreshPromise: Promise<string> | null = null;
   private resolvedProjectId: string | null;
   private accountInfoResolved = false;
+  private readonly requestByResponse = new WeakMap<Response, { req: CodexResponsesRequest; signal: AbortSignal }>();
 
   constructor(
     private readonly refreshToken: string,
@@ -114,6 +116,12 @@ export class AntigravityUpstream implements UpstreamAdapter {
   }
 
   async createResponse(req: CodexResponsesRequest, signal: AbortSignal): Promise<Response> {
+    const response = await this.createResponseAttempt(req, signal);
+    this.requestByResponse.set(response, { req, signal });
+    return response;
+  }
+
+  private async createResponseAttempt(req: CodexResponsesRequest, signal: AbortSignal): Promise<Response> {
     const model = modelId(req.model);
     const geminiRequest = translateCodexToGeminiRequest({
       ...req,
@@ -160,7 +168,38 @@ export class AntigravityUpstream implements UpstreamAdapter {
   }
 
   async *parseStream(response: Response): AsyncGenerator<CodexSSEEvent> {
-    yield* this.streamParser.parseStream(response);
+    const context = this.requestByResponse.get(response);
+    if (!context) {
+      yield* this.streamParser.parseStream(response);
+      return;
+    }
+
+    try {
+      yield* this.parseStreamAttempt(response);
+    } catch (error) {
+      const isEmptyResponse = error instanceof Error && error.message === EMPTY_GEMINI_RESPONSE_ERROR;
+      if (!isEmptyResponse || context.signal.aborted) throw error;
+
+      console.warn(`[antigravity] Empty upstream stream for ${modelId(context.req.model)}; retrying once`);
+      const retryResponse = await this.createResponseAttempt(context.req, context.signal);
+      yield* this.streamParser.parseStream(retryResponse);
+    }
+  }
+
+  private async *parseStreamAttempt(response: Response): AsyncGenerator<CodexSSEEvent> {
+    let pendingCreated: CodexSSEEvent | null = null;
+    for await (const event of this.streamParser.parseStream(response)) {
+      if (event.event === "response.created") {
+        pendingCreated = event;
+        continue;
+      }
+      if (pendingCreated) {
+        yield pendingCreated;
+        pendingCreated = null;
+      }
+      yield event;
+    }
+    if (pendingCreated) yield pendingCreated;
   }
 
   private async getAccessToken(force = false): Promise<string> {

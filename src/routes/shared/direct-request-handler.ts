@@ -84,7 +84,8 @@ export async function handleDirectRequest(options: HandleDirectRequestOptions): 
   // exhausted and a fallback upstream apikey is configured. Mark those calls
   // so the audit log can surface "fallback" instead of an account name.
   const isFallback = upstream.tag === "fallback";
-  const accountLog = isFallback ? "fallback" : undefined;
+  const accountLog = isFallback ? "fallback" : options.account;
+  const upstreamPath = upstream.logPath ?? "/v1/responses";
   let rawResponse: Response;
   try {
     rawResponse = await createResponseWithTransportRetry(upstream, req, abortController.signal);
@@ -92,7 +93,7 @@ export async function handleDirectRequest(options: HandleDirectRequestOptions): 
       requestId,
       direction: "egress",
       method: "POST",
-      path: "/v1/responses",
+      path: upstreamPath,
       model: req.model,
       provider: upstream.tag,
       account: accountLog,
@@ -112,7 +113,7 @@ export async function handleDirectRequest(options: HandleDirectRequestOptions): 
       requestId,
       direction: "egress",
       method: "POST",
-      path: "/v1/responses",
+      path: upstreamPath,
       model: req.model,
       provider: upstream.tag,
       account: accountLog,
@@ -175,7 +176,7 @@ export async function handleDirectRequest(options: HandleDirectRequestOptions): 
           requestId,
           tag: fmt.tag,
           provider: upstream.tag,
-          path: "/v1/responses",
+          path: upstreamPath,
           model: req.model,
           fallback: isFallback,
         });
@@ -201,7 +202,7 @@ export async function handleDirectRequest(options: HandleDirectRequestOptions): 
             requestId: requestId.slice(0, 8),
             tag: fmt.tag,
             provider: upstream.tag,
-            path: "/v1/responses",
+            path: upstreamPath,
             fallback: isFallback,
             abortSignal: abortController.signal,
           },

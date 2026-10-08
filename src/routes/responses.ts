@@ -23,6 +23,7 @@ import { prepareSchema, isRecord } from "../translation/shared-utils.js";
 import { parseModelName, resolveModelId, buildDisplayModelName, isRequestableModel } from "../models/model-store.js";
 import { handleProxyRequest } from "./shared/proxy-handler.js";
 import { handleDirectRequest } from "./shared/direct-request-handler.js";
+import { getApiKeyLogAccount } from "./shared/log-account.js";
 import type { UpstreamRouter } from "../proxy/upstream-router.js";
 import type { ClientKeyPool } from "../auth/client-key-pool.js";
 import type { FallbackUpstreamStore } from "../auth/fallback-upstream.js";
@@ -319,7 +320,13 @@ export function createResponsesRoutes(
     if (routeMatch?.kind === "api-key" || routeMatch?.kind === "adapter") {
       const directModel = routeMatch.resolvedModel ?? rawModel;
       const directReq = { ...proxyReq, model: directModel, codexRequest: { ...codexRequest, model: directModel } };
-      return handleDirectRequest({ c, upstream: routeMatch.adapter, req: directReq, fmt: PASSTHROUGH_FORMAT });
+      return handleDirectRequest({
+        c,
+        upstream: routeMatch.adapter,
+        req: directReq,
+        fmt: PASSTHROUGH_FORMAT,
+        account: getApiKeyLogAccount(routeMatch.kind === "api-key" ? routeMatch.entry : undefined),
+      });
     }
 
     return handleProxyRequest({ c, accountPool, cookieJar, req: proxyReq, fmt: PASSTHROUGH_FORMAT, proxyPool, fallbackUpstream });

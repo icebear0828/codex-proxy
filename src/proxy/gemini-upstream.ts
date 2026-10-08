@@ -22,6 +22,8 @@ import { translateCodexToGeminiRequest } from "../translation/codex-request-to-g
 import { withFetchDispatcher } from "./fetch-dispatcher.js";
 import { isRecord } from "../translation/shared-utils.js";
 
+export const EMPTY_GEMINI_RESPONSE_ERROR = "Gemini upstream completed without producing text or a tool call";
+
 function extractModelId(model: string): string {
   const colon = model.indexOf(":");
   return colon > 0 ? model.slice(colon + 1) : model;
@@ -186,7 +188,7 @@ export class GeminiUpstream implements UpstreamAdapter {
         : "Gemini stream ended before the upstream reported a candidate finish reason");
     }
     if (!producedOutput) {
-      throw new Error("Gemini upstream completed without producing text or a tool call");
+      throw new Error(EMPTY_GEMINI_RESPONSE_ERROR);
     }
 
     yield {

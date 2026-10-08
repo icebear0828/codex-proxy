@@ -30,6 +30,7 @@ export type CodexAuxiliaryRequestContext = Partial<Pick<
 export interface UpstreamAdapter {
   /** Short identifier used in logs (e.g. "codex", "openai", "anthropic"). */
   readonly tag: string;
+  readonly logPath?: string;
   /**
    * Send a Codex-format request to the upstream API.
    * Returns a raw HTTP Response whose body is an SSE stream.
