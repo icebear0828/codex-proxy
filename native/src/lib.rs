@@ -262,6 +262,51 @@ pub struct StreamMeta {
     pub set_cookie_headers: Vec<String>,
 }
 
+struct Inflight {
+    cancel_tx: tokio::sync::watch::Sender<bool>,
+}
+
+fn inflight_registry() -> &'static std::sync::Mutex<HashMap<String, Inflight>> {
+    static REGISTRY: OnceLock<std::sync::Mutex<HashMap<String, Inflight>>> = OnceLock::new();
+    REGISTRY.get_or_init(|| std::sync::Mutex::new(HashMap::new()))
+}
+
+fn register_inflight(request_id: &str) -> tokio::sync::watch::Receiver<bool> {
+    let (cancel_tx, cancel_rx) = tokio::sync::watch::channel(false);
+    if let Ok(mut registry) = inflight_registry().lock() {
+        registry.insert(request_id.to_string(), Inflight { cancel_tx });
+    }
+    cancel_rx
+}
+
+fn deregister_inflight(request_id: &Option<String>) {
+    if let Some(id) = request_id {
+        if let Ok(mut registry) = inflight_registry().lock() {
+            registry.remove(id);
+        }
+    }
+}
+
+/// Abort an in-flight streaming POST in either phase: before response headers
+/// (cancels the send) or during body streaming (stops the chunk pump and drops
+/// the upstream connection). Returns false when no request with that id is
+/// registered (already completed or unknown id).
+#[napi]
+pub fn http_cancel(request_id: String) -> bool {
+    let sender = inflight_registry()
+        .lock()
+        .ok()
+        .and_then(|mut registry| registry.remove(&request_id))
+        .map(|inflight| inflight.cancel_tx);
+    match sender {
+        Some(tx) => {
+            let _ = tx.send(true);
+            true
+        }
+        None => false,
+    }
+}
+
 /// Streaming POST: returns metadata immediately, pushes chunks via callback.
 ///
 /// onChunk(Buffer)  — data chunk
@@ -274,6 +319,7 @@ pub fn http_post_stream(
     on_chunk: ThreadsafeFunction<Option<Buffer>, ErrorStrategy::Fatal>,
     proxy_url: Option<String>,
     force_http11: Option<bool>,
+    request_id: Option<String>,
 ) -> AsyncTask<StreamPostTask> {
     AsyncTask::new(StreamPostTask {
         url,
@@ -282,6 +328,7 @@ pub fn http_post_stream(
         on_chunk,
         proxy_url,
         force_http11: force_http11.unwrap_or(false),
+        request_id,
     })
 }
 
@@ -292,6 +339,7 @@ pub struct StreamPostTask {
     on_chunk: ThreadsafeFunction<Option<Buffer>, ErrorStrategy::Fatal>,
     proxy_url: Option<String>,
     force_http11: bool,
+    request_id: Option<String>,
 }
 
 #[napi]
@@ -307,13 +355,39 @@ impl Task for StreamPostTask {
             let header_map = to_header_map(&self.headers)?;
             let body = std::mem::take(&mut self.body);
 
-            let resp = client
+            // Registration must happen before the send so a cancel arriving
+            // during the header phase is observable; the same receiver is
+            // handed to the body pump below.
+            let mut cancel_rx = match &self.request_id {
+                Some(id) => register_inflight(id),
+                None => tokio::sync::watch::channel(false).1,
+            };
+
+            let send = client
                 .post(&self.url)
                 .headers(header_map)
                 .body(body)
-                .send()
-                .await
-                .map_err(|e| Error::from_reason(format!("Streaming POST failed: {}", error_chain(&e))))?;
+                .send();
+            let resp = tokio::select! {
+                _ = cancel_rx.changed() => {
+                    deregister_inflight(&self.request_id);
+                    return Err(Error::from_reason(
+                        "Streaming POST cancelled before response headers",
+                    ));
+                }
+                result = send => {
+                    match result {
+                        Ok(resp) => resp,
+                        Err(e) => {
+                            deregister_inflight(&self.request_id);
+                            return Err(Error::from_reason(format!(
+                                "Streaming POST failed: {}",
+                                error_chain(&e)
+                            )));
+                        }
+                    }
+                }
+            };
 
             let status = resp.status().as_u16();
             let resp_headers = headers_to_map(resp.headers());
@@ -325,21 +399,34 @@ impl Task for StreamPostTask {
             };
 
             let on_chunk = self.on_chunk.clone();
+            let pump_request_id = self.request_id.clone();
             let mut stream = resp.bytes_stream();
 
             tokio::spawn(async move {
-                while let Some(result) = stream.next().await {
-                    match result {
-                        Ok(bytes) => {
-                            let buf: Buffer = bytes.to_vec().into();
-                            on_chunk.call(Some(buf), ThreadsafeFunctionCallMode::NonBlocking);
-                        }
-                        Err(e) => {
-                            eprintln!("[codex-tls] Stream error: {e}");
+                loop {
+                    tokio::select! {
+                        _ = cancel_rx.changed() => {
+                            // Cancelled: drop the stream, which closes the
+                            // upstream connection. A terminal onChunk(null)
+                            // still fires so the JS side stops reading.
                             break;
+                        }
+                        item = stream.next() => {
+                            match item {
+                                Some(Ok(bytes)) => {
+                                    let buf: Buffer = bytes.to_vec().into();
+                                    on_chunk.call(Some(buf), ThreadsafeFunctionCallMode::NonBlocking);
+                                }
+                                Some(Err(e)) => {
+                                    eprintln!("[codex-tls] Stream error: {e}");
+                                    break;
+                                }
+                                None => break,
+                            }
                         }
                     }
                 }
+                deregister_inflight(&pump_request_id);
                 on_chunk.call(None, ThreadsafeFunctionCallMode::NonBlocking);
             });
 

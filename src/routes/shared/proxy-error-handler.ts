@@ -18,7 +18,7 @@ import {
   isTokenInvalidError,
   isModelNotSupportedError,
 } from "../../proxy/error-classification.js";
-import type { CodexApiError } from "../../proxy/codex-types.js";
+import { PreviousResponseWebSocketError, type CodexApiError } from "../../proxy/codex-api.js";
 import type { StatusCode } from "hono/utils/http-status";
 import type { CookieJar } from "../../proxy/cookie-jar.js";
 import { recordCfPathBlock } from "../../auth/cf-path-block-tracker.js";
@@ -40,6 +40,7 @@ export type ErrorAction =
       releaseBeforeRetry?: boolean;
       markModelRetried?: boolean;
       markEarlyServerErrorRetried?: boolean;
+      markTransportRetried?: boolean;
       /** Fallback status/message when no retry account is available. */
       status: number;
       message: string;
@@ -59,6 +60,9 @@ export type ErrorAction =
  * @param model         Requested model name
  * @param tag           Route tag for logging
  * @param modelRetried  Whether model-not-supported retry has already been attempted
+ * @param cookieJar     CookieJar for CF path-block cookie clearing
+ * @param earlyServerErrorRetried  Whether the once-only early-500 retry was used
+ * @param transportRetried         Whether the once-only transport-error retry was used
  */
 export function handleCodexApiError(
   err: CodexApiError,
@@ -69,8 +73,34 @@ export function handleCodexApiError(
   modelRetried: boolean,
   cookieJar?: CookieJar,
   earlyServerErrorRetried = false,
+  transportRetried = false,
 ): ErrorAction {
   const email = pool.getEntry(entryId)?.email ?? "?";
+
+  // 0. Transport-level failure (status 0): connection refused / reset / DNS /
+  //    connection closed before any response. The request never reached the
+  //    upstream application layer, so account health and quota state must not
+  //    change. Retry once on a fresh connection (and a different account when
+  //    one is available) — weak networks produce these routinely, and a
+  //    single transient failure should not fail the client request.
+  //    Excludes PreviousResponseWebSocketError: continuity failures carry
+  //    status 0 but are managed by the dedicated implicit-resume recovery
+  //    paths, which must stay once-only.
+  if (err.status === 0 && !(err instanceof PreviousResponseWebSocketError)) {
+    if (!transportRetried) {
+      console.warn(
+        `[${tag}] Account ${entryId} (${email}) | transport failure (${err.message.slice(0, 120)}), retrying...`,
+      );
+      return {
+        action: "retry",
+        releaseBeforeRetry: true,
+        markTransportRetried: true,
+        status: 502,
+        message: err.message,
+      };
+    }
+    return { action: "respond", status: 502, message: err.message };
+  }
 
   // 1. Model not supported on this account's plan
   if (isModelNotSupportedError(err)) {

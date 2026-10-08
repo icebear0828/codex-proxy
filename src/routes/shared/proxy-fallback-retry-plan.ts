@@ -33,10 +33,18 @@ export function buildProxyFallbackRetryPlan(
     return { action: "acquire" };
   }
 
+  // Transport retries didn't exhaust the pool in any meaningful sense —
+  // "no second account to retry on" is not account exhaustion, and the
+  // client should see the transport error itself rather than an
+  // exhaustion-prefixed one.
+  const message = decision.markTransportRetried
+    ? decision.message
+    : buildAccountExhaustionDetail(availability.summary, decision.message);
+
   return {
     action: "respond",
     status: decision.status,
-    message: buildAccountExhaustionDetail(availability.summary, decision.message),
+    message,
     ...(decision.useFormat429 ? { useFormat429: true } : {}),
   };
 }

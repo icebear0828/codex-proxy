@@ -243,7 +243,9 @@ export async function handleProxyRequest(options: HandleProxyRequestOptions): Pr
   const triedEntryIds: string[] = [entryId];
   let modelRetried = false;
   let earlyServerErrorRetried = false;
+  let transportRetried = false;
   let stripAndRetryDone = false;
+  let deadOwnerReconnectDone = false;
   const reasoningReplayCache = getReasoningReplayCache();
   const reasoningReplayItems = sessionContext.implicitPrevRespId
     ? reasoningReplayCache.lookup({
@@ -424,6 +426,7 @@ export async function handleProxyRequest(options: HandleProxyRequestOptions): Pr
           implicitResumeActive: implicitResume.isActive(),
           previousResponseId: req.codexRequest.previous_response_id,
           explicitPreviousResponseId: Boolean(sessionContext.explicitPrevRespId),
+          deadOwnerReconnectDone,
         },
         (e) => implicitResume.canReplayAfterError(e),
       );
@@ -461,6 +464,30 @@ export async function handleProxyRequest(options: HandleProxyRequestOptions): Pr
           continue;
         }
 
+        case "dead_owner_reconnect": {
+          // Explicit-chain continuity (#789): the pooled WS owning this
+          // response id was lost locally (evicted after a premature close,
+          // expired, or failed transport), but the chain is likely still
+          // valid upstream — the response typically completed before the
+          // pooled connection died. Retry the SAME request once on a fresh
+          // recovery WS and let upstream adjudicate the id instead of
+          // failing the conversation closed. No mutation: prev id, input,
+          // and account all stay as-is; a not-found reply then flows through
+          // invalidateRejectedPreviousResponse above.
+          deadOwnerReconnectDone = true;
+          const staleReason = err instanceof PreviousResponseWebSocketError
+            ? err.continuityReason
+            : undefined;
+          recoveryWsKeySuffix =
+            `recovery-${requestId.slice(0, 8)}-${++continuityRecoveryCount}`;
+          console.warn(
+            `[explicit-resume-reconnect] rid=${requestId.slice(0, 8)} tag=${fmt.tag}` +
+            ` model=${req.model} prev=${req.codexRequest.previous_response_id?.slice(0, 16) ?? "?"}` +
+            ` reason=${staleReason} — owner WS lost locally, retrying same request on a fresh recovery WS`,
+          );
+          continue;
+        }
+
         case "strip_and_retry": {
           stripAndRetryDone = true;
           const decision = buildProxyRetryRecoveryDecision({
@@ -490,6 +517,7 @@ export async function handleProxyRequest(options: HandleProxyRequestOptions): Pr
           const decision = handleCodexApiError(
             err as CodexApiError, accountPool, entryId, req.codexRequest.model, fmt.tag, modelRetried, cookieJar,
             earlyServerErrorRetried,
+            transportRetried,
           );
 
           const errorRetryTransition = applyProxyErrorRetryTransition({
@@ -522,6 +550,9 @@ export async function handleProxyRequest(options: HandleProxyRequestOptions): Pr
           modelRetried = errorRetryTransition.modelRetried;
           if (decision.action === "retry" && decision.markEarlyServerErrorRetried) {
             earlyServerErrorRetried = true;
+          }
+          if (decision.action === "retry" && decision.markTransportRetried) {
+            transportRetried = true;
           }
           entryId = errorRetryTransition.entryId;
           triedEntryIds.push(errorRetryTransition.entryId);
