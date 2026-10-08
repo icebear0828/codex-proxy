@@ -131,7 +131,7 @@ describe("/v1/responses stream error formatting", () => {
       }),
     });
 
-    expect(res.status).toBe(200);
+    expect(res.status).toBe(502);
     expect(res.headers.get("Content-Type")).toContain("text/event-stream");
 
     const event = parseFirstSSEEvent(await res.text());

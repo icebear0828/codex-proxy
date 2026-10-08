@@ -119,7 +119,7 @@ describe("proxy error response helpers", () => {
     expect(fmt.formatError).toHaveBeenCalledWith(500, "internal error");
   });
 
-  it("formats streaming 500 proxy errors as SSE when the adapter supports stream errors", async () => {
+  it("preserves the error status for streaming proxy errors returned as SSE", async () => {
     const app = new Hono();
     const fmt = createMockFormatAdapter();
     app.get("/stream-server-error", (c) => respondWithProxyError({
@@ -131,11 +131,31 @@ describe("proxy error response helpers", () => {
     }));
 
     const res = await app.request("/stream-server-error");
-    expect(res.status).toBe(200);
+    expect(res.status).toBe(500);
     expect(res.headers.get("content-type")).toContain("text/event-stream");
     const text = await res.text();
     expect(text).toContain("event: response.failed");
     expect(text).toContain("internal error");
     expect(fmt.formatStreamError).toHaveBeenCalledWith(500, "internal error");
+  });
+
+  it("preserves the no-account status for streaming requests", async () => {
+    const app = new Hono();
+    const fmt = createMockFormatAdapter();
+    const req = createRequest(true);
+
+    app.get("/stream-no-account", (c) => respondWithNoAccount({ c, req, fmt }));
+
+    const res = await app.request("/stream-no-account");
+    expect(res.status).toBe(503);
+    expect(res.headers.get("content-type")).toContain("text/event-stream");
+    const text = await res.text();
+    expect(text).toContain("event: response.failed");
+    expect(text).toContain("No available accounts");
+    expect(fmt.formatStreamError).toHaveBeenCalledWith(
+      503,
+      "No available accounts. All accounts are expired or rate-limited.",
+    );
+    expect(fmt.formatNoAccount).not.toHaveBeenCalled();
   });
 });

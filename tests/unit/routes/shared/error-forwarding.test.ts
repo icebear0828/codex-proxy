@@ -269,6 +269,25 @@ describe("handleDirectRequest error forwarding", () => {
     expect(fmt.formatError).toHaveBeenCalled();
   });
 
+  it("returns 502 for non-CodexApiError exceptions on streaming requests", async () => {
+    mockUpstreamCreate = () =>
+      Promise.reject(new TypeError("network failure"));
+
+    const app = new Hono();
+    const upstream = createMockUpstream();
+    const req = { ...createDefaultRequest(), isStreaming: true };
+    const fmt = createMockFormatAdapter();
+
+    app.post("/test", (c) => handleDirectRequest({ c, upstream: upstream as never, req, fmt }));
+
+    const res = await app.request("/test", { method: "POST" });
+    expect(res.status).toBe(502);
+
+    const text = await res.text();
+    expect(text).toContain("network failure");
+    expect(fmt.formatStreamError).toHaveBeenCalledWith(502, "network failure");
+  });
+
   it("passes direct collect dependencies as one options object", async () => {
     const upstreamResponse = new Response("data: {}\n\n");
     mockUpstreamCreate = () => Promise.resolve(upstreamResponse);

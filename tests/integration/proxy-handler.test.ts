@@ -433,7 +433,7 @@ describe("proxy-handler integration", () => {
     const { app } = buildTestApp({ accountPool, fmt, req });
 
     const res = await app.request("/test", { method: "POST" });
-    expect(res.status).toBe(200);
+    expect(res.status).toBe(502);
     expect(res.headers.get("Content-Type")).toContain("text/event-stream");
 
     const text = await res.text();
