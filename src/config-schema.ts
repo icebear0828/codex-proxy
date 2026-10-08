@@ -92,6 +92,8 @@ export const ConfigSchema = z.object({
       .default("gpt-5.5"),
     default_reasoning_effort: z.string().nullable().default(null),
     default_service_tier: z.string().nullable().default(null),
+    /** Forced service tiers for OAuth models, overriding client tier preferences. */
+    service_tier_overrides: z.record(z.string().trim().min(1), z.string().trim().min(1)).default({}),
     default_tools: z.array(z.string().trim().min(1)).default([]),
     aliases: z.record(z.string(), z.string()).default({}),
     custom_models: z.array(CustomModelSchema).default([]),
@@ -122,6 +124,15 @@ export const ConfigSchema = z.object({
     rotation_strategy: z.enum(ROTATION_STRATEGIES).default("least_used"),
     /** Preferred plan-type ordering for account selection (e.g. ["plus","team","free"]). */
     tier_priority: z.array(z.string()).nullable().default(null),
+    /** Hard account restrictions keyed by the effective service tier. */
+    service_tier_routing: z.record(z.string().trim().min(1), z.object({
+      fallback_to_default: z.boolean().optional(),
+      plan_types: z.array(z.string().trim().min(1)).min(1).optional(),
+      account_ids: z.array(z.string().trim().min(1)).min(1).optional(),
+      exclude_account_ids: z.array(z.string().trim().min(1)).min(1).optional(),
+    }).strict().refine((rule) => rule.plan_types || rule.account_ids || rule.exclude_account_ids, {
+      message: "A service-tier rule must contain at least one account restriction",
+    })).default({}),
     rate_limit_backoff_seconds: z.number().min(1).default(60),
     oauth_client_id: z.string().default("app_EMoamEEZ73f0CkXaXp7hrann"),
     oauth_auth_endpoint: z.string().default("https://auth.openai.com/oauth/authorize"),

@@ -22,6 +22,7 @@
  *   - non-streaming-handler.ts — collect / retry response lifecycle
  */
 
+import { getServiceTierAccountRule, getModelServiceTierOverride } from "../../auth/service-tier-routing.js";
 import { CodexApi, CodexApiError, PreviousResponseWebSocketError } from "../../proxy/codex-api.js";
 import { toQuota } from "../../auth/quota-utils.js";
 import { markFallbackUsed } from "../../auth/fallback-state.js";
@@ -77,8 +78,11 @@ async function respondNoAccountOrFallback(
   options: HandleProxyRequestOptions,
   req: ProxyRequest,
   fmt: FormatAdapter,
+  tierRestricted: boolean,
 ): Promise<Response> {
-  const fallback = options.fallbackUpstream?.get();
+  const fallback = tierRestricted
+    ? undefined
+    : options.fallbackUpstream?.get();
   if (fallback) {
     console.log(
       `[${fmt.tag}] No available OAuth accounts — routing through fallback upstream apikey (${fallback.baseUrl})`,
@@ -107,9 +111,12 @@ async function respondProxyErrorOrFallback(
   fmt: FormatAdapter,
   status: number,
   message: string,
-  useFormat429?: boolean,
+  useFormat429: boolean | undefined,
+  tierRestricted: boolean,
 ): Promise<Response> {
-  const fallback = options.fallbackUpstream?.get();
+  const fallback = tierRestricted
+    ? undefined
+    : options.fallbackUpstream?.get();
   if (fallback) {
     console.log(
       `[${fmt.tag}] Retry exhausted — routing through fallback upstream apikey (${fallback.baseUrl})`,
@@ -128,6 +135,11 @@ async function respondProxyErrorOrFallback(
 export async function handleProxyRequest(options: HandleProxyRequestOptions): Promise<Response> {
   const { c, accountPool, cookieJar, req, fmt, proxyPool } = options;
   c.set("logForwarded", true);
+  const forcedTier = getModelServiceTierOverride(req.codexRequest.model);
+  if (forcedTier !== undefined) req.codexRequest.service_tier = forcedTier;
+  // Keep the original route constraint even if account acquisition downgrades
+  // service_tier to `default`; API-key fallback must not escape that constraint.
+  const tierRestricted = Boolean(getServiceTierAccountRule(req.codexRequest.service_tier));
 
   const affinityMap = getSessionAffinityMap();
   const requestId = c.get("requestId") ?? randomUUID().slice(0, 8);
@@ -149,9 +161,9 @@ export async function handleProxyRequest(options: HandleProxyRequestOptions): Pr
   const verifiedExcludeIds: string[] = [];
 
   // Single acquire call — preferredEntryId is a hint, not a hard requirement
-  let acquired = acquireAccount(accountPool, req.codexRequest.model, undefined, fmt.tag, sessionContext.preferredEntryId ?? undefined);
+  let acquired = acquireAccount(accountPool, req.codexRequest.model, undefined, fmt.tag, sessionContext.preferredEntryId ?? undefined, req.codexRequest.service_tier);
   if (!acquired) {
-    return respondNoAccountOrFallback(options, req, fmt);
+    return respondNoAccountOrFallback(options, req, fmt, tierRestricted);
   }
 
   // ── Drift-Defense & Verification Loop ──
@@ -160,7 +172,7 @@ export async function handleProxyRequest(options: HandleProxyRequestOptions): Pr
   const MAX_VERIFY_ATTEMPTS = 5;
   let verifyAttempts = 0;
   for (;;) {
-    if (!acquired) return respondNoAccountOrFallback(options, req, fmt);
+    if (!acquired) return respondNoAccountOrFallback(options, req, fmt, tierRestricted);
     const entry = accountPool.getEntry(acquired.entryId);
     if (entry?.quotaVerifyRequired) {
       const verifyingEntryId = acquired.entryId;
@@ -185,12 +197,12 @@ export async function handleProxyRequest(options: HandleProxyRequestOptions): Pr
           verifyAttempts++;
           if (verifyAttempts >= MAX_VERIFY_ATTEMPTS) {
             console.warn(`[${fmt.tag}] ⚠️ Drift-defense hit MAX_VERIFY_ATTEMPTS (${MAX_VERIFY_ATTEMPTS}). Giving up to avoid excess upstream calls.`);
-            return respondNoAccountOrFallback(options, req, fmt);
+            return respondNoAccountOrFallback(options, req, fmt, tierRestricted);
           }
 
-          acquired = acquireAccount(accountPool, req.codexRequest.model, verifiedExcludeIds, fmt.tag, sessionContext.preferredEntryId ?? undefined);
+          acquired = acquireAccount(accountPool, req.codexRequest.model, verifiedExcludeIds, fmt.tag, sessionContext.preferredEntryId ?? undefined, req.codexRequest.service_tier);
           if (!acquired) {
-            return respondNoAccountOrFallback(options, req, fmt);
+            return respondNoAccountOrFallback(options, req, fmt, tierRestricted);
           }
           continue; // Loop back to check the newly acquired account
         }
@@ -204,7 +216,8 @@ export async function handleProxyRequest(options: HandleProxyRequestOptions): Pr
     break; // Verified or no verification required, proceed!
   }
 
-  if (!acquired) return respondNoAccountOrFallback(options, req, fmt);
+  if (!acquired) return respondNoAccountOrFallback(options, req, fmt, tierRestricted);
+  if (acquired.serviceTier) req.codexRequest.service_tier = acquired.serviceTier;
   let { entryId } = acquired;
   // First account this request acquired; later attempts that switch to another
   // entry (fallback account retry) are marked as fallback in the audit log.
@@ -523,6 +536,7 @@ export async function handleProxyRequest(options: HandleProxyRequestOptions): Pr
           const errorRetryTransition = applyProxyErrorRetryTransition({
             accountPool, entryId,
             model: req.codexRequest.model,
+            serviceTier: req.codexRequest.service_tier,
             triedEntryIds, tag: fmt.tag,
             decision, released,
             restoreImplicitResumeRequest: implicitResume.restore,
@@ -537,6 +551,7 @@ export async function handleProxyRequest(options: HandleProxyRequestOptions): Pr
                 errorRetryTransition.status,
                 errorRetryTransition.message,
                 errorRetryTransition.useFormat429,
+                tierRestricted,
               );
             }
             return respondWithProxyError({
@@ -554,6 +569,7 @@ export async function handleProxyRequest(options: HandleProxyRequestOptions): Pr
           if (decision.action === "retry" && decision.markTransportRetried) {
             transportRetried = true;
           }
+          if (errorRetryTransition.serviceTier) req.codexRequest.service_tier = errorRetryTransition.serviceTier;
           entryId = errorRetryTransition.entryId;
           triedEntryIds.push(errorRetryTransition.entryId);
           codexApi = errorRetryTransition.api;

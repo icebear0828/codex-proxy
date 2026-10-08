@@ -292,3 +292,20 @@ describe("FingerprintSchema", () => {
     expect(result.success).toBe(false);
   });
 });
+
+
+describe("service-tier routing configuration", () => {
+  const parse = (rules: unknown) => ConfigSchema.safeParse({
+    api: {}, client: {}, model: {}, auth: { service_tier_routing: rules }, server: {}, session: {},
+  });
+  it("defaults to no restrictions", () => {
+    const result = parse(undefined);
+    expect(result.success && result.data.auth.service_tier_routing).toEqual({});
+  });
+  it("accepts plan and account restrictions", () => {
+    expect(parse({ ultrafast: { plan_types: ["pro"], account_ids: ["account-1"] } }).success).toBe(true);
+  });
+  it.each([{}, { plan_types: [] }, { account_ids: [""] }, { plans: ["pro"] }])("rejects an invalid rule %j", rule => {
+    expect(parse({ ultrafast: rule }).success).toBe(false);
+  });
+});
