@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { AntigravityUpstream } from "@src/proxy/antigravity-upstream.js";
-import type { CodexResponsesRequest } from "@src/proxy/codex-types.js";
+import type { CodexResponsesRequest, CodexSSEEvent } from "@src/proxy/codex-types.js";
 
 const PRODUCTION_BASE_URL = "https://cloudcode-pa.googleapis.com";
 const DAILY_BASE_URL = "https://daily-cloudcode-pa.googleapis.com";
@@ -45,6 +45,13 @@ function requestUrl(fetchMock: ReturnType<typeof stubFetch>, index: number): str
   if (typeof input === "string") return input;
   if (input instanceof URL) return input.href;
   return input?.url ?? "";
+}
+
+function successfulStream(text: string): Response {
+  return new Response(`data: ${JSON.stringify({
+    candidates: [{ content: { role: "model", parts: [{ text }] }, finishReason: "STOP" }],
+    usageMetadata: { promptTokenCount: 1, candidatesTokenCount: 1 },
+  })}\n\n`, { status: 200, headers: { "Content-Type": "text/event-stream" } });
 }
 
 describe("AntigravityUpstream", () => {
@@ -217,5 +224,58 @@ describe("AntigravityUpstream", () => {
     await expect(upstream.createResponse(baseRequest("Try the model."), new AbortController().signal)).rejects.toThrow();
 
     expect(generationCalls).toBe(1);
+  });
+
+  it("retries transient stream endpoint 5xx responses", async () => {
+    let streamCalls = 0;
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
+      if (url === "https://oauth2.googleapis.com/token") {
+        return new Response(JSON.stringify({ access_token: "access-token", expires_in: 3600 }), { status: 200 });
+      }
+      if (url.includes(":streamGenerateContent")) {
+        streamCalls++;
+        if (streamCalls < 3) return new Response("temporary upstream failure", { status: 502 });
+        return successfulStream("recovered");
+      }
+      return new Response("Unexpected test request", { status: 500 });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const upstream = new AntigravityUpstream("refresh-token", "project-1");
+    const response = await upstream.createResponse(baseRequest(""), new AbortController().signal);
+    const events: CodexSSEEvent[] = [];
+    for await (const event of upstream.parseStream(response)) events.push(event);
+
+    expect(streamCalls).toBe(3);
+    expect(events.some((event) => event.event === "response.output_text.delta" && event.data.delta === "recovered")).toBe(true);
+    expect(events.at(-1)?.event).toBe("response.completed");
+  });
+
+  it("retries a stream that ends before producing any text or tool call", async () => {
+    let streamCalls = 0;
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
+      if (url === "https://oauth2.googleapis.com/token") {
+        return new Response(JSON.stringify({ access_token: "access-token", expires_in: 3600 }), { status: 200 });
+      }
+      if (url.includes(":streamGenerateContent")) {
+        streamCalls++;
+        return streamCalls === 1
+          ? new Response("data: {}\n\n", { status: 200, headers: { "Content-Type": "text/event-stream" } })
+          : successfulStream("recovered");
+      }
+      return new Response("Unexpected test request", { status: 500 });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const upstream = new AntigravityUpstream("refresh-token", "project-1");
+    const response = await upstream.createResponse(baseRequest(""), new AbortController().signal);
+    const events: CodexSSEEvent[] = [];
+    for await (const event of upstream.parseStream(response)) events.push(event);
+
+    expect(streamCalls).toBe(2);
+    expect(events.some((event) => event.event === "response.output_text.delta" && event.data.delta === "recovered")).toBe(true);
+    expect(events.at(-1)?.event).toBe("response.completed");
   });
 });

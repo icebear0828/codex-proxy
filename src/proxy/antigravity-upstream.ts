@@ -15,6 +15,9 @@ const TOKEN_URL = ANTIGRAVITY_OAUTH_TOKEN_URL;
 const DEFAULT_BASE_URL = "https://cloudcode-pa.googleapis.com";
 const DAILY_BASE_URL = "https://daily-cloudcode-pa.googleapis.com";
 const DEFAULT_USER_AGENT_VERSION = "2.9.1";
+const CREATE_RESPONSE_RETRIES = 2;
+const STREAM_RETRIES = 1;
+const FIRST_OUTPUT_TIMEOUT_MS = 30_000;
 const IDENTITY_INSTRUCTION = "You are Antigravity, an AI coding assistant.";
 const CODEX_MODEL_IDENTITY = /^\s*You are Codex, a coding agent based on GPT-\d+(?:\.\d+)*\.?\s*/i;
 const CLAUDE_CODE_IDENTITY = /^\s*You are Claude Code, Anthropic['’]s official CLI for Claude\.?([ \t\r\n]*)/i;
@@ -97,7 +100,12 @@ export class AntigravityUpstream implements UpstreamAdapter {
   private refreshPromise: Promise<string> | null = null;
   private resolvedProjectId: string | null;
   private accountInfoResolved = false;
-  private readonly requestByResponse = new WeakMap<Response, { req: CodexResponsesRequest; signal: AbortSignal }>();
+  private readonly requestByResponse = new WeakMap<Response, {
+    req: CodexResponsesRequest;
+    signal: AbortSignal;
+    attemptController: AbortController;
+    cleanup: () => void;
+  }>();
 
   constructor(
     private readonly refreshToken: string,
@@ -116,9 +124,40 @@ export class AntigravityUpstream implements UpstreamAdapter {
   }
 
   async createResponse(req: CodexResponsesRequest, signal: AbortSignal): Promise<Response> {
-    const response = await this.createResponseAttempt(req, signal);
-    this.requestByResponse.set(response, { req, signal });
+    const { response, attemptController, cleanup } = await this.createResponseWithRetry(req, signal);
+    this.requestByResponse.set(response, { req, signal, attemptController, cleanup });
     return response;
+  }
+
+  private async createResponseWithRetry(
+    req: CodexResponsesRequest,
+    signal: AbortSignal,
+  ): Promise<{
+    response: Response;
+    req: CodexResponsesRequest;
+    signal: AbortSignal;
+    attemptController: AbortController;
+    cleanup: () => void;
+  }> {
+    for (let attempt = 0; ; attempt++) {
+      const attemptController = new AbortController();
+      const abortAttempt = () => attemptController.abort(signal.reason);
+      if (signal.aborted) abortAttempt();
+      else signal.addEventListener("abort", abortAttempt, { once: true });
+      const cleanup = () => signal.removeEventListener("abort", abortAttempt);
+      try {
+        const response = await this.createResponseAttempt(req, attemptController.signal);
+        return { response, req, signal, attemptController, cleanup };
+      } catch (error) {
+        cleanup();
+        attemptController.abort();
+        if (signal.aborted || attempt >= CREATE_RESPONSE_RETRIES || !isRetryableUpstreamFailure(error)) {
+          throw error;
+        }
+        console.warn(`[antigravity] Request attempt ${attempt + 1} failed for ${modelId(req.model)}; retrying`);
+        await new Promise((resolve) => setTimeout(resolve, attempt === 0 ? 250 : 750));
+      }
+    }
   }
 
   private async createResponseAttempt(req: CodexResponsesRequest, signal: AbortSignal): Promise<Response> {
@@ -174,15 +213,39 @@ export class AntigravityUpstream implements UpstreamAdapter {
       return;
     }
 
-    try {
-      yield* this.parseStreamAttempt(response);
-    } catch (error) {
-      const isEmptyResponse = error instanceof Error && error.message === EMPTY_GEMINI_RESPONSE_ERROR;
-      if (!isEmptyResponse || context.signal.aborted) throw error;
-
-      console.warn(`[antigravity] Empty upstream stream for ${modelId(context.req.model)}; retrying once`);
-      const retryResponse = await this.createResponseAttempt(context.req, context.signal);
-      yield* this.streamParser.parseStream(retryResponse);
+    let currentResponse = response;
+    let currentContext = context;
+    for (let attempt = 0; ; attempt++) {
+      const attemptCleanup = currentContext.cleanup;
+      let producedOutput = false;
+      let completed = false;
+      const firstOutputTimer = setTimeout(() => {
+        if (!producedOutput) {
+          currentContext.attemptController.abort(new Error("Antigravity stream produced no output before timeout"));
+        }
+      }, FIRST_OUTPUT_TIMEOUT_MS);
+      try {
+        for await (const event of this.parseStreamAttempt(currentResponse)) {
+          if (isOutputEvent(event)) {
+            producedOutput = true;
+            clearTimeout(firstOutputTimer);
+          }
+          if (event.event === "response.completed") completed = true;
+          yield event;
+        }
+        if (!completed) throw new Error(EMPTY_GEMINI_RESPONSE_ERROR);
+        return;
+      } catch (error) {
+        await currentResponse.body?.cancel().catch(() => undefined);
+        if (context.signal.aborted || producedOutput || attempt >= STREAM_RETRIES) throw error;
+        console.warn(`[antigravity] Stream attempt ${attempt + 1} ended before output for ${modelId(context.req.model)}; retrying`);
+        const retry = await this.createResponseWithRetry(context.req, context.signal);
+        currentResponse = retry.response;
+        currentContext = retry;
+      } finally {
+        clearTimeout(firstOutputTimer);
+        attemptCleanup();
+      }
     }
   }
 
@@ -343,4 +406,16 @@ export class AntigravityUpstream implements UpstreamAdapter {
     }
     return response;
   }
+}
+
+function isOutputEvent(event: CodexSSEEvent): boolean {
+  return event.event === "response.output_text.delta"
+    || event.event === "response.output_item.added"
+    || event.event === "response.function_call_arguments.delta"
+    || event.event === "response.function_call_arguments.done";
+}
+
+function isRetryableUpstreamFailure(error: unknown): boolean {
+  if (error instanceof CodexApiError) return error.status >= 500;
+  return error instanceof TypeError || (error instanceof Error && error.name === "AbortError");
 }
