@@ -3,7 +3,9 @@
 ## Quick Start
 
 ```bash
-npm test                # unit + integration + e2e (default suite)
+npm test                # auto-detects Windows/Linux suite from the host OS
+npm run test:windows    # explicitly select Windows-compatible coverage
+npm run test:linux      # explicitly select POSIX/native Linux coverage
 npm run test:unit       # unit tests only
 npm run test:e2e        # e2e tests only
 npm run test:integration # integration tests only
@@ -11,18 +13,22 @@ npm run test:stress     # stress tests (separate config, 120s timeout)
 npm run test:real       # real upstream tests (requires running proxy)
 ```
 
+The Windows and Linux configs share `vitest.shared-config.ts`, test discovery, aliases, and test definitions. Add ordinary tests once under the existing `shared`, `tests/unit`, `tests/integration`, `tests/contract`, or `tests/e2e` trees; both platform suites discover them automatically. Wrap OS-native behavior in a shared `describePosix` or `describeWindows` block from `tests/_helpers/platform-test.ts` rather than copying the test cases. POSIX shell tests run on Linux; the Windows suite keeps shared tests and Windows-compatible coverage.
+
 ## Structure
 
 ```
 tests/
 ├── _fixtures/          # Test data (models.yaml, sse-streams.ts)
-├── _helpers/           # Shared test utilities (8 modules)
+├── _helpers/           # Shared test utilities
 │   ├── account-pool-factory.ts   # createMemoryPersistence()
 │   ├── account-pool-setup.ts     # Pre-declared vi.mock() for AccountPool
 │   ├── config.ts                 # createMockConfig(), createMockFingerprint()
 │   ├── e2e-setup.ts              # E2E boundary mock (transport, config, fs)
 │   ├── events.ts                 # ExtractedEvent factories
 │   ├── format-adapter.ts         # createMockFormatAdapter()
+│   ├── platform-test.ts          # describePosix(), describeWindows()
+│   ├── test-data-directory.ts    # cross-platform isolated test data dirs
 │   ├── jwt.ts                    # createJwt(), createValidJwt(), createExpiredJwt()
 │   └── sse.ts                    # SSE stream builders (8 functions)
 ├── unit/               # Unit tests — pure functions, single modules (124 files)
@@ -54,11 +60,14 @@ tests/
 
 ## Vitest Configs
 
-| Config | Scope | Timeout | Included in `npm test` |
-|--------|-------|---------|----------------------|
-| `vitest.config.ts` (root) | unit + integration + e2e + electron | 5s | Yes |
-| `tests/vitest.config.ts` | stress | 120s | No (`npm run test:stress`) |
-| `tests/real/vitest.config.ts` | real | 60s | No (`npm run test:real`) |
+| Config | Scope | Platform | Notes |
+|--------|-------|----------|-------|
+| `vitest.shared-config.ts` | aliases + common test discovery | Shared | Factory consumed by both platform configs |
+| `vitest.windows.config.ts` | shared unit + integration + e2e + portable Electron unit tests | Windows | Excludes native Electron build/pack/release integration; `npm run test:windows` |
+| `vitest.linux.config.ts` | shared unit + integration + e2e + electron | Linux | Full POSIX/native suite; runs from `npm run test:linux` |
+| `vitest.config.ts` (root) | host-selected suite | Windows/Linux auto-detect; full suite elsewhere | Used by `npm test` and ad hoc Vitest commands |
+| `tests/vitest.config.ts` | stress | Any | 120s timeout; `npm run test:stress` |
+| `tests/real/vitest.config.ts` | real | Any | 60s timeout; `npm run test:real` |
 
 ## Real-Upstream Coverage Gaps (accepted risk)
 

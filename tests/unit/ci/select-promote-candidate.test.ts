@@ -2,7 +2,8 @@ import { execFileSync } from "child_process";
 import { existsSync, mkdtempSync, writeFileSync } from "fs";
 import { tmpdir } from "os";
 import { join, resolve } from "path";
-import { beforeAll, describe, expect, it } from "vitest";
+import { beforeAll, expect, it } from "vitest";
+import { describePosix } from "@helpers/platform-test.js";
 
 const ROOT = resolve(__dirname, "..", "..", "..");
 const SCRIPT = resolve(ROOT, ".github", "scripts", "select-promote-candidate.sh");
@@ -19,17 +20,6 @@ function git(cwd: string, args: string[], env: Record<string, string> = {}): str
     stdio: ["ignore", "pipe", "pipe"],
   });
 }
-
-function hasBash(): boolean {
-  try {
-    execFileSync("bash", ["-c", "exit 0"], { stdio: "ignore", timeout: 1000 });
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-const describeIfBash = hasBash() ? describe : describe.skip;
 
 function commitAt(cwd: string, message: string, epoch: number, file = "file.txt"): string {
   writeFileSync(join(cwd, file), `${message}\n${epoch}\n`);
@@ -69,7 +59,7 @@ function run(cwd: string, env: Record<string, string> = {}): string[] {
   return out.trim() === "" ? [] : out.trim().split("\n");
 }
 
-describeIfBash("select-promote-candidate.sh", () => {
+describePosix("select-promote-candidate.sh", () => {
   beforeAll(() => {
     expect(existsSync(SCRIPT), `script missing: ${SCRIPT}`).toBe(true);
   });

@@ -1,8 +1,9 @@
-import { describe, it, expect, beforeEach, afterAll, vi } from "vitest";
-import { rmSync } from "fs";
+import { describe, it, expect, beforeEach, afterEach, afterAll, vi } from "vitest";
 import type { ProxyRequest } from "../../../src/routes/shared/proxy-handler-types.js";
+import { createTestDataDirectory } from "@helpers/test-data-directory.js";
 
-const testDataDir = `/tmp/codex-proxy-gemini-default-tools-${process.pid}`;
+const testDataDirectory = createTestDataDirectory("codex-proxy-gemini-default-tools");
+const testDataDir = testDataDirectory.path;
 
 vi.mock("../../../src/paths.js", async (importOriginal) => {
   const original = await importOriginal<typeof import("../../../src/paths.js")>();
@@ -33,9 +34,13 @@ describe("Gemini default_tools injection", () => {
   let accountPool: AccountPool;
   let clientKeyPool: ClientKeyPool;
 
-  afterAll(async () => {
-    await new Promise((resolve) => setTimeout(resolve, 25));
-    rmSync(testDataDir, { recursive: true, force: true });
+  afterEach(() => {
+    clientKeyPool.destroy();
+    accountPool.destroy();
+  });
+
+  afterAll(() => {
+    testDataDirectory.cleanup();
   });
 
   beforeEach(() => {

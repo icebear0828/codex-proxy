@@ -3,6 +3,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 
 import { tmpdir } from "os";
 import { join, resolve } from "path";
 import { beforeAll, describe, expect, it } from "vitest";
+import { describePosix } from "@helpers/platform-test.js";
 
 const ROOT = resolve(__dirname, "..", "..", "..");
 const SCRIPT = resolve(ROOT, ".github", "scripts", "generate-release-notes.sh");
@@ -22,17 +23,6 @@ function withoutReleaseNotesEnv(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
 function git(cwd: string, args: string[]): string {
   return execFileSync("git", args, { cwd, encoding: "utf-8", stdio: ["ignore", "pipe", "pipe"] });
 }
-
-function hasBash(): boolean {
-  try {
-    execFileSync("bash", ["-c", "exit 0"], { stdio: "ignore", timeout: 1000 });
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-const describeIfBash = hasBash() ? describe : describe.skip;
 
 function runNotes(cwd: string, tag: string, env: NodeJS.ProcessEnv = process.env): string {
   return execFileSync("bash", [SCRIPT, tag], {
@@ -118,7 +108,7 @@ describe("generate-release-notes.sh", () => {
 
 });
 
-describeIfBash("generate-release-notes.sh bash behavior", () => {
+describePosix("generate-release-notes.sh bash behavior", () => {
   beforeAll(() => {
     expect(existsSync(SCRIPT), `script missing: ${SCRIPT}`).toBe(true);
   });

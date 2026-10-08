@@ -12,6 +12,7 @@
 
 import { describe, it, expect, beforeAll } from "vitest";
 import { execFileSync } from "child_process";
+import { describePosix } from "@helpers/platform-test.js";
 import { existsSync, readFileSync, statSync } from "fs";
 import { resolve } from "path";
 
@@ -26,18 +27,6 @@ interface RunResult {
   stdout: string;
   stderr: string;
 }
-
-function hasBash(): boolean {
-  try {
-    execFileSync("bash", ["-c", "exit 0"], { stdio: "ignore", timeout: 1000 });
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-const bashAvailable = hasBash();
-const describeIfBash = bashAvailable ? describe : describe.skip;
 
 function run(env: Record<string, string>, timeoutMs = 10_000): RunResult {
   try {
@@ -83,7 +72,7 @@ describe("electron-smoke.sh script", () => {
   });
 });
 
-describeIfBash("electron-smoke.sh script bash behavior", () => {
+describePosix("electron-smoke.sh script bash behavior", () => {
   beforeAll(() => {
     expect(existsSync(SCRIPT), `script missing: ${SCRIPT}`).toBe(true);
   });

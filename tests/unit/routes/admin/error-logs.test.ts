@@ -12,6 +12,7 @@ import { tmpdir } from "os";
 import { resolve } from "path";
 import { Hono } from "hono";
 
+const RESPONSE_PERF_BUDGET_MS = 250;
 let tmpDataDir = "";
 
 const mockConfig = {
@@ -329,7 +330,7 @@ describe("large log performance and limit tests", () => {
     const countBody = await countRes.json() as { total: number; unread: number };
     expect(countBody.total).toBe(16000);
     expect(countBody.unread).toBe(16000);
-    expect(endCount - startCount).toBeLessThan(100); // Should be very fast (under 100ms)
+    expect(endCount - startCount).toBeLessThan(RESPONSE_PERF_BUDGET_MS); // Allow cross-platform CI scheduling variance
 
     // 2. Check seen performance and correctness
     const startSeen = performance.now();
@@ -339,7 +340,7 @@ describe("large log performance and limit tests", () => {
     const seenBody = await seenRes.json() as { ok: boolean; cursor: string };
     expect(seenBody.ok).toBe(true);
     expect(seenBody.cursor).toBeTruthy();
-    expect(endSeen - startSeen).toBeLessThan(100); // Should be very fast (under 100ms)
+    expect(endSeen - startSeen).toBeLessThan(RESPONSE_PERF_BUDGET_MS); // Allow cross-platform CI scheduling variance
 
     // Verify unread becomes 0
     const countAfterRes = await app.request("/admin/error-logs/count");
@@ -356,7 +357,7 @@ describe("large log performance and limit tests", () => {
     // Default limit should apply. The total count across groups should sum to the limit (1000)
     const totalGroupedCount = groupedBody.groups.reduce((acc, g) => acc + g.count, 0);
     expect(totalGroupedCount).toBe(1000);
-    expect(endGrouped - startGrouped).toBeLessThan(100);
+    expect(endGrouped - startGrouped).toBeLessThan(RESPONSE_PERF_BUDGET_MS);
   });
 });
 

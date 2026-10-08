@@ -73,8 +73,37 @@ jobs:
         working-directory: native
         run: npm run build
 
-      - name: Run root vitest test suite
-        run: npm test
+      - name: Run Linux root vitest suite
+        run: npm run test:linux
+
+  windows-tests:
+    runs-on: windows-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install web dependencies
+        run: cd web && npm ci
+
+      - name: Build web assets
+        run: npm run build:web
+
+      - name: Run Windows root vitest suite
+        run: npm run test:windows
+
+      - name: Run Windows web test suite
+        run: npm run test:web
+
+      - name: Type-check
+        run: npx tsc --noEmit
 
   frontend-tests:
     runs-on: ubuntu-latest
