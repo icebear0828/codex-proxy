@@ -35,6 +35,13 @@ export class ClientKeyPool {
     this.reload();
   }
 
+  public destroy(): void {
+    this.persistence.close();
+    this.keys.clear();
+    this.keyToId.clear();
+    this.activeConcurrency.clear();
+  }
+
   public reload(): void {
     const list = this.persistence.load();
     this.keys.clear();

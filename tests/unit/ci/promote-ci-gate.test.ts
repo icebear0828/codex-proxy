@@ -2,7 +2,8 @@ import { execFileSync } from "child_process";
 import { chmodSync, mkdtempSync, writeFileSync } from "fs";
 import { tmpdir } from "os";
 import { join, resolve } from "path";
-import { describe, expect, it } from "vitest";
+import { expect, it } from "vitest";
+import { describePosix } from "@helpers/platform-test.js";
 
 const ROOT = resolve(__dirname, "..", "..", "..");
 const SCRIPT = resolve(ROOT, ".github", "scripts", "check-promote-ci.sh");
@@ -40,7 +41,7 @@ function runWithWorkflowRunPages(pages: unknown[]): string {
   }).trim();
 }
 
-describe("promote CI gate", () => {
+describePosix("promote CI gate", () => {
   it("ignores an old failed release run when the quality gate succeeded", () => {
     expect(runWithWorkflowRuns([
       {

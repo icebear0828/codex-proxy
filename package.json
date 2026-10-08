@@ -8,6 +8,8 @@
   ],
   "scripts": {
     "test": "vitest run",
+    "test:windows": "vitest run --config vitest.windows.config.ts",
+    "test:linux": "vitest run --config vitest.linux.config.ts",
     "test:watch": "vitest",
     "test:unit": "vitest run tests/unit",
     "test:e2e": "vitest run tests/e2e",

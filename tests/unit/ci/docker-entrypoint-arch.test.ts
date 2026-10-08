@@ -6,7 +6,8 @@
  * /defaults, chown, or gosu.
  */
 
-import { describe, it, expect, afterAll } from "vitest";
+import { it, expect, afterAll } from "vitest";
+import { describePosix } from "@helpers/platform-test.js";
 import { execFileSync } from "child_process";
 import { existsSync, mkdtempSync, writeFileSync, rmSync } from "fs";
 import { join } from "path";
@@ -42,8 +43,7 @@ function findShell(): string | null {
   return null;
 }
 
-const shell = findShell();
-const describeIfShell = shell ? describe : describe.skip;
+const shell = process.platform === "win32" ? null : findShell();
 
 function runArch(env: Record<string, string>): string {
   if (!shell) throw new Error("sh is not available");
@@ -66,7 +66,7 @@ function mockUnamePath(arch: string): string {
   return dir;
 }
 
-describeIfShell("docker-entrypoint CODEX_ARCH detection", () => {
+describePosix("docker-entrypoint CODEX_ARCH detection", () => {
   it("maps aarch64 → arm64", () => {
     const mockDir = mockUnamePath("aarch64");
     const result = runArch({ PATH: `${mockDir}:/usr/bin:/bin` });

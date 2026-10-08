@@ -1,8 +1,9 @@
-import { describe, it, expect, beforeEach, afterAll, vi } from "vitest";
-import { rmSync } from "fs";
+import { describe, it, expect, beforeEach, afterEach, afterAll, vi } from "vitest";
 import type { ProxyRequest } from "../../../src/routes/shared/proxy-handler-types.js";
+import { createTestDataDirectory } from "@helpers/test-data-directory.js";
 
-const testDataDir = `/tmp/codex-proxy-messages-default-tools-${process.pid}`;
+const testDataDirectory = createTestDataDirectory("codex-proxy-messages-default-tools");
+const testDataDir = testDataDirectory.path;
 
 vi.mock("../../../src/paths.js", async (importOriginal) => {
   const original = await importOriginal<typeof import("../../../src/paths.js")>();
@@ -31,9 +32,12 @@ import { loadStaticModels, applyBackendModels } from "../../../src/models/model-
 describe("Messages default_tools injection", () => {
   let accountPool: AccountPool;
 
-  afterAll(async () => {
-    await new Promise((resolve) => setTimeout(resolve, 25));
-    rmSync(testDataDir, { recursive: true, force: true });
+  afterEach(() => {
+    accountPool.destroy();
+  });
+
+  afterAll(() => {
+    testDataDirectory.cleanup();
   });
 
   beforeEach(() => {

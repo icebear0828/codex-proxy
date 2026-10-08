@@ -1,4 +1,5 @@
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, expect, it } from "vitest";
+import { describePosix } from "@helpers/platform-test.js";
 import { spawn } from "child_process";
 import { createServer, type Server } from "http";
 import type { AddressInfo } from "net";
@@ -51,7 +52,7 @@ function runHealthcheck(): Promise<number | null> {
   });
 }
 
-describe("docker-healthcheck.sh", () => {
+describePosix("docker-healthcheck.sh", () => {
   it("bypasses proxy variables for the local health endpoint", async () => {
     responseStatus = 200;
     await expect(runHealthcheck()).resolves.toBe(0);

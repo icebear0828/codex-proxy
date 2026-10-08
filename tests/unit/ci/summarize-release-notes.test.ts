@@ -1,21 +1,27 @@
 import { execFileSync } from "child_process";
 import { existsSync } from "fs";
 import { resolve } from "path";
+import { createRequire } from "module";
 import { beforeAll, describe, expect, it } from "vitest";
-
-// Plain ESM script (no build step); vitest transforms it, tsc does not cover tests.
-// eslint-disable-next-line @typescript-eslint/ban-ts-comment
-// @ts-ignore -- untyped .mjs CI script
-import {
-  buildPrompt,
-  generateNotes,
-  parseHighlights,
-  renderFallback,
-  resolveRequestTimeoutMs,
-} from "../../../.github/scripts/summarize-release-notes.mjs";
 
 const ROOT = resolve(__dirname, "..", "..", "..");
 const SCRIPT = resolve(ROOT, ".github", "scripts", "summarize-release-notes.mjs");
+
+interface SummarizeModule {
+  buildPrompt(tag: string, commits: string[], changelogExcerpt?: string): string;
+  generateNotes(options: {
+    tag: string;
+    input: string;
+    env: NodeJS.ProcessEnv;
+    fetchImpl?: typeof fetch;
+    changelogExcerpt?: string;
+  }): Promise<string>;
+  parseHighlights(raw: unknown): { zh: string[]; en: string[] } | null;
+  renderFallback(commitLines: string[]): string;
+  resolveRequestTimeoutMs(env: NodeJS.ProcessEnv): number;
+}
+
+const summarize = createRequire(import.meta.url)(SCRIPT) as SummarizeModule;
 
 const COMMITS = [
   "- fix(ws): add connection timeout and abort handling in ws-transport",
@@ -55,7 +61,7 @@ function stubLLM(status: number, content: string): FetchStub {
 describe("summarize-release-notes generateNotes", () => {
   it("produces bilingual notes from a valid LLM response, with raw commits in details", async () => {
     const stub = stubLLM(200, VALID_LLM_JSON);
-    const out = await generateNotes({ tag: "v9.9.9", input: COMMITS, env: LLM_ENV, fetchImpl: stub.fetchImpl });
+    const out = await summarize.generateNotes({ tag: "v9.9.9", input: COMMITS, env: LLM_ENV, fetchImpl: stub.fetchImpl });
 
     expect(out).toContain("## ✨ 本次更新");
     expect(out).toContain("修复 WebSocket 连接超时导致的请求卡死");
@@ -71,7 +77,7 @@ describe("summarize-release-notes generateNotes", () => {
   });
 
   it("falls back to grouped English list when LLM env is not configured", async () => {
-    const out = await generateNotes({ tag: "v9.9.9", input: COMMITS, env: {} });
+    const out = await summarize.generateNotes({ tag: "v9.9.9", input: COMMITS, env: {} });
 
     expect(out).toContain("connection timeout and abort handling");
     expect(out).toContain("dashboard credit balance visualization");
@@ -85,7 +91,7 @@ describe("summarize-release-notes generateNotes", () => {
 
   it("falls back when the LLM returns non-JSON garbage", async () => {
     const stub = stubLLM(200, "Sure! Here are the notes you asked for.");
-    const out = await generateNotes({ tag: "v9.9.9", input: COMMITS, env: LLM_ENV, fetchImpl: stub.fetchImpl });
+    const out = await summarize.generateNotes({ tag: "v9.9.9", input: COMMITS, env: LLM_ENV, fetchImpl: stub.fetchImpl });
     expect(out).toContain("### Fixes");
     expect(out).not.toContain("## ✨ 本次更新");
     // validation failure is retried once before falling back
@@ -94,29 +100,29 @@ describe("summarize-release-notes generateNotes", () => {
 
   it("falls back when the Chinese highlights contain no CJK", async () => {
     const stub = stubLLM(200, JSON.stringify({ highlights_zh: ["all english"], highlights_en: ["all english"] }));
-    const out = await generateNotes({ tag: "v9.9.9", input: COMMITS, env: LLM_ENV, fetchImpl: stub.fetchImpl });
+    const out = await summarize.generateNotes({ tag: "v9.9.9", input: COMMITS, env: LLM_ENV, fetchImpl: stub.fetchImpl });
     expect(out).toContain("### Fixes");
   });
 
   it("falls back when the LLM endpoint errors", async () => {
     const stub = stubLLM(500, "{}");
-    const out = await generateNotes({ tag: "v9.9.9", input: COMMITS, env: LLM_ENV, fetchImpl: stub.fetchImpl });
+    const out = await summarize.generateNotes({ tag: "v9.9.9", input: COMMITS, env: LLM_ENV, fetchImpl: stub.fetchImpl });
     expect(out).toContain("### Fixes");
   });
 
   it("accepts JSON wrapped in markdown fences", async () => {
     const stub = stubLLM(200, "```json\n" + VALID_LLM_JSON + "\n```");
-    const out = await generateNotes({ tag: "v9.9.9", input: COMMITS, env: LLM_ENV, fetchImpl: stub.fetchImpl });
+    const out = await summarize.generateNotes({ tag: "v9.9.9", input: COMMITS, env: LLM_ENV, fetchImpl: stub.fetchImpl });
     expect(out).toContain("## ✨ 本次更新");
   });
 
   it("passes through non-commit single-line input (Initial release)", async () => {
-    const out = await generateNotes({ tag: "v9.9.9", input: "Initial release", env: {} });
+    const out = await summarize.generateNotes({ tag: "v9.9.9", input: "Initial release", env: {} });
     expect(out).toBe("Initial release");
   });
 
   it("includes the changelog excerpt in the prompt when provided", () => {
-    const prompt = buildPrompt("v1.0.0", ["- fix: a"], "## [Unreleased]\n- 修复某问题");
+    const prompt = summarize.buildPrompt("v1.0.0", ["- fix: a"], "## [Unreleased]\n- 修复某问题");
     expect(prompt).toContain("修复某问题");
     expect(prompt).toContain("highlights_zh");
   });
@@ -124,38 +130,38 @@ describe("summarize-release-notes generateNotes", () => {
 
 describe("summarize-release-notes resolveRequestTimeoutMs", () => {
   it("uses a positive integer override and falls back for invalid values", () => {
-    expect(resolveRequestTimeoutMs({ RELEASE_NOTES_REQUEST_TIMEOUT_MS: "250" })).toBe(250);
-    expect(resolveRequestTimeoutMs({ RELEASE_NOTES_REQUEST_TIMEOUT_MS: "0" })).toBe(60000);
-    expect(resolveRequestTimeoutMs({ RELEASE_NOTES_REQUEST_TIMEOUT_MS: "-1" })).toBe(60000);
-    expect(resolveRequestTimeoutMs({ RELEASE_NOTES_REQUEST_TIMEOUT_MS: "100.5" })).toBe(60000);
-    expect(resolveRequestTimeoutMs({ RELEASE_NOTES_REQUEST_TIMEOUT_MS: "nope" })).toBe(60000);
-    expect(resolveRequestTimeoutMs({})).toBe(60000);
+    expect(summarize.resolveRequestTimeoutMs({ RELEASE_NOTES_REQUEST_TIMEOUT_MS: "250" })).toBe(250);
+    expect(summarize.resolveRequestTimeoutMs({ RELEASE_NOTES_REQUEST_TIMEOUT_MS: "0" })).toBe(60000);
+    expect(summarize.resolveRequestTimeoutMs({ RELEASE_NOTES_REQUEST_TIMEOUT_MS: "-1" })).toBe(60000);
+    expect(summarize.resolveRequestTimeoutMs({ RELEASE_NOTES_REQUEST_TIMEOUT_MS: "100.5" })).toBe(60000);
+    expect(summarize.resolveRequestTimeoutMs({ RELEASE_NOTES_REQUEST_TIMEOUT_MS: "nope" })).toBe(60000);
+    expect(summarize.resolveRequestTimeoutMs({})).toBe(60000);
   });
 });
 
 describe("summarize-release-notes parseHighlights", () => {
   it("rejects multi-line and oversized highlight items (markdown injection guard)", () => {
     expect(
-      parseHighlights(JSON.stringify({ highlights_zh: ["修复\n## 假标题"], highlights_en: ["ok"] })),
+      summarize.parseHighlights(JSON.stringify({ highlights_zh: ["修复\n## 假标题"], highlights_en: ["ok"] })),
     ).toBeNull();
     expect(
-      parseHighlights(JSON.stringify({ highlights_zh: ["修" + "复".repeat(400)], highlights_en: ["ok"] })),
+      summarize.parseHighlights(JSON.stringify({ highlights_zh: ["修" + "复".repeat(400)], highlights_en: ["ok"] })),
     ).toBeNull();
   });
 
   it("rejects empty, oversized, or non-string arrays", () => {
-    expect(parseHighlights(JSON.stringify({ highlights_zh: [], highlights_en: ["x"] }))).toBeNull();
-    expect(parseHighlights(JSON.stringify({ highlights_zh: ["中文", 42], highlights_en: ["x", "y"] }))).toBeNull();
+    expect(summarize.parseHighlights(JSON.stringify({ highlights_zh: [], highlights_en: ["x"] }))).toBeNull();
+    expect(summarize.parseHighlights(JSON.stringify({ highlights_zh: ["中文", 42], highlights_en: ["x", "y"] }))).toBeNull();
     expect(
-      parseHighlights(
+      summarize.parseHighlights(
         JSON.stringify({ highlights_zh: Array(20).fill("中文条目"), highlights_en: Array(20).fill("entry") }),
       ),
     ).toBeNull();
-    expect(parseHighlights("not json at all")).toBeNull();
+    expect(summarize.parseHighlights("not json at all")).toBeNull();
   });
 
   it("accepts a valid bilingual payload", () => {
-    const parsed = parseHighlights(VALID_LLM_JSON);
+    const parsed = summarize.parseHighlights(VALID_LLM_JSON);
     expect(parsed?.zh).toHaveLength(2);
     expect(parsed?.en).toHaveLength(2);
   });
@@ -163,7 +169,7 @@ describe("summarize-release-notes parseHighlights", () => {
 
 describe("summarize-release-notes renderFallback", () => {
   it("groups commits by conventional type and strips prefixes", () => {
-    const out = renderFallback(["- fix(ws): repair sockets", "- feat: shiny thing", "- perf: faster", "- 1.2.3 misc"]);
+    const out = summarize.renderFallback(["- fix(ws): repair sockets", "- feat: shiny thing", "- perf: faster", "- 1.2.3 misc"]);
     expect(out).toContain("### Fixes\n\n- repair sockets");
     expect(out).toContain("### Features\n\n- shiny thing");
     expect(out).toContain("### Performance\n\n- faster");
@@ -171,7 +177,7 @@ describe("summarize-release-notes renderFallback", () => {
   });
 
   it("groups breaking-change commits (feat!:) under their type", () => {
-    const out = renderFallback(["- feat!: breaking thing", "- fix(scope)!: breaking fix"]);
+    const out = summarize.renderFallback(["- feat!: breaking thing", "- fix(scope)!: breaking fix"]);
     expect(out).toContain("### Features\n\n- breaking thing");
     expect(out).toContain("### Fixes\n\n- breaking fix");
     expect(out).not.toContain("### Other");
@@ -181,7 +187,7 @@ describe("summarize-release-notes renderFallback", () => {
 describe("summarize-release-notes renderNotes escaping", () => {
   it("neutralizes HTML in commit lines so </details> cannot break the block", async () => {
     const stub = stubLLM(200, VALID_LLM_JSON);
-    const out = await generateNotes({
+    const out = await summarize.generateNotes({
       tag: "v9.9.9",
       input: "- fix: close </details> tag <b>bold</b>",
       env: LLM_ENV,

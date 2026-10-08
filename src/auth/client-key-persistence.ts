@@ -80,6 +80,11 @@ export class ClientKeyPersistence {
     this.jsonPath = jsonPath ?? `${dataDir}/client-keys.json`;
   }
 
+  public close(): void {
+    this.db?.close();
+    this.db = null;
+  }
+
   private ensureDir(filePath: string): void {
     const dir = dirname(filePath);
     if (!existsSync(dir)) {

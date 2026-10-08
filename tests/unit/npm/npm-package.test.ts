@@ -1,5 +1,6 @@
 import { readFileSync } from "fs";
 import { resolve } from "path";
+import { createRequire } from "module";
 import { describe, expect, it } from "vitest";
 
 const ROOT = resolve(__dirname, "..", "..", "..");
@@ -35,8 +36,9 @@ type StageModule = {
   buildMainManifest: (template: unknown, version: string) => unknown;
   buildAddonManifest: (addon: AddonPackage, version: string) => unknown;
 };
+const require = createRequire(import.meta.url);
 const { ADDON_PACKAGES, MAIN_PACKAGE_NAME, buildMainManifest, buildAddonManifest } =
-  (await import(STAGE_SCRIPT)) as StageModule;
+  require(STAGE_SCRIPT) as StageModule;
 
 const loaderFallbacks = new Set(
   [...LOADER.matchAll(/require\('(codex-tls-[^']+)'\)/g)].map((match) => match[1]),
