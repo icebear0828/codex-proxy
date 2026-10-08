@@ -8,13 +8,13 @@
 
 ## [Unreleased]
 
-### Fixed
-
-- 修复流式 API-key 上游错误被包装成 HTTP 200 的问题，保留真实错误状态；上游返回 429 时透传 `Retry-After`，让 Claude Code 等客户端按配额恢复时间退避。（`src/routes/shared/direct-request-handler.ts`）
+> 暂无已记录的变更。
 
 ## [v2.1.x](https://github.com/icebear0828/codex-proxy/releases?q=2.1) - 2026-09-01 至 2026-09-07
 
 ### Fixed
+
+- 修复流式 API-key 上游错误被包装成 HTTP 200 的问题，保留真实错误状态；上游返回 429 时透传 `Retry-After`，让 Claude Code 等客户端按配额恢复时间退避。（`src/routes/shared/direct-request-handler.ts`）
 
 - 修复流式请求失败时 HTTP 状态码被吞成 200 的问题：共享的 SSE 错误响应路径（`src/routes/shared/stream-error-response.ts`）只写了 `Content-Type` 等响应头，从未设置状态码，Hono 于是保留默认 200。上游拒绝、令牌过期、账号池耗尽等失败因此以“成功”状态返回，客户端与反向代理会把它当作正常完成，仅靠 SSE 错误帧无法触发重试或退避。现在状态码在响应体开始前写入上下文，三个调用点一并修正：直连上游的通用异常（502）、`respondWithProxyError` 的流式错误（原本按 500/503 传入却返回 200）、`respondWithNoAccount` 的流式无账号（503）。（`src/routes/shared/stream-error-response.ts`）
 
