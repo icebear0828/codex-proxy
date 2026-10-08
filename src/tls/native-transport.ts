@@ -163,12 +163,14 @@ export class NativeTransport implements TlsTransport {
 
     // Set up a ReadableStream that receives chunks from the Rust callback
     let streamController: ReadableStreamDefaultController<Uint8Array> | null = null;
+    let removeAbortListener = (): void => {};
     const readable = new ReadableStream<Uint8Array>({
       start(controller) {
         streamController = controller;
       },
       cancel() {
         streamController = null;
+        removeAbortListener();
         cancelUpstream();
         watchdog.dispose();
       },
@@ -177,6 +179,7 @@ export class NativeTransport implements TlsTransport {
     const onChunk = (chunk: Buffer | null | undefined): void => {
       if (!streamController) return;
       if (chunk == null) {
+        removeAbortListener();
         watchdog.dispose();
         try { streamController.close(); } catch { /* already closed */ }
         streamController = null;
@@ -188,6 +191,7 @@ export class NativeTransport implements TlsTransport {
           watchdog.arm(() => {
             const controller = streamController;
             streamController = null;
+            removeAbortListener();
             watchdog.dispose();
             cancelUpstream();
             try {
@@ -221,16 +225,42 @@ export class NativeTransport implements TlsTransport {
     const metaPromise = requestId
       ? postStream(url, headers, body, onChunk, proxy, getConfig().tls.force_http11, requestId)
       : postStream(url, headers, body, onChunk, proxy, getConfig().tls.force_http11);
-    // If the header timeout (or an abort) wins the race, the Rust side will
-    // reject this promise later with "cancelled" — swallow that to avoid an
-    // unhandled rejection; the caller already got our error.
+    // If the header timeout or abort wins the race, the Rust side will reject
+    // this promise later with "cancelled" — swallow it to avoid an unhandled
+    // rejection; the caller already got our error.
     metaPromise.catch(() => {});
+
+    // Install abort handling before awaiting headers: the upstream request is
+    // already in flight, even though post() has not returned a response yet.
+    let settled = false;
+    let rejectAbort: ((error: Error) => void) | null = null;
+    const abortRace: Promise<never> | null = signal
+      ? new Promise<never>((_, reject) => { rejectAbort = reject; })
+      : null;
+    const onAbort = (): void => {
+      watchdog.dispose();
+      cancelUpstream();
+      if (!settled) {
+        rejectAbort?.(new Error("Request aborted"));
+        return;
+      }
+      if (streamController) {
+        try { streamController.close(); } catch { /* already closed */ }
+        streamController = null;
+      }
+    };
+    removeAbortListener = (): void => {
+      signal?.removeEventListener("abort", onAbort);
+    };
+    if (signal) {
+      signal.addEventListener("abort", onAbort, { once: true });
+      if (signal.aborted) onAbort();
+    }
 
     // Pre-header hang: send() resolves no meta until headers arrive. The idle
     // watchdog only guards body bytes, so race the meta promise against the
     // same no-progress budget; on timeout we cancel the upstream send and
     // reject — the adapter surfaces it as a transport failure (retryable).
-    let settled = false;
     let headerTimer: ReturnType<typeof setTimeout> | null = null;
     const headerRace: Promise<never> | null =
       idleTimeoutMs > 0
@@ -248,24 +278,20 @@ export class NativeTransport implements TlsTransport {
           })
         : null;
 
-    const meta = await (headerRace
-      ? Promise.race([metaPromise, headerRace])
-      : metaPromise);
+    let meta: NativeStreamMeta;
+    try {
+      const races: Promise<NativeStreamMeta>[] = [metaPromise];
+      if (headerRace) races.push(headerRace);
+      if (abortRace) races.push(abortRace);
+      meta = await Promise.race(races);
+    } catch (error) {
+      if (headerTimer) clearTimeout(headerTimer);
+      signal?.removeEventListener("abort", onAbort);
+      throw error;
+    }
     settled = true;
     if (headerTimer) clearTimeout(headerTimer);
 
-    // Handle abort signal
-    if (signal) {
-      const onAbort = (): void => {
-        watchdog.dispose();
-        cancelUpstream();
-        if (streamController) {
-          try { streamController.close(); } catch { /* already closed */ }
-          streamController = null;
-        }
-      };
-      signal.addEventListener("abort", onAbort, { once: true });
-    }
 
     // Convert flat headers to Web Headers object
     const responseHeaders = new Headers();

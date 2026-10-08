@@ -225,9 +225,12 @@ describe("native cancellation (httpCancel)", () => {
     expect(httpCancel).toHaveBeenCalledTimes(1);
   });
 
-  it("never cancels a healthy completed stream", async () => {
+  it("does not cancel after a signal-associated stream completes", async () => {
     const { transport, httpCancel, capture, onChunk } = makeCancelableTransport();
-    const response = await transport.post("http://upstream.test/responses", {}, "{}");
+    const controller = new AbortController();
+    const response = await transport.post(
+      "http://upstream.test/responses", {}, "{}", controller.signal,
+    );
 
     const reader = response.body!.getReader();
     capture();
@@ -238,8 +241,31 @@ describe("native cancellation (httpCancel)", () => {
       if (r.done) break;
     }
     await vi.advanceTimersByTimeAsync(6_000);
+    controller.abort();
 
     expect(httpCancel).not.toHaveBeenCalled();
+  });
+
+  it("cancels and rejects promptly when aborted before headers", async () => {
+    const httpCancel = vi.fn(() => true);
+    const bindings = {
+      httpGet: vi.fn(),
+      httpPost: vi.fn(),
+      httpCancel,
+      httpPostStream: vi.fn(() => new Promise<never>(() => {})),
+    };
+    const transport = new NativeTransport(bindings as never);
+    const controller = new AbortController();
+    const settled = transport.post(
+      "http://upstream.test/responses", {}, "{}", controller.signal,
+    ).then(() => null, (err: Error) => err);
+
+    controller.abort();
+    const err = await settled;
+
+    expect(err).toBeInstanceOf(Error);
+    expect((err as Error).message).toBe("Request aborted");
+    expect(httpCancel).toHaveBeenCalledTimes(1);
   });
 
   it("rejects and cancels on pre-header hang", async () => {
