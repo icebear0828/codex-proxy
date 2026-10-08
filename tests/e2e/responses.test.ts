@@ -269,17 +269,15 @@ describe("E2E: POST /v1/responses", () => {
     expect(sent.instructions).toBe("");
   });
 
-  // Streaming path: once the SSE response has been opened, upstream
-  // failures (incl. 429) cannot change the HTTP status. The proxy emits
-  // a `response.failed` SSE event with the structured error instead.
-  // See PR #466 (858fb7c).
+  // Upstream failures detected before the SSE response body starts preserve
+  // their HTTP status while the error details are also sent as an SSE event.
   it("upstream 429 in streaming mode: emits response.failed SSE event with rate_limit_error", async () => {
     setTransportPost(async () =>
       makeErrorTransportResponse(429, JSON.stringify({ detail: "Rate limited" })),
     );
 
     const res = await responsesRequest(defaultBody());
-    expect(res.status).toBe(200);
+    expect(res.status).toBe(429);
     expect(res.headers.get("Content-Type")).toContain("text/event-stream");
 
     const events = parseNamedSSE(await res.text());
