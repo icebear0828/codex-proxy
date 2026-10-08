@@ -74,10 +74,14 @@ export async function handleDirectRequest(options: HandleDirectRequestOptions): 
     });
     if (err instanceof CodexApiError) {
       const code = toErrorStatus(err.status) as StatusCode;
+      c.status(code);
+      if (code === 429) {
+        const retryAfter = err.headers?.get("retry-after");
+        if (retryAfter) c.header("Retry-After", retryAfter);
+      }
       if (canReturnStreamError(req, fmt)) {
         return streamErrorResponse(c, fmt, code, err.message);
       }
-      c.status(code);
       // For API-key upstreams, forward the raw upstream error body transparently.
       try {
         const parsed: unknown = JSON.parse(err.body);
