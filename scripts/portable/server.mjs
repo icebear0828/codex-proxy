@@ -293,6 +293,18 @@ const dataDir = options.portable
 // the selected data directory before that import. The explicit path set below
 // then freezes the same layout for the complete backend lifetime.
 process.env.CODEX_PROXY_DATA_DIR = dataDir;
+// Platform packages live under this package's own npm scope; expose it before
+// the bundle's loader asks for them. CODEX_NPM_SCOPE stays an explicit
+// override. The Lite zip has no root package.json — the loader then keeps
+// its compiled-in default, which is fine because its addons load from the
+// local .node files rather than the package fallback.
+if (!process.env.CODEX_NPM_SCOPE) {
+  try {
+    const rootManifest = JSON.parse(readFileSync(join(PACKAGE_ROOT, "package.json"), "utf-8"));
+    const scope = String(rootManifest?.name ?? "").match(/^@([^/]+)\//)?.[1];
+    if (scope) process.env.CODEX_NPM_SCOPE = scope;
+  } catch { /* no root package.json — the loader keeps its default scope */ }
+}
 const { getConfig, setPaths, startServer } = await import("./server-bundle.mjs");
 // The same wrapper serves the Lite zip and the npm packages; the staging
 // manifest declares which distribution this copy belongs to (Lite manifests

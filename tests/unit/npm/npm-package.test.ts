@@ -32,16 +32,23 @@ type AddonManifest = {
 };
 type StageModule = {
   ADDON_PACKAGES: AddonPackage[];
-  MAIN_PACKAGE_NAME: string;
-  buildMainManifest: (template: unknown, version: string) => unknown;
-  buildAddonManifest: (addon: AddonPackage, version: string) => unknown;
+  MAIN_PACKAGE_BASE: string;
+  mainPackageName: (scope: string) => string;
+  addonPackageName: (addon: AddonPackage, scope: string) => string;
+  repoLinks: (scope: string) => {
+    repository: { type: string; url: string };
+    homepage: string;
+    bugs: string;
+  };
+  buildMainManifest: (template: unknown, version: string, scope?: string) => unknown;
+  buildAddonManifest: (addon: AddonPackage, version: string, scope?: string) => unknown;
 };
 const require = createRequire(import.meta.url);
-const { ADDON_PACKAGES, MAIN_PACKAGE_NAME, buildMainManifest, buildAddonManifest } =
+const { ADDON_PACKAGES, MAIN_PACKAGE_BASE, mainPackageName, addonPackageName, repoLinks, buildMainManifest, buildAddonManifest } =
   require(STAGE_SCRIPT) as StageModule;
 
 const loaderFallbacks = new Set(
-  [...LOADER.matchAll(/require\('(codex-tls-[^']+)'\)/g)].map((match) => match[1]),
+  [...LOADER.matchAll(/requireAddon\('(codex-tls-[^']+)'\)/g)].map((match) => match[1]),
 );
 
 describe("npm distribution staging", () => {
@@ -98,32 +105,57 @@ describe("npm distribution staging", () => {
     const manifest = buildMainManifest(TEMPLATE, version) as MainManifest;
     expect(manifest.version).toBe(version);
     const optional = manifest.optionalDependencies;
-    expect(Object.keys(optional).sort()).toEqual(ADDON_PACKAGES.map((addon) => addon.name).sort());
+    expect(Object.keys(optional).sort())
+      .toEqual(ADDON_PACKAGES.map((addon) => addonPackageName(addon, "icebear0828")).sort());
     for (const addon of ADDON_PACKAGES) {
-      expect(optional[addon.name]).toBe(version);
+      expect(optional[addonPackageName(addon, "icebear0828")]).toBe(version);
     }
     // Publish never leaks the template placeholder version.
     expect(manifest.version).toBe(version);
     expect(manifest.version).not.toBe(TEMPLATE.version);
   });
 
-  it("scopes the main package and pins node:sqlite-capable engines", () => {
-    expect(MAIN_PACKAGE_NAME).toBe("@icebear0828/codex-proxy");
+  it("names packages after the owner scope and pins node:sqlite-capable engines", () => {
+    expect(mainPackageName("icebear0828")).toBe("@icebear0828/codex-proxy");
+    expect(mainPackageName("fork-owner")).toBe("@fork-owner/codex-proxy");
+    expect(MAIN_PACKAGE_BASE).toBe("codex-proxy");
     expect(TEMPLATE.engines).toEqual({ node: ">=22.13" });
     expect(TEMPLATE.bin).toEqual({ "codex-proxy": "bin/codex-proxy.mjs" });
   });
 
-  it("restricts addon packages to their own platform files", () => {
+  it("stages addon manifests under the scope with their own platform files", () => {
     for (const addon of ADDON_PACKAGES) {
       const manifest = buildAddonManifest(addon, "1.0.0") as AddonManifest;
+      expect(manifest.name).toBe(addonPackageName(addon, "icebear0828"));
       expect(manifest.os).toEqual([addon.os]);
       expect(manifest.cpu).toEqual([addon.cpu]);
       if (addon.libc) expect(manifest.libc).toEqual([addon.libc]);
       else expect(manifest.libc).toBeUndefined();
       expect(manifest.files).toContain(addon.file);
-      // Without a main entry, require('codex-tls-<triple>') cannot resolve.
+      // Without a main entry, require('@scope/codex-tls-<triple>') cannot resolve.
       expect(manifest.main).toBe(addon.file);
     }
+  });
+
+  it("points manifests at the publishing repo so the package links to it", () => {
+    // GitHub Packages links a new npm package to the repository its manifest
+    // names when the token can access that repo. A hardcoded upstream URL on
+    // a fork publish leaves the package unlinked and unadministrable.
+    expect(repoLinks("nieyuanhong").repository.url)
+      .toBe("git+https://github.com/nieyuanhong/codex-proxy.git");
+    const addon = ADDON_PACKAGES[0];
+    const main = buildMainManifest(TEMPLATE, "1.2.3", "fork-owner") as {
+      repository: { url: string };
+      homepage: string;
+      bugs: string;
+    };
+    expect(main.repository.url).toBe("git+https://github.com/fork-owner/codex-proxy.git");
+    expect(main.homepage).toBe("https://github.com/fork-owner/codex-proxy#readme");
+    expect(main.bugs).toBe("https://github.com/fork-owner/codex-proxy/issues");
+    const addonManifest = buildAddonManifest(addon, "1.2.3", "fork-owner") as {
+      repository: { url: string };
+    };
+    expect(addonManifest.repository.url).toBe("git+https://github.com/fork-owner/codex-proxy.git");
   });
 
   it("classifies the npm install as npm, not lite, at runtime", () => {
@@ -141,5 +173,11 @@ describe("npm distribution staging", () => {
     // ...while the Lite manifest deliberately has no distribution field.
     const liteBuilder = readFileSync(resolve(ROOT, "scripts", "portable", "build-portable.mjs"), "utf8");
     expect(liteBuilder).not.toMatch(/distribution:/);
+
+    // Scoped addons must resolve without anyone exporting CODEX_NPM_SCOPE:
+    // the loader reads that env at runtime, and the wrapper seeds it from
+    // the installed package's own root package.json name (@scope/codex-proxy).
+    expect(LOADER).toContain("CODEX_NPM_SCOPE");
+    expect(wrapper).toContain('join(PACKAGE_ROOT, "package.json")');
   });
 });

@@ -1,16 +1,16 @@
 #!/usr/bin/env node
 // Stage the npm distribution packages:
-//   <out>/main/                 — @icebear0828/codex-proxy (launcher + Lite payload, no .node)
-//   <out>/addons/<pkg>/         — one package per platform triple (its .node + LICENCE)
+//   <out>/main/                 — @<scope>/codex-proxy (launcher + payload, no .node)
+//   <out>/addons/<pkg>/         — one @<scope>/codex-tls-<triple> per platform
 //
 // Payload mirrors scripts/portable/build-portable.mjs (app/ server wrapper +
 // esbuild bundle, config/, public/, bin/) except that native addons live in
-// the per-platform packages referenced via optionalDependencies, and the
-// shell launchers are replaced by the npm bin entry.
+// the per-platform @<scope>/codex-tls-<triple> packages referenced via
+// optionalDependencies, and the shell launchers are replaced by the npm bin.
 //
 // Usage:
 //   node scripts/npm/stage-npm-packages.mjs --out dist/npm \
-//     [--version x.y.z] [--native native] [--skip-missing-addons]
+//     [--version x.y.z] [--scope owner] [--native native] [--skip-missing-addons]
 
 import { chmodSync, cpSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
@@ -23,9 +23,10 @@ const BUNDLE = resolve(ROOT, "packages/electron/dist-electron/server.mjs");
 const SERVER_WRAPPER = resolve(ROOT, "scripts/portable/server.mjs");
 const NOTICES = resolve(ROOT, "scripts/portable/THIRD-PARTY-NOTICES.txt");
 
-// Every loader name below must exist verbatim in native/index.js's
-// require('codex-tls-<triple>') fallbacks — enforced by
-// tests/unit/npm/npm-package.test.ts. `libc` only applies to linux packages;
+// Every addon name below is the unscoped base; staged packages and the
+// loader require it under the @<scope> (the require('@<scope>/codex-tls-
+// <triple>') fallbacks in native/index.js — enforced by
+// tests/unit/npm/npm-package.test.ts). `libc` only applies to linux packages;
 // npm skips optional dependencies whose os/cpu/libc don't match the host
 // (libc support: npm >= 10.1, bundled with every Node 22).
 export const ADDON_PACKAGES = [
@@ -39,18 +40,42 @@ export const ADDON_PACKAGES = [
   { name: "codex-tls-darwin-arm64", os: "darwin", cpu: "arm64", libc: null, file: "codex-tls.darwin-arm64.node" },
 ];
 
-export const MAIN_PACKAGE_NAME = "@icebear0828/codex-proxy";
+export const MAIN_PACKAGE_BASE = "codex-proxy";
+
+export function mainPackageName(scope) {
+  return `@${scope}/${MAIN_PACKAGE_BASE}`;
+}
+
+export function addonPackageName(addon, scope) {
+  return `@${scope}/${addon.name}`;
+}
+
+// GitHub Packages links a newly published npm package to the repository its
+// manifest names when the publishing token can access that repo. A hardcoded
+// upstream URL therefore leaves fork publishes unlinked (the package floats
+// in the namespace and no repo token can administer it), so derive the URLs
+// from the publish scope.
+export function repoLinks(scope) {
+  const url = `https://github.com/${scope}/codex-proxy`;
+  return {
+    repository: { type: "git", url: `git+${url}.git` },
+    homepage: `${url}#readme`,
+    bugs: `${url}/issues`,
+  };
+}
 
 function parseArgs(argv) {
-  const options = { out: null, version: null, native: join(ROOT, "native"), skipMissingAddons: false };
+  const options = { out: null, version: null, scope: "icebear0828", native: join(ROOT, "native"), skipMissingAddons: false };
   for (let i = 0; i < argv.length; i += 1) {
     const arg = argv[i];
     if (arg === "--out") options.out = resolve(argv[++i]);
     else if (arg === "--version") options.version = argv[++i];
+    else if (arg === "--scope") options.scope = argv[++i].replace(/^@/, "");
     else if (arg === "--native") options.native = resolve(argv[++i]);
     else if (arg === "--skip-missing-addons") options.skipMissingAddons = true;
     else if (arg.startsWith("--out=")) options.out = resolve(arg.slice("--out=".length));
-    else if (arg.startsWith("--version=")) options.version = arg.slice("--version=".length);
+    else if (arg.startsWith("--version=")) options.version = arg.slice(arg.indexOf("=") + 1);
+    else if (arg.startsWith("--scope=")) options.scope = arg.slice("--scope=".length).replace(/^@/, "");
     else if (arg.startsWith("--native=")) options.native = resolve(arg.slice("--native=".length));
     else throw new Error(`Unknown option: ${arg}`);
   }
@@ -81,17 +106,21 @@ function copyNativeLoader(source, destination) {
   writeFileSync(join(destination, "package.json"), '{"type":"commonjs"}\n');
 }
 
-export function buildMainManifest(template, version) {
+export function buildMainManifest(template, version, scope = "icebear0828") {
   return {
     ...template,
+    ...repoLinks(scope),
+    name: mainPackageName(scope),
     version,
-    optionalDependencies: Object.fromEntries(ADDON_PACKAGES.map((addon) => [addon.name, version])),
+    optionalDependencies: Object.fromEntries(
+      ADDON_PACKAGES.map((addon) => [addonPackageName(addon, scope), version]),
+    ),
   };
 }
 
-export function buildAddonManifest(addon, version) {
+export function buildAddonManifest(addon, version, scope = "icebear0828") {
   const manifest = {
-    name: addon.name,
+    name: addonPackageName(addon, scope),
     version,
     description: `codex-proxy TLS native addon (${addon.name.replace("codex-tls-", "")})`,
     license: "SEE LICENSE IN LICENCE",
@@ -101,22 +130,19 @@ export function buildAddonManifest(addon, version) {
     os: [addon.os],
     cpu: [addon.cpu],
     files: [addon.file, "LICENCE"],
-    repository: {
-      type: "git",
-      url: "git+https://github.com/icebear0828/codex-proxy.git",
-    },
+    ...repoLinks(scope),
   };
   if (addon.libc) manifest.libc = [addon.libc];
   return manifest;
 }
 
-function stageMainPackage(out, version, nativeDir) {
+function stageMainPackage(out, version, scope, nativeDir) {
   const template = JSON.parse(readFileSync(join(NPM_PKG_DIR, "package.json"), "utf8"));
   const stage = join(out, "main");
   rmSync(stage, { recursive: true, force: true });
   mkdirSync(stage, { recursive: true });
 
-  const manifest = buildMainManifest(template, version);
+  const manifest = buildMainManifest(template, version, scope);
   writeFileSync(join(stage, "package.json"), JSON.stringify(manifest, null, 2) + "\n");
 
   copyDirectory(join(NPM_PKG_DIR, "bin"), join(stage, "bin"));
@@ -151,7 +177,7 @@ function stageMainPackage(out, version, nativeDir) {
   return stage;
 }
 
-function stageAddonPackages(out, version, nativeDir, skipMissing) {
+function stageAddonPackages(out, version, scope, nativeDir, skipMissing) {
   const addonsRoot = join(out, "addons");
   rmSync(addonsRoot, { recursive: true, force: true });
   const staged = [];
@@ -164,11 +190,11 @@ function stageAddonPackages(out, version, nativeDir, skipMissing) {
     }
     const stage = join(addonsRoot, addon.name);
     mkdirSync(stage, { recursive: true });
-    writeFileSync(join(stage, "package.json"), JSON.stringify(buildAddonManifest(addon, version), null, 2) + "\n");
+    writeFileSync(join(stage, "package.json"), JSON.stringify(buildAddonManifest(addon, version, scope), null, 2) + "\n");
     cpSync(addonFile, join(stage, addon.file));
     const licence = resolve(ROOT, "LICENCE");
     if (existsSync(licence)) cpSync(licence, join(stage, "LICENCE"));
-    staged.push(addon.name);
+    staged.push(addonPackageName(addon, scope));
   }
   if (missing.length > 0) {
     const message = `Missing native addons: ${missing.join(", ")}`;
@@ -183,11 +209,11 @@ function main() {
   const version = options.version ?? JSON.parse(readFileSync(join(ROOT, "package.json"), "utf8")).version;
   mkdirSync(options.out, { recursive: true });
 
-  const mainStage = stageMainPackage(options.out, version, options.native);
-  const { staged, missing } = stageAddonPackages(options.out, version, options.native, options.skipMissingAddons);
+  const mainStage = stageMainPackage(options.out, version, options.scope, options.native);
+  const { staged, missing } = stageAddonPackages(options.out, version, options.scope, options.native, options.skipMissingAddons);
 
   console.log(`[npm-stage] version ${version}`);
-  console.log(`[npm-stage] main:   ${mainStage} (${MAIN_PACKAGE_NAME})`);
+  console.log(`[npm-stage] main:   ${mainStage} (${mainPackageName(options.scope)})`);
   console.log(`[npm-stage] addons: ${staged.length}/${ADDON_PACKAGES.length} staged (${staged.join(", ") || "none"})`);
   if (missing.length > 0) console.warn(`[npm-stage] missing addons: ${missing.join(", ")}`);
 }

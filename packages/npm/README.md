@@ -21,7 +21,7 @@ codex-proxy --help          # all options
 
 On first start the dashboard opens at `http://127.0.0.1:8080` (port configurable via `--port` or `PORT`). On Windows the dashboard opens in your system browser; the desktop app and the Lite zip ship a native WebView2 host, which the npm package does not include.
 
-Runtime data (accounts, config, usage history) is stored in the per-user data directory (`%APPDATA%\@codex-proxy\electron\data` on Windows, `~/.config/@codex-proxy/electron/data` on Linux, `~/Library/Application Support/@codex-proxy/electron/data` on macOS), so it survives package updates. Set `CODEX_PROXY_DATA_DIR` or pass `--portable` to relocate it. Platform-specific TLS addons are installed automatically for your OS/architecture (Windows x64+arm64, macOS x64+arm64, Linux x64+arm64 with glibc and musl variants); binaries for other platforms are never downloaded.
+Runtime data (accounts, config, usage history) is stored in the per-user data directory (`%APPDATA%\@codex-proxy\electron\data` on Windows, `~/.config/@codex-proxy/electron/data` on Linux, `~/Library/Application Support/@codex-proxy/electron/data` on macOS), so it survives package updates. Set `CODEX_PROXY_DATA_DIR` or pass `--portable` to relocate it. Platform-specific TLS addons are installed automatically for your OS/architecture; binaries for other platforms are never downloaded.
 
 ## Links
 

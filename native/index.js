@@ -9,6 +9,13 @@ const { join } = require('path')
 
 const { platform, arch } = process
 
+// Platform packages share the main package's npm scope; it matches the
+// distribution origin — override via CODEX_NPM_SCOPE when running from a fork.
+const npmScope = process.env.CODEX_NPM_SCOPE || 'icebear0828'
+function requireAddon(name) {
+  return require(`@${npmScope}/${name}`)
+}
+
 let nativeBinding = null
 let localFileExisted = false
 let loadError = null
@@ -37,7 +44,7 @@ switch (platform) {
           if (localFileExisted) {
             nativeBinding = require('./codex-tls.android-arm64.node')
           } else {
-            nativeBinding = require('codex-tls-android-arm64')
+            nativeBinding = requireAddon('codex-tls-android-arm64')
           }
         } catch (e) {
           loadError = e
@@ -49,7 +56,7 @@ switch (platform) {
           if (localFileExisted) {
             nativeBinding = require('./codex-tls.android-arm-eabi.node')
           } else {
-            nativeBinding = require('codex-tls-android-arm-eabi')
+            nativeBinding = requireAddon('codex-tls-android-arm-eabi')
           }
         } catch (e) {
           loadError = e
@@ -69,7 +76,7 @@ switch (platform) {
           if (localFileExisted) {
             nativeBinding = require('./codex-tls.win32-x64-msvc.node')
           } else {
-            nativeBinding = require('codex-tls-win32-x64-msvc')
+            nativeBinding = requireAddon('codex-tls-win32-x64-msvc')
           }
         } catch (e) {
           loadError = e
@@ -83,7 +90,7 @@ switch (platform) {
           if (localFileExisted) {
             nativeBinding = require('./codex-tls.win32-ia32-msvc.node')
           } else {
-            nativeBinding = require('codex-tls-win32-ia32-msvc')
+            nativeBinding = requireAddon('codex-tls-win32-ia32-msvc')
           }
         } catch (e) {
           loadError = e
@@ -97,7 +104,7 @@ switch (platform) {
           if (localFileExisted) {
             nativeBinding = require('./codex-tls.win32-arm64-msvc.node')
           } else {
-            nativeBinding = require('codex-tls-win32-arm64-msvc')
+            nativeBinding = requireAddon('codex-tls-win32-arm64-msvc')
           }
         } catch (e) {
           loadError = e
@@ -113,7 +120,7 @@ switch (platform) {
       if (localFileExisted) {
         nativeBinding = require('./codex-tls.darwin-universal.node')
       } else {
-        nativeBinding = require('codex-tls-darwin-universal')
+        nativeBinding = requireAddon('codex-tls-darwin-universal')
       }
       break
     } catch {}
@@ -124,7 +131,7 @@ switch (platform) {
           if (localFileExisted) {
             nativeBinding = require('./codex-tls.darwin-x64.node')
           } else {
-            nativeBinding = require('codex-tls-darwin-x64')
+            nativeBinding = requireAddon('codex-tls-darwin-x64')
           }
         } catch (e) {
           loadError = e
@@ -138,7 +145,7 @@ switch (platform) {
           if (localFileExisted) {
             nativeBinding = require('./codex-tls.darwin-arm64.node')
           } else {
-            nativeBinding = require('codex-tls-darwin-arm64')
+            nativeBinding = requireAddon('codex-tls-darwin-arm64')
           }
         } catch (e) {
           loadError = e
@@ -157,7 +164,7 @@ switch (platform) {
       if (localFileExisted) {
         nativeBinding = require('./codex-tls.freebsd-x64.node')
       } else {
-        nativeBinding = require('codex-tls-freebsd-x64')
+        nativeBinding = requireAddon('codex-tls-freebsd-x64')
       }
     } catch (e) {
       loadError = e
@@ -174,7 +181,7 @@ switch (platform) {
             if (localFileExisted) {
               nativeBinding = require('./codex-tls.linux-x64-musl.node')
             } else {
-              nativeBinding = require('codex-tls-linux-x64-musl')
+              nativeBinding = requireAddon('codex-tls-linux-x64-musl')
             }
           } catch (e) {
             loadError = e
@@ -187,7 +194,7 @@ switch (platform) {
             if (localFileExisted) {
               nativeBinding = require('./codex-tls.linux-x64-gnu.node')
             } else {
-              nativeBinding = require('codex-tls-linux-x64-gnu')
+              nativeBinding = requireAddon('codex-tls-linux-x64-gnu')
             }
           } catch (e) {
             loadError = e
@@ -203,7 +210,7 @@ switch (platform) {
             if (localFileExisted) {
               nativeBinding = require('./codex-tls.linux-arm64-musl.node')
             } else {
-              nativeBinding = require('codex-tls-linux-arm64-musl')
+              nativeBinding = requireAddon('codex-tls-linux-arm64-musl')
             }
           } catch (e) {
             loadError = e
@@ -216,7 +223,7 @@ switch (platform) {
             if (localFileExisted) {
               nativeBinding = require('./codex-tls.linux-arm64-gnu.node')
             } else {
-              nativeBinding = require('codex-tls-linux-arm64-gnu')
+              nativeBinding = requireAddon('codex-tls-linux-arm64-gnu')
             }
           } catch (e) {
             loadError = e
@@ -232,7 +239,7 @@ switch (platform) {
             if (localFileExisted) {
               nativeBinding = require('./codex-tls.linux-arm-musleabihf.node')
             } else {
-              nativeBinding = require('codex-tls-linux-arm-musleabihf')
+              nativeBinding = requireAddon('codex-tls-linux-arm-musleabihf')
             }
           } catch (e) {
             loadError = e
@@ -245,7 +252,7 @@ switch (platform) {
             if (localFileExisted) {
               nativeBinding = require('./codex-tls.linux-arm-gnueabihf.node')
             } else {
-              nativeBinding = require('codex-tls-linux-arm-gnueabihf')
+              nativeBinding = requireAddon('codex-tls-linux-arm-gnueabihf')
             }
           } catch (e) {
             loadError = e
@@ -261,7 +268,7 @@ switch (platform) {
             if (localFileExisted) {
               nativeBinding = require('./codex-tls.linux-riscv64-musl.node')
             } else {
-              nativeBinding = require('codex-tls-linux-riscv64-musl')
+              nativeBinding = requireAddon('codex-tls-linux-riscv64-musl')
             }
           } catch (e) {
             loadError = e
@@ -274,7 +281,7 @@ switch (platform) {
             if (localFileExisted) {
               nativeBinding = require('./codex-tls.linux-riscv64-gnu.node')
             } else {
-              nativeBinding = require('codex-tls-linux-riscv64-gnu')
+              nativeBinding = requireAddon('codex-tls-linux-riscv64-gnu')
             }
           } catch (e) {
             loadError = e
@@ -289,7 +296,7 @@ switch (platform) {
           if (localFileExisted) {
             nativeBinding = require('./codex-tls.linux-s390x-gnu.node')
           } else {
-            nativeBinding = require('codex-tls-linux-s390x-gnu')
+            nativeBinding = requireAddon('codex-tls-linux-s390x-gnu')
           }
         } catch (e) {
           loadError = e
