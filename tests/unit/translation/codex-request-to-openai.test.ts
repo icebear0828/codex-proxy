@@ -96,16 +96,57 @@ describe("translateCodexToOpenAIRequest", () => {
     expect(result.reasoning_effort).toBe("high");
   });
 
-  it("passes tools and tool_choice through", () => {
-    const tools = [{ type: "function" as const, function: { name: "fn", parameters: {} } }];
+  it("maps Responses tools and named choice to Chat Completions envelopes", () => {
+    const tools = [{ type: "function", name: "fn", description: "Lookup", parameters: { type: "object", properties: {} }, strict: true }];
     const req = makeBaseRequest({
       input: [{ role: "user", content: "use tool" }],
       tools,
-      tool_choice: "auto",
+      tool_choice: { type: "function", name: "fn" },
+      parallel_tool_calls: false,
     });
     const result = translateCodexToOpenAIRequest(req, "gpt-4o", false);
-    expect(result.tools).toEqual(tools);
-    expect(result.tool_choice).toBe("auto");
+    expect(result.tools).toEqual([{ type: "function", function: {
+      name: "fn", description: "Lookup", parameters: { type: "object", properties: {} }, strict: true,
+    } }]);
+    expect(result.tool_choice).toEqual({ type: "function", function: { name: "fn" } });
+    expect(result.parallel_tool_calls).toBe(false);
+  });
+
+  it("preserves custom tool calls and matching results across turns", () => {
+    const req = makeBaseRequest({
+      input: [
+        { type: "custom_tool_call", call_id: "call_custom", name: "shell", input: "ls" },
+        { type: "custom_tool_call_output", call_id: "call_custom", output: "file.txt" },
+      ],
+      tools: [{ type: "custom", name: "shell", format: { type: "text" } }],
+      tool_choice: { type: "custom", name: "shell" },
+    });
+    const result = translateCodexToOpenAIRequest(req, "gpt-4o", false);
+    expect(result.tools).toEqual([{ type: "custom", custom: { name: "shell", format: { type: "text" } } }]);
+    expect(result.tool_choice).toEqual({ type: "custom", custom: { name: "shell" } });
+    expect(result.messages).toEqual([
+      { role: "assistant", content: null, tool_calls: [{ id: "call_custom", type: "custom", custom: { name: "shell", input: "ls" } }] },
+      { role: "tool", tool_call_id: "call_custom", content: "file.txt" },
+    ]);
+  });
+
+  it("maps hosted web search to Chat Completions web_search_options", () => {
+    const req = makeBaseRequest({
+      input: [{ role: "user", content: "search" }],
+      tools: [{ type: "web_search", search_context_size: "low" }],
+      tool_choice: "auto",
+    });
+    const result = translateCodexToOpenAIRequest(req, "gpt-4o-search-preview", false);
+    expect(result.tools).toBeUndefined();
+    expect(result.web_search_options).toEqual({ search_context_size: "low" });
+  });
+
+  it("rejects Responses tools with no Chat Completions equivalent", () => {
+    const req = makeBaseRequest({
+      input: [{ role: "user", content: "draw" }],
+      tools: [{ type: "image_generation" }],
+    });
+    expect(() => translateCodexToOpenAIRequest(req, "gpt-4o", false)).toThrow(/Unsupported Chat Completions tool type/);
   });
 
   it("translates developer role to system to support providers that reject developer role", () => {
@@ -123,5 +164,16 @@ describe("translateCodexToOpenAIRequest", () => {
     });
     const result = translateCodexToOpenAIRequest(req, "gpt-4o", false);
     expect(result.response_format).toEqual({ type: "json_object" });
+  });
+
+  it("nests Responses JSON schema inside Chat Completions response_format", () => {
+    const req = makeBaseRequest({
+      input: [{ role: "user", content: "json" }],
+      text: { format: { type: "json_schema", name: "answer", schema: { type: "object" }, strict: true } },
+    });
+    const result = translateCodexToOpenAIRequest(req, "gpt-4o", false);
+    expect(result.response_format).toEqual({
+      type: "json_schema", json_schema: { name: "answer", schema: { type: "object" }, strict: true },
+    });
   });
 });
