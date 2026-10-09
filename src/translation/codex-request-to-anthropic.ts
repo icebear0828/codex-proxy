@@ -10,7 +10,7 @@
  */
 
 import type { CodexInputItem, CodexContentPart, CodexResponsesRequest } from "../proxy/codex-types.js";
-import { REASONING_EFFORT_BUDGET } from "./shared-utils.js";
+import { isRecord, REASONING_EFFORT_BUDGET } from "./shared-utils.js";
 
 /** Anthropic content block shapes. */
 type AnthropicContentBlock =
@@ -30,17 +30,47 @@ export interface AnthropicMessageRequest {
   system?: string;
   max_tokens: number;
   stream: boolean;
-  tools?: unknown[];
-  tool_choice?: unknown;
-  thinking?: { type: "enabled"; budget_tokens: number };
+  tools?: Array<{ name: string; description?: string; input_schema: Record<string, unknown> }>;
+  tool_choice?: { type: "auto" | "none" | "any" } | { type: "tool"; name: string };
+  thinking?: { type: "enabled"; budget_tokens: number } | { type: "adaptive" };
+  output_config?: { effort: "low" | "medium" | "high" | "xhigh" };
 }
 
 function codexPartToAnthropic(part: CodexContentPart): AnthropicContentBlock {
   if (part.type === "input_text") {
     return { type: "text", text: part.text };
   }
-  // input_image — pass as URL source
+  const dataUri = /^data:([^;,]+);base64,(.+)$/s.exec(part.image_url);
+  if (dataUri) {
+    return { type: "image", source: { type: "base64", media_type: dataUri[1], data: dataUri[2] } };
+  }
   return { type: "image", source: { type: "url", url: part.image_url } };
+}
+
+function codexToolsToAnthropic(tools: unknown[]): NonNullable<AnthropicMessageRequest["tools"]> {
+  return tools.map((tool) => {
+    if (!isRecord(tool) || tool.type !== "function" || typeof tool.name !== "string") {
+      throw new TypeError("Anthropic upstream only supports Codex function tools");
+    }
+    const converted: NonNullable<AnthropicMessageRequest["tools"]>[number] = {
+      name: tool.name,
+      input_schema: isRecord(tool.parameters) ? tool.parameters : { type: "object", properties: {} },
+    };
+    if (typeof tool.description === "string") converted.description = tool.description;
+    return converted;
+  });
+}
+
+function codexToolChoiceToAnthropic(
+  choice: CodexResponsesRequest["tool_choice"],
+): AnthropicMessageRequest["tool_choice"] {
+  if (choice === "auto" || choice === "none") return { type: choice };
+  if (choice === "required") return { type: "any" };
+  if (choice && typeof choice === "object" && choice.type === "function" && typeof choice.name === "string") {
+    return { type: "tool", name: choice.name };
+  }
+  if (choice !== undefined) throw new TypeError("Unsupported Codex tool choice for Anthropic upstream");
+  return undefined;
 }
 
 function inputItemsToAnthropicMessages(input: CodexInputItem[]): AnthropicMessage[] {
@@ -124,16 +154,25 @@ export function translateCodexToAnthropicRequest(
     body.system = systemInstructions.join("\n\n");
   }
 
-  // Thinking budget for extended reasoning
-  if (req.reasoning?.effort) {
-    const budget = REASONING_EFFORT_BUDGET[req.reasoning.effort] ?? 8192;
-    body.thinking = { type: "enabled", budget_tokens: budget };
+  if (req.tools?.length) {
+    const tools = codexToolsToAnthropic(req.tools);
+    body.tools = tools;
+    body.tool_choice = codexToolChoiceToAnthropic(req.tool_choice);
   }
 
-  if (req.tools?.length) {
-    body.tools = req.tools;
-    if (req.tool_choice !== undefined) {
-      body.tool_choice = req.tool_choice;
+  const forcedTool = body.tool_choice?.type === "any" || body.tool_choice?.type === "tool";
+  if (req.reasoning?.effort && !forcedTool) {
+    if (/^claude-(?:opus|sonnet|haiku)-(?:4-(?:[7-9]|[1-9][0-9])|[5-9])(?:-|$)/.test(modelId)) {
+      body.thinking = { type: "adaptive" };
+      const effort = req.reasoning.effort;
+      body.output_config = { effort: effort === "low" || effort === "medium" || effort === "high" || effort === "xhigh" ? effort : "medium" };
+    } else {
+      const budget = REASONING_EFFORT_BUDGET[req.reasoning.effort] ?? 8192;
+      const supportsExpandedOutput = /^claude-(?:3-7|(?:sonnet|opus|haiku)-4)/.test(modelId);
+      if (supportsExpandedOutput && budget >= body.max_tokens) {
+        body.max_tokens = Math.min(32768, budget + 1024);
+      }
+      body.thinking = { type: "enabled", budget_tokens: Math.min(budget, body.max_tokens - 1) };
     }
   }
 
