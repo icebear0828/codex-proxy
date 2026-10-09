@@ -8,13 +8,13 @@
 
 ## [Unreleased]
 
-### Fixed
-
-- 修复 OpenAI Chat Completions 请求的旧版 `function_call` 选择和 `parallel_tool_calls` 设置在转译为 Codex Responses 请求时丢失的问题。（`src/translation/openai-to-codex.ts`）
+> 暂无已记录的变更。
 
 ## [v2.1.x](https://github.com/icebear0828/codex-proxy/releases?q=2.1) - 2026-09-01 至 2026-09-07
 
 ### Fixed
+
+- 修复 OpenAI Chat Completions 请求的旧版 `function_call` 选择和 `parallel_tool_calls` 设置在转译为 Codex Responses 请求时丢失的问题。（`src/translation/openai-to-codex.ts`）
 
 - Anthropic Messages 入站请求现在接受 `tool_choice: { type: "none" }` 和 URL 图片来源，并将其正确转为 Codex Responses 的工具选择与图片输入；工具结果中的 URL 图片也会保留。（`src/types/anthropic.ts`、`src/translation/tool-format.ts`、`src/translation/anthropic-to-codex.ts`）
 
