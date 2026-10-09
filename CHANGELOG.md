@@ -8,7 +8,9 @@
 
 ## [Unreleased]
 
-> 暂无已记录的变更。
+### Fixed
+
+- Gemini 请求入口保留原生工具调用 ID，并在跨轮和并行同名工具调用时稳定匹配无 ID 的工具结果，避免错误关联或重复 ID。（`src/types/gemini.ts`、`src/translation/gemini-to-codex.ts`）
 
 ## [v2.1.x](https://github.com/icebear0828/codex-proxy/releases?q=2.1) - 2026-09-01 至 2026-09-07
 

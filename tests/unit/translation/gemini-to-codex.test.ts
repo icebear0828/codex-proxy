@@ -59,6 +59,7 @@ import {
   geminiContentsToMessages,
 } from "@src/translation/gemini-to-codex.js";
 import type { GeminiGenerateContentRequest } from "@src/types/gemini.js";
+import { GeminiGenerateContentRequestSchema } from "@src/types/gemini.js";
 
 /** Unwrap the new GeminiTranslationResult — existing tests only check codexRequest fields. */
 const translateGeminiToCodexRequest = (req: GeminiGenerateContentRequest, model: string) =>
@@ -240,6 +241,48 @@ describe("translateGeminiToCodexRequest", () => {
       "gpt-5.4",
     );
     expect(result.reasoning?.effort).toBe("medium");
+  });
+
+  it("preserves native function IDs across separate contents", () => {
+    const parsed = GeminiGenerateContentRequestSchema.parse(makeRequest({ contents: [
+      { role: "model", parts: [{ functionCall: { id: "native-call", name: "search", args: { q: "a" } } }] },
+      { role: "user", parts: [{ functionResponse: { id: "native-call", name: "search", response: { ok: true } } }] },
+    ] }));
+    const result = translateGeminiToCodexRequest(parsed, "gpt-5.4");
+    expect(result.input.filter((item) => "type" in item && (item.type === "function_call" || item.type === "function_call_output")))
+      .toMatchObject([{ call_id: "native-call" }, { call_id: "native-call" }]);
+  });
+
+  it("pairs ID-less parallel calls by name across contents without reusing IDs", () => {
+    const result = translateGeminiToCodexRequest(makeRequest({ contents: [
+      { role: "model", parts: [
+        { functionCall: { name: "search", args: { q: "a" } } },
+        { functionCall: { name: "search", args: { q: "b" } } },
+      ] },
+      { role: "user", parts: [{ functionResponse: { name: "search", response: { value: "a" } } }] },
+      { role: "user", parts: [{ functionResponse: { name: "search", response: { value: "b" } } }] },
+    ] }), "gpt-5.4");
+    expect(result.input.filter((item) => "type" in item && (item.type === "function_call" || item.type === "function_call_output")))
+      .toMatchObject([
+        { call_id: "fc_0" }, { call_id: "fc_1" },
+        { call_id: "fc_0" }, { call_id: "fc_1" },
+      ]);
+  });
+
+  it("uses native response IDs without consuming unrelated pending calls", () => {
+    const result = translateGeminiToCodexRequest(makeRequest({ contents: [
+      { role: "model", parts: [
+        { functionCall: { id: "native-a", name: "search" } },
+        { functionCall: { name: "search" } },
+      ] },
+      { role: "user", parts: [{ functionResponse: { id: "native-a", name: "search" } }] },
+      { role: "user", parts: [{ functionResponse: { name: "search" } }] },
+    ] }), "gpt-5.4");
+    expect(result.input.filter((item) => "type" in item && (item.type === "function_call" || item.type === "function_call_output")))
+      .toMatchObject([
+        { call_id: "native-a" }, { call_id: "fc_0" },
+        { call_id: "native-a" }, { call_id: "fc_0" },
+      ]);
   });
 
   it("does not forward maxOutputTokens to Codex", () => {
