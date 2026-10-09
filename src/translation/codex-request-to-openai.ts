@@ -10,6 +10,8 @@
  */
 
 import type { CodexInputItem, CodexContentPart, CodexResponsesRequest } from "../proxy/codex-types.js";
+import { CodexApiError } from "../proxy/codex-types.js";
+import { isRecord } from "./shared-utils.js";
 
 /** Minimal OpenAI chat message shape used for outgoing requests. */
 interface OpenAIMessage {
@@ -28,8 +30,21 @@ interface OpenAIContentPart {
 
 interface OpenAIToolCall {
   id: string;
+  type: "function" | "custom";
+  function?: { name: string; arguments: string };
+  custom?: { name: string; input: string };
+}
+
+interface OpenAIFunctionTool {
   type: "function";
-  function: { name: string; arguments: string };
+  function: { name: string; description?: string; parameters?: Record<string, unknown>; strict?: boolean };
+}
+
+interface OpenAICustomTool {
+  type: "custom";
+  name: string;
+  description?: string;
+  format?: Record<string, unknown>;
 }
 
 /** Outgoing OpenAI chat completions request body. */
@@ -39,8 +54,10 @@ export interface OpenAIChatRequest {
   stream: boolean;
   stream_options?: { include_usage: true };
   reasoning_effort?: string;
-  tools?: unknown[];
-  tool_choice?: unknown;
+  tools?: Array<OpenAIFunctionTool | OpenAICustomTool>;
+  tool_choice?: string | { type: "function"; function: { name: string } } | { type: "custom"; name: string };
+  parallel_tool_calls?: boolean;
+  web_search_options?: { search_context_size?: "low" | "medium" | "high"; user_location?: Record<string, unknown> };
   response_format?: unknown;
   max_completion_tokens?: number;
 }
@@ -64,20 +81,17 @@ function inputItemsToMessages(input: CodexInputItem[]): OpenAIMessage[] {
       } else {
         messages.push({ role: oaiRole, content: contentPartsToOpenAI(item.content) });
       }
-    } else if (item.type === "function_call") {
-      // Merge consecutive function_call items into a single assistant message
+    } else if (item.type === "function_call" || item.type === "custom_tool_call") {
       const last = messages.at(-1);
-      const toolCall: OpenAIToolCall = {
-        id: item.call_id,
-        type: "function",
-        function: { name: item.name, arguments: item.arguments },
-      };
+      const toolCall: OpenAIToolCall = item.type === "function_call"
+        ? { id: item.call_id, type: "function", function: { name: item.name, arguments: item.arguments } }
+        : { id: item.call_id, type: "custom", custom: { name: item.name, input: item.input } };
       if (last?.role === "assistant" && last.tool_calls) {
         last.tool_calls.push(toolCall);
       } else {
         messages.push({ role: "assistant", content: null, tool_calls: [toolCall] });
       }
-    } else if (item.type === "function_call_output") {
+    } else if (item.type === "function_call_output" || item.type === "custom_tool_call_output") {
       messages.push({
         role: "tool",
         tool_call_id: item.call_id,
@@ -87,6 +101,56 @@ function inputItemsToMessages(input: CodexInputItem[]): OpenAIMessage[] {
   }
 
   return messages;
+}
+
+function toolsToOpenAI(tools: unknown[]): {
+  tools: Array<OpenAIFunctionTool | OpenAICustomTool>;
+  webSearchOptions?: OpenAIChatRequest["web_search_options"];
+} {
+  const mapped: Array<OpenAIFunctionTool | OpenAICustomTool> = [];
+  let webSearchOptions: OpenAIChatRequest["web_search_options"];
+  for (const tool of tools) {
+    if (!isRecord(tool)) {
+      throw new CodexApiError(400, "Invalid Responses tool definition");
+    }
+    if (tool.type === "web_search") {
+      webSearchOptions = {};
+      if (tool.search_context_size === "low" || tool.search_context_size === "medium" || tool.search_context_size === "high") {
+        webSearchOptions.search_context_size = tool.search_context_size;
+      }
+      if (isRecord(tool.user_location)) webSearchOptions.user_location = tool.user_location;
+      continue;
+    }
+    if (typeof tool.name !== "string") {
+      throw new CodexApiError(400, `Unsupported Chat Completions tool type: ${String(tool.type)}`);
+    }
+    if (tool.type === "function") {
+      const fn: OpenAIFunctionTool["function"] = { name: tool.name };
+      if (typeof tool.description === "string") fn.description = tool.description;
+      if (isRecord(tool.parameters)) fn.parameters = tool.parameters;
+      if (typeof tool.strict === "boolean") fn.strict = tool.strict;
+      mapped.push({ type: "function", function: fn });
+    } else if (tool.type === "custom") {
+      const custom: OpenAICustomTool = { type: "custom", name: tool.name };
+      if (typeof tool.description === "string") custom.description = tool.description;
+      if (isRecord(tool.format)) custom.format = tool.format;
+      mapped.push(custom);
+    } else {
+      throw new CodexApiError(400, `Unsupported Chat Completions tool type: ${String(tool.type)}`);
+    }
+  }
+  return { tools: mapped, webSearchOptions };
+}
+
+function toolChoiceToOpenAI(choice: CodexResponsesRequest["tool_choice"]): OpenAIChatRequest["tool_choice"] {
+  if (typeof choice === "string") return choice;
+  if (choice?.type === "function" && choice.name) {
+    return { type: "function", function: { name: choice.name } };
+  }
+  if (choice?.type === "custom" && choice.name) {
+    return { type: "custom", name: choice.name };
+  }
+  return undefined;
 }
 
 /**
@@ -124,15 +188,24 @@ export function translateCodexToOpenAIRequest(
 
   // Tools
   if (req.tools?.length) {
-    body.tools = req.tools;
-    if (req.tool_choice !== undefined) {
-      body.tool_choice = req.tool_choice;
+    const mapped = toolsToOpenAI(req.tools);
+    if (mapped.tools.length > 0) {
+      body.tools = mapped.tools;
+      const choice = toolChoiceToOpenAI(req.tool_choice);
+      if (choice !== undefined) body.tool_choice = choice;
+      if (req.parallel_tool_calls !== undefined) body.parallel_tool_calls = req.parallel_tool_calls;
+    }
+    if (mapped.webSearchOptions && req.tool_choice !== "none") {
+      body.web_search_options = mapped.webSearchOptions;
     }
   }
 
   // Response format (JSON mode / structured outputs)
   if (req.text?.format) {
-    body.response_format = req.text.format;
+    const format = req.text.format;
+    body.response_format = format.type === "json_schema"
+      ? { type: "json_schema", json_schema: { name: format.name, schema: format.schema, strict: format.strict } }
+      : { type: format.type };
   }
 
   return body;

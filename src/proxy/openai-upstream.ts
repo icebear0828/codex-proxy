@@ -82,10 +82,10 @@ export class OpenAIUpstream implements UpstreamAdapter {
     let finishReason: string | null = null;
     const usage = { input_tokens: 0, output_tokens: 0, cached_tokens: 0 };
 
-    // Maps tool call index → { id, name, argBuffer }
+    // Maps tool call index to its accumulated call data.
     const toolCalls = new Map<
       number,
-      { id: string; name: string; argBuffer: string }
+      { id: string; name: string; kind: "function" | "custom"; argBuffer: string }
     >();
 
     for await (const raw of parseSSEStream(response)) {
@@ -119,12 +119,11 @@ export class OpenAIUpstream implements UpstreamAdapter {
       const choices = Array.isArray(chunk.choices) ? chunk.choices : [];
       for (const choice of choices) {
         if (!isRecord(choice)) continue;
-        const delta = isRecord(choice.delta) ? choice.delta : null;
-        if (!delta) continue;
-
         if (typeof choice.finish_reason === "string") {
           finishReason = choice.finish_reason;
         }
+        const delta = isRecord(choice.delta) ? choice.delta : null;
+        if (!delta) continue;
 
         // Text delta
         if (typeof delta.content === "string" && delta.content.length > 0) {
@@ -140,19 +139,22 @@ export class OpenAIUpstream implements UpstreamAdapter {
           if (!isRecord(tc)) continue;
           const index = typeof tc.index === "number" ? tc.index : 0;
           const fn = isRecord(tc.function) ? tc.function : null;
+          const custom = isRecord(tc.custom) ? tc.custom : null;
 
           if (!toolCalls.has(index)) {
             // First chunk for this tool call — has id and name
             const id = typeof tc.id === "string" ? tc.id : `call_${randomUUID().slice(0, 8)}`;
-            const name = fn && typeof fn.name === "string" ? fn.name : "";
-            toolCalls.set(index, { id, name, argBuffer: "" });
+            const kind = tc.type === "custom" || (custom && !fn) ? "custom" : "function";
+            const call = kind === "custom" ? custom : fn;
+            const name = call && typeof call.name === "string" ? call.name : "";
+            toolCalls.set(index, { id, name, kind, argBuffer: "" });
 
             yield {
               event: "response.output_item.added",
               data: {
                 output_index: index,
                 item: {
-                  type: "function_call",
+                  type: kind === "custom" ? "custom_tool_call" : "function_call",
                   id: `item_${index}`,
                   call_id: id,
                   name,
@@ -161,23 +163,28 @@ export class OpenAIUpstream implements UpstreamAdapter {
             };
           }
 
-          if (fn && typeof fn.arguments === "string" && fn.arguments.length > 0) {
+          const fragment = custom && typeof custom.input === "string"
+            ? custom.input
+            : fn && typeof fn.arguments === "string" ? fn.arguments : null;
+          if (fragment) {
             const info = toolCalls.get(index)!;
-            info.argBuffer += fn.arguments;
+            info.argBuffer += fragment;
             yield {
-              event: "response.function_call_arguments.delta",
-              data: { call_id: info.id, delta: fn.arguments, output_index: index },
+              event: info.kind === "custom" ? "response.custom_tool_call_input.delta" : "response.function_call_arguments.delta",
+              data: { call_id: info.id, delta: fragment, output_index: index },
             };
           }
         }
       }
     }
 
-    // Emit function_call_arguments.done for each completed tool call
+    // Emit completion for each tool call.
     for (const [index, info] of toolCalls) {
       yield {
-        event: "response.function_call_arguments.done",
-        data: { call_id: info.id, name: info.name, arguments: info.argBuffer, output_index: index },
+        event: info.kind === "custom" ? "response.custom_tool_call_input.done" : "response.function_call_arguments.done",
+        data: info.kind === "custom"
+          ? { call_id: info.id, name: info.name, input: info.argBuffer, output_index: index }
+          : { call_id: info.id, name: info.name, arguments: info.argBuffer, output_index: index },
       };
     }
 
