@@ -27,7 +27,8 @@ const REASONING_EFFORT_RANK: Record<string, number> = {
   none: 0, minimal: 1, low: 2, medium: 3, high: 4, xhigh: 5, max: 6, ultra: 7,
 };
 
-vi.mock("@src/translation/shared-utils.js", () => ({
+vi.mock("@src/translation/shared-utils.js", async (importOriginal) => ({
+  ...await importOriginal<typeof import("@src/translation/shared-utils.js")>(),
   buildInstructions: vi.fn((text: string) => text),
   budgetToEffort: vi.fn((budget: number | undefined) => {
     if (!budget || budget <= 0) return undefined;

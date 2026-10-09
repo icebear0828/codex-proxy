@@ -64,6 +64,18 @@ function normalizeSystemInstructionText(text: string): string {
   return trimmed.startsWith(BILLING_HEADER_PREFIX) ? "" : trimmed;
 }
 
+function imageContentToCodexPart(block: Record<string, unknown>): CodexContentPart | null {
+  if (!isRecord(block.source)) return null;
+  const source = block.source;
+  if (source.type === "base64" && typeof source.media_type === "string" && typeof source.data === "string") {
+    return { type: "input_image", image_url: `data:${source.media_type};base64,${source.data}` };
+  }
+  if (source.type === "url" && typeof source.url === "string") {
+    return { type: "input_image", image_url: source.url };
+  }
+  return null;
+}
+
 /**
  * Build multimodal content (text + images) from Anthropic blocks.
  * Returns plain string if text-only, or CodexContentPart[] if images present.
@@ -79,16 +91,8 @@ function extractMultimodalContent(
     if (block.type === "text" && typeof block.text === "string") {
       parts.push({ type: "input_text", text: block.text });
     } else if (block.type === "image") {
-      // Anthropic format: source: { type: "base64", media_type: "image/png", data: "..." }
-      const source = block.source as
-        | { type: string; media_type: string; data: string }
-        | undefined;
-      if (source?.type === "base64" && source.media_type && source.data) {
-        parts.push({
-          type: "input_image",
-          image_url: `data:${source.media_type};base64,${source.data}`,
-        });
-      }
+      const imagePart = imageContentToCodexPart(block);
+      if (imagePart) parts.push(imagePart);
     }
   }
   return parts.length > 0 ? parts : "";
@@ -153,15 +157,8 @@ function contentToInputItems(
         // Extract image blocks for a follow-up user message
         for (const b of blocks) {
           if (b.type === "image") {
-            const source = b.source as
-              | { type: string; media_type: string; data: string }
-              | undefined;
-            if (source?.type === "base64" && source.media_type && source.data) {
-              imageParts.push({
-                type: "input_image",
-                image_url: `data:${source.media_type};base64,${source.data}`,
-              });
-            }
+            const imagePart = imageContentToCodexPart(b);
+            if (imagePart) imageParts.push(imagePart);
           }
         }
       }

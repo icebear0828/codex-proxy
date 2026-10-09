@@ -290,6 +290,8 @@ export function anthropicToolChoiceToCodex(
   switch (choice.type) {
     case "auto":
       return "auto";
+    case "none":
+      return "none";
     case "any":
       return "required";
     case "tool":
