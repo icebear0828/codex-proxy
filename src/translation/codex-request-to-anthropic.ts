@@ -10,7 +10,7 @@
  */
 
 import type { CodexInputItem, CodexContentPart, CodexResponsesRequest } from "../proxy/codex-types.js";
-import { REASONING_EFFORT_BUDGET } from "./shared-utils.js";
+import { isRecord, REASONING_EFFORT_BUDGET } from "./shared-utils.js";
 
 /** Anthropic content block shapes. */
 type AnthropicContentBlock =
@@ -30,8 +30,8 @@ export interface AnthropicMessageRequest {
   system?: string;
   max_tokens: number;
   stream: boolean;
-  tools?: unknown[];
-  tool_choice?: unknown;
+  tools?: Array<{ name: string; description?: string; input_schema: Record<string, unknown> }>;
+  tool_choice?: { type: "auto" | "none" | "any" } | { type: "tool"; name: string };
   thinking?: { type: "enabled"; budget_tokens: number };
 }
 
@@ -39,8 +39,37 @@ function codexPartToAnthropic(part: CodexContentPart): AnthropicContentBlock {
   if (part.type === "input_text") {
     return { type: "text", text: part.text };
   }
-  // input_image — pass as URL source
+  const dataUri = /^data:([^;,]+);base64,(.+)$/s.exec(part.image_url);
+  if (dataUri) {
+    return { type: "image", source: { type: "base64", media_type: dataUri[1], data: dataUri[2] } };
+  }
   return { type: "image", source: { type: "url", url: part.image_url } };
+}
+
+function codexToolsToAnthropic(tools: unknown[]): NonNullable<AnthropicMessageRequest["tools"]> {
+  return tools.map((tool) => {
+    if (!isRecord(tool) || tool.type !== "function" || typeof tool.name !== "string") {
+      throw new TypeError("Anthropic upstream only supports Codex function tools");
+    }
+    const converted: NonNullable<AnthropicMessageRequest["tools"]>[number] = {
+      name: tool.name,
+      input_schema: isRecord(tool.parameters) ? tool.parameters : { type: "object", properties: {} },
+    };
+    if (typeof tool.description === "string") converted.description = tool.description;
+    return converted;
+  });
+}
+
+function codexToolChoiceToAnthropic(
+  choice: CodexResponsesRequest["tool_choice"],
+): AnthropicMessageRequest["tool_choice"] {
+  if (choice === "auto" || choice === "none") return { type: choice };
+  if (choice === "required") return { type: "any" };
+  if (choice && typeof choice === "object" && choice.type === "function" && typeof choice.name === "string") {
+    return { type: "tool", name: choice.name };
+  }
+  if (choice !== undefined) throw new TypeError("Unsupported Codex tool choice for Anthropic upstream");
+  return undefined;
 }
 
 function inputItemsToAnthropicMessages(input: CodexInputItem[]): AnthropicMessage[] {
@@ -131,10 +160,9 @@ export function translateCodexToAnthropicRequest(
   }
 
   if (req.tools?.length) {
-    body.tools = req.tools;
-    if (req.tool_choice !== undefined) {
-      body.tool_choice = req.tool_choice;
-    }
+    const tools = codexToolsToAnthropic(req.tools);
+    body.tools = tools;
+    body.tool_choice = codexToolChoiceToAnthropic(req.tool_choice);
   }
 
   return body;

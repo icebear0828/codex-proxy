@@ -8,7 +8,9 @@
 
 ## [Unreleased]
 
-> 暂无已记录的变更。
+### Fixed
+
+- 修复 Codex 请求转发至 Anthropic Messages 时图片 data URI、函数工具定义和工具选择格式不匹配的问题：base64 图片改为 `source` 数据块，函数参数改为 `input_schema`，`required` 与指定函数选择分别映射为 `any` 与 `tool`。（`src/translation/codex-request-to-anthropic.ts`）
 
 ## [v2.1.x](https://github.com/icebear0828/codex-proxy/releases?q=2.1) - 2026-09-01 至 2026-09-07
 

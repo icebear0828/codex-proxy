@@ -13,6 +13,46 @@ function makeBaseRequest(overrides: Partial<CodexResponsesRequest> = {}): CodexR
 }
 
 describe("translateCodexToAnthropicRequest", () => {
+  it("converts base64 data URI images and preserves HTTP image URLs", () => {
+    const req = makeBaseRequest({ input: [{ role: "user", content: [
+      { type: "input_image", image_url: "data:image/png;base64,iVBORw0KGgo=" },
+      { type: "input_image", image_url: "https://example.com/image.jpg" },
+    ] }] });
+    const result = translateCodexToAnthropicRequest(req, req.model);
+    expect(result.messages[0].content).toEqual([
+      { type: "image", source: { type: "base64", media_type: "image/png", data: "iVBORw0KGgo=" } },
+      { type: "image", source: { type: "url", url: "https://example.com/image.jpg" } },
+    ]);
+  });
+
+  it("converts flat Codex function tools to Anthropic input schemas", () => {
+    const req = makeBaseRequest({ tools: [
+      { type: "function", name: "weather", description: "Get weather", parameters: { type: "object", properties: { city: { type: "string" } } }, strict: true },
+      { type: "function", name: "clock" },
+    ] });
+    expect(translateCodexToAnthropicRequest(req, req.model).tools).toEqual([
+      { name: "weather", description: "Get weather", input_schema: { type: "object", properties: { city: { type: "string" } } } },
+      { name: "clock", input_schema: { type: "object", properties: {} } },
+    ]);
+  });
+
+  it.each([
+    ["auto", { type: "auto" }],
+    ["none", { type: "none" }],
+    ["required", { type: "any" }],
+    [{ type: "function", name: "weather" }, { type: "tool", name: "weather" }],
+  ])("converts Codex tool choice %j", (tool_choice, expected) => {
+    const req = makeBaseRequest({ tools: [{ type: "function", name: "weather" }], tool_choice: tool_choice as CodexResponsesRequest["tool_choice"] });
+    expect(translateCodexToAnthropicRequest(req, req.model).tool_choice).toEqual(expected);
+  });
+
+  it("rejects unsupported tool types instead of silently dropping them", () => {
+    const req = makeBaseRequest({ tools: [{ type: "custom", name: "shell" }] });
+    expect(() => translateCodexToAnthropicRequest(req, req.model)).toThrow(
+      "Anthropic upstream only supports Codex function tools",
+    );
+  });
+
   it("maps user message correctly", () => {
     const req = makeBaseRequest({ input: [{ role: "user", content: "Hello" }] });
     const result = translateCodexToAnthropicRequest(req, "claude-3-5-sonnet-20241022");
