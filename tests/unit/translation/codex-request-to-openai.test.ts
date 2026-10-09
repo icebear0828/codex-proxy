@@ -122,8 +122,8 @@ describe("translateCodexToOpenAIRequest", () => {
       tool_choice: { type: "custom", name: "shell" },
     });
     const result = translateCodexToOpenAIRequest(req, "gpt-4o", false);
-    expect(result.tools).toEqual([{ type: "custom", name: "shell", format: { type: "text" } }]);
-    expect(result.tool_choice).toEqual({ type: "custom", name: "shell" });
+    expect(result.tools).toEqual([{ type: "custom", custom: { name: "shell", format: { type: "text" } } }]);
+    expect(result.tool_choice).toEqual({ type: "custom", custom: { name: "shell" } });
     expect(result.messages).toEqual([
       { role: "assistant", content: null, tool_calls: [{ id: "call_custom", type: "custom", custom: { name: "shell", input: "ls" } }] },
       { role: "tool", tool_call_id: "call_custom", content: "file.txt" },

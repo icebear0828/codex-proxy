@@ -42,9 +42,7 @@ interface OpenAIFunctionTool {
 
 interface OpenAICustomTool {
   type: "custom";
-  name: string;
-  description?: string;
-  format?: Record<string, unknown>;
+  custom: { name: string; description?: string; format?: Record<string, unknown> };
 }
 
 /** Outgoing OpenAI chat completions request body. */
@@ -55,7 +53,7 @@ export interface OpenAIChatRequest {
   stream_options?: { include_usage: true };
   reasoning_effort?: string;
   tools?: Array<OpenAIFunctionTool | OpenAICustomTool>;
-  tool_choice?: string | { type: "function"; function: { name: string } } | { type: "custom"; name: string };
+  tool_choice?: string | { type: "function"; function: { name: string } } | { type: "custom"; custom: { name: string } };
   parallel_tool_calls?: boolean;
   web_search_options?: { search_context_size?: "low" | "medium" | "high"; user_location?: Record<string, unknown> };
   response_format?: unknown;
@@ -131,9 +129,9 @@ function toolsToOpenAI(tools: unknown[]): {
       if (typeof tool.strict === "boolean") fn.strict = tool.strict;
       mapped.push({ type: "function", function: fn });
     } else if (tool.type === "custom") {
-      const custom: OpenAICustomTool = { type: "custom", name: tool.name };
-      if (typeof tool.description === "string") custom.description = tool.description;
-      if (isRecord(tool.format)) custom.format = tool.format;
+      const custom: OpenAICustomTool = { type: "custom", custom: { name: tool.name } };
+      if (typeof tool.description === "string") custom.custom.description = tool.description;
+      if (isRecord(tool.format)) custom.custom.format = tool.format;
       mapped.push(custom);
     } else {
       throw new CodexApiError(400, `Unsupported Chat Completions tool type: ${String(tool.type)}`);
@@ -148,7 +146,7 @@ function toolChoiceToOpenAI(choice: CodexResponsesRequest["tool_choice"]): OpenA
     return { type: "function", function: { name: choice.name } };
   }
   if (choice?.type === "custom" && choice.name) {
-    return { type: "custom", name: choice.name };
+    return { type: "custom", custom: { name: choice.name } };
   }
   return undefined;
 }
