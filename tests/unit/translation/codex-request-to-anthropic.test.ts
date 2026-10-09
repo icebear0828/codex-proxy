@@ -126,6 +126,24 @@ describe("translateCodexToAnthropicRequest", () => {
     expect(result.thinking).toEqual({ type: "enabled", budget_tokens: 32000 });
   });
 
+  it("uses adaptive thinking for Claude 4.7 and later", () => {
+    const req = makeBaseRequest({ reasoning: { effort: "high" } });
+    const result = translateCodexToAnthropicRequest(req, "claude-opus-4-7");
+    expect(result.thinking).toEqual({ type: "adaptive" });
+    expect(result.output_config).toEqual({ effort: "high" });
+  });
+
+  it("preserves forced tool choice without incompatible extended thinking", () => {
+    const req = makeBaseRequest({
+      tools: [{ type: "function", name: "weather" }],
+      tool_choice: "required",
+      reasoning: { effort: "high" },
+    });
+    const result = translateCodexToAnthropicRequest(req, "claude-sonnet-4-5-20250929");
+    expect(result.tool_choice).toEqual({ type: "any" });
+    expect(result.thinking).toBeUndefined();
+  });
+
   it("has max_tokens set", () => {
     const req = makeBaseRequest({ input: [{ role: "user", content: "hi" }] });
     const result = translateCodexToAnthropicRequest(req, "claude-3-5-haiku-20241022");

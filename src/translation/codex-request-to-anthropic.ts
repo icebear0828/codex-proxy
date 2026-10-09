@@ -32,7 +32,8 @@ export interface AnthropicMessageRequest {
   stream: boolean;
   tools?: Array<{ name: string; description?: string; input_schema: Record<string, unknown> }>;
   tool_choice?: { type: "auto" | "none" | "any" } | { type: "tool"; name: string };
-  thinking?: { type: "enabled"; budget_tokens: number };
+  thinking?: { type: "enabled"; budget_tokens: number } | { type: "adaptive" };
+  output_config?: { effort: "low" | "medium" | "high" | "xhigh" };
 }
 
 function codexPartToAnthropic(part: CodexContentPart): AnthropicContentBlock {
@@ -153,20 +154,26 @@ export function translateCodexToAnthropicRequest(
     body.system = systemInstructions.join("\n\n");
   }
 
-  // Thinking budget for extended reasoning
-  if (req.reasoning?.effort) {
-    const budget = REASONING_EFFORT_BUDGET[req.reasoning.effort] ?? 8192;
-    const supportsExpandedOutput = /^claude-(?:3-7|(?:sonnet|opus|haiku)-4)/.test(modelId);
-    if (supportsExpandedOutput && budget >= body.max_tokens) {
-      body.max_tokens = Math.min(32768, budget + 1024);
-    }
-    body.thinking = { type: "enabled", budget_tokens: Math.min(budget, body.max_tokens - 1) };
-  }
-
   if (req.tools?.length) {
     const tools = codexToolsToAnthropic(req.tools);
     body.tools = tools;
     body.tool_choice = codexToolChoiceToAnthropic(req.tool_choice);
+  }
+
+  const forcedTool = body.tool_choice?.type === "any" || body.tool_choice?.type === "tool";
+  if (req.reasoning?.effort && !forcedTool) {
+    if (/^claude-(?:opus|sonnet|haiku)-(?:4-(?:[7-9]|[1-9][0-9])|[5-9])(?:-|$)/.test(modelId)) {
+      body.thinking = { type: "adaptive" };
+      const effort = req.reasoning.effort;
+      body.output_config = { effort: effort === "low" || effort === "medium" || effort === "high" || effort === "xhigh" ? effort : "medium" };
+    } else {
+      const budget = REASONING_EFFORT_BUDGET[req.reasoning.effort] ?? 8192;
+      const supportsExpandedOutput = /^claude-(?:3-7|(?:sonnet|opus|haiku)-4)/.test(modelId);
+      if (supportsExpandedOutput && budget >= body.max_tokens) {
+        body.max_tokens = Math.min(32768, budget + 1024);
+      }
+      body.thinking = { type: "enabled", budget_tokens: Math.min(budget, body.max_tokens - 1) };
+    }
   }
 
   return body;
