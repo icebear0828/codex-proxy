@@ -156,7 +156,11 @@ export function translateCodexToAnthropicRequest(
   // Thinking budget for extended reasoning
   if (req.reasoning?.effort) {
     const budget = REASONING_EFFORT_BUDGET[req.reasoning.effort] ?? 8192;
-    body.thinking = { type: "enabled", budget_tokens: budget };
+    const supportsExpandedOutput = /^claude-(?:3-7|(?:sonnet|opus|haiku)-4)/.test(modelId);
+    if (supportsExpandedOutput && budget >= body.max_tokens) {
+      body.max_tokens = Math.min(32768, budget + 1024);
+    }
+    body.thinking = { type: "enabled", budget_tokens: Math.min(budget, body.max_tokens - 1) };
   }
 
   if (req.tools?.length) {

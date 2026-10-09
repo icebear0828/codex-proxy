@@ -109,6 +109,21 @@ describe("translateCodexToAnthropicRequest", () => {
     });
     const result = translateCodexToAnthropicRequest(req, "claude-3-7-sonnet-20250219");
     expect(result.thinking).toEqual({ type: "enabled", budget_tokens: 16000 });
+    expect(result.max_tokens).toBeGreaterThan(result.thinking!.budget_tokens);
+  });
+
+  it("keeps thinking budget below the output cap for older Claude models", () => {
+    const req = makeBaseRequest({ reasoning: { effort: "high" } });
+    const result = translateCodexToAnthropicRequest(req, "claude-3-5-sonnet-20241022");
+    expect(result.max_tokens).toBe(8192);
+    expect(result.thinking).toEqual({ type: "enabled", budget_tokens: 8191 });
+  });
+
+  it("keeps xhigh thinking below the output limit on Claude 4", () => {
+    const req = makeBaseRequest({ reasoning: { effort: "xhigh" } });
+    const result = translateCodexToAnthropicRequest(req, "claude-opus-4-20250514");
+    expect(result.max_tokens).toBe(32768);
+    expect(result.thinking).toEqual({ type: "enabled", budget_tokens: 32000 });
   });
 
   it("has max_tokens set", () => {
