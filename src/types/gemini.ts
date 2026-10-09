@@ -16,10 +16,12 @@ const GeminiPartSchema = z.object({
   // Function calling fields (accepted for compatibility, not forwarded to Codex)
   functionCall: z.object({
     name: z.string(),
+    id: z.string().optional(),
     args: z.record(z.unknown()).optional(),
   }).optional(),
   functionResponse: z.object({
     name: z.string(),
+    id: z.string().optional(),
     response: z.record(z.unknown()).optional(),
   }).optional(),
 });
@@ -76,11 +78,13 @@ export type GeminiContent = z.infer<typeof GeminiContentSchema>;
 
 export interface GeminiFunctionCall {
   name: string;
+  id?: string;
   args?: Record<string, unknown>;
 }
 
 export interface GeminiFunctionResponse {
   name: string;
+  id?: string;
   response?: Record<string, unknown>;
 }
 

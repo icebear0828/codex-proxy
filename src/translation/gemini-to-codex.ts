@@ -58,6 +58,8 @@ function extractMultimodalFromParts(
 function partsToInputItems(
   role: "user" | "assistant",
   parts: GeminiPart[],
+  callIdsByName: Map<string, string[]>,
+  nextCallId: () => string,
 ): CodexInputItem[] {
   const items: CodexInputItem[] = [];
   const hasFunctionParts = parts.some((p) => p.functionCall || p.functionResponse);
@@ -75,13 +77,9 @@ function partsToInputItems(
     }
   }
 
-  // Track call_ids by function name to correlate functionCall → functionResponse
-  let callCounter = 0;
-  const nameToCallIds = new Map<string, string[]>();
-
   for (const p of parts) {
     if (p.functionCall) {
-      const callId = `fc_${callCounter++}`;
+      const callId = p.functionCall.id || nextCallId();
       let args: string;
       try {
         args = JSON.stringify(p.functionCall.args ?? {});
@@ -95,9 +93,9 @@ function partsToInputItems(
         arguments: args,
       });
       // Record call_id for this function name (for matching responses)
-      const ids = nameToCallIds.get(p.functionCall.name) ?? [];
+      const ids = callIdsByName.get(p.functionCall.name) ?? [];
       ids.push(callId);
-      nameToCallIds.set(p.functionCall.name, ids);
+      callIdsByName.set(p.functionCall.name, ids);
     } else if (p.functionResponse) {
       let output: string;
       try {
@@ -106,8 +104,10 @@ function partsToInputItems(
         output = String(p.functionResponse.response);
       }
       // Match response to the earliest unmatched call with the same name
-      const ids = nameToCallIds.get(p.functionResponse.name);
-      const callId = ids?.shift() ?? `fc_${callCounter++}`;
+      const ids = callIdsByName.get(p.functionResponse.name);
+      const callId = p.functionResponse.id || ids?.[0] || nextCallId();
+      const matchedIndex = ids?.indexOf(callId) ?? -1;
+      if (matchedIndex >= 0) ids?.splice(matchedIndex, 1);
       items.push({
         type: "function_call_output",
         call_id: callId,
@@ -176,11 +176,24 @@ export function translateGeminiToCodexRequest(
 
   // Build input items from contents
   const input: CodexInputItem[] = [];
+  const callIdsByName = new Map<string, string[]>();
+  const reservedIds = new Set(req.contents.flatMap((content) => content.parts.flatMap((part) =>
+    [part.functionCall?.id, part.functionResponse?.id].filter((id): id is string => !!id),
+  )));
+  let callCounter = 0;
+  const nextCallId = () => {
+    let id: string;
+    do { id = `fc_${callCounter++}`; } while (reservedIds.has(id));
+    reservedIds.add(id);
+    return id;
+  };
   for (const content of req.contents) {
     const role = content.role === "model" ? "assistant" : "user";
     const items = partsToInputItems(
       role as "user" | "assistant",
       content.parts as GeminiPart[],
+      callIdsByName,
+      nextCallId,
     );
     input.push(...items);
   }
@@ -205,8 +218,14 @@ export function translateGeminiToCodexRequest(
   const modelInfo = getModelInfo(modelId);
 
   // Convert tools to Codex format
-  const codexTools = req.tools?.length ? geminiToolsToCodex(req.tools) : [];
-  const codexToolChoice = geminiToolConfigToCodex(req.toolConfig);
+  const allowedNames = req.toolConfig?.functionCallingConfig?.allowedFunctionNames;
+  const allowedNameSet = allowedNames?.length ? new Set(allowedNames) : null;
+  const codexTools = (req.tools?.length ? geminiToolsToCodex(req.tools) : [])
+    .filter((tool) => tool.type !== "function" || !allowedNameSet || allowedNameSet.has(tool.name));
+  const configuredChoice = geminiToolConfigToCodex(req.toolConfig);
+  const codexToolChoice = configuredChoice === "required" && allowedNameSet?.size === 1
+    ? { type: "function", name: allowedNames?.[0] }
+    : configuredChoice;
 
   // Build request
   const request: CodexResponsesRequest = {

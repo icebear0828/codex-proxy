@@ -60,6 +60,7 @@ export async function* streamCodexToGemini(
               parts: [{
                 functionCall: {
                   name: evt.functionCallDone.name,
+                  id: evt.functionCallDone.callId,
                   args,
                 },
               }],
@@ -235,7 +236,7 @@ export async function collectCodexToGeminiResponse(
         args = JSON.parse(evt.functionCallDone.arguments) as Record<string, unknown>;
       } catch { /* use empty args */ }
       functionCallParts.push({
-        functionCall: { name: evt.functionCallDone.name, args },
+        functionCall: { name: evt.functionCallDone.name, id: evt.functionCallDone.callId, args },
       });
     }
     if (evt.imageGenerationDone) {
