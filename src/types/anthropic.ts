@@ -29,6 +29,7 @@ const AnthropicToolUseContentSchema = z.object({
   id: z.string(),
   name: z.string(),
   input: z.record(z.unknown()),
+  signature: z.string().optional(),
 });
 
 const AnthropicToolResultContentBlockSchema = z.discriminatedUnion("type", [
@@ -182,6 +183,7 @@ export interface AnthropicContentBlock {
   id?: string;
   name?: string;
   input?: Record<string, unknown>;
+  signature?: string;
 }
 
 export interface AnthropicUsage {

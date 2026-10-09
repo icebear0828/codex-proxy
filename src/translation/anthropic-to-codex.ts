@@ -107,23 +107,26 @@ function contentToInputItems(
   }
 
   const items: CodexInputItem[] = [];
-
-  // Build content (text or multimodal) for the message itself
-  const hasToolBlocks = content.some((b) => b.type === "tool_use" || b.type === "tool_result");
-  if (role === "user") {
-    const extracted = extractMultimodalContent(content);
-    if (extracted || !hasToolBlocks) {
-      items.push({ role: "user", content: extracted || "" });
+  let messageBlocks: Array<Record<string, unknown>> = [];
+  const flushMessage = (): void => {
+    if (!messageBlocks.length) return;
+    const extracted = role === "user"
+      ? extractMultimodalContent(messageBlocks)
+      : extractTextContent(messageBlocks);
+    if (extracted) {
+      if (role === "user") items.push({ role, content: extracted });
+      else items.push({ role, content: extracted as string });
     }
-  } else {
-    const text = extractTextContent(content);
-    if (text || !hasToolBlocks) {
-      items.push({ role, content: text });
-    }
-  }
+    messageBlocks = [];
+  };
 
   for (const block of content) {
+    if (block.type === "text" || block.type === "image") {
+      messageBlocks.push(block);
+      continue;
+    }
     if (block.type === "tool_use") {
+      flushMessage();
       const name = typeof block.name === "string" ? block.name : "unknown";
       const id = typeof block.id === "string" ? block.id : `tc_${name}`;
       let args: string;
@@ -137,8 +140,10 @@ function contentToInputItems(
         call_id: id,
         name,
         arguments: args,
+        ...(typeof block.signature === "string" ? { signature: block.signature } : {}),
       });
     } else if (block.type === "tool_result") {
+      flushMessage();
       const toolUseId = typeof block.tool_use_id === "string" ? block.tool_use_id : "unknown";
       let resultText = "";
       const imageParts: CodexContentPart[] = [];
@@ -180,6 +185,9 @@ function contentToInputItems(
       }
     }
   }
+
+  flushMessage();
+  if (items.length === 0) items.push({ role, content: "" });
 
   return items;
 }

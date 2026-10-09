@@ -78,6 +78,8 @@ export class GeminiUpstream implements UpstreamAdapter {
     let outputTokens = 0;
     let sawFinishReason = false;
     let producedOutput = false;
+    let promptBlockReason: string | undefined;
+    let pendingThoughtSignature: string | undefined;
     // Gemini surfaces explicit-cache hits as `cachedContentTokenCount`.
     let cachedTokens = 0;
 
@@ -91,6 +93,9 @@ export class GeminiUpstream implements UpstreamAdapter {
       // Gemini SSE has no `event:` field — each data line is a GenerateContentResponse
       if (!isRecord(raw.data)) continue;
       const chunk = isRecord(raw.data.response) ? raw.data.response : raw.data;
+      if (isRecord(chunk.promptFeedback) && typeof chunk.promptFeedback.blockReason === "string") {
+        promptBlockReason = chunk.promptFeedback.blockReason;
+      }
 
       if (!sentCreated) {
         yield {
@@ -122,19 +127,24 @@ export class GeminiUpstream implements UpstreamAdapter {
 
         for (const part of parts) {
           if (!isRecord(part)) continue;
+          if (typeof part.thoughtSignature === "string" && part.thoughtSignature) {
+            pendingThoughtSignature = part.thoughtSignature;
+          }
 
           if (typeof part.text === "string" && part.text.length > 0) {
             producedOutput = true;
             yield {
-              event: "response.output_text.delta",
+              event: part.thought === true ? "response.reasoning_summary_text.delta" : "response.output_text.delta",
               data: { delta: part.text },
             };
           } else if (isRecord(part.functionCall)) {
             producedOutput = true;
             const fc = part.functionCall;
-            const toolId = `call_${randomUUID().slice(0, 8)}`;
+            const toolId = typeof fc.id === "string" && fc.id ? fc.id : `call_${randomUUID().slice(0, 8)}`;
             const toolName = typeof fc.name === "string" ? fc.name : "";
             const toolArgs = fc.args !== undefined ? JSON.stringify(fc.args) : "{}";
+            const signature = pendingThoughtSignature;
+            pendingThoughtSignature = undefined;
 
             toolCalls.set(toolIndex, { id: toolId, name: toolName, argBuffer: toolArgs });
 
@@ -147,6 +157,7 @@ export class GeminiUpstream implements UpstreamAdapter {
                   id: `item_${toolIndex}`,
                   call_id: toolId,
                   name: toolName,
+                  ...(signature ? { signature } : {}),
                 },
               },
             };
@@ -170,7 +181,9 @@ export class GeminiUpstream implements UpstreamAdapter {
     }
 
     if (!sawFinishReason) {
-      throw new Error("Gemini stream ended before the upstream reported a candidate finish reason");
+      throw new Error(promptBlockReason
+        ? `Gemini stream blocked: ${promptBlockReason}`
+        : "Gemini stream ended before the upstream reported a candidate finish reason");
     }
     if (!producedOutput) {
       throw new Error("Gemini upstream completed without producing text or a tool call");

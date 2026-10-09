@@ -219,6 +219,7 @@ export async function* streamCodexToAnthropic(
           id: evt.functionCallStart.callId,
           name: evt.functionCallStart.name,
           input: {},
+          ...(evt.functionCallStart.signature ? { signature: evt.functionCallStart.signature } : {}),
         },
       });
       continue;
@@ -442,6 +443,7 @@ export async function collectCodexToAnthropicResponse(
         id: evt.functionCallDone.callId,
         name: evt.functionCallDone.name,
         input: parsedInput,
+        ...(evt.functionCallDone.signature ? { signature: evt.functionCallDone.signature } : {}),
       });
     }
     if (evt.imageGenerationDone) {
