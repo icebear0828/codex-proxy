@@ -94,15 +94,19 @@ function inputItemsToGeminiContents(input: CodexInputItem[]): GeminiContent[] {
         throw new CodexApiError(400, `Tool ${item.name} arguments must be a JSON object`);
       }
       callNames.set(item.call_id, item.name);
+      const last = contents.at(-1);
+      const priorSignedCall = last?.role === "model" && last.parts.some(
+        (part) => "thoughtSignature" in part && part.thoughtSignature !== "skip_thought_signature_validator",
+      );
       const fnCallPart: GeminiFunctionCallPart = {
         functionCall: {
           name: item.name,
           id: item.call_id,
           args: args as Record<string, unknown>,
         },
-        thoughtSignature: item.signature || "skip_thought_signature_validator",
+        ...(item.signature ? { thoughtSignature: item.signature }
+          : priorSignedCall ? {} : { thoughtSignature: "skip_thought_signature_validator" }),
       };
-      const last = contents.at(-1);
       if (last?.role === "model") {
         last.parts.push(fnCallPart);
       } else {

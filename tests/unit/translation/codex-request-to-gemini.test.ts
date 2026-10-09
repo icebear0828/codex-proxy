@@ -57,6 +57,19 @@ describe("Codex to Gemini tool translation", () => {
     });
   });
 
+  it("does not invent signatures for later parallel calls", () => {
+    const body = translateCodexToGeminiRequest(request([
+      { type: "function_call", call_id: "call-1", name: "Read", arguments: "{}", signature: "signed" },
+      { type: "function_call", call_id: "call-2", name: "Read", arguments: "{}" },
+      { type: "function_call_output", call_id: "call-1", output: "one" },
+      { type: "function_call_output", call_id: "call-2", output: "two" },
+    ]));
+    expect(body.contents[0].parts).toEqual([
+      { functionCall: { name: "Read", id: "call-1", args: {} }, thoughtSignature: "signed" },
+      { functionCall: { name: "Read", id: "call-2", args: {} } },
+    ]);
+  });
+
   it("maps forced tool selection and preserves image bytes", () => {
     const body = translateCodexToGeminiRequest({
       ...request([{ role: "user", content: [{ type: "input_image", image_url: "data:image/png;base64,YWJj" }] }]),
