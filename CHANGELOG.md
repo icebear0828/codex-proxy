@@ -8,7 +8,9 @@
 
 ## [Unreleased]
 
-> 暂无已记录的变更。
+### Fixed
+
+- Anthropic Messages 入站请求现在接受 `tool_choice: { type: "none" }` 和 URL 图片来源，并将其正确转为 Codex Responses 的工具选择与图片输入；工具结果中的 URL 图片也会保留。（`src/types/anthropic.ts`、`src/translation/tool-format.ts`、`src/translation/anthropic-to-codex.ts`）
 
 ## [v2.1.x](https://github.com/icebear0828/codex-proxy/releases?q=2.1) - 2026-09-01 至 2026-09-07
 

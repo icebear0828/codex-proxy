@@ -39,6 +39,7 @@ vi.mock("@src/models/model-store.js", () => ({
 }));
 
 import { translateAnthropicToCodexRequest } from "@src/translation/anthropic-to-codex.js";
+import { AnthropicMessagesRequestSchema } from "@src/types/anthropic.js";
 import type { AnthropicMessagesRequest } from "@src/types/anthropic.js";
 
 interface ContractFixture {
@@ -58,6 +59,57 @@ const results = fixtures.map((f) => ({
 }));
 
 describe("Anthropic → Codex contract", () => {
+  it("preserves tool_choice none while tools are available", () => {
+    const request = AnthropicMessagesRequestSchema.parse({
+      model: "gpt-5.4",
+      max_tokens: 128,
+      messages: [{ role: "user", content: "Answer without tools" }],
+      tools: [{ name: "lookup", input_schema: { type: "object" } }],
+      tool_choice: { type: "none" },
+    });
+
+    expect(translateAnthropicToCodexRequest(request).tool_choice).toBe("none");
+  });
+
+  it("preserves URL images in user messages and tool results", () => {
+    const request = AnthropicMessagesRequestSchema.parse({
+      model: "gpt-5.4",
+      max_tokens: 128,
+      messages: [
+        {
+          role: "user",
+          content: [
+            { type: "text", text: "Describe this" },
+            { type: "image", source: { type: "url", url: "https://example.com/photo.png" } },
+          ],
+        },
+        {
+          role: "user",
+          content: [{
+            type: "tool_result",
+            tool_use_id: "toolu_1",
+            content: [{ type: "image", source: { type: "url", url: "https://example.com/result.png" } }],
+          }],
+        },
+      ],
+    });
+
+    expect(translateAnthropicToCodexRequest(request).input).toEqual([
+      {
+        role: "user",
+        content: [
+          { type: "input_text", text: "Describe this" },
+          { type: "input_image", image_url: "https://example.com/photo.png" },
+        ],
+      },
+      { type: "function_call_output", call_id: "toolu_1", output: "" },
+      {
+        role: "user",
+        content: [{ type: "input_image", image_url: "https://example.com/result.png" }],
+      },
+    ]);
+  });
+
   it.each(results)("$fixture.name: $fixture.description", ({ fixture, result }) => {
     expect(result).toMatchObject(fixture.expectedOutput);
   });

@@ -17,11 +17,17 @@ const AnthropicTextContentSchema = z.object({
 
 const AnthropicImageContentSchema = z.object({
   type: z.literal("image"),
-  source: z.object({
-    type: z.literal("base64"),
-    media_type: z.string(),
-    data: z.string(),
-  }),
+  source: z.discriminatedUnion("type", [
+    z.object({
+      type: z.literal("base64"),
+      media_type: z.string(),
+      data: z.string(),
+    }),
+    z.object({
+      type: z.literal("url"),
+      url: z.string().url(),
+    }),
+  ]),
 });
 
 const AnthropicToolUseContentSchema = z.object({
@@ -149,6 +155,7 @@ export const AnthropicMessagesRequestSchema = z.object({
   tool_choice: z.union([
     z.object({ type: z.literal("auto") }),
     z.object({ type: z.literal("any") }),
+    z.object({ type: z.literal("none") }),
     z.object({ type: z.literal("tool"), name: z.string() }),
   ]).optional(),
 });
