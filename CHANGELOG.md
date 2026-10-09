@@ -8,15 +8,15 @@
 
 ## [Unreleased]
 
+> 暂无已记录的变更。
+
+## [v2.1.x](https://github.com/icebear0828/codex-proxy/releases?q=2.1) - 2026-09-01 至 2026-09-07
+
 ### Fixed
 
 - 修复 Gemini `functionCallingConfig.allowedFunctionNames` 未限制可调用函数，以及 Gemini 响应遗漏函数调用 ID 的问题；指定单个必选函数时保留该选择，并在流式与非流式响应中返回调用 ID。（`src/translation/gemini-to-codex.ts`、`src/translation/codex-to-gemini.ts`）
 
 - Gemini 请求入口保留原生工具调用 ID，并在跨轮和并行同名工具调用时稳定匹配无 ID 的工具结果，避免错误关联或重复 ID。（`src/types/gemini.ts`、`src/translation/gemini-to-codex.ts`）
-
-## [v2.1.x](https://github.com/icebear0828/codex-proxy/releases?q=2.1) - 2026-09-01 至 2026-09-07
-
-### Fixed
 
 - 修复 OpenAI Chat Completions 请求的旧版 `function_call` 选择和 `parallel_tool_calls` 设置在转译为 Codex Responses 请求时丢失的问题。（`src/translation/openai-to-codex.ts`）
 
