@@ -134,7 +134,7 @@ export class AntigravityUpstream implements UpstreamAdapter {
       parts: [{ text: IDENTITY_INSTRUCTION }, ...cleanedParts],
     };
     requestPayload.sessionId = sessionId(req);
-    requestPayload.toolConfig = {
+    requestPayload.toolConfig ??= {
       functionCallingConfig: { mode: "VALIDATED" },
     };
 

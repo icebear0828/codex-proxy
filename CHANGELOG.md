@@ -8,7 +8,9 @@
 
 ## [Unreleased]
 
-> 暂无已记录的变更。
+### Fixed
+
+- 修复 Anthropic Messages 转 Gemini/Antigravity 时复杂工具声明被拒绝、工具选择配置被覆盖、工具结果丢失名称和原生 ID、图片被降为文本、工具结果与后续文本顺序错误的问题；保留工具调用签名（含前置思考 part），在缺失签名时使用 Gemini 官方兼容值，并明确拒绝畸形参数和无法配对的结果。（`src/translation/anthropic-to-codex.ts`、`src/translation/codex-request-to-gemini.ts`、`src/proxy/gemini-upstream.ts`）
 
 ## [v2.1.x](https://github.com/icebear0828/codex-proxy/releases?q=2.1) - 2026-09-01 至 2026-09-07
 

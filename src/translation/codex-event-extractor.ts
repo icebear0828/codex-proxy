@@ -34,6 +34,7 @@ export interface FunctionCallStart {
   callId: string;
   name: string;
   outputIndex: number;
+  signature?: string;
 }
 
 export interface FunctionCallDelta {
@@ -45,6 +46,7 @@ export interface FunctionCallDone {
   callId: string;
   name: string;
   arguments: string;
+  signature?: string;
 }
 
 export interface CustomToolCallStart {
@@ -129,7 +131,7 @@ export async function* iterateCodexEvents(
   rawResponse: Response,
 ): AsyncGenerator<ExtractedEvent> {
   // Map item_id → { call_id, name } for resolving delta/done events
-  const itemIdToCallInfo = new Map<string, { callId: string; name: string }>();
+  const itemIdToCallInfo = new Map<string, { callId: string; name: string; signature?: string }>();
   const completedCustomToolCallIds = new Set<string>();
 
   for await (const raw of api.parseStream(rawResponse)) {
@@ -157,26 +159,34 @@ export async function* iterateCodexEvents(
 
       case "response.output_item.added":
         if (typed.item.type === "custom_tool_call" && typed.item.call_id && typed.item.name) {
-          itemIdToCallInfo.set(typed.item.id, {
+          const callInfo = {
             callId: typed.item.call_id,
             name: typed.item.name,
-          });
+            ...(typed.item.signature ? { signature: typed.item.signature } : {}),
+          };
+          itemIdToCallInfo.set(typed.item.id, callInfo);
+          itemIdToCallInfo.set(typed.item.call_id, callInfo);
           extracted.customToolCallStart = {
             callId: typed.item.call_id,
             name: typed.item.name,
             outputIndex: typed.outputIndex,
+            ...(typed.item.signature ? { signature: typed.item.signature } : {}),
           };
         }
         if (typed.item.type === "function_call" && typed.item.call_id && typed.item.name) {
           // Register item_id → call_id mapping
-          itemIdToCallInfo.set(typed.item.id, {
+          const callInfo = {
             callId: typed.item.call_id,
             name: typed.item.name,
-          });
+            ...(typed.item.signature ? { signature: typed.item.signature } : {}),
+          };
+          itemIdToCallInfo.set(typed.item.id, callInfo);
+          itemIdToCallInfo.set(typed.item.call_id, callInfo);
           extracted.functionCallStart = {
             callId: typed.item.call_id,
             name: typed.item.name,
             outputIndex: typed.outputIndex,
+            ...(typed.item.signature ? { signature: typed.item.signature } : {}),
           };
         }
         break;
@@ -198,6 +208,7 @@ export async function* iterateCodexEvents(
           callId: doneInfo?.callId ?? typed.call_id,
           name: typed.name || doneInfo?.name || "",
           arguments: typed.arguments,
+          ...(doneInfo?.signature ? { signature: doneInfo.signature } : {}),
         };
         break;
       }

@@ -371,6 +371,19 @@ describe("translateAnthropicToCodexRequest", () => {
       });
     });
 
+    it("keeps text after tool results in its original order", () => {
+      const result = translateAnthropicToCodexRequest(makeRequest({
+        messages: [{ role: "user", content: [
+          { type: "tool_result", tool_use_id: "toolu_01", content: "done" },
+          { type: "text", text: "Continue with the result" },
+        ] }],
+      }));
+      expect(result.input).toEqual([
+        { type: "function_call_output", call_id: "toolu_01", output: "done" },
+        { role: "user", content: "Continue with the result" },
+      ]);
+    });
+
     it("prepends 'Error: ' to tool_result output when is_error is true", () => {
       const result = translateAnthropicToCodexRequest(
         makeRequest({

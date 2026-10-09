@@ -84,6 +84,7 @@ export interface CodexOutputItemAddedEvent {
     id: string;
     call_id?: string;
     name?: string;
+    signature?: string;
   };
 }
 
@@ -426,6 +427,7 @@ export function parseCodexEvent(evt: CodexSSEEvent): TypedCodexEvent {
         };
         if (typeof data.item.call_id === "string") item.call_id = data.item.call_id;
         if (typeof data.item.name === "string") item.name = data.item.name;
+        if (typeof data.item.signature === "string") item.signature = data.item.signature;
         return {
           type: "response.output_item.added",
           outputIndex: typeof data.output_index === "number" ? data.output_index : 0,
