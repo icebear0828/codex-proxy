@@ -70,6 +70,7 @@ describe("streamCodexToGemini", () => {
     expect(fcChunk).toBeDefined();
     const parsed = JSON.parse(fcChunk!.slice(6));
     expect(parsed.candidates[0].content.parts[0].functionCall.name).toBe("get_weather");
+    expect(parsed.candidates[0].content.parts[0].functionCall.id).toBe("call_1");
   });
 
   it("throws CodexApiError on upstream error events", async () => {
@@ -120,6 +121,7 @@ describe("collectCodexToGeminiResponse", () => {
     const fcPart = response.candidates[0].content.parts.find((p) => p.functionCall);
     expect(fcPart).toBeDefined();
     expect(fcPart!.functionCall!.name).toBe("get_weather");
+    expect(fcPart!.functionCall!.id).toBe("call_1");
   });
 
   it("throws on error", async () => {

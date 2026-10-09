@@ -323,6 +323,20 @@ describe("translateGeminiToCodexRequest", () => {
     expect(geminiToolConfigToCodex).toHaveBeenCalledWith(toolConfig);
   });
 
+  it("restricts offered functions and preserves a single required name", () => {
+    vi.mocked(geminiToolsToCodex).mockReturnValueOnce([
+      { type: "function", name: "weather" },
+      { type: "function", name: "clock" },
+    ]);
+    vi.mocked(geminiToolConfigToCodex).mockReturnValueOnce("required");
+    const result = translateGeminiToCodexRequest(makeRequest({
+      tools: [{ functionDeclarations: [{ name: "weather" }, { name: "clock" }] }],
+      toolConfig: { functionCallingConfig: { mode: "ANY", allowedFunctionNames: ["clock"] } },
+    }), "gpt-5.4");
+    expect(result.tools).toEqual([{ type: "function", name: "clock" }]);
+    expect(result.tool_choice).toEqual({ type: "function", name: "clock" });
+  });
+
   it("always sets stream: true and store: false", () => {
     const result = translateGeminiToCodexRequest(makeRequest(), "gpt-5.4");
     expect(result.stream).toBe(true);

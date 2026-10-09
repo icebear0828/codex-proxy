@@ -218,8 +218,14 @@ export function translateGeminiToCodexRequest(
   const modelInfo = getModelInfo(modelId);
 
   // Convert tools to Codex format
-  const codexTools = req.tools?.length ? geminiToolsToCodex(req.tools) : [];
-  const codexToolChoice = geminiToolConfigToCodex(req.toolConfig);
+  const allowedNames = req.toolConfig?.functionCallingConfig?.allowedFunctionNames;
+  const allowedNameSet = allowedNames?.length ? new Set(allowedNames) : null;
+  const codexTools = (req.tools?.length ? geminiToolsToCodex(req.tools) : [])
+    .filter((tool) => tool.type !== "function" || !allowedNameSet || allowedNameSet.has(tool.name));
+  const configuredChoice = geminiToolConfigToCodex(req.toolConfig);
+  const codexToolChoice = configuredChoice === "required" && allowedNameSet?.size === 1
+    ? { type: "function", name: allowedNames?.[0] }
+    : configuredChoice;
 
   // Build request
   const request: CodexResponsesRequest = {
