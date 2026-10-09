@@ -8,13 +8,13 @@
 
 ## [Unreleased]
 
-### Fixed
-
-- Anthropic Messages 入站请求现在接受 `tool_choice: { type: "none" }` 和 URL 图片来源，并将其正确转为 Codex Responses 的工具选择与图片输入；工具结果中的 URL 图片也会保留。（`src/types/anthropic.ts`、`src/translation/tool-format.ts`、`src/translation/anthropic-to-codex.ts`）
+> 暂无已记录的变更。
 
 ## [v2.1.x](https://github.com/icebear0828/codex-proxy/releases?q=2.1) - 2026-09-01 至 2026-09-07
 
 ### Fixed
+
+- Anthropic Messages 入站请求现在接受 `tool_choice: { type: "none" }` 和 URL 图片来源，并将其正确转为 Codex Responses 的工具选择与图片输入；工具结果中的 URL 图片也会保留。（`src/types/anthropic.ts`、`src/translation/tool-format.ts`、`src/translation/anthropic-to-codex.ts`）
 
 - 修复显式 `previous_response_id` 会话在拥有它的池内 WebSocket 死亡后被本地永久判死的问题（#789）:此前 `acquireForResponse` 以 `missing_owner` / `dead` / `expired` / `transport` 旁路后直接抛 `PreviousResponseWebSocketError`,而显式续传既被排除在 strip-retry 之外(剥离会丢历史)、也不适用状态码 0 传输重试,错误一路落到兜底 502——同一会话后续每一轮都复用同一个死 id 反复 502,换模型也无法恢复,只能新开会话。现在这类"本地 owner 丢失但上游链可能完好"(响应通常在池连接死亡前已建成)的旁路会在全新 recovery WS 上原样重试同一次请求(不改动 prev id / 输入 / 账号),由上游裁决 id 是否仍有效;若上游返回 not-found,既有失效逻辑照常清除本地映射。`busy`(活兄弟分支串行化护栏)与 `account_mismatch` / `disabled` / `no_key`(跨账号 fail-closed 护栏)维持原语义不重试;每个请求最多重连一次,防止循环。(`src/routes/shared/proxy-retry-classifier.ts`、`src/routes/shared/proxy-handler.ts`、`tests/unit/routes/shared/proxy-retry-classifier.test.ts`)
 
