@@ -28,11 +28,14 @@ vi.mock("@src/translation/shared-utils.js", async (importOriginal) => {
   };
 });
 
-vi.mock("@src/translation/tool-format.js", () => ({
-  openAIToolsToCodex: vi.fn((tools: unknown[]) => tools),
-  openAIToolChoiceToCodex: vi.fn(() => undefined),
-  openAIFunctionsToCodex: vi.fn((fns: unknown[]) => fns),
-}));
+vi.mock("@src/translation/tool-format.js", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@src/translation/tool-format.js")>();
+  return {
+    openAIToolsToCodex: vi.fn((tools: unknown[]) => tools),
+    openAIToolChoiceToCodex: actual.openAIToolChoiceToCodex,
+    openAIFunctionsToCodex: vi.fn((fns: unknown[]) => fns),
+  };
+});
 
 vi.mock("@src/models/model-store.js", () => ({
   parseModelName: vi.fn((input: string) => {
@@ -322,6 +325,39 @@ describe("translateToCodexRequest — multimodal content", () => {
 // ── Legacy function format ────────────────────────────────────────────
 
 describe("translateToCodexRequest — legacy function format", () => {
+  it.each([
+    ["none", "none"],
+    ["auto", "auto"],
+    [{ name: "search" }, { type: "function", name: "search" }],
+  ] as const)("maps request-level function_call %j", (functionCall, expectedChoice) => {
+    const result = translateToCodexRequest(makeRequest({
+      functions: [{ name: "search" }],
+      function_call: functionCall,
+    }));
+    expect(result.tool_choice).toEqual(expectedChoice);
+  });
+
+  it("prefers tool_choice when both request-level choices are present", () => {
+    const result = translateToCodexRequest(makeRequest({
+      functions: [{ name: "search" }],
+      function_call: "none",
+      tool_choice: "required",
+    }));
+    expect(result.tool_choice).toBe("required");
+  });
+
+  it.each([false, true])("preserves parallel_tool_calls=%s", (parallelToolCalls) => {
+    const result = translateToCodexRequest(makeRequest({
+      parallel_tool_calls: parallelToolCalls,
+    }));
+    expect(result.parallel_tool_calls).toBe(parallelToolCalls);
+  });
+
+  it("leaves parallel_tool_calls unset when omitted", () => {
+    const result = translateToCodexRequest(makeRequest());
+    expect(result).not.toHaveProperty("parallel_tool_calls");
+  });
+
   it("converts assistant function_call to function_call input item", () => {
     const result = translateToCodexRequest(makeRequest({
       messages: [

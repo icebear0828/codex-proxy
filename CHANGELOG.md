@@ -8,7 +8,9 @@
 
 ## [Unreleased]
 
-> 暂无已记录的变更。
+### Fixed
+
+- 修复 OpenAI Chat Completions 请求的旧版 `function_call` 选择和 `parallel_tool_calls` 设置在转译为 Codex Responses 请求时丢失的问题。（`src/translation/openai-to-codex.ts`）
 
 ## [v2.1.x](https://github.com/icebear0828/codex-proxy/releases?q=2.1) - 2026-09-01 至 2026-09-07
 

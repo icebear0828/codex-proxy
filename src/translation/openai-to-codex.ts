@@ -215,7 +215,11 @@ export function translateToCodexRequest(
     : req.functions?.length
       ? openAIFunctionsToCodex(req.functions)
       : [];
-  const codexToolChoice = openAIToolChoiceToCodex(req.tool_choice);
+  const codexToolChoice = req.tool_choice !== undefined
+    ? openAIToolChoiceToCodex(req.tool_choice)
+    : typeof req.function_call === "object"
+      ? { type: "function", name: req.function_call.name }
+      : req.function_call;
 
   // Build request
   const request: CodexResponsesRequest = {
@@ -230,6 +234,9 @@ export function translateToCodexRequest(
   // Add tool_choice if specified
   if (codexToolChoice) {
     request.tool_choice = codexToolChoice;
+  }
+  if (req.parallel_tool_calls !== undefined) {
+    request.parallel_tool_calls = req.parallel_tool_calls;
   }
 
   // Reasoning effort: explicit API field > suffix > config default
