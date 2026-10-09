@@ -8,13 +8,13 @@
 
 ## [Unreleased]
 
-### Fixed
-
-- 修复 Responses 请求转发到 OpenAI Chat Completions 上游时的工具格式错配：函数工具定义与指定工具选择转换为 Chat Completions 包络，保留并行调用设置；自定义工具的调用、结果及流式事件保持对应；网页搜索工具映射到 `web_search_options`，不受支持的工具明确返回错误；结构化输出 schema 使用 Chat Completions 的 `json_schema` 包络。
+> 暂无已记录的变更。
 
 ## [v2.1.x](https://github.com/icebear0828/codex-proxy/releases?q=2.1) - 2026-09-01 至 2026-09-07
 
 ### Fixed
+
+- 修复 Responses 请求转发到 OpenAI Chat Completions 上游时的工具格式错配：函数工具定义与指定工具选择转换为 Chat Completions 包络，保留并行调用设置；自定义工具的调用、结果及流式事件保持对应；网页搜索工具映射到 `web_search_options`，不受支持的工具明确返回错误；结构化输出 schema 使用 Chat Completions 的 `json_schema` 包络。
 
 - 修复 Gemini `functionCallingConfig.allowedFunctionNames` 未限制可调用函数，以及 Gemini 响应遗漏函数调用 ID 的问题；指定单个必选函数时保留该选择，并在流式与非流式响应中返回调用 ID。（`src/translation/gemini-to-codex.ts`、`src/translation/codex-to-gemini.ts`）
 
