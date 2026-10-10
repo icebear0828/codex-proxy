@@ -5,7 +5,7 @@
  * avoiding the need to manually mock Hono Context.
  */
 
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { Hono } from "hono";
 import type { FormatCollectTranslatorOptions, ProxyRequest } from "@src/routes/shared/proxy-handler-types.js";
 import type { WsPoolContext } from "@src/proxy/codex-api.js";
@@ -237,6 +237,10 @@ describe("proxy-handler integration", () => {
     vi.clearAllMocks();
   });
 
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
   it.each([undefined, "default", "priority"])("forces the configured model tier over client preference %s", async (tier) => {
     vi.mocked(getConfig).mockReturnValueOnce({
       auth: {}, model: { service_tier_overrides: { "gpt-6.1-sol": "ultrafast" } },
@@ -326,6 +330,7 @@ describe("proxy-handler integration", () => {
 
   it("keeps API-key fallback available without a tier restriction", async () => {
     const get = vi.fn(() => ({ apiKey: "secret", baseUrl: "https://upstream.invalid" }));
+    vi.stubGlobal("fetch", vi.fn(async () => new Response("upstream unavailable", { status: 502 })));
     const req = createDefaultRequest();
     const { app } = buildTestApp({
       req, accountPool: createMockAccountPool({ acquire: vi.fn(() => null) }),
