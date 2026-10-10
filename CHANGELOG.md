@@ -8,7 +8,9 @@
 
 ## [Unreleased]
 
-> 暂无已记录的变更。
+### Fixed
+
+- 修复原生 `/v1/responses` 带 `{"type":"message","role":"system"}` 的 input 被 Codex 上游以 `System messages are not allowed`（400）拒绝的问题；非流式下该 400 还会被误报为 `Codex returned empty responses`。现在 `CodexApi.createResponse()`（HTTP / WebSocket / WS→HTTP 降级共用）与 `createCompactResponse()` 在发往上游前把 input 中的 `system` 角色改写为 `developer`，不修改调用方对象，第三方 Responses/OpenAI/Anthropic/Gemini adapter 不受影响。（`src/proxy/codex-input-normalizer.ts`、`src/proxy/codex-api.ts`）
 
 ## [v2.1.x](https://github.com/icebear0828/codex-proxy/releases?q=2.1) - 2026-09-01 至 2026-09-07
 
