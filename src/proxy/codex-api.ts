@@ -35,6 +35,7 @@ import { fetchModels, probeEndpoint as probeEndpointFn } from "./codex-models.js
 import type { CookieJar } from "./cookie-jar.js";
 import type { BackendModelEntry } from "../models/model-store.js";
 import type { CodexFingerprintMode } from "../auth/types.js";
+import { normalizeCodexSystemRoles } from "./codex-input-normalizer.js";
 
 function normalizeServiceTierForUpstream(serviceTier: string | null | undefined): string | undefined {
   if (!serviceTier) return undefined;
@@ -267,11 +268,14 @@ export class CodexApi {
    * 仅当不依赖 previous_response_id 时，WebSocket 失败后才降级到 HTTP SSE。
    */
   async createResponse(
-    request: CodexResponsesRequest,
+    rawRequest: CodexResponsesRequest,
     signal?: AbortSignal,
     onRateLimits?: (rl: ParsedRateLimit) => void,
     poolCtx?: WsPoolContext,
   ): Promise<Response> {
+    const normalizedInput = normalizeCodexSystemRoles(rawRequest.input);
+    const request =
+      normalizedInput === rawRequest.input ? rawRequest : { ...rawRequest, input: normalizedInput };
     if (request.useWebSocket) {
       try {
         return await this.createResponseViaWebSocket(request, signal, onRateLimits, poolCtx);
@@ -493,7 +497,7 @@ export class CodexApi {
     headers["x-client-request-id"] = crypto.randomUUID();
     headers["x-codex-installation-id"] = getInstallationId(this.entryId ?? this.accountId);
 
-    const body = JSON.stringify(request);
+    const body = JSON.stringify({ ...request, input: normalizeCodexSystemRoles(request.input) });
 
     let transportRes;
     try {
