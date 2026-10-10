@@ -8,13 +8,13 @@
 
 ## [Unreleased]
 
-### Fixed
-
-- 修复原生 `/v1/responses` 带 `{"type":"message","role":"system"}` 的 input 被 Codex 上游以 `System messages are not allowed`（400）拒绝的问题；非流式下该 400 还会被误报为 `Codex returned empty responses`。现在 `CodexApi.createResponse()`（HTTP / WebSocket / WS→HTTP 降级共用）与 `createCompactResponse()` 在发往上游前把 input 中的 `system` 角色改写为 `developer`，不修改调用方对象，第三方 Responses/OpenAI/Anthropic/Gemini adapter 不受影响。（`src/proxy/codex-input-normalizer.ts`、`src/proxy/codex-api.ts`）
+> 暂无已记录的变更。
 
 ## [v2.1.x](https://github.com/icebear0828/codex-proxy/releases?q=2.1) - 2026-09-01 至 2026-09-07
 
 ### Fixed
+
+- 修复原生 `/v1/responses` 带 `{"type":"message","role":"system"}` 的 input 被 Codex 上游以 `System messages are not allowed`（400）拒绝的问题；非流式下该 400 还会被误报为 `Codex returned empty responses`。现在 `CodexApi.createResponse()`（HTTP / WebSocket / WS→HTTP 降级共用）与 `createCompactResponse()` 在发往上游前把 input 中的 `system` 角色改写为 `developer`，不修改调用方对象，第三方 Responses/OpenAI/Anthropic/Gemini adapter 不受影响。（`src/proxy/codex-input-normalizer.ts`、`src/proxy/codex-api.ts`）
 
 - 修复 Anthropic Messages 转 Gemini/Antigravity 时复杂工具声明被拒绝、工具选择配置被覆盖、工具结果丢失名称和原生 ID、图片被降为文本、工具结果与后续文本顺序错误的问题；保留工具调用签名（含前置思考 part），在缺失签名时使用 Gemini 官方兼容值，并明确拒绝畸形参数和无法配对的结果。（`src/translation/anthropic-to-codex.ts`、`src/translation/codex-request-to-gemini.ts`、`src/proxy/gemini-upstream.ts`）
 
