@@ -1,13 +1,21 @@
 name: Publish npm packages
 
-# Builds @icebear0828/codex-proxy plus one native-addon package per platform
-# triple and publishes them to the npm registry. Publishing only runs on the
-# upstream repository (it needs the NPM_TOKEN secret); forks run the full
-# build + package + smoke pipeline with the publish job skipped, and can grab
-# the tarballs from the npm-tarballs artifact.
+# Builds @<owner>/codex-proxy plus one scoped native-addon package per
+# platform triple, then publishes to GitHub Packages with the built-in
+# GITHUB_TOKEN (no external npm account or secrets needed). Packages start
+# private and GitHub offers no API to make them public — a one-time UI
+# toggle per package is required (the workflow logs the exact settings
+# links). If NPM_TOKEN is ever configured, the same tarballs also go to the
+# npm registry. Pull requests and the smoke pipeline work unchanged on
+# every repo and every fork.
 
 on:
   workflow_dispatch:
+    inputs:
+      version:
+        description: "Version to publish without cutting a tag (e.g. 2.1.15)"
+        required: false
+        type: string
   push:
     tags:
       - "v*"
@@ -21,6 +29,7 @@ on:
 
 permissions:
   contents: read
+  packages: write
 
 concurrency:
   group: npm-publish-${{ github.ref }}
@@ -188,6 +197,8 @@ jobs:
         run: |
           if [[ "$GITHUB_REF_TYPE" == "tag" ]]; then
             echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+          elif [[ -n "${{ inputs.version }}" ]]; then
+            echo "version=${{ inputs.version }}" >> "$GITHUB_OUTPUT"
           else
             echo "version=$(node -p "require('./package.json').version")" >> "$GITHUB_OUTPUT"
           fi
@@ -207,10 +218,13 @@ jobs:
           merge-multiple: true
 
       - name: Stage npm packages
+        env:
+          SCOPE: ${{ github.repository_owner }}
         run: |
           node scripts/npm/stage-npm-packages.mjs \
             --out "$RUNNER_TEMP/npm-dist" \
-            --version "${{ steps.version.outputs.version }}"
+            --version "${{ steps.version.outputs.version }}" \
+            --scope "$SCOPE"
           test -d "$RUNNER_TEMP/npm-dist/main/app"
           test "$(ls -1 "$RUNNER_TEMP/npm-dist/addons" | wc -l)" -eq 8
 
@@ -226,6 +240,8 @@ jobs:
           ls -la "$RUNNER_TEMP/npm-dist/tarballs/"
 
       - name: Smoke test the main package
+        env:
+          SCOPE: ${{ github.repository_owner }}
         run: |
           # The loader hard-fails when no addon can be required, so install
           # this runner's addon tarball next to the main package (both land
@@ -235,8 +251,8 @@ jobs:
           TARBALLS="$RUNNER_TEMP/npm-dist/tarballs"
           VERSION="${{ steps.version.outputs.version }}"
           npm i -g --prefix "$PREFIX" --no-audit --no-fund \
-            "$TARBALLS/icebear0828-codex-proxy-$VERSION.tgz" \
-            "$TARBALLS/codex-tls-linux-x64-gnu-$VERSION.tgz"
+            "$TARBALLS/$SCOPE-codex-proxy-$VERSION.tgz" \
+            "$TARBALLS/$SCOPE-codex-tls-linux-x64-gnu-$VERSION.tgz"
           "$PREFIX/bin/codex-proxy" --mode=server --port 18180 &
           SERVER_PID=$!
           for i in $(seq 1 30); do
@@ -259,11 +275,207 @@ jobs:
           if-no-files-found: error
           retention-days: 7
 
-  publish:
-    name: Publish to npm
-    # Forks and PRs get the full build + smoke pipeline; only the upstream
-    # repository (with the NPM_TOKEN secret configured) publishes, and only
-    # for tag pushes / manual dispatches — never from a pull request.
+  publish-github:
+    name: Publish to GitHub Packages
+    # GITHUB_TOKEN auth, no external secrets — runs on the upstream repo and
+    # every fork, for tag pushes / manual dispatches only (never PRs). The
+    # package scope is the repository owner, set at staging time.
+    if: github.event_name != 'pull_request'
+    needs: package
+    runs-on: ubuntu-latest
+    # packages:write for the registry; contents:write to attach the offline
+    # bundle to the tag's release.
+    permissions:
+      contents: write
+      packages: write
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          registry-url: https://npm.pkg.github.com
+          scope: ${{ github.repository_owner }}
+
+      - name: Download tarballs
+        uses: actions/download-artifact@v4
+        with:
+          name: npm-tarballs
+          path: tarballs
+
+      - name: Publish every tarball
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -eu
+          shopt -s nullglob
+          tarballs=(tarballs/*.tgz)
+          if [ "${#tarballs[@]}" -eq 0 ]; then
+            echo "::error::no tarballs found from the npm-tarballs artifact"
+            exit 1
+          fi
+          for tarball in "${tarballs[@]}"; do
+            # Absolute path: npm treats a relative .tgz it cannot stat as a
+            # git/registry spec (observed: it tried ssh://git@github.com/...).
+            target="$(realpath "$tarball")"
+            echo "Publishing $target"
+            if ! npm publish "$target" 2>/tmp/npm-publish.err; then
+              # GitHub Packages answers E409 "Cannot publish over existing
+              # version" when a run republishes; treat that as already done.
+              if grep -qiE "publish over existing version|previously published" /tmp/npm-publish.err; then
+                echo "::notice::$(basename "$tarball") already published, skipping"
+              else
+                cat /tmp/npm-publish.err
+                exit 1
+              fi
+            fi
+          done
+
+      - name: Remind about the one-time visibility step
+        env:
+          OWNER: ${{ github.repository_owner }}
+        run: |
+          # GitHub Packages always creates packages as private, and there is
+          # NO API (REST or GraphQL, GITHUB_TOKEN or PAT) to change that —
+          # verified against the live API and the official OpenAPI spec.
+          # Visibility is a package-level setting, so each package needs the
+          # toggle exactly once; every later version inherits it. Until then,
+          # only tokens with packages access can install (the registry
+          # install verification below still runs with GITHUB_TOKEN).
+          PACKAGES=(
+            "codex-proxy"
+            "codex-tls-win32-x64-msvc"
+            "codex-tls-win32-arm64-msvc"
+            "codex-tls-linux-x64-gnu"
+            "codex-tls-linux-x64-musl"
+            "codex-tls-linux-arm64-gnu"
+            "codex-tls-linux-arm64-musl"
+            "codex-tls-darwin-x64"
+            "codex-tls-darwin-arm64"
+          )
+          echo "::notice::First-time setup — make these packages public in the UI:"
+          echo "::notice::Package page -> Package settings -> Danger zone -> Change visibility -> Public"
+          for pkg in "${PACKAGES[@]}"; do
+            ENCODED=$(node -p "encodeURIComponent('@${OWNER}/${pkg}')")
+            echo "::notice::https://github.com/users/${OWNER}/packages/npm/$ENCODED/settings"
+          done
+
+      - name: Attach offline npm bundle to the release
+        # Only tag runs correspond to a GitHub Release; give readers a
+        # no-auth install path (download zip, node install.mjs) until the
+        # npm registry is available. Version-free asset name so the
+        # /releases/latest/download/codex-proxy-npm.zip link never goes stale.
+        if: github.event_name == 'push' && github.ref_type == 'tag'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -eu
+          rm -rf offline && mkdir offline
+          cp tarballs/*.tgz offline/
+          cp scripts/npm/offline-install.mjs offline/install.mjs
+          (cd offline && zip -q -r ../codex-proxy-npm.zip .)
+          for attempt in $(seq 1 8); do
+            if gh release upload "$GITHUB_REF_NAME" codex-proxy-npm.zip --clobber; then
+              echo "offline npm bundle attached to $GITHUB_REF_NAME"
+              exit 0
+            fi
+            # The release is normally created first by the release workflow,
+            # but retry in case the two runs race.
+            echo "upload failed (attempt $attempt), retrying"
+            sleep 15
+          done
+          echo "::error::could not upload the offline bundle to $GITHUB_REF_NAME"
+          exit 1
+
+  verify-install:
+    name: Verify install from GitHub Packages
+    # End-to-end proof: pull the just-published version back from the
+    # registry (not the local tarballs), letting npm resolve
+    # optionalDependencies for this runner's platform, then run it.
+    if: github.event_name != 'pull_request'
+    needs: [package, publish-github]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          registry-url: https://npm.pkg.github.com
+          scope: ${{ github.repository_owner }}
+
+      - name: Install the published package from the registry
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          SCOPE: ${{ github.repository_owner }}
+        run: |
+          set -eu
+          VERSION="${{ needs.package.outputs.version }}"
+          PREFIX="$RUNNER_TEMP/npm-registry-install"
+          npm i -g --prefix "$PREFIX" --no-audit --no-fund "@$SCOPE/codex-proxy@$VERSION"
+
+          GLOBAL_ROOT="$PREFIX/lib/node_modules"
+
+          # npm nests the optional dependency under the main package (global
+          # --prefix installs don't hoist); accept either layout.
+          ADDON_CANDIDATES=(
+            "$GLOBAL_ROOT/@$SCOPE/codex-tls-linux-x64-gnu"
+            "$GLOBAL_ROOT/@$SCOPE/codex-proxy/node_modules/@$SCOPE/codex-tls-linux-x64-gnu"
+          )
+          ADDON_FOUND=""
+          for candidate in "${ADDON_CANDIDATES[@]}"; do
+            if [ -d "$candidate" ]; then ADDON_FOUND="$candidate"; break; fi
+          done
+          if [ -z "$ADDON_FOUND" ]; then
+            echo "::error::platform addon codex-tls-linux-x64-gnu not installed"
+            exit 1
+          fi
+          echo "platform addon installed at $ADDON_FOUND"
+
+          # os/cpu filtering must exclude every non-linux addon...
+          FOREIGN=$(find "$GLOBAL_ROOT" -type d -name 'codex-tls-*' \
+            ! -name 'codex-tls-linux-x64-gnu' ! -name 'codex-tls-linux-x64-musl' \
+            ! -name 'codex-tls-linux-arm64-gnu' ! -name 'codex-tls-linux-arm64-musl')
+          if [ -n "$FOREIGN" ]; then
+            echo "::error::addons for other operating systems were installed:"
+            echo "$FOREIGN"
+            exit 1
+          fi
+          # ...and the arm64 variants must be excluded on this x64 runner.
+          ARM=$(find "$GLOBAL_ROOT" -type d -name 'codex-tls-linux-arm64-*')
+          if [ -n "$ARM" ]; then
+            echo "::error::arm64 addons were installed on an x64 runner:"
+            echo "$ARM"
+            exit 1
+          fi
+          echo "os/cpu filtering correct: only linux-x64 addons present"
+
+          # Known quirk on GitHub Packages: npm installs both glibc and musl
+          # addons (libc filtering doesn't trigger); the loader's own isMusl()
+          # check still loads the matching one, so the health check below is
+          # the functional proof. Flag it as a warning, not a failure.
+          if [ -d "$GLOBAL_ROOT/@$SCOPE/codex-proxy/node_modules/@$SCOPE/codex-tls-linux-x64-musl" ]; then
+            echo "::warning::both glibc and musl addons installed (libc metadata not honored by GitHub Packages)"
+          fi
+
+          "$PREFIX/bin/codex-proxy" --mode=server --port 18181 &
+          SERVER_PID=$!
+          for i in $(seq 1 30); do
+            if curl --noproxy '*' --fail --silent http://127.0.0.1:18181/health >/dev/null; then
+              echo "health check passed"
+              kill $SERVER_PID
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "server did not become healthy"
+          kill $SERVER_PID || true
+          exit 1
+
+  publish-npm:
+    name: Publish to npm registry
+    # Optional dual-publish: only the upstream repo, only when NPM_TOKEN is
+    # configured; stays green with a notice otherwise.
     if: github.repository == 'icebear0828/codex-proxy' && github.event_name != 'pull_request'
     needs: package
     runs-on: ubuntu-latest
@@ -280,31 +492,26 @@ jobs:
           name: npm-tarballs
           path: tarballs
 
-      - name: Publish addon packages, then the main package
+      - name: Publish every tarball
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: |
           set -eu
           VERSION="${{ needs.package.outputs.version }}"
-          # Publishing needs the npm org plus NPM_TOKEN; until the token is
-          # configured, keep the dispatched run green and skip — build + smoke
-          # above still prove the tag, and the tarballs land in the artifact.
+          # Not configured yet: stay green with a notice instead of failing
+          # the release. GitHub Packages runs independently above.
           if [[ -z "$NODE_AUTH_TOKEN" ]]; then
-            echo "::notice::NPM_TOKEN is not configured — skipping npm publish"
+            echo "::notice::NPM_TOKEN is not configured — skipping npm registry publish"
             exit 0
           fi
-          # npm publishes under the `latest` dist-tag by default, so a
-          # vX.Y.Z-beta run would hand plain `npm i -g` users the beta (and
-          # a later beta would steal it back from the stable). Semver
-          # prerelease versions carry a hyphen — send those to `beta`.
+          # npm publish defaults to the `latest` dist-tag; semver prerelease
+          # versions (hyphen) go to `beta` instead so plain `npm i -g`
+          # always lands on stable.
           NPM_TAG=latest
           if [[ "$VERSION" == *-* ]]; then
             NPM_TAG=beta
           fi
           echo "Publishing with dist-tag: $NPM_TAG"
-          for addon in codex-tls-win32-x64-msvc codex-tls-win32-arm64-msvc codex-tls-linux-x64-gnu codex-tls-linux-x64-musl codex-tls-linux-arm64-gnu codex-tls-linux-arm64-musl codex-tls-darwin-x64 codex-tls-darwin-arm64; do
-            echo "Publishing $addon@$VERSION"
-            npm publish "tarballs/$addon-$VERSION.tgz" --tag "$NPM_TAG"
+          for tarball in tarballs/*.tgz; do
+            npm publish "$tarball" --access public --tag "$NPM_TAG"
           done
-          echo "Publishing @icebear0828/codex-proxy@$VERSION"
-          npm publish "tarballs/icebear0828-codex-proxy-$VERSION.tgz" --access public --tag "$NPM_TAG"
