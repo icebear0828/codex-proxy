@@ -48,10 +48,9 @@ function readRequestLogConfig(): RequestLogConfig {
       maxBytes: cfg.observability?.max_log_bytes ?? DEFAULT_MAX_BYTES,
     };
   } catch {
-    // Config not loaded yet (early boot). Default to enabled so early
-    // errors are still captured; the enabled flag is also gated by
-    // logs.enabled, which defaults false, so misconfiguration is safe.
-    return { enabled: true, maxBytes: DEFAULT_MAX_BYTES };
+    // Fail closed when config is unavailable: logging must not bypass the
+    // user's logs.enabled opt-in during early boot or config failures.
+    return { enabled: false, maxBytes: DEFAULT_MAX_BYTES };
   }
 }
 

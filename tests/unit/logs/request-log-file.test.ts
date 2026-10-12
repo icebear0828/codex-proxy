@@ -4,6 +4,7 @@ import { tmpdir } from "os";
 import { resolve } from "path";
 
 let tmpDataDir = "";
+let configUnavailable = false;
 const mockConfig = {
   logs: { enabled: true },
   observability: { request_log_file: true, max_log_bytes: 1024 * 1024 },
@@ -14,10 +15,16 @@ vi.mock("@src/paths.js", async (importOriginal) => {
   return { ...actual, getDataDir: () => tmpDataDir };
 });
 
-vi.mock("@src/config.js", () => ({ getConfig: () => mockConfig }));
+vi.mock("@src/config.js", () => ({
+  getConfig: () => {
+    if (configUnavailable) throw new Error("configuration unavailable");
+    return mockConfig;
+  },
+}));
 
 beforeEach(() => {
   tmpDataDir = mkdtempSync(resolve(tmpdir(), "request-log-"));
+  configUnavailable = false;
   mockConfig.logs.enabled = true;
   mockConfig.observability.request_log_file = true;
   mockConfig.observability.max_log_bytes = 1024 * 1024;
@@ -65,6 +72,20 @@ describe("appendRequestLogRecord", () => {
     appendRequestLogRecord({
       id: "record-2",
       requestId: "request-2",
+      direction: "egress",
+      ts: "2026-10-12T00:00:00.000Z",
+      method: "POST",
+      path: "/v1internal:streamGenerateContent",
+    });
+    expect(existsSync(resolve(tmpDataDir, "request-log.jsonl"))).toBe(false);
+  });
+
+  it("fails closed when configuration cannot be loaded", async () => {
+    configUnavailable = true;
+    const { appendRequestLogRecord } = await import("@src/logs/request-log-file.js");
+    appendRequestLogRecord({
+      id: "record-3",
+      requestId: "request-3",
       direction: "egress",
       ts: "2026-10-12T00:00:00.000Z",
       method: "POST",
