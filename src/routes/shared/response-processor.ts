@@ -43,6 +43,13 @@ export interface StreamResponseOptions {
   api: UpstreamAdapter;
   response: Response;
   model: string;
+  /**
+   * Model id actually sent upstream. Distinct from {@link model}, which is the
+   * *display* name echoed back to the client: the `-high` / `-fast` suffixes it
+   * re-appends are local processing markers, so audit rows must not use it.
+   * Defaults to `model` when the caller has nothing better to pass.
+   */
+  upstreamModel?: string;
   adapter: FormatAdapter;
   onUsage: (u: UsageInfo) => void;
   tupleSchema?: Record<string, unknown> | null;
@@ -83,6 +90,7 @@ export async function streamResponse(options: StreamResponseOptions): Promise<vo
     api,
     response,
     model,
+    upstreamModel,
     adapter,
     onUsage,
     tupleSchema,
@@ -92,6 +100,9 @@ export async function streamResponse(options: StreamResponseOptions): Promise<vo
     onResponseMetadata,
     diagnostics,
   } = options;
+  // `model` is the display name echoed back to the client; every audit row
+  // below must name the model that actually went on the wire instead.
+  const auditModel = upstreamModel ?? model;
   const written = createWrittenStreamTrace();
   const heartbeatMs = options.heartbeatMs ?? HEARTBEAT_INTERVAL_MS;
   // Timestamp of the last byte forwarded to the client (real chunk OR
@@ -123,7 +134,7 @@ export async function streamResponse(options: StreamResponseOptions): Promise<vo
     tag: diagnostics?.tag ?? adapter.tag,
     provider: diagnostics?.provider,
     path: diagnostics?.path,
-    model,
+    model: auditModel,
     accountEntryId: diagnostics?.accountEntryId,
     variantHash: diagnostics?.variantHash,
     fallback: diagnostics?.fallback,
@@ -179,7 +190,7 @@ export async function streamResponse(options: StreamResponseOptions): Promise<vo
           tag: diagnostics?.tag ?? adapter.tag ?? null,
           provider: diagnostics?.provider ?? null,
           path: diagnostics?.path ?? null,
-          model,
+          model: auditModel,
           accountEntryId: diagnostics?.accountEntryId ?? null,
           variantHash: diagnostics?.variantHash ?? null,
           fallback: diagnostics?.fallback,
@@ -239,7 +250,7 @@ export async function streamResponse(options: StreamResponseOptions): Promise<vo
       tag: diagnostics?.tag ?? adapter.tag ?? null,
       provider: diagnostics?.provider ?? null,
       path: diagnostics?.path ?? null,
-      model,
+      model: auditModel,
       accountEntryId: diagnostics?.accountEntryId ?? null,
       variantHash: diagnostics?.variantHash ?? null,
       fallback: diagnostics?.fallback,
