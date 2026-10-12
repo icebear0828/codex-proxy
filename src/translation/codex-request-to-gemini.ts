@@ -218,6 +218,10 @@ function sanitizeGeminiSchema(schema: Record<string, unknown>): Record<string, u
       }
     }
     if (!result.type && result.properties) result.type = "OBJECT";
+    // Gemini requires an `items` Schema for every array. Claude Code emits
+    // tuple schemas via unsupported `prefixItems`; after that field is dropped,
+    // retain a permissive item Schema so nested arrays remain valid.
+    if (result.type === "ARRAY" && result.items === undefined) result.items = {};
     return result;
   };
   return visit(schema, new Set());

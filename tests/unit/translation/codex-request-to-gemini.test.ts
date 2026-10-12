@@ -35,6 +35,55 @@ describe("Codex to Gemini tool translation", () => {
     });
   });
 
+  it("strips unsupported validation keywords such as exclusiveMinimum in nested schemas", () => {
+    const body = translateCodexToGeminiRequest(request([{ role: "user", content: "hi" }], [{
+      type: "function", name: "Range", parameters: {
+        type: "object",
+        properties: {
+          range: {
+            type: "integer", exclusiveMinimum: 0, multipleOf: 1,
+            items: { type: "object", properties: { score: { type: "number", exclusiveMinimum: 0 } } },
+          },
+        },
+      },
+    }]));
+    expect(body.tools?.[0].functionDeclarations[0].parameters).toEqual({
+      type: "OBJECT",
+      properties: {
+        range: {
+          type: "INTEGER",
+          items: { type: "OBJECT", properties: { score: { type: "NUMBER" } } },
+        },
+      },
+    });
+  });
+
+  it("adds required items schemas when dropping unsupported prefixItems tuples", () => {
+    const body = translateCodexToGeminiRequest(request([{ role: "user", content: "hi" }], [{
+      type: "function", name: "ArtifactData", parameters: {
+        type: "object",
+        properties: {
+          query: {
+            type: "object",
+            properties: {
+              where: {
+                type: "array",
+                items: {
+                  type: "array",
+                  prefixItems: [{ type: "string" }, { type: "string", enum: ["eq", "ne"] }, {}],
+                },
+              },
+            },
+          },
+        },
+      },
+    }]));
+    const parameters = body.tools?.[0].functionDeclarations[0].parameters as {
+      properties: { query: { properties: { where: { items: { type: string; items?: unknown } } } } };
+    };
+    expect(parameters.properties.query.properties.where.items).toEqual({ type: "ARRAY", items: {} });
+  });
+
   it("preserves tool call identity and matches its response", () => {
     const body = translateCodexToGeminiRequest(request([
       { type: "function_call", call_id: "call-1", name: "Read", arguments: "{\"path\":\"a\"}", signature: "sig" },

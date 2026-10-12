@@ -9,3 +9,8 @@
 - 子 Agent 使用最小上下文、稳定公共前缀与增量证据，避免完整历史复制和重复读取。
 - 多 Agent 授权不扩大网络、真实 API、外部写入、提交、发布或破坏性操作权限。
 - 达到当前任务验收或停止条件后立即停止，不自动进入下一票据。
+
+## Gemini / Antigravity Schema 与日志
+
+- Gemini / Antigravity 的工具参数及结构化输出 schema 必须按 Gemini 支持的字段白名单清洗；清除 `prefixItems` 等不支持字段后，如果 schema 仍为 `type: array` 且缺少 `items`，需补宽松的 `{}` schema，避免 Gemini 的 `missing field` 校验错误。为此类变换补充嵌套 schema 回归测试。
+- 持久化请求/错误诊断时，必须先脱敏并限制单条记录和文件大小；不要提交临时的原始 tools / request dump，也不要记录凭据。

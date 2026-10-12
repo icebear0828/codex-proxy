@@ -13,7 +13,10 @@ function redactString(value: string): string {
 }
 
 export function redactJson(value: unknown, depth = 0): JsonValue {
-  if (depth > 6) return "***";
+  // Tool parameter schemas are legitimately deep (Claude Code ships tools
+  // whose input_schema nests 8+ levels). Depth 6 was cutting those to "***",
+  // which made schema-related upstream 400s impossible to debug from logs.
+  if (depth > 12) return "***";
   if (value === null || value === undefined) return null;
   if (typeof value === "string") return value;
   if (typeof value === "number" || typeof value === "boolean") return value;

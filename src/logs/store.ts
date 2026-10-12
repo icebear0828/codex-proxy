@@ -1,4 +1,5 @@
 import { redactJson } from "./redact.js";
+import { appendRequestLogRecord } from "./request-log-file.js";
 import type { LogMetrics } from "./metrics.js";
 import type { UsageInfo } from "../translation/codex-event-extractor.js";
 
@@ -204,6 +205,9 @@ export class LogStore {
         const after = estimateRecordBytes(record);
         this.sizes.set(record, after);
         this.bytes = Math.max(0, this.bytes - before + after);
+        // Mirror the final record state to the on-disk request log so the
+        // completed status/error/response survives in-memory eviction.
+        appendRequestLogRecord(record);
       }
     }
     if (updated) this.trimToCapacity();
@@ -226,6 +230,13 @@ export class LogStore {
       this.bytes += size;
       this.records.push(redacted);
       this.trimToCapacity();
+      // Egress records and terminal ingress records (error/status already
+      // known at enqueue time) never receive a follow-up updateByRequestId
+      // patch, so persist them now. Plain in-flight ingress records are
+      // mirrored when updateByRequestId fires at completion instead.
+      if (redacted.direction === "egress" || redacted.error != null || redacted.status != null) {
+        appendRequestLogRecord(redacted);
+      }
     }
   }
 

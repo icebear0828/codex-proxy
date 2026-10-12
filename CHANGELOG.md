@@ -12,6 +12,14 @@
 
 - 测试命令现按宿主系统自动选择 Windows 或 Linux suite，并保留显式平台命令；两套共用测试发现和用例，Windows CI 同时运行 root 与 web suite。（`vitest.config.ts`、`vitest.shared-config.ts`、`.github/workflows/ci-quality.yml`）
 
+### Added
+
+- 本地请求日志可镜像持久化到 `data/request-log.jsonl`，终态上游错误记录截断后的响应详情；日志仍受 `logs.enabled` 控制、写入前脱敏并设有大小上限，便于故障排查而不依赖内存日志。（`src/logs/request-log-file.ts`、`src/logs/store.ts`、`src/routes/shared/direct-request-handler.ts`、`src/routes/shared/proxy-error-handler.ts`）
+
+### Fixed
+
+- Gemini / Antigravity 工具参数及结构化输出 schema 会剥除 Gemini 不支持的 JSON Schema 关键字；清理 Claude Code 工具定义中的 `prefixItems` 后，为缺少 `items` 的数组补充宽松 schema，避免上游 400。（`src/translation/codex-request-to-gemini.ts`）
+
 ## [v2.1.x](https://github.com/icebear0828/codex-proxy/releases?q=2.1) - 2026-09-01 至 2026-09-07
 
 ### Fixed
