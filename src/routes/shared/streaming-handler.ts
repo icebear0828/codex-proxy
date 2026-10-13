@@ -10,7 +10,7 @@ import { calculateLogMetrics } from "../../logs/metrics.js";
 import type { UsageInfo } from "../../translation/codex-event-extractor.js";
 import { releaseAccount } from "./account-acquisition.js";
 import type { FormatAdapter, ProxyRequest, UsageHint } from "./proxy-handler-types.js";
-import { annotateImageGenOutcome, annotateUsageCost, recordClientKeyUsage } from "./proxy-handler-utils.js";
+import { annotateImageGenOutcome, annotateUsageCost, recordClientKeyUsage, upstreamModelOf } from "./proxy-handler-utils.js";
 import { streamResponse } from "./response-processor.js";
 import { createResponseMetadataCollector } from "./response-metadata-collector.js";
 import { logProxyUsage } from "./proxy-usage-log.js";
@@ -107,7 +107,7 @@ export function handleStreaming(options: HandleStreamingOptions): Response {
         kind: "client-abort",
         requestId,
         tag: fmt.tag,
-        model: req.model,
+        model: upstreamModelOf(req),
         accountEntryId: capturedEntryId,
         variantHash,
         responseId: capturedResponseId ?? null,
@@ -154,6 +154,7 @@ export function handleStreaming(options: HandleStreamingOptions): Response {
         api: capturedApi,
         response,
         model: req.model,
+        upstreamModel: upstreamModelOf(req),
         adapter: fmt,
         onUsage: (u) => {
           usageInfo = u;

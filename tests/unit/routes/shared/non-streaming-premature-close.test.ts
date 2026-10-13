@@ -71,7 +71,7 @@ describe("handleNonStreamingPrematureClose", () => {
       kind: "upstream-premature",
       requestId: "rid-123456",
       tag: "OpenAI",
-      model: "client-model",
+      model: "codex-model",
       accountEntryId: "entry-1",
       variantHash: "variant-1",
       responseId: "resp-pc",

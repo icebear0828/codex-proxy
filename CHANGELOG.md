@@ -8,7 +8,9 @@
 
 ## [Unreleased]
 
-> 暂无已记录的变更。
+### Fixed
+
+- 修复日志窗口「出口模型」列显示本地处理后缀的问题（#848）：带 `-high` / `-fast` 等本地后缀的请求（如 `gpt-6-high`）此前在出口日志中显示为「解析后模型名 + 后缀」（`gpt-6-astra-high`），与实际请求上游的模型 ID 不符。现在出口模型一律取翻译层实际写出的模型 ID，复用既有模型解析逻辑（未新增后缀正则）；入口模型仍保留客户端原始请求名，客户端回显、推理等级、快速模式与路由行为均未改动。（`src/routes/shared/proxy-egress-log.ts`、`src/routes/shared/direct-request-handler.ts`、`src/routes/shared/streaming-handler.ts`、`src/routes/shared/non-streaming-helpers.ts`、`src/routes/shared/response-processor.ts`、`src/routes/shared/proxy-handler-utils.ts`、`tests/unit/routes/shared/direct-egress-model.test.ts`）
 
 ## [v2.1.x](https://github.com/icebear0828/codex-proxy/releases?q=2.1) - 2026-09-01 至 2026-09-07
 

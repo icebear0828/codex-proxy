@@ -19,7 +19,7 @@ import { streamResponse } from "./response-processor.js";
 import { toErrorStatus } from "./proxy-error-handler.js";
 import type { HandleDirectRequestOptions, ProxyRequest } from "./proxy-handler-types.js";
 import { canReturnStreamError, streamErrorResponse } from "./stream-error-response.js";
-import { recordClientKeyUsage } from "./proxy-handler-utils.js";
+import { recordClientKeyUsage, upstreamModelOf } from "./proxy-handler-utils.js";
 
 /** Transport-level failures (status 0) get bounded retries: weak networks
  *  produce transient connection errors routinely, and the direct path has no
@@ -95,7 +95,7 @@ export async function handleDirectRequest(options: HandleDirectRequestOptions): 
       direction: "egress",
       method: "POST",
       path: upstreamPath,
-      model: req.model,
+      model: upstreamModelOf(req),
       provider: upstream.tag,
       account: accountLog,
       fallback: isFallback,
@@ -115,7 +115,7 @@ export async function handleDirectRequest(options: HandleDirectRequestOptions): 
       direction: "egress",
       method: "POST",
       path: upstreamPath,
-      model: req.model,
+      model: upstreamModelOf(req),
       provider: upstream.tag,
       account: accountLog,
       fallback: isFallback,
@@ -195,7 +195,7 @@ export async function handleDirectRequest(options: HandleDirectRequestOptions): 
           tag: fmt.tag,
           provider: upstream.tag,
           path: upstreamPath,
-          model: req.model,
+          model: upstreamModelOf(req),
           fallback: isFallback,
         });
         abortController.abort();
@@ -206,6 +206,7 @@ export async function handleDirectRequest(options: HandleDirectRequestOptions): 
           api: upstream,
           response: rawResponse,
           model: req.model,
+          upstreamModel: upstreamModelOf(req),
           adapter: fmt,
           onUsage: (u) => {
             usageInfo = u;

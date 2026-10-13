@@ -3,7 +3,23 @@ import type { CookieJar } from "../../proxy/cookie-jar.js";
 import type { CodexFingerprintMode } from "../../auth/types.js";
 import type { ProxyPool } from "../../proxy/proxy-pool.js";
 import type { UsageInfo } from "../../translation/codex-event-extractor.js";
+import type { ProxyRequest } from "./proxy-handler-types.js";
 import { calculateUsageCostUsd, loadPricingCatalog, resolveModelPricing, warnPricingLoadFailure } from "../../auth/usage-pricing.js";
+
+/**
+ * Model id that actually goes on the wire for this request.
+ *
+ * `ProxyRequest.model` is a *display* name, not a routing one: chat.ts assigns
+ * `buildDisplayModelName(parseModelName(...))`, which re-appends the `-high` /
+ * `-fast` suffixes the resolver had just stripped. Reading it for the logs'
+ * upstream-model column therefore advertises a model that was never requested
+ * upstream. The resolved id — suffixes removed, aliases already applied — is
+ * what the translation layer put on the wire, and it is what the audit trail
+ * must show.
+ */
+export function upstreamModelOf(request: ProxyRequest): string {
+  return request.codexRequest.model;
+}
 
 let pricingCatalog: ReturnType<typeof loadPricingCatalog> | null = null;
 

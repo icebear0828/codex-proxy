@@ -1,5 +1,6 @@
 import { enqueueLogEntry } from "../../logs/entry.js";
 import type { ProxyRequest } from "./proxy-handler-types.js";
+import { upstreamModelOf } from "./proxy-handler-utils.js";
 
 export interface RecordProxyEgressLogOptions {
   requestId: string;
@@ -19,7 +20,7 @@ export function recordProxyEgressLog(options: RecordProxyEgressLogOptions): void
     direction: "egress",
     method: "POST",
     path: "/codex/responses",
-    model: options.request.model,
+    model: upstreamModelOf(options.request),
     provider: "codex",
     account: options.account,
     fallback: options.fallback,

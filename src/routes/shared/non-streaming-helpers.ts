@@ -4,7 +4,7 @@ import type { ChainAdvanceTicket, SessionAffinityMap } from "../../auth/session-
 import type { AccountPool } from "../../auth/account-pool.js";
 import { clearCfChallengeCooldown } from "../../auth/cf-challenge-cooldown.js";
 import { markFallbackUsed } from "../../auth/fallback-state.js";
-import { annotateUsageCost } from "./proxy-handler-utils.js";
+import { annotateUsageCost, upstreamModelOf } from "./proxy-handler-utils.js";
 import type { CodexApi, WsPoolContext } from "../../proxy/codex-api.js";
 import { CodexApiError } from "../../proxy/codex-api.js";
 import type { CookieJar } from "../../proxy/cookie-jar.js";
@@ -414,7 +414,7 @@ export function handleNonStreamingPrematureClose(
     kind: "upstream-premature",
     requestId,
     tag,
-    model: req.model,
+    model: upstreamModelOf(req),
     accountEntryId: entryId,
     variantHash,
     responseId: err.responseId,
