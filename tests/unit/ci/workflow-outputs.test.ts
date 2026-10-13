@@ -152,6 +152,15 @@ describe("workflow output references are satisfied", () => {
     expect(dockerfile).toContain("PROXY_VERSION=${PROXY_VERSION}");
   });
 
+  it("keeps optional Lite failures out of the stable latest gate", () => {
+    const workflow = readFileSync(resolve(WORKFLOW_DIR, "release.yml"), "utf8");
+    expect(workflow).toContain(
+      "needs.notes.result == 'success' && needs.build.result == 'success' && needs.merge-mac-manifest.result == 'success'",
+    );
+    expect(workflow).toContain('LITE_FAILED="${{ needs.build-lite.result != \'success\' }}"');
+    expect(workflow).toContain("Release $TAG published, but the optional Lite artifact failed");
+  });
+
   it("docker-publish-lite executes smoke test before pushing the image to registry", () => {
     const workflow = loadWorkflow("docker-publish.yml");
     const job = workflow.jobs["publish-lite"];

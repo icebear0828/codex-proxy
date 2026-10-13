@@ -483,7 +483,7 @@ jobs:
 
       - name: Mark stable release as latest (assets are complete now)
         id: flip
-        if: ${{ !contains(needs.*.result, 'failure') && !contains(needs.*.result, 'cancelled') }}
+        if: ${{ needs.notes.result == 'success' && needs.build.result == 'success' && needs.merge-mac-manifest.result == 'success' }}
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAG: ${{ inputs.tag || github.ref_name }}
@@ -519,8 +519,12 @@ jobs:
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
           RELEASE_URL: ${{ github.server_url }}/${{ github.repository }}/releases/tag/${{ inputs.tag || github.ref_name }}
         run: |
-          if [ "${{ contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled') || steps.flip.outcome == 'failure' }}" = "true" ]; then
+          CORE_FAILED="${{ needs.notes.result != 'success' || needs.build.result != 'success' || needs.merge-mac-manifest.result != 'success' || steps.flip.outcome == 'failure' }}"
+          LITE_FAILED="${{ needs.build-lite.result != 'success' }}"
+          if [ "$CORE_FAILED" = "true" ]; then
             MSG="❌ Release $TAG failed: $RUN_URL"
+          elif [ "$LITE_FAILED" = "true" ]; then
+            MSG="⚠️ Release $TAG published, but the optional Lite artifact failed: $RUN_URL"
           else
             MSG="✅ Release $TAG published: $RELEASE_URL"
           fi
