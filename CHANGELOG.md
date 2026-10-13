@@ -8,7 +8,7 @@
 
 ## [Unreleased]
 
-> 暂无已记录的变更。
+- 新增可配置的账户 keepalive 定时任务及管理接口，支持按固定时刻或间隔刷新配额并查看执行状态；固定时刻配置按 24 小时 HH:mm 格式校验。（`src/auth/keepalive-scheduler.ts`、`src/routes/admin/keepalive.ts`）
 
 ## [v2.1.x](https://github.com/icebear0828/codex-proxy/releases?q=2.1) - 2026-09-01 至 2026-09-07
 

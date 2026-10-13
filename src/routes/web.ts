@@ -14,14 +14,17 @@ import { createUsageStatsRoutes } from "./admin/usage-stats.js";
 import { createLogRoutes } from "./admin/logs.js";
 import { createErrorLogRoutes } from "./admin/error-logs.js";
 import { createClientKeyAdminRoutes } from "./admin/client-keys.js";
+import { createKeepaliveRoutes } from "./admin/keepalive.js";
 import { getConfig } from "../config.js";
 import type { UsageStatsStore } from "../auth/usage-stats.js";
 import type { ClientKeyPool } from "../auth/client-key-pool.js";
+import type { KeepaliveScheduler } from "../auth/keepalive-scheduler.js";
 
 export function createWebRoutes(
   accountPool: AccountPool,
   usageStats: UsageStatsStore,
   clientKeyPool?: ClientKeyPool,
+  keepaliveScheduler?: KeepaliveScheduler,
 ): Hono {
   const app = new Hono();
 
@@ -101,6 +104,9 @@ export function createWebRoutes(
         () => getConfig().server.proxy_api_key ?? accountPool.getProxyApiKey() ?? null,
       ),
     );
+  }
+  if (keepaliveScheduler) {
+    app.route("/", createKeepaliveRoutes(keepaliveScheduler));
   }
 
   return app;
