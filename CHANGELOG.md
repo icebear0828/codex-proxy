@@ -10,7 +10,7 @@
 
 ### Fixed
 
-- dev→main 晋升现在可安全验证自动生成的 changelog-only 同步提交：仅当其父提交通过质量门禁且同步提交仅修改发布日志时，才继承 CI 绿灯并纳入已同步的 v2.1.x 发布说明。（`.github/scripts/check-promote-ci.sh`）
+- dev→main 晋升现在可安全验证自动生成的 changelog-only 同步提交：仅当其父提交通过质量门禁且同步提交仅修改发布日志时，才继承 CI 绿灯并纳入已同步的 v2.1.x 发布说明；同秒的质量门禁记录按 run 编号确定最新结果。（`.github/scripts/check-promote-ci.sh`）
 
 ## [v2.1.x](https://github.com/icebear0828/codex-proxy/releases?q=2.1) - 2026-09-01 至 2026-09-07
 

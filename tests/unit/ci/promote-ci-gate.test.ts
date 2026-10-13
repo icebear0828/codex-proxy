@@ -125,6 +125,31 @@ describePosix("promote CI gate", () => {
     ])).toBe("not-green");
   });
 
+  it("uses run number to break ties when quality runs share a creation timestamp", () => {
+    expect(runWithWorkflowRuns([
+      {
+        path: ".github/workflows/ci-quality.yml",
+        head_sha: SHA,
+        status: "completed",
+        conclusion: "failure",
+        created_at: "2026-08-15T17:56:53Z",
+        run_number: 21,
+        run_attempt: 1,
+        id: 9021,
+      },
+      {
+        path: ".github/workflows/ci-quality.yml",
+        head_sha: SHA,
+        status: "completed",
+        conclusion: "success",
+        created_at: "2026-08-15T17:56:53Z",
+        run_number: 20,
+        run_attempt: 1,
+        id: 9020,
+      },
+    ])).toBe("not-green");
+  });
+
   it("reports missing quality checks instead of treating unrelated runs as green", () => {
     expect(runWithWorkflowRuns([
       {

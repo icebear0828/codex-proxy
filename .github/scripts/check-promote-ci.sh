@@ -23,9 +23,9 @@ quality_conclusion() {
     [ (if type == "array" then .[] else . end)
      | .workflow_runs[]?
      | select(.path == $path and .head_sha == $sha)
-     | {conclusion, status, created_at}
+     | {conclusion, status, created_at, run_number, run_attempt, id}
     ]
-    | sort_by(.created_at)
+    | sort_by([.created_at, (.run_number // 0), (.run_attempt // 0), (.id // 0)])
     | if length == 0 then "missing-checks" else .[-1] | if .status != "completed" then "not-green" else (.conclusion // "") end end
   ' <<< "$runs_json"
 }
