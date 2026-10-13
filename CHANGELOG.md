@@ -8,7 +8,9 @@
 
 ## [Unreleased]
 
-> 暂无已记录的变更。
+### Changed
+
+- Lite 制品失败不再阻止核心桌面版本标记为 latest；发布通知会将该情况标为可选 Lite 失败。（`.github/workflows/release.yml`）
 
 ## [v2.1.x](https://github.com/icebear0828/codex-proxy/releases?q=2.1) - 2026-09-01 至 2026-09-07
 
