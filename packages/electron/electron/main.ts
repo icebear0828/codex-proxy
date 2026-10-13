@@ -372,7 +372,7 @@ function createTray(): void {
   tray = new Tray(icon.isEmpty() ? nativeImage.createEmpty() : icon);
   tray.setToolTip("Codex Proxy");
   tray.setContextMenu(Menu.buildFromTemplate(buildTrayMenu()));
-  tray.on("double-click", () => createWindow());
+  tray.on("click", () => createWindow());
 }
 
 // macOS: re-create window when dock icon is clicked

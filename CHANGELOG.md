@@ -8,7 +8,9 @@
 
 ## [Unreleased]
 
-> 暂无已记录的变更。
+### Changed
+
+- 桌面端系统托盘图标改为单击即可打开主窗口，无需双击。（`packages/electron/electron/main.ts`）
 
 ## [v2.1.x](https://github.com/icebear0828/codex-proxy/releases?q=2.1) - 2026-09-01 至 2026-09-07
 
