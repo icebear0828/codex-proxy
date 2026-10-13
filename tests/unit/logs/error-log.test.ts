@@ -96,11 +96,13 @@ describe("appendErrorLog", () => {
         authorization: "Bearer sk-very-secret-token-1234567890",
         api_key: "ak_supersecret",
         nested: { cookie: "session=abcdef123456" },
+        upstreamBody: '{"access_token":"Bearer echoed-secret-token-123456"}',
       },
     });
 
     const file = resolve(tmpDataDir, "error-log.jsonl");
-    const entry = JSON.parse(readFileSync(file, "utf-8").trim()) as {
+    const line = readFileSync(file, "utf-8").trim();
+    const entry = JSON.parse(line) as {
       context: { path: string; authorization: string; api_key: string; nested: { cookie: string } };
     };
 
@@ -109,6 +111,32 @@ describe("appendErrorLog", () => {
     expect(entry.context.authorization).not.toContain("sk-very-secret-token");
     expect(entry.context.api_key).not.toContain("supersecret");
     expect(entry.context.nested.cookie).not.toContain("session=abcdef");
+    expect(line).not.toContain("echoed-secret-token-123456");
+  });
+
+  it("redacts and bounds upstream error text, stack, context, and record size", async () => {
+    const { appendErrorLog } = await importErrorLog();
+    appendErrorLog({
+      source: "server",
+      error: {
+        name: "UpstreamError",
+        message: `Authorization: Bearer super-secret-token-123456 ${"m".repeat(10_000)}`,
+        stack: `at upstream (${"s".repeat(10_000)})`,
+      },
+      context: Object.fromEntries(Array.from({ length: 100 }, (_, i) => [`field${i}`, "x".repeat(4096)])),
+    });
+
+    const file = resolve(tmpDataDir, "error-log.jsonl");
+    const line = readFileSync(file, "utf-8").trim();
+    const entry = JSON.parse(line) as {
+      error: { message: string; stack?: string };
+      context: { truncated?: boolean };
+    };
+    expect(line).not.toContain("super-secret-token-123456");
+    expect(entry.error.message.length).toBeLessThan(4200);
+    expect(entry.error.stack?.length).toBeLessThan(4200);
+    expect(entry.context.truncated).toBe(true);
+    expect(Buffer.byteLength(line, "utf8")).toBeLessThanOrEqual(256 * 1024);
   });
 
   it("is a no-op when observability.local_error_log is false", async () => {

@@ -23,7 +23,7 @@ import {
 import { resolve } from "path";
 import { getConfig } from "../config.js";
 import { getDataDir } from "../paths.js";
-import { redactJson } from "./redact.js";
+import { redactJson, redactTextValues } from "./redact.js";
 import type { LogRecord } from "./store.js";
 
 const LOG_FILE = "request-log.jsonl";
@@ -110,6 +110,7 @@ function serializeRecord(record: LogRecord): string {
   if (line.length <= MAX_RECORD_BYTES) return line;
   const slim: LogRecord = {
     ...record,
+    error: truncateValue(record.error) as LogRecord["error"],
     request: truncateValue(record.request),
     response: truncateValue(record.response),
     meta: truncateValue(record.meta) as Record<string, unknown> | undefined,
@@ -137,10 +138,24 @@ export function appendRequestLogRecord(record: LogRecord): void {
   if (!cfg.enabled) return;
 
   try {
-    const redacted = redactJson(record) as unknown as LogRecord;
+    const redacted = redactTextValues(redactJson(record)) as LogRecord;
     rotateIfNeeded(cfg.maxBytes);
     appendFileSync(logPath(), serializeRecord(redacted) + "\n", "utf-8");
   } catch {
     // Logging must never throw into request handling.
+  }
+}
+
+/** Remove both the active and rotated request logs when an operator clears logs. */
+export function clearRequestLogFile(): void {
+  if (process.env.VITEST && !process.env.VITEST_FORCE_REQUEST_LOG_FILE) return;
+  try {
+    const dir = getDataDir();
+    for (const filename of [LOG_FILE, BACKUP_FILE]) {
+      const file = resolve(dir, filename);
+      if (existsSync(file)) unlinkSync(file);
+    }
+  } catch {
+    // Log clearing must not make the admin endpoint fail.
   }
 }

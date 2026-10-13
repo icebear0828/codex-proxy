@@ -36,7 +36,7 @@ import {
 import { resolve } from "path";
 import { getConfig } from "../config.js";
 import { getDataDir } from "../paths.js";
-import { redactJson } from "./redact.js";
+import { redactJson, redactText, redactTextValues } from "./redact.js";
 
 export type ErrorSource = "main" | "renderer" | "server" | "external";
 
@@ -71,6 +71,31 @@ const LOG_FILE = "error-log.jsonl";
 const BACKUP_FILE = "error-log.1.jsonl";
 const CURSOR_FILE = "error-log.cursor";
 const DEFAULT_MAX_BYTES = 10 * 1024 * 1024;
+const MAX_ERROR_RECORD_BYTES = 256 * 1024;
+const MAX_ERROR_TEXT_CHARS = 4096;
+
+function boundedErrorText(value: string | undefined, maxChars = MAX_ERROR_TEXT_CHARS): string | undefined {
+  if (value === undefined) return undefined;
+  const safe = redactText(value);
+  if (safe.length <= maxChars) return safe;
+  return `${safe.slice(0, maxChars)}…[truncated ${safe.length - maxChars} chars]`;
+}
+
+function boundContext(value: unknown, depth = 0): unknown {
+  if (typeof value === "string") return boundedErrorText(value);
+  if (value === null || typeof value !== "object") return value;
+  if (depth > 6) return "[truncated:max-depth]";
+  if (Array.isArray(value)) {
+    const out = value.slice(0, 50).map((child) => boundContext(child, depth + 1));
+    if (value.length > 50) out.push(`[truncated:${value.length - 50} more items]`);
+    return out;
+  }
+  const entries = Object.entries(value as Record<string, unknown>);
+  const out: Record<string, unknown> = {};
+  for (const [key, child] of entries.slice(0, 100)) out[key] = boundContext(child, depth + 1);
+  if (entries.length > 100) out.__truncated_fields__ = entries.length - 100;
+  return out;
+}
 
 interface ObservabilityConfig {
   local_error_log: boolean;
@@ -161,10 +186,9 @@ export function appendErrorLog(input: AppendInput): void {
   }
   if (!cfg.local_error_log) return;
 
-  const sanitizedContext =
-    input.context !== undefined
-      ? (redactJson(input.context) as Record<string, unknown>)
-      : undefined;
+  const sanitizedContext = input.context !== undefined
+    ? boundContext(redactTextValues(redactJson(input.context))) as Record<string, unknown>
+    : undefined;
 
   const entry: ErrorLogEntry = {
     ts: new Date().toISOString(),
@@ -172,16 +196,30 @@ export function appendErrorLog(input: AppendInput): void {
     platform: process.platform,
     source: input.source,
     error: {
-      name: input.error.name,
-      message: input.error.message,
-      stack: input.error.stack,
+      name: input.error.name.slice(0, 128),
+      message: boundedErrorText(input.error.message) ?? "",
+      stack: boundedErrorText(input.error.stack),
     },
     ...(sanitizedContext !== undefined ? { context: sanitizedContext } : {}),
   };
 
   try {
+    const recordLimit = Math.min(MAX_ERROR_RECORD_BYTES, Math.max(1024, cfg.max_log_bytes));
+    let serialized = JSON.stringify(entry);
+    if (Buffer.byteLength(serialized, "utf8") > recordLimit) {
+      entry.context = { truncated: true };
+      entry.error.message = boundedErrorText(input.error.message, 512) ?? "";
+      entry.error.stack = boundedErrorText(input.error.stack, 512);
+      serialized = JSON.stringify(entry);
+    }
+    if (Buffer.byteLength(serialized, "utf8") > recordLimit) {
+      entry.error.message = boundedErrorText(input.error.message, 256) ?? "";
+      entry.error.stack = undefined;
+      serialized = JSON.stringify(entry);
+    }
+    if (Buffer.byteLength(serialized, "utf8") > recordLimit) return;
     rotateIfNeeded(cfg.max_log_bytes);
-    appendFileSync(logPath(), JSON.stringify(entry) + "\n", "utf-8");
+    appendFileSync(logPath(), serialized + "\n", "utf-8");
   } catch {
     // Logging failures must never throw. Drop the entry.
   }

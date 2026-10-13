@@ -1,5 +1,5 @@
 import { redactJson } from "./redact.js";
-import { appendRequestLogRecord } from "./request-log-file.js";
+import { appendRequestLogRecord, clearRequestLogFile } from "./request-log-file.js";
 import type { LogMetrics } from "./metrics.js";
 import type { UsageInfo } from "../translation/codex-event-extractor.js";
 
@@ -133,9 +133,12 @@ export class LogStore {
 
   clear(): void {
     this.records = [];
+    this.queue = [];
+    this.flushScheduled = false;
     this.sizes = new WeakMap<LogRecord, number>();
     this.bytes = 0;
     this.dropped = 0;
+    clearRequestLogFile();
   }
 
   enqueue(record: LogRecord): void {

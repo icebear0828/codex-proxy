@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { existsSync, mkdtempSync, readFileSync, rmSync } from "fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "fs";
 import { tmpdir } from "os";
 import { resolve } from "path";
 
@@ -49,6 +49,7 @@ describe("appendRequestLogRecord", () => {
       method: "POST",
       path: "/v1/messages",
       status: 200,
+      error: "upstream returned Authorization: Bearer secret-token-123456",
       request: { headers: { authorization: "Bearer secret-token-123456" }, body: { prompt: "hello" } },
     });
 
@@ -64,6 +65,7 @@ describe("appendRequestLogRecord", () => {
     expect(record.status).toBe(200);
     expect(record.request.headers.authorization).not.toContain("secret-token");
     expect(record.request.body.prompt).toBe("hello");
+    expect(line).not.toContain("secret-token-123456");
   });
 
   it("does not write when request logging is disabled", async () => {
@@ -78,6 +80,27 @@ describe("appendRequestLogRecord", () => {
       path: "/v1internal:streamGenerateContent",
     });
     expect(existsSync(resolve(tmpDataDir, "request-log.jsonl"))).toBe(false);
+  });
+
+  it("clears active and rotated files through the log-store clear operation", async () => {
+    const { appendRequestLogRecord } = await import("@src/logs/request-log-file.js");
+    appendRequestLogRecord({
+      id: "record-clear",
+      requestId: "request-clear",
+      direction: "egress",
+      ts: "2026-10-12T00:00:00.000Z",
+      method: "POST",
+      path: "/v1internal:streamGenerateContent",
+    });
+    const active = resolve(tmpDataDir, "request-log.jsonl");
+    const backup = resolve(tmpDataDir, "request-log.1.jsonl");
+    writeFileSync(backup, "rotated record\\n", "utf-8");
+
+    const { logStore } = await import("@src/logs/store.js");
+    logStore.clear();
+
+    expect(existsSync(active)).toBe(false);
+    expect(existsSync(backup)).toBe(false);
   });
 
   it("fails closed when configuration cannot be loaded", async () => {

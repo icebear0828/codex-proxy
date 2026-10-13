@@ -14,7 +14,7 @@
 
 ### Added
 
-- 本地请求日志可镜像持久化到 `data/request-log.jsonl`，终态上游错误记录截断后的响应详情；日志仍受 `logs.enabled` 控制、写入前脱敏并设有大小上限，便于故障排查而不依赖内存日志。（`src/logs/request-log-file.ts`、`src/logs/store.ts`、`src/routes/shared/direct-request-handler.ts`、`src/routes/shared/proxy-error-handler.ts`）
+- 本地请求日志可镜像持久化到 `data/request-log.jsonl`，终态上游错误记录截断后的响应详情；错误文本与响应体中的凭据会脱敏并限制单条记录大小。日志仍受 `logs.enabled` 控制，清空日志时也会删除活动及轮转文件。（`src/logs/request-log-file.ts`、`src/logs/store.ts`、`src/logs/error-log.ts`、`src/routes/shared/direct-request-handler.ts`、`src/routes/shared/proxy-error-handler.ts`）
 
 ### Fixed
 
