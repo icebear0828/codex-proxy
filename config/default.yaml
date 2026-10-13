@@ -4,8 +4,8 @@ api:
 client:
   profile: codex_cli
   originator: codex_cli_rs
-  app_version: "26.930.41038"
-  build_number: "13022"
+  app_version: 26.1007.41230
+  build_number: "20324"
   platform: darwin
   arch: arm64
   chromium_version: "146"
