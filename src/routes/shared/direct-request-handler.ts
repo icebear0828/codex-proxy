@@ -14,6 +14,7 @@ import { enqueueLogEntry, updateLogEntry } from "../../logs/entry.js";
 import { calculateLogMetrics } from "../../logs/metrics.js";
 import type { UsageInfo } from "../../translation/codex-event-extractor.js";
 import { recordStreamCloseEvent } from "../../logs/stream-close-event.js";
+import { appendErrorLog } from "../../logs/error-log.js";
 import { streamResponse } from "./response-processor.js";
 import { toErrorStatus } from "./proxy-error-handler.js";
 import type { HandleDirectRequestOptions, ProxyRequest } from "./proxy-handler-types.js";
@@ -84,7 +85,8 @@ export async function handleDirectRequest(options: HandleDirectRequestOptions): 
   // exhausted and a fallback upstream apikey is configured. Mark those calls
   // so the audit log can surface "fallback" instead of an account name.
   const isFallback = upstream.tag === "fallback";
-  const accountLog = isFallback ? "fallback" : undefined;
+  const accountLog = isFallback ? "fallback" : options.account;
+  const upstreamPath = upstream.logPath ?? "/v1/responses";
   let rawResponse: Response;
   try {
     rawResponse = await createResponseWithTransportRetry(upstream, req, abortController.signal);
@@ -92,7 +94,7 @@ export async function handleDirectRequest(options: HandleDirectRequestOptions): 
       requestId,
       direction: "egress",
       method: "POST",
-      path: "/v1/responses",
+      path: upstreamPath,
       model: req.model,
       provider: upstream.tag,
       account: accountLog,
@@ -112,7 +114,7 @@ export async function handleDirectRequest(options: HandleDirectRequestOptions): 
       requestId,
       direction: "egress",
       method: "POST",
-      path: "/v1/responses",
+      path: upstreamPath,
       model: req.model,
       provider: upstream.tag,
       account: accountLog,
@@ -124,6 +126,23 @@ export async function handleDirectRequest(options: HandleDirectRequestOptions): 
       request: {
         model: req.codexRequest.model,
         stream: req.codexRequest.stream,
+      },
+    });
+    // Persist terminal direct-upstream errors (with truncated body) so
+    // Gemini/Anthropic-passthrough failures are debuggable from disk.
+    appendErrorLog({
+      source: "server",
+      error: {
+        name: err instanceof Error ? err.name : "DirectUpstreamError",
+        message: msg,
+        stack: err instanceof Error ? err.stack : undefined,
+      },
+      context: {
+        requestId,
+        model: req.model,
+        provider: upstream.tag,
+        status,
+        upstreamBody: err instanceof CodexApiError ? truncateBody(err.body) : undefined,
       },
     });
     if (err instanceof CodexApiError) {
@@ -175,7 +194,7 @@ export async function handleDirectRequest(options: HandleDirectRequestOptions): 
           requestId,
           tag: fmt.tag,
           provider: upstream.tag,
-          path: "/v1/responses",
+          path: upstreamPath,
           model: req.model,
           fallback: isFallback,
         });
@@ -201,7 +220,7 @@ export async function handleDirectRequest(options: HandleDirectRequestOptions): 
             requestId: requestId.slice(0, 8),
             tag: fmt.tag,
             provider: upstream.tag,
-            path: "/v1/responses",
+            path: upstreamPath,
             fallback: isFallback,
             abortSignal: abortController.signal,
           },
@@ -273,6 +292,30 @@ export async function handleDirectRequest(options: HandleDirectRequestOptions): 
       error: msg,
       latencyMs: Date.now() - startMs,
     });
+    appendErrorLog({
+      source: "server",
+      error: {
+        name: err instanceof Error ? err.name : "DirectUpstreamCollectError",
+        message: msg,
+        stack: err instanceof Error ? err.stack : undefined,
+      },
+      context: { requestId, model: req.model, provider: upstream.tag, status: code },
+    });
     return c.json(fmt.formatError(code, msg));
   }
+}
+
+/** Bound upstream error bodies so a single error-log line stays reasonable. */
+function truncateBody(body: unknown): unknown {
+  if (body === undefined || body === null) return body;
+  let serialized: string | undefined;
+  try {
+    serialized = typeof body === "string" ? body : JSON.stringify(body);
+  } catch {
+    return "[unserializable]";
+  }
+  if (serialized === undefined) return "[unserializable]";
+  return serialized.length > 4096
+    ? serialized.slice(0, 4096) + `…[truncated ${serialized.length - 4096} chars]`
+    : serialized;
 }

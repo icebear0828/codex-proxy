@@ -114,4 +114,5 @@ export interface HandleDirectRequestOptions {
   upstream: UpstreamAdapter;
   req: ProxyRequest;
   fmt: FormatAdapter;
+  account?: string | null;
 }

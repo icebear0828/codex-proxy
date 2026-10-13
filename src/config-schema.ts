@@ -175,6 +175,9 @@ export const ConfigSchema = z.object({
   observability: z.object({
     local_error_log: z.boolean().default(true),
     max_log_bytes: z.number().int().min(1024).default(10 * 1024 * 1024),
+    /** Mirror accepted request-log records to data/request-log.jsonl so
+     *  debugging never depends on the in-memory store. Requires logs.enabled. */
+    request_log_file: z.boolean().default(true),
   }).default({}),
   usage_stats: z.object({
     /** How often to record local usage history snapshots. 0 disables history recording. */

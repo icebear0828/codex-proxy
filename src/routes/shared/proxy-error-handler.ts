@@ -256,6 +256,36 @@ export function handleCodexApiError(
   // 8. Generic error — let the route formatter produce the client protocol
   // envelope. Raw upstream bodies are reserved for terminal early
   // `server_error`, where preserving the exact backend payload is useful.
+  //
+  // This is the terminal path: the client will receive this error. Persist
+  // it (with a truncated upstream body) so post-hoc debugging doesn't depend
+  // on the console or on the in-memory request log being queried in time.
   const status = toErrorStatus(err.status);
+  appendErrorLog({
+    source: "server",
+    error: { name: "UpstreamApiError", message: err.message, stack: err.stack },
+    context: {
+      entryId, email, model, tag, status,
+      upstreamBody: truncateForErrorLog(err.body),
+    },
+  });
   return { action: "respond", status, message: err.message };
+}
+
+/** Bound upstream error bodies so a single error-log line stays reasonable. */
+function truncateForErrorLog(body: unknown): unknown {
+  if (body === undefined || body === null) return body;
+  const serialized = typeof body === "string" ? body : safeStringify(body);
+  if (serialized === undefined) return "[unserializable]";
+  return serialized.length > 4096
+    ? serialized.slice(0, 4096) + `…[truncated ${serialized.length - 4096} chars]`
+    : serialized;
+}
+
+function safeStringify(value: unknown): string | undefined {
+  try {
+    return JSON.stringify(value);
+  } catch {
+    return undefined;
+  }
 }

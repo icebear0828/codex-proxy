@@ -23,6 +23,7 @@ import {
   handleProxyRequest,
 } from "./shared/proxy-handler.js";
 import { handleDirectRequest } from "./shared/direct-request-handler.js";
+import { getApiKeyLogAccount } from "./shared/log-account.js";
 import type { FormatAdapter, ProxyRequest } from "./shared/proxy-handler-types.js";
 import type { UpstreamRouter } from "../proxy/upstream-router.js";
 import { summarizeRequestForLog } from "../logs/request-summary.js";
@@ -197,7 +198,13 @@ export function createChatRoutes(
         model: directModel,
         codexRequest: { ...codexRequest, model: directModel },
       };
-      return handleDirectRequest({ c, upstream: routeMatch.adapter, req: directReq, fmt });
+      return handleDirectRequest({
+        c,
+        upstream: routeMatch.adapter,
+        req: directReq,
+        fmt,
+        account: getApiKeyLogAccount(routeMatch.kind === "api-key" ? routeMatch.entry : undefined),
+      });
     }
 
     // Auth check for Codex route only (a configured fallback upstream apikey

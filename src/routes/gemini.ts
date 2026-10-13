@@ -26,6 +26,7 @@ import {
   handleProxyRequest,
 } from "./shared/proxy-handler.js";
 import { handleDirectRequest } from "./shared/direct-request-handler.js";
+import { getApiKeyLogAccount } from "./shared/log-account.js";
 import type { FormatAdapter, ProxyRequest } from "./shared/proxy-handler-types.js";
 import type { UpstreamRouter } from "../proxy/upstream-router.js";
 import type { ClientKeyPool } from "../auth/client-key-pool.js";
@@ -182,7 +183,13 @@ export function createGeminiRoutes(
         model: directModel,
         codexRequest: { ...codexRequest, model: directModel },
       };
-      return handleDirectRequest({ c, upstream: routeMatch.adapter, req: directReq, fmt: GEMINI_FORMAT });
+      return handleDirectRequest({
+        c,
+        upstream: routeMatch.adapter,
+        req: directReq,
+        fmt: GEMINI_FORMAT,
+        account: getApiKeyLogAccount(routeMatch.kind === "api-key" ? routeMatch.entry : undefined),
+      });
     }
 
     return handleProxyRequest({ c, accountPool, cookieJar, req: proxyReq, fmt: GEMINI_FORMAT, proxyPool, fallbackUpstream });
