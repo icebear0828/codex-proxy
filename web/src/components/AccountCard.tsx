@@ -76,10 +76,10 @@ function limitLabel(bucket: LimitBucket): string {
   return label ? label.replace(/_/g, " ") : "limit";
 }
 
-function limitPercent(limit: (AccountQuotaWindow & { allowed?: boolean }) | null | undefined): number | null {
-  return limit?.limit_reached ? 100
-    : limit?.used_percent != null ? Math.round(limit.used_percent)
-    : null;
+function remainingPercent(limit: (AccountQuotaWindow & { allowed?: boolean }) | null | undefined): number | null {
+  if (limit?.limit_reached) return 0;
+  if (limit?.used_percent == null) return null;
+  return Math.min(100, Math.max(0, 100 - Math.round(limit.used_percent)));
 }
 
 interface AccountCardProps {
@@ -128,37 +128,33 @@ export function AccountCard({ account, index, onDelete, proxies, onProxyChange, 
     if (err) alert(err);
   }, [account.id, onDelete, t]);
 
-  // Quota — primary window (default 0% used = 100% available for accounts without data)
+  // Quota bars show remaining capacity: 100% at the start, 0% when exhausted.
   const q = account.quota;
   const rl = q?.rate_limit;
-  const pct = rl?.limit_reached ? 100
-    : rl?.used_percent != null ? Math.round(rl.used_percent)
-    : (account.status === "active" ? 0 : null);
+  const pct = rl ? remainingPercent(rl) : (account.status === "active" ? 100 : null);
   const barColor =
-    pct == null ? "bg-primary-action" : pct >= 90 ? "bg-red-500" : pct >= 60 ? "bg-amber-500" : "bg-primary-action";
+    pct == null ? "bg-primary-action" : pct <= 10 ? "bg-red-500" : pct <= 40 ? "bg-amber-500" : "bg-primary-action";
   const pctColor =
     pct == null
       ? "text-primary"
-      : pct >= 90
+      : pct <= 10
         ? "text-red-500"
-        : pct >= 60
+        : pct <= 40
           ? "text-amber-600 dark:text-amber-500"
           : "text-primary";
   const resetAt = rl?.reset_at ? formatResetTime(rl.reset_at, lang) : null;
 
   // Quota — secondary window (e.g. weekly)
   const srl = q?.secondary_rate_limit;
-  const sPct = srl?.limit_reached ? 100
-    : srl?.used_percent != null ? Math.round(srl.used_percent)
-    : null;
+  const sPct = remainingPercent(srl);
   const sBarColor =
-    sPct == null ? "bg-indigo-500" : sPct >= 90 ? "bg-red-500" : sPct >= 60 ? "bg-amber-500" : "bg-indigo-500";
+    sPct == null ? "bg-indigo-500" : sPct <= 10 ? "bg-red-500" : sPct <= 40 ? "bg-amber-500" : "bg-indigo-500";
   const sPctColor =
     sPct == null
       ? "text-indigo-500"
-      : sPct >= 90
+      : sPct <= 10
         ? "text-red-500"
-        : sPct >= 60
+        : sPct <= 40
           ? "text-amber-600 dark:text-amber-500"
           : "text-indigo-500";
   const sResetAt = srl?.reset_at ? formatResetTime(srl.reset_at, lang) : null;
@@ -167,17 +163,15 @@ export function AccountCard({ account, index, onDelete, proxies, onProxyChange, 
 
   // Quota — dedicated code review window
   const rrl = q?.code_review_rate_limit;
-  const rPct = rrl?.limit_reached ? 100
-    : rrl?.used_percent != null ? Math.round(rrl.used_percent)
-    : null;
+  const rPct = remainingPercent(rrl);
   const rBarColor =
-    rPct == null ? "bg-cyan-500" : rPct >= 90 ? "bg-red-500" : rPct >= 60 ? "bg-amber-500" : "bg-cyan-500";
+    rPct == null ? "bg-cyan-500" : rPct <= 10 ? "bg-red-500" : rPct <= 40 ? "bg-amber-500" : "bg-cyan-500";
   const rPctColor =
     rPct == null
       ? "text-cyan-500"
-      : rPct >= 90
+      : rPct <= 10
         ? "text-red-500"
-        : rPct >= 60
+        : rPct <= 40
           ? "text-amber-600 dark:text-amber-500"
           : "text-cyan-500";
   const rResetAt = rrl?.reset_at ? formatResetTime(rrl.reset_at, lang) : null;
@@ -498,7 +492,7 @@ export function AccountCard({ account, index, onDelete, proxies, onProxyChange, 
                   </span>
                 ) : pct != null ? (
                   <span class={`font-medium ${pctColor}`}>
-                    {pct}% {t("used")}
+                    {pct}% {t("remaining")}
                   </span>
                 ) : (
                   <span class="font-medium text-primary">{t("ok")}</span>
@@ -506,7 +500,7 @@ export function AccountCard({ account, index, onDelete, proxies, onProxyChange, 
               </div>
               {pct != null && (
                 <div class="w-full bg-slate-100 dark:bg-border-dark rounded-full h-2 overflow-hidden">
-                  <div class={`${barColor} h-2 rounded-full transition-all`} style={{ width: `${pct}%` }} />
+                  <div data-testid="quota-progress-primary" class={`${barColor} h-2 rounded-full transition-all`} style={{ width: `${pct}%` }} />
                 </div>
               )}
               {resetAt && (
@@ -533,7 +527,7 @@ export function AccountCard({ account, index, onDelete, proxies, onProxyChange, 
                   </span>
                 ) : sPct != null ? (
                   <span class={`font-medium ${sPctColor}`}>
-                    {sPct}% {t("used")}
+                    {sPct}% {t("remaining")}
                   </span>
                 ) : (
                   <span class="font-medium text-indigo-500">{t("ok")}</span>
@@ -616,7 +610,7 @@ export function AccountCard({ account, index, onDelete, proxies, onProxyChange, 
                   </span>
                 ) : rPct != null ? (
                   <span class={`font-medium ${rPctColor}`}>
-                    {rPct}% {t("used")}
+                    {rPct}% {t("remaining")}
                   </span>
                 ) : rrl.allowed === false ? (
                   <span class="font-medium text-slate-400 dark:text-text-dim">{t("disabled")}</span>
@@ -638,21 +632,21 @@ export function AccountCard({ account, index, onDelete, proxies, onProxyChange, 
           )}
 
           {additionalRateLimits.map((bucket) => {
-            const bPct = limitPercent(bucket);
+            const bPct = remainingPercent(bucket);
             const bBarColor =
-              bPct == null ? "bg-sky-500" : bPct >= 90 ? "bg-red-500" : bPct >= 60 ? "bg-amber-500" : "bg-sky-500";
+              bPct == null ? "bg-sky-500" : bPct <= 10 ? "bg-red-500" : bPct <= 40 ? "bg-amber-500" : "bg-sky-500";
             const bPctColor =
               bPct == null
                 ? "text-sky-500"
-                : bPct >= 90
+                : bPct <= 10
                   ? "text-red-500"
-                  : bPct >= 60
+                  : bPct <= 40
                     ? "text-amber-600 dark:text-amber-500"
                     : "text-sky-500";
             const bResetAt = bucket.reset_at ? formatResetTime(bucket.reset_at, lang) : null;
             const bWindowDur = bucket.limit_window_seconds ? formatWindowDuration(bucket.limit_window_seconds, lang) : null;
             const bSecondary = bucket.secondary_rate_limit;
-            const bsPct = limitPercent(bSecondary);
+            const bsPct = remainingPercent(bSecondary);
             const bsResetAt = bSecondary?.reset_at ? formatResetTime(bSecondary.reset_at, lang) : null;
             const bsWindowDur = bSecondary?.limit_window_seconds ? formatWindowDuration(bSecondary.limit_window_seconds, lang) : null;
 
@@ -671,7 +665,7 @@ export function AccountCard({ account, index, onDelete, proxies, onProxyChange, 
                     </span>
                   ) : bPct != null ? (
                     <span class={`font-medium shrink-0 ${bPctColor}`}>
-                      {bPct}% {t("used")}
+                      {bPct}% {t("remaining")}
                     </span>
                   ) : bucket.allowed === false ? (
                     <span class="font-medium text-slate-400 dark:text-text-dim shrink-0">{t("disabled")}</span>
@@ -701,7 +695,7 @@ export function AccountCard({ account, index, onDelete, proxies, onProxyChange, 
                       {bSecondary.limit_reached ? (
                         <span class="font-medium text-red-500 shrink-0">{t("limitReached")}</span>
                       ) : bsPct != null ? (
-                        <span class="font-medium text-sky-500 shrink-0">{bsPct}% {t("used")}</span>
+                        <span class="font-medium text-sky-500 shrink-0">{bsPct}% {t("remaining")}</span>
                       ) : (
                         <span class="font-medium text-sky-500 shrink-0">{t("ok")}</span>
                       )}

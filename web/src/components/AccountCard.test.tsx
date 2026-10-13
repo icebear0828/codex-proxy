@@ -92,6 +92,41 @@ describe("AccountCard proxy selector", () => {
   });
 });
 
+describe("AccountCard remaining quota", () => {
+  afterEach(() => cleanup());
+
+  it("shows 100% remaining for an active account with no usage data", () => {
+    const { container } = render(
+      <AccountCard account={account()} index={0} onDelete={vi.fn(async () => null)} />,
+    );
+
+    expect(screen.getByText("100% remaining")).toBeTruthy();
+    expect(screen.getByTestId("quota-progress-primary").getAttribute("style")).toContain("width: 100%");
+  });
+
+  it("counts down from 100% remaining to 0% as quota is consumed", () => {
+    const { container, rerender } = render(
+      <AccountCard
+        account={{ ...account(), quota: { rate_limit: { used_percent: 50, limit_reached: false } } }}
+        index={0}
+        onDelete={vi.fn(async () => null)}
+      />,
+    );
+
+    expect(screen.getByText("50% remaining")).toBeTruthy();
+    expect(screen.getByTestId("quota-progress-primary").getAttribute("style")).toContain("width: 50%");
+
+    rerender(
+      <AccountCard
+        account={{ ...account(), quota: { rate_limit: { used_percent: 100, limit_reached: true } } }}
+        index={0}
+        onDelete={vi.fn(async () => null)}
+      />,
+    );
+    expect(screen.getByTestId("quota-progress-primary").getAttribute("style")).toContain("width: 0%");
+  });
+});
+
 describe("AccountCard Rate Limit Reset Credits", () => {
   afterEach(() => cleanup());
 
