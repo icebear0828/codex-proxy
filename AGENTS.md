@@ -14,3 +14,7 @@
 
 - Gemini / Antigravity 的工具参数及结构化输出 schema 必须按 Gemini 支持的字段白名单清洗；清除 `prefixItems` 等不支持字段后，如果 schema 仍为 `type: array` 且缺少 `items`，需补宽松的 `{}` schema，避免 Gemini 的 `missing field` 校验错误。为此类变换补充嵌套 schema 回归测试。
 - 持久化请求/错误诊断时，必须先脱敏并限制单条记录和文件大小；不要提交临时的原始 tools / request dump，也不要记录凭据。
+
+## Keepalive safety
+
+- Account keepalive is disabled by default. Enabling the scheduler or calling `POST /admin/keepalive-run` sends real requests to `/codex/usage`; unit tests must mock `CodexApi`, and real-account execution requires explicit user authorization.

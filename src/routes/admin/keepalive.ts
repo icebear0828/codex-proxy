@@ -60,7 +60,7 @@ export function createKeepaliveRoutes(scheduler: KeepaliveScheduler): Hono {
         return c.json({ error: "fixed_times must be an array" });
       }
       const bad = config.fixed_times.find(
-        (time) => typeof time !== "string" || !/^(?:[01]\\d|2[0-3]):[0-5]\\d$/.test(time),
+        (time) => typeof time !== "string" || !/^(?:[01]\d|2[0-3]):[0-5]\d$/.test(time),
       );
       if (bad !== undefined) {
         c.status(400);
