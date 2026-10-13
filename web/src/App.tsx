@@ -135,6 +135,30 @@ function Dashboard() {
 
   const activeTab = TABS.find((t) => t.hash === hash)?.hash ?? "";
 
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      const target = event.target as HTMLElement | null;
+      const isEditing = !!target?.closest("input, textarea, select, [contenteditable='true']");
+      const hasModifier = event.ctrlKey || event.metaKey;
+
+      if (event.key === "Escape") {
+        if (mobileSidebarOpen) setMobileSidebarOpen(false);
+        else if (accounts.addVisible) accounts.cancelAdd();
+        return;
+      }
+
+      if (isEditing || !hasModifier || event.altKey || event.key !== "Tab") return;
+      event.preventDefault();
+      const currentIndex = Math.max(0, TABS.findIndex((tab) => tab.hash === activeTab));
+      const direction = event.shiftKey ? -1 : 1;
+      const nextIndex = (currentIndex + direction + TABS.length) % TABS.length;
+      location.hash = TABS[nextIndex].hash || "#/";
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [activeTab, mobileSidebarOpen, accounts.addVisible, accounts.cancelAdd]);
+
   const isSidebarLayout = layoutMode === "sidebar";
   return (
     <div class="min-h-screen flex bg-slate-50 dark:bg-bg-dark">
