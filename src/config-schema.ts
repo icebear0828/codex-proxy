@@ -279,6 +279,20 @@ export const ConfigSchema = z.object({
   }).default({}),
   /** Explicit model → provider name routing table. */
   model_routing: z.record(z.string(), z.string()).default({}),
+  /** Scheduled keepalive pings to keep accounts' quota windows fresh. */
+  account_keepalive: z.object({
+    enabled: z.boolean().default(false),
+    /** "fixed_times" fires at specific HH:mm each day; "interval" fires every N minutes. */
+    mode: z.enum(["fixed_times", "interval"]).default("fixed_times"),
+    /** Daily HH:mm fire times (local server time). Used when mode = "fixed_times". */
+    fixed_times: z.array(z.string().regex(/^(?:[01]\d|2[0-3]):[0-5]\d$/, "Must be a valid 24-hour HH:mm value")).default(["07:00", "13:00", "18:00"]),
+    /** Minutes between runs. Required when mode = "interval". */
+    interval_minutes: z.number().int().positive().nullable().default(null),
+    /** Max accounts to ping simultaneously per batch. */
+    concurrency: z.number().int().min(1).max(20).default(2),
+    /** Milliseconds to wait between batches (throttle upstream traffic). */
+    per_account_delay_ms: z.number().int().min(0).max(3_600_000).default(1000),
+  }).default({}),
 });
 
 export type AppConfig = z.infer<typeof ConfigSchema>;

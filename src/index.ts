@@ -6,6 +6,7 @@ import { loadConfig, loadFingerprint, getConfig, hasLocalOverride } from "./conf
 import { initContext } from "./context.js";
 import { AccountPool } from "./auth/account-pool.js";
 import { RefreshScheduler } from "./auth/refresh-scheduler.js";
+import { KeepaliveScheduler } from "./auth/keepalive-scheduler.js";
 
 import { requestId } from "./middleware/request-id.js";
 import { logger } from "./middleware/logger.js";
@@ -108,6 +109,7 @@ export async function startServer(options?: StartOptions): Promise<ServerHandle>
   const refreshScheduler = new RefreshScheduler(accountPool);
   const cookieJar = new CookieJar();
   const proxyPool = new ProxyPool();
+  const keepaliveScheduler = new KeepaliveScheduler(accountPool, cookieJar);
   refreshScheduler.setProxyPool(proxyPool);
 
   // Reactive refresh: when upstream 401 marks an account expired, trigger immediate RT→AT refresh.
@@ -207,7 +209,7 @@ export async function startServer(options?: StartOptions): Promise<ServerHandle>
   const proxyRoutes = createProxyRoutes(proxyPool, accountPool);
   const usageStats = new UsageStatsStore();
   usageStats.recoverBaseline(accountPool);
-  const webRoutes = createWebRoutes(accountPool, usageStats, clientKeyPool);
+  const webRoutes = createWebRoutes(accountPool, usageStats, clientKeyPool, keepaliveScheduler);
 
   app.route("/", createDashboardAuthRoutes());
   app.route("/", authRoutes);
@@ -275,6 +277,9 @@ export async function startServer(options?: StartOptions): Promise<ServerHandle>
   const activeQuotaRefresher = new ActiveQuotaRefresher(accountPool, { cookieJar, proxyPool });
   activeQuotaRefresher.start();
 
+  // Start account keepalive scheduler (no-op when disabled in config)
+  keepaliveScheduler.start();
+
   // Start proxy health check timer (if proxies exist)
   proxyPool.startHealthCheckTimer();
 
@@ -319,6 +324,7 @@ export async function startServer(options?: StartOptions): Promise<ServerHandle>
         stopQuotaRefresh();
         activeQuotaRefresher.stop();
         stopSessionCleanup();
+        keepaliveScheduler.destroy();
         refreshScheduler.destroy();
         proxyPool.destroy();
         cookieJar.destroy();
