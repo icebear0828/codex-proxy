@@ -38,5 +38,5 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add CHANGELOG.md
-          git commit -m "docs: sync changelog release series [skip ci]"
+          git commit -m "docs: sync changelog release series"
           git push origin HEAD:dev

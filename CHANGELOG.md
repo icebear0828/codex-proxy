@@ -8,7 +8,9 @@
 
 ## [Unreleased]
 
-> 暂无已记录的变更。
+### Fixed
+
+- 自动同步发布日志的提交现在继续运行质量门禁，使晋升候选包含已同步的 v2.1.x 发布说明，避免正式版检查失败。（`.github/workflows/sync-changelog-series.yml`）
 
 ## [v2.1.x](https://github.com/icebear0828/codex-proxy/releases?q=2.1) - 2026-09-01 至 2026-09-07
 
