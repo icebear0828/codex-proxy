@@ -210,6 +210,7 @@ export async function handleDirectRequest(options: HandleDirectRequestOptions): 
           adapter: fmt,
           onUsage: (u) => {
             usageInfo = u;
+            options.onUsage?.(u);
             recordClientKeyUsage(c, req.model, u);
           },
           tupleSchema: req.tupleSchema,
@@ -259,6 +260,7 @@ export async function handleDirectRequest(options: HandleDirectRequestOptions): 
       model: req.model,
       tupleSchema: req.tupleSchema,
     });
+    if (result.usage) options.onUsage?.(result.usage);
     recordClientKeyUsage(c, req.model, result.usage);
     const metrics = calculateLogMetrics({
       startMs,

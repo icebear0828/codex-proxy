@@ -59,6 +59,17 @@ function makeAntigravityAccount(
   return {
     id,
     label: id,
+    email: `${id}@example.com`,
+    planType: null,
+    lastUsedAt: null,
+    requestCount: 0,
+    requestTokens: 0,
+    imageRequestCount: 0,
+    windowRequestCount: 0,
+    windowRequestTokens: 0,
+    windowImageRequestCount: 0,
+    usageWindowStartedAt: null,
+    quota: null,
     status,
     models: [],
     modelCount: 0,
@@ -76,6 +87,9 @@ function renderAccountListWithAntigravity(
     <AccountList
       accounts={accounts}
       antigravityAccounts={antigravityAccounts}
+      onAddAntigravity={vi.fn(async () => {})}
+      onDeleteAntigravity={vi.fn(async () => null)}
+      onToggleAntigravityStatus={vi.fn(async () => null)}
       loading={false}
       onDelete={vi.fn(async () => null)}
       onRefresh={vi.fn()}

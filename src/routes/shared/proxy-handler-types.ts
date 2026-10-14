@@ -115,4 +115,5 @@ export interface HandleDirectRequestOptions {
   req: ProxyRequest;
   fmt: FormatAdapter;
   account?: string | null;
+  onUsage?: (usage: UsageInfo) => void;
 }

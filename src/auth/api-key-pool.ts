@@ -22,6 +22,7 @@ import { isBuiltinProvider, PROVIDER_CATALOG } from "./api-key-catalog.js";
 // ── Types ──────────────────────────────────────────────────────────
 
 export type ApiKeyStatus = "active" | "disabled" | "error";
+const ANTIGRAVITY_USAGE_WINDOW_MS = 5 * 60 * 60 * 1000;
 export const API_KEY_CAPABILITIES = ["chat", "embeddings"] as const;
 export type ApiKeyCapability = typeof API_KEY_CAPABILITIES[number];
 
@@ -44,11 +45,20 @@ export interface ApiKeyEntry {
   baseUrl: string;
   projectId?: string;
   label: string | null;
+  email?: string | null;
+  planType?: string | null;
   capabilities: ApiKeyCapability[];
   wire: ApiKeyWire;
   status: ApiKeyStatus;
   addedAt: string;
   lastUsedAt: string | null;
+  requestCount?: number;
+  requestTokens?: number;
+  imageRequestCount?: number;
+  usageWindowStartedAt?: string;
+  windowRequestCount?: number;
+  windowRequestTokens?: number;
+  windowImageRequestCount?: number;
 }
 
 export type PersistedApiKeyEntry = Omit<ApiKeyEntry, "capabilities" | "wire"> & {
@@ -114,6 +124,15 @@ export class ApiKeyPool {
   // ── Query ──────────────────────────────────────────────────────
 
   getAll(): ApiKeyEntry[] {
+    let changed = false;
+    const now = new Date();
+    for (const entry of this.entries) {
+      if (entry.provider !== "antigravity") continue;
+      const previous = entry.usageWindowStartedAt;
+      this.ensureUsageWindow(entry, now);
+      if (entry.usageWindowStartedAt !== previous) changed = true;
+    }
+    if (changed) this.persist();
     return [...this.entries];
   }
 
@@ -172,6 +191,8 @@ export class ApiKeyPool {
     baseUrl?: string;
     projectId?: string;
     label?: string | null;
+    email?: string | null;
+    planType?: string | null;
     capabilities?: ApiKeyCapability[];
     wire?: ApiKeyWire;
   }): ApiKeyEntry {
@@ -187,6 +208,8 @@ export class ApiKeyPool {
       baseUrl,
       ...(input.provider === "antigravity" && input.projectId?.trim() ? { projectId: input.projectId.trim() } : {}),
       label: input.label ?? null,
+      ...(input.provider === "antigravity" && input.email?.trim() ? { email: input.email.trim() } : {}),
+      ...(input.provider === "antigravity" && input.planType?.trim() ? { planType: input.planType.trim() } : {}),
       capabilities: input.provider === "antigravity" ? ["chat"] : normalizeCapabilities(input.capabilities),
       wire: normalizeWireForProvider(input.provider, input.wire),
       status: "active",
@@ -224,6 +247,18 @@ export class ApiKeyPool {
     return true;
   }
 
+  setAntigravityAccountMetadata(id: string, metadata: { email?: string | null; planType?: string | null }): boolean {
+    const target = this.entries.find((entry) => entry.id === id && entry.provider === "antigravity");
+    if (!target) return false;
+    for (const entry of this.entries) {
+      if (entry.provider !== "antigravity" || entry.apiKey !== target.apiKey) continue;
+      if (metadata.email?.trim()) entry.email = metadata.email.trim();
+      if (metadata.planType?.trim()) entry.planType = metadata.planType.trim();
+    }
+    this.persist();
+    return true;
+  }
+
   setLabel(id: string, label: string | null): boolean {
     const entry = this.entries.find((e) => e.id === id);
     if (!entry) return false;
@@ -243,9 +278,36 @@ export class ApiKeyPool {
   markUsed(id: string): void {
     const entry = this.entries.find((e) => e.id === id);
     if (entry) {
-      entry.lastUsedAt = new Date().toISOString();
-      // Defer persist — lastUsedAt is non-critical
+      const now = new Date();
+      this.ensureUsageWindow(entry, now);
+      entry.lastUsedAt = now.toISOString();
+      entry.requestCount = (entry.requestCount ?? 0) + 1;
+      entry.windowRequestCount = (entry.windowRequestCount ?? 0) + 1;
+      this.persist();
     }
+  }
+
+  recordUsage(id: string, usage: { input_tokens?: number; output_tokens?: number }, imageRequest = false): void {
+    const entry = this.entries.find((candidate) => candidate.id === id && candidate.provider === "antigravity");
+    if (!entry) return;
+    this.ensureUsageWindow(entry, new Date());
+    const tokens = (usage.input_tokens ?? 0) + (usage.output_tokens ?? 0);
+    entry.requestTokens = (entry.requestTokens ?? 0) + tokens;
+    entry.windowRequestTokens = (entry.windowRequestTokens ?? 0) + tokens;
+    if (imageRequest) {
+      entry.imageRequestCount = (entry.imageRequestCount ?? 0) + 1;
+      entry.windowImageRequestCount = (entry.windowImageRequestCount ?? 0) + 1;
+    }
+    this.persist();
+  }
+
+  private ensureUsageWindow(entry: ApiKeyEntry, now: Date): void {
+    const startedAt = entry.usageWindowStartedAt ? Date.parse(entry.usageWindowStartedAt) : NaN;
+    if (Number.isFinite(startedAt) && now.getTime() - startedAt < ANTIGRAVITY_USAGE_WINDOW_MS) return;
+    entry.usageWindowStartedAt = now.toISOString();
+    entry.windowRequestCount = 0;
+    entry.windowRequestTokens = 0;
+    entry.windowImageRequestCount = 0;
   }
 
   /** Bulk import — returns counts. */
@@ -256,6 +318,8 @@ export class ApiKeyPool {
     baseUrl?: string;
     projectId?: string;
     label?: string | null;
+    email?: string | null;
+    planType?: string | null;
     capabilities?: ApiKeyCapability[];
     wire?: ApiKeyWire;
   }>): { added: number; failed: number; errors: string[] } {
