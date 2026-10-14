@@ -74,9 +74,10 @@ function tierIdFrom(value: unknown): string | null {
   return null;
 }
 
-function planTypeFrom(value: unknown): string {
+function planTypeFrom(value: unknown): string | null {
   const tierId = tierIdFrom(value)?.toLowerCase();
-  if (!tierId || tierId.includes("free")) return "Free";
+  if (!tierId) return null;
+  if (tierId.includes("free")) return "Free";
   if (tierId.includes("ultra")) return "Ultra";
   if (tierId.includes("pro")) return "Pro";
   return tierId.replace(/[-_]?tier$/, "").split(/[-_]+/).map((part) => part.charAt(0).toUpperCase() + part.slice(1)).join(" ");

@@ -88,7 +88,13 @@ export function createAuthRoutes(
       if ((!entry.email || !entry.planType) && !antigravityProfileLookups.has(entry.id)) {
         antigravityProfileLookups.add(entry.id);
         const details = await upstream.fetchAccountDetails();
-        if (details.email || details.planType) apiKeyPool.setAntigravityAccountMetadata(entry.id, details);
+        if (details.email || details.planType) {
+          apiKeyPool.setAntigravityAccountMetadata(entry.id, details);
+        } else {
+          // A transient/empty lookup must not consume the one-shot guard, so a
+          // later quota refresh can retry the backfill within the same process.
+          antigravityProfileLookups.delete(entry.id);
+        }
       }
       const raw = await upstream.fetchQuota();
       const buckets = raw && typeof raw === "object" && Array.isArray((raw as { buckets?: unknown }).buckets)
@@ -141,13 +147,14 @@ export function createAuthRoutes(
       const refreshToken = await exchangeAntigravityCallback(parsed.data.callbackUrl);
       const accountDetails = await new AntigravityUpstream(refreshToken).fetchAccountDetails();
       let added = 0;
+      let existingAccountId: string | null = null;
       for (const { id: model } of ANTIGRAVITY_SUPPORTED_MODELS) {
         const existing = apiKeyPool.getAll().find((entry) =>
           entry.provider === "antigravity" && entry.model === model && entry.apiKey === refreshToken,
         );
         if (existing) {
           if (existing.status !== "active") apiKeyPool.setStatus(existing.id, "active");
-          if (accountDetails.email || accountDetails.planType) apiKeyPool.setAntigravityAccountMetadata(existing.id, accountDetails);
+          existingAccountId ??= existing.id;
           continue;
         }
         apiKeyPool.add({
@@ -161,6 +168,10 @@ export function createAuthRoutes(
           wire: "gemini",
         });
         added++;
+      }
+      // Update metadata once for the whole token group, not once per model.
+      if (existingAccountId && (accountDetails.email || accountDetails.planType)) {
+        apiKeyPool.setAntigravityAccountMetadata(existingAccountId, accountDetails);
       }
       return c.json({ success: true, added });
     } catch (err) {
