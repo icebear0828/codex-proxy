@@ -5,8 +5,9 @@ name: Publish npm packages
 # GITHUB_TOKEN (no external npm account or secrets needed). Packages start
 # private and GitHub offers no API to make them public — a one-time UI
 # toggle per package is required (the workflow logs the exact settings
-# links). If NPM_TOKEN is ever configured, the same tarballs also go to the
-# npm registry. Pull requests and the smoke pipeline work unchanged on
+# links). Publishing is GitHub Packages only: the public npmjs registry is
+# intentionally not used, so no NPM_TOKEN or npmjs account exists for this
+# repository. Pull requests and the smoke pipeline work unchanged on
 # every repo and every fork.
 
 on:
@@ -471,47 +472,3 @@ jobs:
           echo "server did not become healthy"
           kill $SERVER_PID || true
           exit 1
-
-  publish-npm:
-    name: Publish to npm registry
-    # Optional dual-publish: only the upstream repo, only when NPM_TOKEN is
-    # configured; stays green with a notice otherwise.
-    if: github.repository == 'icebear0828/codex-proxy' && github.event_name != 'pull_request'
-    needs: package
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    steps:
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          registry-url: https://registry.npmjs.org
-
-      - name: Download tarballs
-        uses: actions/download-artifact@v4
-        with:
-          name: npm-tarballs
-          path: tarballs
-
-      - name: Publish every tarball
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-        run: |
-          set -eu
-          VERSION="${{ needs.package.outputs.version }}"
-          # Not configured yet: stay green with a notice instead of failing
-          # the release. GitHub Packages runs independently above.
-          if [[ -z "$NODE_AUTH_TOKEN" ]]; then
-            echo "::notice::NPM_TOKEN is not configured — skipping npm registry publish"
-            exit 0
-          fi
-          # npm publish defaults to the `latest` dist-tag; semver prerelease
-          # versions (hyphen) go to `beta` instead so plain `npm i -g`
-          # always lands on stable.
-          NPM_TAG=latest
-          if [[ "$VERSION" == *-* ]]; then
-            NPM_TAG=beta
-          fi
-          echo "Publishing with dist-tag: $NPM_TAG"
-          for tarball in tarballs/*.tgz; do
-            npm publish "$tarball" --access public --tag "$NPM_TAG"
-          done

@@ -83,15 +83,30 @@ Like the Electron app, Lite uses the normal per-user data directory by default. 
 
 Linux x64 Lite includes both glibc and musl TLS native addons, so it can be used on common Linux distributions and Alpine Linux. Other native architectures, including Linux ARM, are not currently included.
 
-### npm (for developers with Node.js already installed)
+### npm distribution (for developers with Node.js already installed)
+
+The package is **not published to the public npmjs registry**. The recommended no-auth install is the offline bundle attached to the latest GitHub Release:
 
 ```bash
-npm install -g @icebear0828/codex-proxy
+curl -L https://github.com/icebear0828/codex-proxy/releases/latest/download/codex-proxy-npm.zip -o codex-proxy-npm.zip
+unzip codex-proxy-npm.zip -d codex-proxy-npm
+cd codex-proxy-npm && node install.mjs
 codex-proxy
 # Open http://localhost:8080 to log in
 ```
 
-Requires Node.js 22.13+. Feature-complete: the web dashboard, account management and the Ollama bridge all work the same as the desktop app. The platform TLS native addon is picked automatically at install time (Windows x64+arm64, macOS x64+arm64, Linux x64+arm64 with glibc and musl variants); binaries for other platforms are never downloaded. Runtime data lives in the per-user data directory (`%APPDATA%\@codex-proxy\electron\data` on Windows, `~/.config/@codex-proxy/electron/data` on Linux, `~/Library/Application Support/@codex-proxy/electron/data` on macOS), so updates never wipe it; use `--portable` or `CODEX_PROXY_DATA_DIR` to relocate. Update with `npm install -g @icebear0828/codex-proxy@latest`.
+Windows users can download and extract `codex-proxy-npm.zip`, then run `node install.mjs` in the extracted directory.
+
+Alternatively, the package and its platform addons are published to GitHub Packages. Installing from that registry requires GitHub Packages read access and an npm auth token (a classic PAT with `read:packages`). Configure npm without committing the token, for example:
+
+```ini
+@icebear0828:registry=https://npm.pkg.github.com
+//npm.pkg.github.com/:_authToken=${GITHUB_PACKAGES_TOKEN}
+```
+
+Set `GITHUB_PACKAGES_TOKEN` in your shell before running `npm install -g @icebear0828/codex-proxy`. Requires Node.js 22.13+.
+
+Feature-complete: the web dashboard, account management and the Ollama bridge all work the same as the desktop app. The platform TLS native addon is picked automatically at install time (Windows x64+arm64, macOS x64+arm64, Linux x64+arm64 with glibc and musl variants); binaries for other platforms are never downloaded. Runtime data lives in the per-user data directory (`%APPDATA%\@codex-proxy\electron\data` on Windows, `~/.config/@codex-proxy/electron/data` on Linux, `~/Library/Application Support/@codex-proxy/electron/data` on macOS), so updates never wipe it; use `--portable` or `CODEX_PROXY_DATA_DIR` to relocate. For GitHub Packages installs, update with `npm install -g @icebear0828/codex-proxy@latest`; for the offline bundle, download the latest release and rerun `node install.mjs`.
 
 Common flags: `--mode=server` (headless), `--mode=browser` (force the system browser), `--host` / `--port`. See `codex-proxy --help` for everything.
 

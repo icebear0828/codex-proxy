@@ -119,7 +119,7 @@ Linux x64 Lite 同时包含 glibc 和 musl 两种 TLS native addon，可用于�
 <details>
 <summary><h3>方式三：npm 安装（适合已有 Node 的开发者）</h3></summary>
 
-npm 官方仓库暂未上线，可先从 GitHub Release 下载离线包安装（免认证）：
+本项目不向 npmjs 公共仓库发布。推荐从 GitHub Release 下载离线包安装（免认证）；主包和平台 native addon 也发布在 GitHub Packages，使用该 registry 需要具备 `read:packages` 权限的 GitHub token：
 
 ```bash
 curl -L https://github.com/icebear0828/codex-proxy/releases/latest/download/codex-proxy-npm.zip -o codex-proxy-npm.zip
@@ -132,11 +132,19 @@ codex-proxy
 Windows 用户直接下载并解压 `codex-proxy-npm.zip`，在解压目录中运行 `node install.mjs` 即可；
 安装脚本会按系统自动选择平台组件，完成后全局可用 `codex-proxy` 命令。
 
+如需从 GitHub Packages 安装，请在用户级 npm 配置中设置 registry 和 token（classic PAT 需有 `read:packages` 权限；不要将 token 提交到仓库）：
+
+```ini
+@icebear0828:registry=https://npm.pkg.github.com
+//npm.pkg.github.com/:_authToken=${GITHUB_PACKAGES_TOKEN}
+```
+
+设置 `GITHUB_PACKAGES_TOKEN` 环境变量后，可运行 `npm install -g @icebear0828/codex-proxy`。
+
 要求 Node.js 22.13+。运行数据保存在用户数据目录
 （Windows `%APPDATA%\@codex-proxy\electron\data`、Linux `~/.config/@codex-proxy/electron/data`、
 macOS `~/Library/Application Support/@codex-proxy/electron/data`），更新包不会丢失；
-`--portable` 或 `CODEX_PROXY_DATA_DIR` 可自定义位置。更新：重新下载运行 `install.mjs`。
-npm 仓库可用后将简化为 `npm install -g @icebear0828/codex-proxy`。
+`--portable` 或 `CODEX_PROXY_DATA_DIR` 可自定义位置。更新：离线包重新下载运行 `install.mjs`；GitHub Packages 安装则重跑 `npm install -g @icebear0828/codex-proxy@latest`。
 
 常用参数：`--mode=server`（纯服务器）、`--mode=browser`（强制浏览器）、
 `--host` / `--port`。完整参数见 `codex-proxy --help`。

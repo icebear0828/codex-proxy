@@ -8,7 +8,9 @@
 
 ## [Unreleased]
 
-> 暂无已记录的变更。
+### Changed
+
+- npm 分发渠道不再尝试发布到 npmjs 公共仓库：移除 `npm-publish.yml` 的 `publish-npm` job（该 job 此前只在配置了 `NPM_TOKEN` 时才真正发布），发布只保留 GitHub Packages（使用内置 `GITHUB_TOKEN`）。同时修正安装文档：中英文 README 不再直接给出 `npm install -g @icebear0828/codex-proxy`，改为说明 npmjs 未发布、推荐免认证的 Release 离线包 `codex-proxy-npm.zip`，并补充从 GitHub Packages 安装所需的 `read:packages` token 配置示例。（`.github/workflows/npm-publish.yml`、`.github/workflows/bump-electron.yml`、`README.md`、`README_EN.md`、`packages/npm/README.md`）
 
 ## [v2.1.x](https://github.com/icebear0828/codex-proxy/releases?q=2.1) - 2026-09-01 至 2026-09-07
 
