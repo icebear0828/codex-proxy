@@ -157,8 +157,8 @@ jobs:
         # a bot-pushed tag never fires its own `push: tags: v*` trigger, so
         # dispatch it against the tag ref explicitly — its version step
         # derives every package version from ${GITHUB_REF_NAME#v} on tag
-        # runs. An unconfigured NPM_TOKEN keeps the dispatched run green
-        # (the publish job skips itself; build + smoke still execute).
+        # runs. The run publishes to GitHub Packages with the built-in
+        # GITHUB_TOKEN; no npmjs account or secret is involved.
         if: steps.bump.outputs.new_tag
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

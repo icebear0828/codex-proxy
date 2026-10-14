@@ -6,9 +6,18 @@ OpenAI-compatible proxy for the ChatGPT Codex Responses API, with a web dashboar
 
 Requires Node.js 22.13+ (uses the built-in `node:sqlite`).
 
+This package is published to GitHub Packages, not to the public npmjs registry. Installing it from GitHub Packages needs an npm auth token with `read:packages`:
+
+```ini
+@icebear0828:registry=https://npm.pkg.github.com
+//npm.pkg.github.com/:_authToken=${GITHUB_PACKAGES_TOKEN}
+```
+
 ```bash
 npm install -g @icebear0828/codex-proxy
 ```
+
+No-auth alternative: download `codex-proxy-npm.zip` from the [latest release](https://github.com/icebear0828/codex-proxy/releases/latest/download/codex-proxy-npm.zip), extract it and run `node install.mjs` inside the extracted directory.
 
 ## Run
 
