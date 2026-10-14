@@ -8,7 +8,9 @@
 
 ## [Unreleased]
 
-> 暂无已记录的变更。
+### Fixed
+
+- 修复首页账户列表忽略 Antigravity 账户导致的空状态提示和账户数量统计不准确：仅有 Antigravity 账号时不再显示「暂无已连接的账户」，顶部「启用数 / 总数」与「全部」筛选计数也会同时统计 Codex 与 Antigravity 账号。（`web/src/components/AccountList.tsx`、`web/src/App.tsx`、`web/src/components/AccountList.test.tsx`）
 
 ## [v2.1.x](https://github.com/icebear0828/codex-proxy/releases?q=2.1) - 2026-09-01 至 2026-09-07
 

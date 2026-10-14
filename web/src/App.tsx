@@ -213,6 +213,7 @@ function Dashboard() {
               />
               <AccountList
                 accounts={accounts.list}
+                antigravityAccounts={accounts.antigravityAccounts}
                 loading={accounts.loading}
                 onDelete={accounts.deleteAccount}
                 onRefresh={accounts.refresh}

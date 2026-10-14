@@ -5,6 +5,7 @@ import { AccountImportExport } from "./AccountImportExport";
 import { FallbackUpstreamCard } from "./FallbackUpstreamCard";
 import type { AccountExportFormat } from "../../../shared/account-transfer-client";
 import type { Account, FallbackUpstreamPublic, ProxyEntry, QuotaWarning } from "../../../shared/types";
+import type { AntigravityAccountSummary } from "../../../shared/hooks/use-accounts";
 import { derivedStatus } from "../lib/accountStatus";
 import { accountToolbarControlClass } from "../lib/account-toolbar";
 
@@ -13,6 +14,13 @@ const EXPAND_ALL_STORAGE_KEY = "codex-proxy-account-list-expand-all";
 
 interface AccountListProps {
   accounts: Account[];
+  /**
+   * Antigravity accounts are rendered as a sibling section of the dashboard
+   * rather than by this component, but they are connected accounts all the
+   * same: they count toward the header totals and they mean the list is not
+   * empty when the Codex pool has no accounts.
+   */
+  antigravityAccounts?: AntigravityAccountSummary[];
   loading: boolean;
   onDelete: (id: string) => Promise<string | null>;
   onRefresh: () => void;
@@ -42,7 +50,7 @@ function getBrowserStorage(): Storage | null {
   }
 }
 
-export function AccountList({ accounts, loading, onDelete, onRefresh, refreshing, lastUpdated, proxies, onProxyChange, onExport, onImport, onToggleStatus, onUpdateLabel, onUpdateCodexFingerprintMode, fallbackUpstream, onUpdateFallbackUpstream, onDeleteFallbackUpstream, fallbackActive = false }: AccountListProps) {
+export function AccountList({ accounts, antigravityAccounts = [], loading, onDelete, onRefresh, refreshing, lastUpdated, proxies, onProxyChange, onExport, onImport, onToggleStatus, onUpdateLabel, onUpdateCodexFingerprintMode, fallbackUpstream, onUpdateFallbackUpstream, onDeleteFallbackUpstream, fallbackActive = false }: AccountListProps) {
   const t = useT();
   const { lang } = useI18n();
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
@@ -216,7 +224,19 @@ export function AccountList({ accounts, loading, onDelete, onRefresh, refreshing
       )
     : null;
 
-  const activeCount = accounts.filter((a) => a.status === "active").length;
+  // Antigravity accounts live in their own dashboard section but belong to
+  // the same "connected accounts" surface, so the header totals cover both
+  // pools. The status dropdown stays Codex-scoped: Antigravity accounts are
+  // never filtered by Codex statuses, they only add to the "all" bucket.
+  const activeCount =
+    accounts.filter((a) => a.status === "active").length +
+    antigravityAccounts.filter((a) => a.status === "active").length;
+  const totalAccountCount = accounts.length + antigravityAccounts.length;
+
+  // Only claim "no accounts connected" when neither pool has an account.
+  // A Codex status filter that matches nothing keeps its own hint.
+  const codexFilterExcludedAll = statusFilter !== "all" && accounts.length > 0;
+  const showEmptyState = displayAccounts.length === 0 && (codexFilterExcludedAll || antigravityAccounts.length === 0);
 
   const isInvalid = (a: Account) => a.status === "expired" || a.status === "banned";
   const invalidCount = accounts.filter(isInvalid).length;
@@ -233,7 +253,7 @@ export function AccountList({ accounts, loading, onDelete, onRefresh, refreshing
         <div class="flex flex-col items-end gap-1 shrink-0">
           <span class="text-[0.82rem] font-semibold">
             <span class="text-primary">{activeCount}</span>
-            <span class="text-slate-400 dark:text-text-dim"> / {accounts.length}</span>
+            <span data-testid="account-count-total" class="text-slate-400 dark:text-text-dim"> / {totalAccountCount}</span>
           </span>
           {updatedAtText && (
             <span class="text-[0.7rem] text-slate-400 dark:text-text-dim">
@@ -293,7 +313,7 @@ export function AccountList({ accounts, loading, onDelete, onRefresh, refreshing
           onChange={(e) => setStatusFilter((e.target as HTMLSelectElement).value)}
           class={`${accountToolbarControlClass} cursor-pointer`}
         >
-          <option value="all">{t("filterAll")} ({accounts.length})</option>
+          <option value="all">{t("filterAll")} ({totalAccountCount})</option>
           {statusCounts.active ? <option value="active">{t("filterActive")} ({statusCounts.active})</option> : null}
           {statusCounts.expired ? <option value="expired">{t("filterExpired")} ({statusCounts.expired})</option> : null}
           {statusCounts.banned ? <option value="banned">{t("filterBanned")} ({statusCounts.banned})</option> : null}
@@ -402,9 +422,9 @@ export function AccountList({ accounts, loading, onDelete, onRefresh, refreshing
           <div class="md:col-span-2 text-center py-8 text-slate-400 dark:text-text-dim text-sm bg-white dark:bg-card-dark border border-gray-200 dark:border-border-dark rounded-xl transition-colors">
             {t("loadingAccounts")}
           </div>
-        ) : displayAccounts.length === 0 ? (
+        ) : showEmptyState ? (
           <div class="md:col-span-2 text-center py-8 text-slate-400 dark:text-text-dim text-sm bg-white dark:bg-card-dark border border-gray-200 dark:border-border-dark rounded-xl transition-colors">
-            {statusFilter !== "all" && accounts.length > 0 ? t("noMatchingAccounts") : t("noAccounts")}
+            {codexFilterExcludedAll ? t("noMatchingAccounts") : t("noAccounts")}
           </div>
         ) : (
           displayAccounts.slice(0, visibleCount).map((acct, i) => (
