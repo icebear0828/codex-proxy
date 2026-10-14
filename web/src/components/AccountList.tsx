@@ -1,6 +1,8 @@
 import { useState, useCallback, useEffect } from "preact/hooks";
 import { useI18n, useT } from "../../../shared/i18n/context";
 import { AccountCard } from "./AccountCard";
+import { AntigravityAccounts } from "./AntigravityAccounts";
+import type { AntigravityAccountSummary } from "../../../shared/hooks/use-accounts";
 import { AccountImportExport } from "./AccountImportExport";
 import { FallbackUpstreamCard } from "./FallbackUpstreamCard";
 import type { AccountExportFormat } from "../../../shared/account-transfer-client";
@@ -13,6 +15,10 @@ const EXPAND_ALL_STORAGE_KEY = "codex-proxy-account-list-expand-all";
 
 interface AccountListProps {
   accounts: Account[];
+  antigravityAccounts?: AntigravityAccountSummary[];
+  onAddAntigravity?: () => Promise<void>;
+  onDeleteAntigravity?: (id: string) => Promise<string | null>;
+  onToggleAntigravityStatus?: (id: string, status: AntigravityAccountSummary["status"]) => Promise<string | null>;
   loading: boolean;
   onDelete: (id: string) => Promise<string | null>;
   onRefresh: () => void;
@@ -42,7 +48,7 @@ function getBrowserStorage(): Storage | null {
   }
 }
 
-export function AccountList({ accounts, loading, onDelete, onRefresh, refreshing, lastUpdated, proxies, onProxyChange, onExport, onImport, onToggleStatus, onUpdateLabel, onUpdateCodexFingerprintMode, fallbackUpstream, onUpdateFallbackUpstream, onDeleteFallbackUpstream, fallbackActive = false }: AccountListProps) {
+export function AccountList({ accounts, antigravityAccounts = [], onAddAntigravity, onDeleteAntigravity, onToggleAntigravityStatus, loading, onDelete, onRefresh, refreshing, lastUpdated, proxies, onProxyChange, onExport, onImport, onToggleStatus, onUpdateLabel, onUpdateCodexFingerprintMode, fallbackUpstream, onUpdateFallbackUpstream, onDeleteFallbackUpstream, fallbackActive = false }: AccountListProps) {
   const t = useT();
   const { lang } = useI18n();
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
@@ -417,6 +423,9 @@ export function AccountList({ accounts, loading, onDelete, onRefresh, refreshing
               onRefresh();
             }} onToggleStatus={onToggleStatus} onUpdateLabel={onUpdateLabel} onUpdateCodexFingerprintMode={onUpdateCodexFingerprintMode} />
           ))
+        )}
+        {onAddAntigravity && onDeleteAntigravity && onToggleAntigravityStatus && (
+          <AntigravityAccounts accounts={antigravityAccounts} onAdd={onAddAntigravity} onDelete={onDeleteAntigravity} onToggleStatus={onToggleAntigravityStatus} onRefresh={onRefresh} />
         )}
         {/* Last-resort upstream apikey — always at the very end, own full row */}
         {fallbackUpstream && onUpdateFallbackUpstream && onDeleteFallbackUpstream && (

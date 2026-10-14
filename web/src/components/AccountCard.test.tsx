@@ -19,6 +19,23 @@ function account(mode: "off" | "session" = "off"): Account {
   };
 }
 
+describe("AccountCard Free plan subtitle", () => {
+  afterEach(() => cleanup());
+
+  it("shows a Free badge rather than repeating the account email", () => {
+    render(
+      <AccountCard
+        account={{ ...account(), label: "user@example.com", planType: "free" }}
+        index={0}
+        onDelete={vi.fn(async () => null)}
+      />,
+    );
+
+    expect(screen.getByText("freePlan")).toBeTruthy();
+    expect(screen.getAllByText("user@example.com")).toHaveLength(1);
+  });
+});
+
 describe("AccountCard Codex fingerprint control", () => {
   afterEach(() => cleanup());
 
@@ -89,6 +106,41 @@ describe("AccountCard proxy selector", () => {
     expect(optionLabels).toContain("Active proxy");
     expect(optionLabels).toContain("Unreachable proxy");
     expect(optionLabels).not.toContain("Disabled proxy");
+  });
+});
+
+describe("AccountCard remaining quota", () => {
+  afterEach(() => cleanup());
+
+  it("shows 100% remaining for an active account with no usage data", () => {
+    const { container } = render(
+      <AccountCard account={account()} index={0} onDelete={vi.fn(async () => null)} />,
+    );
+
+    expect(screen.getByText("100% remaining")).toBeTruthy();
+    expect(screen.getByTestId("quota-progress-primary").getAttribute("style")).toContain("width: 100%");
+  });
+
+  it("counts down from 100% remaining to 0% as quota is consumed", () => {
+    const { container, rerender } = render(
+      <AccountCard
+        account={{ ...account(), quota: { rate_limit: { used_percent: 50, limit_reached: false } } }}
+        index={0}
+        onDelete={vi.fn(async () => null)}
+      />,
+    );
+
+    expect(screen.getByText("50% remaining")).toBeTruthy();
+    expect(screen.getByTestId("quota-progress-primary").getAttribute("style")).toContain("width: 50%");
+
+    rerender(
+      <AccountCard
+        account={{ ...account(), quota: { rate_limit: { used_percent: 100, limit_reached: true } } }}
+        index={0}
+        onDelete={vi.fn(async () => null)}
+      />,
+    );
+    expect(screen.getByTestId("quota-progress-primary").getAttribute("style")).toContain("width: 0%");
   });
 });
 

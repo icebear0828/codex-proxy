@@ -8,7 +8,9 @@
 
 ## [Unreleased]
 
-> 暂无已记录的变更。
+### Added
+
+- 首页新增 Antigravity OAuth 账号管理和用量展示，按模型显示独立额度，并展示账号邮箱、套餐与模型数量；支持账号启停及按套餐选择 Cloud Code 请求端点。（`src/auth/api-key-pool.ts`、`src/proxy/antigravity-upstream.ts`、`src/routes/auth.ts`、`web/src/components/AntigravityAccounts.tsx`）
 
 ## [v2.1.x](https://github.com/icebear0828/codex-proxy/releases?q=2.1) - 2026-09-01 至 2026-09-07
 

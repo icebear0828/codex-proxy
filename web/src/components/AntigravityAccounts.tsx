@@ -1,97 +1,161 @@
 import { useState } from "preact/hooks";
-import { useT } from "../../../shared/i18n/context";
+import { useI18n, useT } from "../../../shared/i18n/context";
+import { formatNumber, formatResetTime } from "../../../shared/utils/format";
 import type { AntigravityAccountSummary } from "../../../shared/hooks/use-accounts";
+import {
+  AccountCardAvatar,
+  AccountCardDeleteButton,
+  AccountCardHeader,
+  AccountCardProgressBar,
+  AccountCardRefreshButton,
+  AccountCardStatRow,
+  AccountCardStats,
+  AccountCardStatusBadge,
+  AccountCardStatusToggle,
+  AccountCardSurface,
+} from "./AccountCardPrimitives";
 
 interface AntigravityAccountsProps {
   accounts: AntigravityAccountSummary[];
   onAdd: () => Promise<void>;
   onDelete: (id: string) => Promise<string | null>;
   onToggleStatus: (id: string, status: AntigravityAccountSummary["status"]) => Promise<string | null>;
+  onRefresh: () => void;
 }
 
-export function AntigravityAccounts({ accounts, onAdd, onDelete, onToggleStatus }: AntigravityAccountsProps) {
+export function AntigravityAccounts({ accounts, onAdd, onDelete, onToggleStatus, onRefresh }: AntigravityAccountsProps) {
   const t = useT();
+  const { lang } = useI18n();
   const [busyId, setBusyId] = useState<string | null>(null);
-  const [error, setError] = useState("");
+  const [refreshingId, setRefreshingId] = useState<string | null>(null);
 
   const handleDelete = async (account: AntigravityAccountSummary) => {
-    if (!confirm(t("antigravityAccountDeleteConfirm"))) return;
+    if (!confirm(t("removeConfirm"))) return;
     setBusyId(account.id);
-    setError("");
-    const result = await onDelete(account.id);
-    if (result) setError(result);
-    setBusyId(null);
+    try {
+      const result = await onDelete(account.id);
+      if (result) alert(result);
+    } finally {
+      setBusyId(null);
+    }
   };
 
   const handleToggle = async (account: AntigravityAccountSummary) => {
     setBusyId(account.id);
-    setError("");
-    const result = await onToggleStatus(account.id, account.status);
-    if (result) setError(result);
-    setBusyId(null);
+    try {
+      const result = await onToggleStatus(account.id, account.status);
+      if (result) alert(result);
+    } finally {
+      setBusyId(null);
+    }
+  };
+
+  const handleRefresh = async (id: string) => {
+    setRefreshingId(id);
+    try {
+      await onRefresh();
+    } finally {
+      setRefreshingId(null);
+    }
   };
 
   return (
-    <section class="overflow-hidden rounded-2xl border border-violet-200 bg-white shadow-sm dark:border-violet-900/50 dark:bg-card-dark">
-      <div class="flex flex-wrap items-center gap-3 border-b border-violet-100 px-5 py-4 dark:border-violet-900/40">
-        <span class="flex size-9 items-center justify-center rounded-xl bg-violet-50 text-sm font-bold text-violet-700 dark:bg-violet-900/30 dark:text-violet-300">✦</span>
-        <div>
-          <h2 class="text-sm font-semibold text-slate-800 dark:text-text-main">{t("antigravityAccountsTitle")}</h2>
-          <p class="mt-0.5 text-xs text-slate-500 dark:text-text-dim">{t("antigravityAccountsDescription")}</p>
-        </div>
-        <span class="rounded-full bg-violet-50 px-2.5 py-1 text-xs font-medium text-violet-700 dark:bg-violet-900/30 dark:text-violet-300">{accounts.length}</span>
-        <button onClick={() => { void onAdd(); }} class="ml-auto rounded-lg bg-violet-600 px-3.5 py-2 text-xs font-semibold text-white transition-colors hover:bg-violet-700">{t("addAccount")}</button>
-      </div>
+    <>
+      {accounts.map((account, index) => {
+        const statusClass = account.status === "active"
+          ? "bg-success-container text-success border-success/30"
+          : account.status === "error"
+            ? "bg-danger-container text-danger border-danger/30"
+            : "bg-slate-100 text-slate-500 border-slate-200 dark:bg-slate-800/30 dark:text-slate-400 dark:border-slate-700/30";
+        const isEnabled = account.status === "active";
+        const busy = busyId === account.id;
+        const label = account.email || account.label || "Antigravity";
+        const subscription = account.planType || "—";
+        const initial = label.charAt(0).toUpperCase();
 
-      {accounts.length === 0 ? (
-        <div class="px-5 py-7 text-center text-sm text-slate-400 dark:text-text-dim">{t("antigravityNoAccounts")}</div>
-      ) : (
-        <div class="divide-y divide-gray-100 dark:divide-border-dark">
-          {accounts.map((account) => (
-            <article key={account.id} class="flex flex-col gap-3 px-5 py-4 sm:flex-row sm:items-center">
-              <div class="min-w-0 flex-1">
-                <div class="flex flex-wrap items-center gap-2">
-                  <span class="truncate text-sm font-medium text-slate-800 dark:text-text-main">{account.label}</span>
-                  <span class={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${account.status === "active" ? "bg-emerald-50 text-emerald-700 dark:bg-emerald-950/30 dark:text-emerald-300" : account.status === "error" ? "bg-red-50 text-red-700 dark:bg-red-950/30 dark:text-red-300" : "bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300"}`}>
-                    {account.status === "active" ? t("antigravityAccountActive") : account.status === "error" ? t("antigravityAccountError") : t("antigravityAccountDisabled")}
-                  </span>
+        return (
+          <AccountCardSurface key={account.id}>
+            <AccountCardHeader>
+              <div class="flex items-center gap-3 min-w-0 flex-1">
+                <AccountCardAvatar initial={initial} index={index} />
+                <div class="min-w-0">
+                  <h3 class="text-[0.82rem] font-semibold leading-tight truncate">{label}</h3>
+                  <p class="text-xs text-slate-500 dark:text-text-dim truncate">
+                    {subscription} · {account.claudeModelCount} Claude · {account.geminiModelCount} Gemini
+                  </p>
                 </div>
-                <div class="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-slate-500 dark:text-text-dim">
-                  <span>{account.modelCount} {t("antigravityModelsAuto")}</span>
-                  <span>{account.claudeModelCount} Claude</span>
-                  <span>{account.geminiModelCount} Gemini</span>
-                  <details class="group">
-                    <summary class="cursor-pointer text-violet-700 dark:text-violet-300">{t("antigravityModelsShow")}</summary>
-                    <div class="mt-2 grid max-h-36 gap-x-4 gap-y-1 overflow-auto rounded-lg border border-gray-100 bg-slate-50 p-3 font-mono text-[10px] dark:border-border-dark dark:bg-bg-dark sm:grid-cols-2">
-                      {account.models.map((model) => <span key={model}>{model}</span>)}
+              </div>
+              <div class="flex items-center gap-2 shrink-0 flex-wrap">
+                <AccountCardStatusToggle
+                  enabled={isEnabled}
+                  disabled={busy}
+                  title={isEnabled ? t("disableAccount") : t("enableAccount")}
+                  onClick={() => void handleToggle(account)}
+                />
+                <AccountCardStatusBadge className={statusClass}>
+                  {account.status === "active" ? t("antigravityAccountActive") : account.status === "error" ? t("antigravityAccountError") : t("antigravityAccountDisabled")}
+                </AccountCardStatusBadge>
+                <AccountCardRefreshButton
+                  refreshing={refreshingId === account.id}
+                  title={t("refreshQuota")}
+                  onClick={() => void handleRefresh(account.id)}
+                />
+                <AccountCardDeleteButton title={t("deleteAccount")} onClick={() => void handleDelete(account)} />
+              </div>
+            </AccountCardHeader>
+
+            <details class="mb-3 text-xs">
+              <summary class="cursor-pointer text-slate-500 dark:text-text-dim">{t("antigravityModelsShow")}</summary>
+              <div class="mt-2 grid max-h-36 gap-x-4 gap-y-1 overflow-auto rounded-lg border border-gray-100 bg-slate-50 p-3 font-mono text-[10px] dark:border-border-dark dark:bg-bg-dark sm:grid-cols-2">
+                {account.models.map((model) => <span key={model}>{model}</span>)}
+              </div>
+            </details>
+
+            <AccountCardStats>
+              <AccountCardStatRow label={t("windowRequests")} value={formatNumber(account.windowRequestCount)} />
+              <AccountCardStatRow label={t("windowTokens")} value={formatNumber(account.windowRequestTokens)} />
+              <AccountCardStatRow label={t("windowImageRequests")} value={formatNumber(account.windowImageRequestCount)} />
+            </AccountCardStats>
+
+            {(account.quota?.buckets.length ?? 0) > 0 && (
+              <div class="pt-3 mt-3 border-t border-slate-100 dark:border-border-dark space-y-3">
+                {account.quota!.buckets.map((bucket, bucketIndex) => {
+                  const remaining = bucket.remainingFraction == null
+                    ? null
+                    : Math.round(Math.max(0, Math.min(1, bucket.remainingFraction)) * 100);
+                  const resetTimestamp = bucket.resetTime ? Date.parse(bucket.resetTime) : NaN;
+                  const resetAt = Number.isFinite(resetTimestamp)
+                    ? formatResetTime(resetTimestamp / 1000, lang)
+                    : bucket.resetTime;
+                  const quotaLabel = bucket.modelId || t("rateLimit");
+
+                  return (
+                    <div key={`${bucket.modelId}-${bucketIndex}`}>
+                      <div class="flex justify-between text-[0.78rem] mb-1.5">
+                        <span class="text-slate-500 dark:text-text-dim">{quotaLabel}</span>
+                        {remaining == null ? (
+                          <span class="font-medium text-slate-400 dark:text-text-dim">—</span>
+                        ) : (
+                          <span class={`font-medium ${remaining <= 10 ? "text-red-500" : remaining <= 40 ? "text-amber-600 dark:text-amber-500" : "text-primary"}`}>
+                            {remaining}% {t("remaining")}
+                          </span>
+                        )}
+                      </div>
+                      {remaining != null && <AccountCardProgressBar remaining={remaining} testId={`antigravity-quota-${bucketIndex}`} />}
+                      {resetAt && <p class="text-xs text-slate-400 dark:text-text-dim mt-1">{t("resetsAt")} {resetAt}</p>}
                     </div>
-                  </details>
-                </div>
+                  );
+                })}
               </div>
-              <div class="flex shrink-0 items-center gap-2">
-                <button onClick={() => { void handleToggle(account); }} disabled={busyId === account.id} class="rounded-lg border border-gray-200 px-3 py-2 text-xs font-medium text-slate-600 transition-colors hover:bg-slate-50 disabled:opacity-50 dark:border-border-dark dark:text-text-dim dark:hover:bg-bg-dark">
-                  {account.status === "active" ? t("antigravityAccountDisable") : t("antigravityAccountEnable")}
-                </button>
-                <button onClick={() => { void handleDelete(account); }} disabled={busyId === account.id} class="rounded-lg border border-red-200 px-3 py-2 text-xs font-medium text-red-600 transition-colors hover:bg-red-50 disabled:opacity-50 dark:border-red-900/50 dark:text-red-300 dark:hover:bg-red-950/20">
-                  {t("antigravityAccountDelete")}
-                </button>
-              </div>
-            </article>
-          ))}
-        </div>
+            )}
+          </AccountCardSurface>
+        );
+      })}
+      {accounts.length === 0 && (
+        <button onClick={() => { void onAdd(); }} class="bg-white dark:bg-card-dark border border-dashed border-gray-300 dark:border-border-dark rounded-xl p-4 shadow-sm text-sm text-slate-500 dark:text-text-dim hover:border-primary/50 transition-all">
+          + {t("antigravityStartLogin")}
+        </button>
       )}
-
-      {error && (
-        <div class="fixed inset-0 z-[100] flex items-center justify-center bg-black/40 p-4" onClick={(e) => { if (e.target === e.currentTarget) setError(""); }}>
-          <div role="alertdialog" aria-modal="true" class="w-full max-w-md rounded-2xl border border-gray-200 bg-white p-5 shadow-2xl dark:border-border-dark dark:bg-card-dark">
-            <h2 class="text-base font-semibold text-red-600 dark:text-red-300">{t("accountNoticeError")}</h2>
-            <p class="mt-2 break-words text-sm text-slate-600 dark:text-text-dim">{error}</p>
-            <div class="mt-5 flex justify-end">
-              <button onClick={() => setError("")} class="rounded-lg bg-primary-action px-4 py-2 text-sm font-semibold text-white">{t("confirm")}</button>
-            </div>
-          </div>
-        </div>
-      )}
-    </section>
+    </>
   );
 }

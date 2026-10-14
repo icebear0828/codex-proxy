@@ -2,7 +2,7 @@
  * Tests for ApiKeyPool — CRUD, persistence, import/export.
  */
 
-import { describe, it, expect, beforeEach } from "vitest";
+import { describe, it, expect, beforeEach, vi } from "vitest";
 import { ApiKeyPool } from "@src/auth/api-key-pool.js";
 import type { ApiKeyPersistence, ApiKeyEntry } from "@src/auth/api-key-pool.js";
 
@@ -202,6 +202,47 @@ describe("ApiKeyPool", () => {
     expect(entry.lastUsedAt).toBeNull();
     pool.markUsed(entry.id);
     expect(pool.getEntry(entry.id)!.lastUsedAt).toBeTruthy();
+  });
+
+  it("stores Antigravity email and tier metadata for all model entries", () => {
+    const first = pool.add({ provider: "antigravity", model: "gemini-test", apiKey: "refresh-token" });
+    pool.add({ provider: "antigravity", model: "claude-test", apiKey: "refresh-token" });
+
+    expect(pool.setAntigravityAccountMetadata(first.id, { email: "user@gmail.com", planType: "Pro" })).toBe(true);
+    expect(pool.getAll().map(({ email, planType }) => ({ email, planType }))).toEqual([
+      { email: "user@gmail.com", planType: "Pro" },
+      { email: "user@gmail.com", planType: "Pro" },
+    ]);
+  });
+
+  it("tracks Antigravity request, token, and image metrics in a five-hour window", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-10-13T12:00:00Z"));
+    try {
+      const entry = pool.add({ provider: "antigravity", model: "gemini-test", apiKey: "refresh-token" });
+      pool.markUsed(entry.id);
+      pool.recordUsage(entry.id, { input_tokens: 12, output_tokens: 8 }, true);
+      expect(pool.getEntry(entry.id)).toMatchObject({
+        requestCount: 1,
+        requestTokens: 20,
+        imageRequestCount: 1,
+        windowRequestCount: 1,
+        windowRequestTokens: 20,
+        windowImageRequestCount: 1,
+      });
+
+      vi.advanceTimersByTime(5 * 60 * 60 * 1000 + 1);
+      expect(pool.getAll().find((item) => item.id === entry.id)).toMatchObject({
+        requestCount: 1,
+        requestTokens: 20,
+        imageRequestCount: 1,
+        windowRequestCount: 0,
+        windowRequestTokens: 0,
+        windowImageRequestCount: 0,
+      });
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   // ── Import ────────────────────────────────────────────────────
