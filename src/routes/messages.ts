@@ -248,7 +248,16 @@ export function createMessagesRoutes(
         codexRequest: { ...codexRequest, model: directModel },
       };
       const account = getApiKeyLogAccount(routeMatch.kind === "api-key" ? routeMatch.entry : undefined);
-      return handleDirectRequest({ c, upstream: routeMatch.adapter, req: directReq, fmt, account });
+      return handleDirectRequest({
+        c,
+        upstream: routeMatch.adapter,
+        req: directReq,
+        fmt,
+        account,
+        onUsage: routeMatch.kind === "api-key" && routeMatch.entry.provider === "antigravity"
+          ? (usage) => upstreamRouter?.recordApiKeyUsage(routeMatch.entry.id, usage, directReq.expectsImageGen)
+          : undefined,
+      });
     }
 
     return handleProxyRequest({ c, accountPool, cookieJar, req: proxyReq, fmt, proxyPool, fallbackUpstream });

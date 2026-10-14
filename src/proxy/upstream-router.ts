@@ -60,6 +60,10 @@ export class UpstreamRouter {
     return this.resolveMatchInternal(model.trim(), new Set<string>());
   }
 
+  recordApiKeyUsage(entryId: string, usage: { input_tokens?: number; output_tokens?: number }, imageRequest = false): void {
+    this.apiKeyPool?.recordUsage(entryId, usage, imageRequest);
+  }
+
   private resolveMatchInternal(model: string, seenAliases: Set<string>): UpstreamRouteMatch {
     const explicitProvider = this.splitExplicitProvider(model);
 

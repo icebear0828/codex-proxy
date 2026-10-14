@@ -74,6 +74,14 @@ function tierIdFrom(value: unknown): string | null {
   return null;
 }
 
+function planTypeFrom(value: unknown): string {
+  const tierId = tierIdFrom(value)?.toLowerCase();
+  if (!tierId || tierId.includes("free")) return "Free";
+  if (tierId.includes("ultra")) return "Ultra";
+  if (tierId.includes("pro")) return "Pro";
+  return tierId.replace(/[-_]?tier$/, "").split(/[-_]+/).map((part) => part.charAt(0).toUpperCase() + part.slice(1)).join(" ");
+}
+
 function isPaidTier(value: unknown): boolean {
   const tierId = tierIdFrom(value)?.toLowerCase();
   return tierId === "g1-pro-tier" || tierId === "g1-ultra-tier";
@@ -100,6 +108,7 @@ export class AntigravityUpstream implements UpstreamAdapter {
   private refreshPromise: Promise<string> | null = null;
   private resolvedProjectId: string | null;
   private accountInfoResolved = false;
+  private resolvedPlanType: string | null = null;
   private readonly requestByResponse = new WeakMap<Response, {
     req: CodexResponsesRequest;
     signal: AbortSignal;
@@ -121,6 +130,49 @@ export class AntigravityUpstream implements UpstreamAdapter {
       ? configuredVersion
       : DEFAULT_USER_AGENT_VERSION;
     this.userAgent = `antigravity/${version} windows/amd64`;
+  }
+
+  /** Fetch the signed-in Google identity and Cloud Code subscription tier. */
+  async fetchAccountDetails(signal: AbortSignal = AbortSignal.timeout(15_000)): Promise<{ email: string | null; planType: string | null }> {
+    let email: string | null = null;
+    let planType: string | null = null;
+
+    try {
+      const response = await fetch("https://www.googleapis.com/oauth2/v2/userinfo", withFetchDispatcher({
+        headers: { Authorization: `Bearer ${await this.getAccessToken()}`, Accept: "application/json" },
+        signal,
+      }));
+      const profile: unknown = await response.json().catch(() => null);
+      if (response.ok && isRecord(profile) && typeof profile.email === "string" && profile.email.trim()) {
+        email = profile.email.trim();
+      }
+    } catch {
+      // Identity metadata is optional; OAuth and API access should still work if userinfo is unavailable.
+    }
+
+    try {
+      await this.getProjectId(signal);
+      planType = this.resolvedPlanType;
+    } catch {
+      // Use any tier discovered even if the account did not return a project ID.
+      planType = this.resolvedPlanType;
+    }
+
+    return { email, planType };
+  }
+
+  /** Fetch current Antigravity model quota buckets using the authenticated Cloud Code API. */
+  async fetchQuota(signal: AbortSignal = AbortSignal.timeout(20_000)): Promise<unknown> {
+    const project = await this.getProjectId(signal);
+    const response = await this.sendCloudCode("retrieveUserQuota", JSON.stringify({ project }), signal);
+    const data: unknown = await response.json().catch(() => null);
+    if (!response.ok) {
+      const detail = isRecord(data) && isRecord(data.error) && typeof data.error.message === "string"
+        ? data.error.message
+        : `Antigravity quota request failed (HTTP ${response.status})`;
+      throw new CodexApiError(response.status, detail, response.headers);
+    }
+    return data;
   }
 
   async createResponse(req: CodexResponsesRequest, signal: AbortSignal): Promise<Response> {
@@ -341,6 +393,7 @@ export class AntigravityUpstream implements UpstreamAdapter {
       throw new CodexApiError(response.status, detail, response.headers);
     }
     this.accountInfoResolved = true;
+    this.resolvedPlanType = planTypeFrom(data);
     if (!this.baseUrlConfigured && isPaidTier(data)) this.baseUrl = DAILY_BASE_URL;
     const discovered = projectIdFrom(data);
     if (discovered) this.resolvedProjectId ??= discovered;

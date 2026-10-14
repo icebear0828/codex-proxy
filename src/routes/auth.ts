@@ -6,6 +6,7 @@ import type { RefreshScheduler } from "../auth/refresh-scheduler.js";
 import { validateManualToken } from "../auth/chatgpt-oauth.js";
 import { exchangeAntigravityCallback, startAntigravityOAuthFlow } from "../auth/antigravity-oauth.js";
 import { ANTIGRAVITY_SUPPORTED_MODELS } from "../auth/antigravity-models.js";
+import { AntigravityUpstream } from "../proxy/antigravity-upstream.js";
 import { getConfig } from "../config.js";
 import {
   startOAuthFlow,
@@ -28,6 +29,7 @@ export function createAuthRoutes(
   apiKeyPool?: ApiKeyPool,
 ): Hono {
   const app = new Hono();
+  const antigravityProfileLookups = new Set<string>();
 
   app.post("/auth/antigravity/login-start", async (c) => {
     try {
@@ -55,15 +57,56 @@ export function createAuthRoutes(
       return {
         id: entries[0].id,
         label: entries.find((entry) => entry.label)?.label ?? "Antigravity OAuth",
+        email: entries.find((entry) => entry.email)?.email ?? null,
+        planType: entries.find((entry) => entry.planType)?.planType ?? null,
         status,
         models,
         modelCount: models.length,
         claudeModelCount: models.filter((model) => model.startsWith("claude-")).length,
         geminiModelCount: models.filter((model) => model.startsWith("gemini-")).length,
         addedAt: entries.map((entry) => entry.addedAt).sort()[0],
+        lastUsedAt: entries.map((entry) => entry.lastUsedAt).filter((value): value is string => !!value).sort().at(-1) ?? null,
+        requestCount: entries.reduce((total, entry) => total + (entry.requestCount ?? 0), 0),
+        requestTokens: entries.reduce((total, entry) => total + (entry.requestTokens ?? 0), 0),
+        imageRequestCount: entries.reduce((total, entry) => total + (entry.imageRequestCount ?? 0), 0),
+        windowRequestCount: entries.reduce((total, entry) => total + (entry.windowRequestCount ?? 0), 0),
+        windowRequestTokens: entries.reduce((total, entry) => total + (entry.windowRequestTokens ?? 0), 0),
+        windowImageRequestCount: entries.reduce((total, entry) => total + (entry.windowImageRequestCount ?? 0), 0),
+        usageWindowStartedAt: entries.map((entry) => entry.usageWindowStartedAt).filter((value): value is string => !!value).sort()[0] ?? null,
+        quota: null,
       };
     });
     return c.json({ accounts });
+  });
+
+  app.get("/auth/antigravity/accounts/:id/quota", async (c) => {
+    if (!apiKeyPool) return c.json({ error: "Antigravity account storage is unavailable." }, 503);
+    const entry = apiKeyPool.getAll().find((candidate) => candidate.id === c.req.param("id") && candidate.provider === "antigravity");
+    if (!entry) return c.json({ error: "Antigravity account not found." }, 404);
+    try {
+      const upstream = new AntigravityUpstream(entry.apiKey, entry.projectId);
+      if ((!entry.email || !entry.planType) && !antigravityProfileLookups.has(entry.id)) {
+        antigravityProfileLookups.add(entry.id);
+        const details = await upstream.fetchAccountDetails();
+        if (details.email || details.planType) apiKeyPool.setAntigravityAccountMetadata(entry.id, details);
+      }
+      const raw = await upstream.fetchQuota();
+      const buckets = raw && typeof raw === "object" && Array.isArray((raw as { buckets?: unknown }).buckets)
+        ? (raw as { buckets: unknown[] }).buckets
+        : [];
+      return c.json({ buckets: buckets.flatMap((bucket) => {
+        if (!bucket || typeof bucket !== "object") return [];
+        const item = bucket as Record<string, unknown>;
+        return [{
+          modelId: typeof item.modelId === "string" ? item.modelId : "",
+          remainingFraction: typeof item.remainingFraction === "number" ? Math.max(0, Math.min(1, item.remainingFraction)) : null,
+          resetTime: typeof item.resetTime === "string" ? item.resetTime : null,
+        }];
+      }) });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Antigravity quota request failed.";
+      return c.json({ error: message }, 502);
+    }
   });
 
   app.patch("/auth/antigravity/accounts/:id/status", async (c) => {
@@ -96,6 +139,7 @@ export function createAuthRoutes(
 
     try {
       const refreshToken = await exchangeAntigravityCallback(parsed.data.callbackUrl);
+      const accountDetails = await new AntigravityUpstream(refreshToken).fetchAccountDetails();
       let added = 0;
       for (const { id: model } of ANTIGRAVITY_SUPPORTED_MODELS) {
         const existing = apiKeyPool.getAll().find((entry) =>
@@ -103,6 +147,7 @@ export function createAuthRoutes(
         );
         if (existing) {
           if (existing.status !== "active") apiKeyPool.setStatus(existing.id, "active");
+          if (accountDetails.email || accountDetails.planType) apiKeyPool.setAntigravityAccountMetadata(existing.id, accountDetails);
           continue;
         }
         apiKeyPool.add({
@@ -110,6 +155,8 @@ export function createAuthRoutes(
           model,
           apiKey: refreshToken,
           label: parsed.data.label || "Antigravity OAuth",
+          email: accountDetails.email,
+          planType: accountDetails.planType,
           capabilities: ["chat"],
           wire: "gemini",
         });

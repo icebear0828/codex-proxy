@@ -19,6 +19,23 @@ function account(mode: "off" | "session" = "off"): Account {
   };
 }
 
+describe("AccountCard Free plan subtitle", () => {
+  afterEach(() => cleanup());
+
+  it("shows a Free badge rather than repeating the account email", () => {
+    render(
+      <AccountCard
+        account={{ ...account(), label: "user@example.com", planType: "free" }}
+        index={0}
+        onDelete={vi.fn(async () => null)}
+      />,
+    );
+
+    expect(screen.getByText("freePlan")).toBeTruthy();
+    expect(screen.getAllByText("user@example.com")).toHaveLength(1);
+  });
+});
+
 describe("AccountCard Codex fingerprint control", () => {
   afterEach(() => cleanup());
 

@@ -204,6 +204,9 @@ export function createChatRoutes(
         req: directReq,
         fmt,
         account: getApiKeyLogAccount(routeMatch.kind === "api-key" ? routeMatch.entry : undefined),
+        onUsage: routeMatch.kind === "api-key" && routeMatch.entry.provider === "antigravity"
+          ? (usage) => upstreamRouter?.recordApiKeyUsage(routeMatch.entry.id, usage, directReq.expectsImageGen)
+          : undefined,
       });
     }
 

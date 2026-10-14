@@ -27,6 +27,9 @@ function stubFetch(options: { accountInfo?: unknown; loadCodeAssistStatuses?: nu
     if (url.includes("oauth2.googleapis.com/token")) {
       return new Response(JSON.stringify({ access_token: "access-token", expires_in: 3600 }), { status: 200 });
     }
+    if (url.includes("/oauth2/v2/userinfo")) {
+      return new Response(JSON.stringify({ email: "user@gmail.com" }), { status: 200 });
+    }
     if (url.includes(":loadCodeAssist")) {
       const status = loadCodeAssistStatuses.shift() ?? 200;
       return new Response(JSON.stringify(accountInfo), { status });
@@ -57,6 +60,20 @@ function successfulStream(text: string): Response {
 describe("AntigravityUpstream", () => {
   afterEach(() => {
     vi.unstubAllGlobals();
+  });
+
+  it("returns Google email and the Cloud Code subscription tier", async () => {
+    const fetchMock = stubFetch({
+      accountInfo: {
+        cloudaicompanionProject: "pro-project",
+        paidTier: { id: "g1-pro-tier" },
+      },
+    });
+    const upstream = new AntigravityUpstream("refresh-token");
+
+    await expect(upstream.fetchAccountDetails()).resolves.toEqual({ email: "user@gmail.com", planType: "Pro" });
+    expect(requestUrl(fetchMock, 1)).toBe("https://www.googleapis.com/oauth2/v2/userinfo");
+    expect(requestUrl(fetchMock, 2)).toBe(PRODUCTION_BASE_URL + "/v1internal:loadCodeAssist");
   });
 
   it("normalizes Claude Code identity and includes required Cloud Code fields", async () => {

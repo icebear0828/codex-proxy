@@ -22,12 +22,23 @@ export interface AntigravitySupportedModel {
 export interface AntigravityAccountSummary {
   id: string;
   label: string;
+  email: string | null;
+  planType: string | null;
   status: "active" | "disabled" | "error";
   models: string[];
   modelCount: number;
   claudeModelCount: number;
   geminiModelCount: number;
   addedAt: string;
+  lastUsedAt: string | null;
+  requestCount: number;
+  requestTokens: number;
+  imageRequestCount: number;
+  windowRequestCount: number;
+  windowRequestTokens: number;
+  windowImageRequestCount: number;
+  usageWindowStartedAt: string | null;
+  quota: { buckets: Array<{ modelId: string; remainingFraction: number | null; resetTime: string | null }> } | null;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -43,10 +54,17 @@ function isAntigravityModel(value: unknown): value is AntigravitySupportedModel 
 function isAntigravityAccount(value: unknown): value is AntigravityAccountSummary {
   if (!isRecord(value)) return false;
   return typeof value.id === "string" && typeof value.label === "string" &&
+    (value.email === null || typeof value.email === "string") &&
+    (value.planType === null || typeof value.planType === "string") &&
     (value.status === "active" || value.status === "disabled" || value.status === "error") &&
     Array.isArray(value.models) && value.models.every((model) => typeof model === "string") &&
     typeof value.modelCount === "number" && typeof value.claudeModelCount === "number" &&
-    typeof value.geminiModelCount === "number" && typeof value.addedAt === "string";
+    typeof value.geminiModelCount === "number" && typeof value.addedAt === "string" &&
+    (value.lastUsedAt === null || typeof value.lastUsedAt === "string") &&
+    typeof value.requestCount === "number" && typeof value.requestTokens === "number" &&
+    typeof value.imageRequestCount === "number" && typeof value.windowRequestCount === "number" &&
+    typeof value.windowRequestTokens === "number" && typeof value.windowImageRequestCount === "number" &&
+    (value.usageWindowStartedAt === null || typeof value.usageWindowStartedAt === "string");
 }
 
 export function useAccounts() {
@@ -83,11 +101,25 @@ export function useAccounts() {
       try {
         const antigravityResp = await fetch("/auth/antigravity/accounts");
         const antigravityData: unknown = await antigravityResp.json();
-        setAntigravityAccounts(
-          antigravityResp.ok && isRecord(antigravityData) && Array.isArray(antigravityData.accounts)
-            ? antigravityData.accounts.filter(isAntigravityAccount)
-            : [],
-        );
+        const antigravityList = antigravityResp.ok && isRecord(antigravityData) && Array.isArray(antigravityData.accounts)
+          ? antigravityData.accounts.filter(isAntigravityAccount)
+          : [];
+        const withQuotas = await Promise.all(antigravityList.map(async (account) => {
+          try {
+            const quotaResp = await fetch(`/auth/antigravity/accounts/${encodeURIComponent(account.id)}/quota`);
+            const quotaData: unknown = await quotaResp.json();
+            const buckets = quotaResp.ok && isRecord(quotaData) && Array.isArray(quotaData.buckets)
+              ? quotaData.buckets.filter((bucket): bucket is { modelId: string; remainingFraction: number | null; resetTime: string | null } =>
+                isRecord(bucket) && typeof bucket.modelId === "string" &&
+                (bucket.remainingFraction === null || typeof bucket.remainingFraction === "number") &&
+                (bucket.resetTime === null || typeof bucket.resetTime === "string"))
+              : [];
+            return { ...account, quota: { buckets } };
+          } catch {
+            return { ...account, quota: null };
+          }
+        }));
+        setAntigravityAccounts(withQuotas);
       } catch {
         setAntigravityAccounts([]);
       }

@@ -11,18 +11,11 @@ import {
 } from "../../../shared/utils/format";
 import type { Account, AccountQuotaWindow, ProxyEntry } from "../../../shared/types";
 import { derivedStatus } from "../lib/accountStatus";
+import { AccountCardAvatar, AccountCardDeleteButton, AccountCardHeader, AccountCardProgressBar, AccountCardRefreshButton, AccountCardStatRow, AccountCardStats, AccountCardStatusBadge, AccountCardStatusToggle, AccountCardSurface } from "./AccountCardPrimitives";
 
 /** Default credit→USD rate matching the config schema default (1000 credits = $40).
  *  Surfacing this through a settings hook lives in a follow-up PR. */
 const DEFAULT_CREDITS_PER_USD = 25;
-
-const avatarColors = [
-  ["bg-avatar-purple-bg", "text-avatar-purple-text"],
-  ["bg-avatar-amber-bg", "text-avatar-amber-text"],
-  ["bg-avatar-blue-bg", "text-avatar-blue-text"],
-  ["bg-avatar-emerald-bg", "text-avatar-emerald-text"],
-  ["bg-avatar-red-bg", "text-avatar-red-text"],
-];
 
 const statusStyles: Record<string, [string, string]> = {
   active: [
@@ -102,7 +95,6 @@ export function AccountCard({ account, index, onDelete, proxies, onProxyChange, 
   const { lang } = useI18n();
   const email = account.email || "Unknown";
   const initial = email.charAt(0).toUpperCase();
-  const [bgColor, textColor] = avatarColors[index % avatarColors.length];
   const usage = account.usage || {};
   const requests = usage.request_count ?? 0;
   const tokens = (usage.input_tokens ?? 0) + (usage.output_tokens ?? 0);
@@ -116,6 +108,8 @@ export function AccountCard({ account, index, onDelete, proxies, onProxyChange, 
   const winImageRequestsFailed = usage.window_image_request_failed_count ?? 0;
   const hasImageActivity = imageRequests > 0 || imageRequestsFailed > 0 || imageTokens > 0;
   const plan = account.planType || t("freeTier");
+  const normalizedPlan = account.planType?.trim().toLowerCase() ?? "";
+  const isFreePlan = !normalizedPlan || normalizedPlan === "free" || normalizedPlan === "free tier" || normalizedPlan === "free_tier";
   const windowSec = account.quota?.rate_limit?.limit_window_seconds;
   const windowDur = windowSec ? formatWindowDuration(windowSec, lang) : null;
 
@@ -301,9 +295,9 @@ export function AccountCard({ account, index, onDelete, proxies, onProxyChange, 
   }, [account.id, fingerprintUpdating, onUpdateCodexFingerprintMode, t]);
 
   return (
-    <div class={`bg-white dark:bg-card-dark border rounded-xl p-4 shadow-sm hover:shadow-md transition-all ${selected ? "border-primary ring-1 ring-primary/30" : "border-gray-200 dark:border-border-dark hover:border-primary/30 dark:hover:border-primary/50"}`}>
+    <AccountCardSurface selected={selected}>
       {/* Header */}
-      <div class="flex flex-wrap justify-between items-start gap-2 mb-4">
+      <AccountCardHeader>
         <div class="flex items-center gap-3 min-w-0 flex-1">
           {onToggleSelect && (
             <input
@@ -313,9 +307,7 @@ export function AccountCard({ account, index, onDelete, proxies, onProxyChange, 
               class="size-4 rounded border-gray-300 dark:border-border-dark text-primary focus:ring-primary/50 cursor-pointer shrink-0"
             />
           )}
-          <div class={`size-10 rounded-full ${bgColor} ${textColor} flex items-center justify-center font-bold text-lg`}>
-            {initial}
-          </div>
+          <AccountCardAvatar initial={initial} index={index} />
           <div class="min-w-0">
             {editingLabel ? (
               <input
@@ -348,7 +340,9 @@ export function AccountCard({ account, index, onDelete, proxies, onProxyChange, 
               </div>
             )}
             <p class="text-xs text-slate-500 dark:text-text-dim truncate">
-              {account.label ? `${email} · ${plan}` : plan}
+              {isFreePlan ? (
+                <span class="px-1.5 py-0.5 rounded bg-slate-100 dark:bg-border-dark text-slate-500 dark:text-text-dim text-[0.65rem] font-medium">{t("freePlan")}</span>
+              ) : account.label ? `${email} · ${plan}` : plan}
               {windowDur && (
                 <span class="ml-1.5 px-1.5 py-0.5 rounded bg-slate-100 dark:bg-border-dark text-slate-500 dark:text-text-dim text-[0.65rem] font-medium">
                   {windowDur}
@@ -359,35 +353,16 @@ export function AccountCard({ account, index, onDelete, proxies, onProxyChange, 
         </div>
         <div class="flex items-center gap-2 shrink-0 flex-wrap">
           {onToggleStatus && (
-            <button
-              onClick={handleStatusToggle}
+            <AccountCardStatusToggle
+              enabled={isEnabled}
               disabled={!canToggle || statusToggling}
-              title={canToggle ? (isEnabled ? t("disableAccount") : t("enableAccount")) : undefined}
-              class={`relative inline-flex h-5 w-9 shrink-0 rounded-full border-2 border-transparent transition-colors duration-200 focus:outline-none ${
-                !canToggle ? "opacity-40 cursor-not-allowed" : "cursor-pointer"
-              } ${isEnabled ? "bg-primary-action" : "bg-slate-300 dark:bg-slate-600"}`}
-            >
-              <span
-                class={`pointer-events-none inline-block h-4 w-4 rounded-full bg-white dark:bg-slate-200 shadow transform transition-transform duration-200 ${
-                  isEnabled ? "translate-x-4" : "translate-x-0"
-                }`}
-              />
-            </button>
+              title={canToggle ? (isEnabled ? t("disableAccount") : t("enableAccount")) : ""}
+              onClick={handleStatusToggle}
+            />
           )}
-          <span class={`px-2.5 py-1 rounded-full ${statusCls} text-xs font-medium border`}>
-            {t(statusKey as TranslationKey)}
-          </span>
+          <AccountCardStatusBadge className={statusCls}>{t(statusKey as TranslationKey)}</AccountCardStatusBadge>
           {onRefreshQuota && (
-            <button
-              onClick={handleRefreshQuota}
-              disabled={quotaRefreshing}
-              class="p-1.5 text-slate-400 dark:text-text-dim hover:text-amber-500 transition-colors rounded-md hover:bg-amber-50 dark:hover:bg-amber-900/20 disabled:opacity-40"
-              title={t("refreshQuota")}
-            >
-              <svg class="size-[16px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-                <path stroke-linecap="round" stroke-linejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0 3.181 3.183a8.25 8.25 0 0 0 13.803-3.7M4.031 9.865a8.25 8.25 0 0 1 13.803-3.7l3.181 3.182m0-4.991v4.99" />
-              </svg>
-            </button>
+            <AccountCardRefreshButton refreshing={quotaRefreshing} title={t("refreshQuota")} onClick={handleRefreshQuota} />
           )}
           <button
             onClick={handleDelete}
@@ -399,40 +374,24 @@ export function AccountCard({ account, index, onDelete, proxies, onProxyChange, 
             </svg>
           </button>
         </div>
-      </div>
+      </AccountCardHeader>
 
       {/* Stats */}
-      <div class="space-y-2">
-        <div class="flex justify-between text-[0.78rem]">
-          <span class="text-slate-500 dark:text-text-dim">{t("windowRequests")}</span>
-          <span class="font-medium">{formatNumber(winRequests)}</span>
-        </div>
-        <div class="flex justify-between text-[0.78rem]">
-          <span class="text-slate-500 dark:text-text-dim">{t("windowTokens")}</span>
-          <span class="font-medium">{formatNumber(winTokens)}</span>
-        </div>
+      <AccountCardStats>
+        <AccountCardStatRow label={t("windowRequests")} value={formatNumber(winRequests)} />
+        <AccountCardStatRow label={t("windowTokens")} value={formatNumber(winTokens)} />
         {hasImageActivity && (
           <>
-            <div class="flex justify-between text-[0.78rem]">
-              <span class="text-slate-500 dark:text-text-dim">{t("windowImageTokens")}</span>
-              <span class="font-medium">{formatNumber(winImageTokens)}</span>
-            </div>
-            <div class="flex justify-between text-[0.78rem]">
-              <span class="text-slate-500 dark:text-text-dim">{t("windowImageRequests")}</span>
-              <span class="font-medium">
-                {formatNumber(winImageRequests)} ok · {formatNumber(winImageRequestsFailed)} failed
-              </span>
-            </div>
+            <AccountCardStatRow label={t("windowImageTokens")} value={formatNumber(winImageTokens)} />
+            <AccountCardStatRow label={t("windowImageRequests")} value={`${formatNumber(winImageRequests)} ok · ${formatNumber(winImageRequestsFailed)} failed`} />
           </>
         )}
-        <div class="flex justify-between text-[0.68rem]">
-          <span class="text-slate-400 dark:text-text-dim/70">{t("totalAll")}</span>
-          <span class="text-slate-400 dark:text-text-dim/70">
-            {formatNumber(requests)} req · {formatNumber(tokens)} tok
-            {hasImageActivity ? ` · ${formatNumber(imageRequests)}/${formatNumber(imageRequestsFailed)} img` : ""}
-          </span>
-        </div>
-      </div>
+        <AccountCardStatRow
+          muted
+          label={t("totalAll")}
+          value={`${formatNumber(requests)} req · ${formatNumber(tokens)} tok${hasImageActivity ? ` · ${formatNumber(imageRequests)}/${formatNumber(imageRequestsFailed)} img` : ""}`}
+        />
+      </AccountCardStats>
 
       <label class="flex items-center justify-between gap-3 text-[0.78rem] mt-3 pt-3 border-t border-slate-100 dark:border-border-dark">
         <span>
@@ -499,9 +458,7 @@ export function AccountCard({ account, index, onDelete, proxies, onProxyChange, 
                 )}
               </div>
               {pct != null && (
-                <div class="w-full bg-slate-100 dark:bg-border-dark rounded-full h-2 overflow-hidden">
-                  <div data-testid="quota-progress-primary" class={`${barColor} h-2 rounded-full transition-all`} style={{ width: `${pct}%` }} />
-                </div>
+                <AccountCardProgressBar remaining={pct} color={barColor} testId="quota-progress-primary" />
               )}
               {resetAt && (
                 <p class="text-xs text-slate-400 dark:text-text-dim mt-1">
@@ -534,9 +491,7 @@ export function AccountCard({ account, index, onDelete, proxies, onProxyChange, 
                 )}
               </div>
               {sPct != null && (
-                <div class="w-full bg-slate-100 dark:bg-border-dark rounded-full h-2 overflow-hidden">
-                  <div class={`${sBarColor} h-2 rounded-full transition-all`} style={{ width: `${sPct}%` }} />
-                </div>
+                <AccountCardProgressBar remaining={sPct} color={sBarColor} />
               )}
               {sResetAt && (
                 <p class="text-xs text-slate-400 dark:text-text-dim mt-1">
@@ -619,9 +574,7 @@ export function AccountCard({ account, index, onDelete, proxies, onProxyChange, 
                 )}
               </div>
               {rPct != null && (
-                <div class="w-full bg-slate-100 dark:bg-border-dark rounded-full h-2 overflow-hidden">
-                  <div class={`${rBarColor} h-2 rounded-full transition-all`} style={{ width: `${rPct}%` }} />
-                </div>
+                <AccountCardProgressBar remaining={rPct} color={rBarColor} />
               )}
               {rResetAt && (
                 <p class="text-xs text-slate-400 dark:text-text-dim mt-1">
@@ -674,9 +627,7 @@ export function AccountCard({ account, index, onDelete, proxies, onProxyChange, 
                   )}
                 </div>
                 {bPct != null && (
-                  <div class="w-full bg-slate-100 dark:bg-border-dark rounded-full h-2 overflow-hidden">
-                    <div class={`${bBarColor} h-2 rounded-full transition-all`} style={{ width: `${Math.min(Math.max(bPct, 0), 100)}%` }} />
-                  </div>
+                  <AccountCardProgressBar remaining={bPct} color={bBarColor} />
                 )}
                 {bResetAt && (
                   <p class="text-xs text-slate-400 dark:text-text-dim mt-1">
@@ -712,6 +663,6 @@ export function AccountCard({ account, index, onDelete, proxies, onProxyChange, 
           })}
         </div>
       )}
-    </div>
+    </AccountCardSurface>
   );
 }

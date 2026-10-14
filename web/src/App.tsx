@@ -7,7 +7,6 @@ import { Header } from "./components/Header";
 import { UpdateModal } from "./components/UpdateModal";
 import { AddAccount } from "./components/AddAccount";
 import { AccountList } from "./components/AccountList";
-import { AntigravityAccounts } from "./components/AntigravityAccounts";
 import { PoolOverview } from "./components/PoolOverview";
 import { SettingsTab } from "./components/SettingsTab";
 import { ProxyPool } from "./components/ProxyPool";
@@ -205,14 +204,12 @@ function Dashboard() {
                 accounts={accounts.list}
                 creditsPerUsd={generalSettings.data?.credits_per_usd}
               />
-              <AntigravityAccounts
-                accounts={accounts.antigravityAccounts}
-                onAdd={accounts.startAdd}
-                onDelete={accounts.deleteAntigravityAccount}
-                onToggleStatus={accounts.toggleAntigravityAccountStatus}
-              />
               <AccountList
                 accounts={accounts.list}
+                antigravityAccounts={accounts.antigravityAccounts}
+                onAddAntigravity={accounts.startAdd}
+                onDeleteAntigravity={accounts.deleteAntigravityAccount}
+                onToggleAntigravityStatus={accounts.toggleAntigravityAccountStatus}
                 loading={accounts.loading}
                 onDelete={accounts.deleteAccount}
                 onRefresh={accounts.refresh}
