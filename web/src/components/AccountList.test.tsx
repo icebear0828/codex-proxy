@@ -2,6 +2,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { render, screen, fireEvent, waitFor, cleanup } from "@testing-library/preact";
 import type { Account } from "../../../shared/types";
+import type { AntigravityAccountSummary } from "../../../shared/hooks/use-accounts";
 
 const mockI18n = vi.hoisted(() => ({
   useT: vi.fn(),
@@ -49,6 +50,57 @@ function renderAccountList(accounts: Account[]) {
       lastUpdated={null}
     />,
   );
+}
+
+function makeAntigravityAccount(
+  id: string,
+  status: AntigravityAccountSummary["status"] = "active",
+): AntigravityAccountSummary {
+  return {
+    id,
+    label: id,
+    email: `${id}@example.com`,
+    planType: null,
+    lastUsedAt: null,
+    requestCount: 0,
+    requestTokens: 0,
+    imageRequestCount: 0,
+    windowRequestCount: 0,
+    windowRequestTokens: 0,
+    windowImageRequestCount: 0,
+    usageWindowStartedAt: null,
+    quota: null,
+    status,
+    models: [],
+    modelCount: 0,
+    claudeModelCount: 0,
+    geminiModelCount: 0,
+    addedAt: "2026-01-01T00:00:00.000Z",
+  };
+}
+
+function renderAccountListWithAntigravity(
+  accounts: Account[],
+  antigravityAccounts: AntigravityAccountSummary[],
+) {
+  return render(
+    <AccountList
+      accounts={accounts}
+      antigravityAccounts={antigravityAccounts}
+      onAddAntigravity={vi.fn(async () => {})}
+      onDeleteAntigravity={vi.fn(async () => null)}
+      onToggleAntigravityStatus={vi.fn(async () => null)}
+      loading={false}
+      onDelete={vi.fn(async () => null)}
+      onRefresh={vi.fn()}
+      refreshing={false}
+      lastUpdated={null}
+    />,
+  );
+}
+
+function getHeaderCountText(): string {
+  return screen.getByTestId("account-count-total").parentElement?.textContent ?? "";
 }
 
 function getStorage(): Storage {
@@ -141,5 +193,38 @@ describe("AccountList", () => {
     await screen.findByText("12 / 12");
     expect(getStorage().getItem(EXPAND_ALL_STORAGE_KEY)).toBe("true");
     expect(screen.getByText("collapse")).toBeTruthy();
+  });
+
+  it("hides the empty state when only an antigravity account is connected", () => {
+    renderAccountListWithAntigravity([], [makeAntigravityAccount("ag-1")]);
+
+    expect(screen.queryByText("noAccounts")).toBeNull();
+    expect(screen.queryByText("noMatchingAccounts")).toBeNull();
+    expect(getHeaderCountText()).toBe("1 / 1");
+  });
+
+  it("counts codex and antigravity accounts together in the header and the all filter", () => {
+    renderAccountListWithAntigravity(
+      [makeAccount("codex-1", "active")],
+      [makeAntigravityAccount("ag-1"), makeAntigravityAccount("ag-2")],
+    );
+
+    expect(getHeaderCountText()).toBe("3 / 3");
+    const select = screen.getByRole("combobox") as HTMLSelectElement;
+    expect(select.options[0].textContent).toBe("filterAll (3)");
+  });
+
+  it("counts disabled antigravity accounts in the total but not in the active count", () => {
+    renderAccountListWithAntigravity([], [makeAntigravityAccount("ag-1", "disabled")]);
+
+    expect(getHeaderCountText()).toBe("0 / 1");
+    expect(screen.queryByText("noAccounts")).toBeNull();
+  });
+
+  it("still shows the empty state when no codex or antigravity account is connected", () => {
+    renderAccountListWithAntigravity([], []);
+
+    expect(screen.getByText("noAccounts")).toBeTruthy();
+    expect(getHeaderCountText()).toBe("0 / 0");
   });
 });
