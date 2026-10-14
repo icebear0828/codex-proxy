@@ -8,11 +8,89 @@
 
 ## [Unreleased]
 
+> 暂无已记录的变更。
+
+## [v2.1.x](https://github.com/icebear0828/codex-proxy/releases?q=2.1) - 2026-09-01 至 2026-09-07
+
 ### Fixed
 
 - 修复首页账户列表忽略 Antigravity 账户导致的空状态提示和账户数量统计不准确：仅有 Antigravity 账号时不再显示「暂无已连接的账户」，顶部「启用数 / 总数」与「全部」筛选计数也会同时统计 Codex 与 Antigravity 账号。（`web/src/components/AccountList.tsx`、`web/src/App.tsx`、`web/src/components/AccountList.test.tsx`）
 
-## [v2.1.x](https://github.com/icebear0828/codex-proxy/releases?q=2.1) - 2026-09-01 至 2026-09-07
+- 修复日志窗口「出口模型」列显示本地处理后缀的问题（#848）：带 `-high` / `-fast` 等本地后缀的请求（如 `gpt-6-high`）此前在出口日志中显示为「解析后模型名 + 后缀」（`gpt-6-astra-high`），与实际请求上游的模型 ID 不符。现在出口模型一律取翻译层实际写出的模型 ID，复用既有模型解析逻辑（未新增后缀正则）；入口模型仍保留客户端原始请求名，客户端回显、推理等级、快速模式与路由行为均未改动。（`src/routes/shared/proxy-egress-log.ts`、`src/routes/shared/direct-request-handler.ts`、`src/routes/shared/streaming-handler.ts`、`src/routes/shared/non-streaming-helpers.ts`、`src/routes/shared/response-processor.ts`、`src/routes/shared/proxy-handler-utils.ts`、`tests/unit/routes/shared/direct-egress-model.test.ts`）
+
+- dev→main 晋升现在可安全验证自动生成的 changelog-only 同步提交：仅当其父提交通过质量门禁且同步提交仅修改发布日志时，才继承 CI 绿灯并纳入已同步的 v2.1.x 发布说明；同秒的质量门禁记录按 run 编号确定最新结果。（`.github/scripts/check-promote-ci.sh`）
+
+- Gemini / Antigravity 工具参数及结构化输出 schema 会剥除 Gemini 不支持的 JSON Schema 关键字；清理 Claude Code 工具定义中的 `prefixItems` 后，为缺少 `items` 的数组补充宽松 schema，避免上游 400。（`src/translation/codex-request-to-gemini.ts`）
+
+- 修复原生 `/v1/responses` 带 `{"type":"message","role":"system"}` 的 input 被 Codex 上游以 `System messages are not allowed`（400）拒绝的问题；非流式下该 400 还会被误报为 `Codex returned empty responses`。现在 `CodexApi.createResponse()`（HTTP / WebSocket / WS→HTTP 降级共用）与 `createCompactResponse()` 在发往上游前把 input 中的 `system` 角色改写为 `developer`，不修改调用方对象，第三方 Responses/OpenAI/Anthropic/Gemini adapter 不受影响。（`src/proxy/codex-input-normalizer.ts`、`src/proxy/codex-api.ts`）
+
+- 修复 Anthropic Messages 转 Gemini/Antigravity 时复杂工具声明被拒绝、工具选择配置被覆盖、工具结果丢失名称和原生 ID、图片被降为文本、工具结果与后续文本顺序错误的问题；保留工具调用签名（含前置思考 part），在缺失签名时使用 Gemini 官方兼容值，并明确拒绝畸形参数和无法配对的结果。（`src/translation/anthropic-to-codex.ts`、`src/translation/codex-request-to-gemini.ts`、`src/proxy/gemini-upstream.ts`）
+
+- 修复 Codex 请求转发至 Anthropic Messages 时图片 data URI、函数工具定义和工具选择格式不匹配的问题：base64 图片改为 `source` 数据块，函数参数改为 `input_schema`，`required` 与指定函数选择分别映射为 `any` 与 `tool`。（`src/translation/codex-request-to-anthropic.ts`）
+
+- 修复 Anthropic Messages 扩展思考预算达到或超过 `max_tokens` 时请求被拒绝的问题：新型号扩大输出上限，旧型号将思考预算限制在输出上限以内。（`src/translation/codex-request-to-anthropic.ts`）
+
+- 修复 Responses 请求转发到 OpenAI Chat Completions 上游时的工具格式错配：函数工具定义与指定工具选择转换为 Chat Completions 包络，保留并行调用设置；自定义工具的调用、结果及流式事件保持对应；网页搜索工具映射到 `web_search_options`，不受支持的工具明确返回错误；结构化输出 schema 使用 Chat Completions 的 `json_schema` 包络。
+
+- 修复 Gemini `functionCallingConfig.allowedFunctionNames` 未限制可调用函数，以及 Gemini 响应遗漏函数调用 ID 的问题；指定单个必选函数时保留该选择，并在流式与非流式响应中返回调用 ID。（`src/translation/gemini-to-codex.ts`、`src/translation/codex-to-gemini.ts`）
+
+- Gemini 请求入口保留原生工具调用 ID，并在跨轮和并行同名工具调用时稳定匹配无 ID 的工具结果，避免错误关联或重复 ID。（`src/types/gemini.ts`、`src/translation/gemini-to-codex.ts`）
+
+- 修复 OpenAI Chat Completions 请求的旧版 `function_call` 选择和 `parallel_tool_calls` 设置在转译为 Codex Responses 请求时丢失的问题。（`src/translation/openai-to-codex.ts`）
+
+- Anthropic Messages 入站请求现在接受 `tool_choice: { type: "none" }` 和 URL 图片来源，并将其正确转为 Codex Responses 的工具选择与图片输入；工具结果中的 URL 图片也会保留。（`src/types/anthropic.ts`、`src/translation/tool-format.ts`、`src/translation/anthropic-to-codex.ts`）
+
+- 修复显式 `previous_response_id` 会话在拥有它的池内 WebSocket 死亡后被本地永久判死的问题（#789）:此前 `acquireForResponse` 以 `missing_owner` / `dead` / `expired` / `transport` 旁路后直接抛 `PreviousResponseWebSocketError`,而显式续传既被排除在 strip-retry 之外(剥离会丢历史)、也不适用状态码 0 传输重试,错误一路落到兜底 502——同一会话后续每一轮都复用同一个死 id 反复 502,换模型也无法恢复,只能新开会话。现在这类"本地 owner 丢失但上游链可能完好"(响应通常在池连接死亡前已建成)的旁路会在全新 recovery WS 上原样重试同一次请求(不改动 prev id / 输入 / 账号),由上游裁决 id 是否仍有效;若上游返回 not-found,既有失效逻辑照常清除本地映射。`busy`(活兄弟分支串行化护栏)与 `account_mismatch` / `disabled` / `no_key`(跨账号 fail-closed 护栏)维持原语义不重试;每个请求最多重连一次,防止循环。(`src/routes/shared/proxy-retry-classifier.ts`、`src/routes/shared/proxy-handler.ts`、`tests/unit/routes/shared/proxy-retry-classifier.test.ts`)
+
+- 修复 Docker 部署下已有配置卷永远拿不到镜像新增默认文件的问题（#837）:标准版与 Lite 版 entrypoint 此前只在配置目录**完全为空**时从镜像 `/defaults` 复制一次，配置卷一旦被播种过，后续镜像升级新增的配置文件（如 `model-pricing.yaml`）就再也不会进入运行时配置目录——表现为 token 统计正常但估算成本恒为 0，旧版 `models.yaml` 等默认值同样不会更新。现在每次启动都按文件补种:递归 `cp -rn`（no-clobber）只补齐缺失文件，用户改过的文件与旧默认值一概不覆盖，嵌套新增文件（如 `prompts/` 目录内新增的提示词）同样补齐，并输出本次补种文件数;补种失败（目录不可创建或不可写）只告警、不阻断启动。路径可用 `CODEX_ENTRYPOINT_DEFAULTS_DIR` / `CODEX_ENTRYPOINT_CONFIG_DIR` 覆盖。（`docker-entrypoint.sh`、`scripts/docker/lite-entrypoint.sh`、`tests/unit/ci/docker-entrypoint-seed.test.ts`）
+
+- 修复价格表加载失败完全静默、且失败产生的空价格表被进程永久缓存的问题（#837）:`src/logs/metrics.ts` 的 `getCatalog()` 捕获异常后静默把价格表设为 `{}` 并永久缓存，`annotateUsageCost()` 也特意吞掉 ENOENT 警告，用户容易把「价格表没加载」误认为「成本真的是 0」。现在加载失败会带实际文件路径与原因告警（按路径+原因去重、5 分钟冷却，避免每请求刷屏），空表只缓存 60 秒后重试，把缺失文件补进配置卷后无需重启即可恢复计价并输出恢复日志。（`src/auth/usage-pricing.ts`、`src/logs/metrics.ts`、`src/routes/shared/proxy-handler-utils.ts`、`tests/unit/logs/metrics.test.ts`）
+
+> 暂无其他已记录的变更。
+
+- 修复流式 API-key 上游错误被包装成 HTTP 200 的问题，保留真实错误状态；上游返回 429 时透传 `Retry-After`，让 Claude Code 等客户端按配额恢复时间退避。（`src/routes/shared/direct-request-handler.ts`）
+
+- 修复流式请求失败时 HTTP 状态码被吞成 200 的问题：共享的 SSE 错误响应路径（`src/routes/shared/stream-error-response.ts`）只写了 `Content-Type` 等响应头，从未设置状态码，Hono 于是保留默认 200。上游拒绝、令牌过期、账号池耗尽等失败因此以“成功”状态返回，客户端与反向代理会把它当作正常完成，仅靠 SSE 错误帧无法触发重试或退避。现在状态码在响应体开始前写入上下文，三个调用点一并修正：直连上游的通用异常（502）、`respondWithProxyError` 的流式错误（原本按 500/503 传入却返回 200）、`respondWithNoAccount` 的流式无账号（503）。（`src/routes/shared/stream-error-response.ts`）
+
+- Antigravity/Gemini 流只有在上游报告终止原因且产生文本或工具调用后才标记成功；提前结束和空输出会作为流错误返回，避免 Claude Code 收到伪成功的空响应。（`src/proxy/gemini-upstream.ts`）
+
+- Antigravity OAuth 按 Google Cloud Code 返回的套餐选择请求端点：Pro / Ultra 账号使用 daily 端点，Free 账号仍使用 production 端点；loadCodeAssist 在生产端点遇到连接失败或 408 / 404 / 429 / 5xx 时回退到 daily，显式配置的 Base URL 保持优先。修复 CRLF SSE 分块解析，避免上游返回 HTTP 200 但下游收到空响应。（src/proxy/antigravity-upstream.ts、src/proxy/codex-sse.ts）
+
+- Antigravity 遇到 Cloud Code 端点级 `Resource has been exhausted` 限流时自动切换备用 daily 端点重试；模型容量限流保持原样。
+
+- Antigravity 请求会按上游兼容方式处理中性化后的 Claude Code / Codex 身份提示，并始终携带 Cloud Code 所需的工具配置和稳定会话 ID。（`src/proxy/antigravity-upstream.ts`）
+- Antigravity OAuth 授权码换取令牌时使用程序自动探测到的代理；Google 网络不可达时提示检查代理或网络。（`src/proxy/fetch-dispatcher.ts`、`src/routes/auth.ts`）
+
+- 修复 `/v1/images/generations` 被同名路由静默遮蔽的问题：API-key 辅助端点引入后，`responsesRoutes` 先于 `imagesRoutes` 挂载且 Hono 同路径先注册者胜出，导致账号登录模式下该端点恒返回 400 `unsupported_codex_auxiliary_route`，与 API.md 文档描述的账号模式生图流程不符。现在 Images 两条路由（generations / edits）由 `createImagesRoutes` 独家注册并按模型路由分发：模型命中声明 Codex JSON 辅助能力的 API-key provider 时继续逐字节透传给上游 `/images/*`（行为与原 aux 通道一致），其余可路由模型走账号模式 `image_generation` 工具转换；未路由模型返回 404 `model_not_found`。（`src/routes/images.ts`、`src/routes/responses.ts`、`src/index.ts`、`tests/e2e/images.test.ts`、`tests/unit/routes/responses-compact.test.ts`）
+
+- 修复 OpenCode（Console Go，`opencode.ai/zen/go`）上游因缺少 `x-opencode-session` 请求头而拒绝请求的问题（#814）：Codex / Kilo Code 等客户端直连时会携带该头与真实 User-Agent，经代理转发后被丢弃或覆盖。现由代理识别 OpenCode 上游，透传客户端原始 `x-opencode-session` 与 User-Agent；客户端未提供会话头时，以每个对话稳定的标识符自动补上（`src/proxy/opencode-headers.ts`、`src/proxy/codex-responses-upstream.ts`、`src/proxy/responses-upstream.ts`、`src/proxy/openai-upstream.ts`）。
+
+- 修复 `latest-lite` 等 Alpine 镜像在 x86_64 上启动即崩溃（`Error loading shared library ld-linux-x86-64.so.2: No such file or directory`，#805）：镜像发布流水线此前在 glibc runner 上以 musl target 交叉编译 `codex-tls.linux-x64-musl.node`，aws-lc 等 C 依赖仍被链接到 glibc，产出名为 musl 实为 glibc 的二进制，在 Alpine 中无法加载。现改为在 `napi-rs/nodejs-rust:lts-alpine` 容器内原生构建（与 Lite zip / Release 流水线一致），并新增 readelf glibc 依赖断言与**推送到远程仓库前**的本地冒烟门禁测试（镜像自带 Node 下 dlopen addon + 空卷启动 + `/health`）。（`.github/workflows/docker-publish.yml`）
+
+
+- 完善 Token 刷新错误与过载流关闭处理：将 `refresh_token_invalidated` 纳入永久失效错误避免无效轮转；流关闭事件中可重试的 `server_is_overloaded` 不再持久化到错误日志（`src/auth/refresh-scheduler.ts`、`src/logs/stream-close-event.ts`）。
+- 废弃的 `/api/v2/auth/login` 与 `/api/v2/app/version` 端点改为返回 410 响应及迁移提示，便于区分旧客户端探测并避免误记为服务端故障（`src/routes/web.ts`）。
+
+- 修复发布 Docker 镜像内根 `package.json` / `package-lock.json` 仍保留旧版本的问题：构建时将解析出的 `PROXY_VERSION` 同步写入包元数据，并让 Docker smoke test 校验运行时版本与包元数据一致（`Dockerfile`、`.github/scripts/sync-package-version.mjs`、`.github/workflows/ci-docker.yml`）。
+
+- 修复第三方供应商模型列表长期不更新导致新模型（如 gpt-6）最长 7 天不可见的问题：原缓存按 URL 共享、TTL 7 天且无任何刷新入口，现默认 1 小时 TTL 并提供手动强制刷新与每日自动刷新。（#802）
+
+- **确定性的工具 schema 校验错误不再被当成可重试的 5xx。** 真实复现：Claude Code 内置 Artifact 工具的 JSON Schema 用了上游校验器不认的正则语法，上游报 `Invalid schema for function 'Artifact': ... is not a 'regex'.`；这类错误重放多少次都是同一个结果，不是传输抖动，但上游把它报成 5xx，而 `withRetry` 只按 `status >= 500` 判定可重试（Claude Code 客户端自己的 502 退避重试同理），于是交互式会话被无限重试拖住、用户拿不到任何回答。新增 `isDeterministicSchemaOrParamErrorBody()` / `classifyRawUpstreamError()`（`src/proxy/error-classification.ts`）：命中这类文本特征时把 5xx 改写成 400，`withRetry` 因此不再重试；只对 5xx 生效，不影响真正的传输层 5xx，也不把 4xx（401/402/429…）的既有语义压平成 400。接入点：原始 HTTP 错误路径（`codex-api.ts` 的 `createResponseViaHttp` / `createCompactResponse`、`anthropic-upstream.ts`、`gemini-upstream.ts`、`openai-upstream.ts`、`responses-upstream.ts`、`codex-responses-upstream.ts`）与 SSE/WS 事件错误路径（`codex-api-error-from-event.ts` 的 `codexApiErrorFromEvent`）共用同一份判据，不再各自维护。
+- **转发工具 schema 前清掉上游正则引擎编译不了的 `pattern`，不再因此被上游拒收整个请求。** 真实复现：Claude Code 2.1.265+ 内置 Artifact 工具的 `field` 参数 pattern 同时含 `\p{Cc}` 这类 Unicode 属性转义和 `(?!__.*__$)` 负向前瞻，`collection` / `doc_id` 参数也各带一条 `(?!`；GPT 系上游用 RE2（从设计上不支持前瞻），多数厂商的 JSON Schema 校验器则把 `\p{...}` 判成 `is not a 'regex'`，于是上游在收到请求那一刻就拒收整个请求——Artifact 是默认自带工具，每一轮正常对话都失败。新增 `sanitizeSchemaPatterns()`：复用既有的 `walkSchema` 递归管线（不另写第二份遍历器），对含 `\p{` / `\P{` / `(?=` / `(?!` / `(?<=` / `(?<!` / `(?>` / `(?(` 的 `pattern` **整键删除**，`patternProperties` 的**键名**是正则、命中同样删掉整个条目；覆盖位置包括 `properties` / `patternProperties` / `$defs` / `definitions` / `items`（对象与 draft-07 数组两种写法）/ `prefixItems` / `oneOf` / `anyOf` / `allOf` / `if`-`then`-`else`-`not`，以及既有遍历器从不进入、但值同样是 schema 的 `additionalProperties` / `unevaluatedProperties` / `unevaluatedItems` / `propertyNames` / `contains` / `dependentSchemas` 条目（这些扩展位置只在清 pattern 时下钻、且下钻时不带 `additionalProperties` 注入，以免改变结构化输出的既有行为）。选择整键删除而非改写：`(?!__.*__$)` 在 RE2 里无法等价表达，而 `pattern` 只是校验约束、不是工具的功能定义，删掉不影响工具可用性；也**不按上游模型区分**（实测 claude-* / qwen3.8 / kimi-k3 本可通过）——清洗发生在路由之前、拿不到最终命中的上游（换号/降级都可能改），模型白名单必然过时，能保留的合法 `pattern` 仍然保留。三条协议的工具参数路径（Anthropic / OpenAI / Gemini）统一经 `normalizeSchema()` 接入。（`src/translation/shared-utils.ts`、`src/translation/tool-format.ts`）
+
+- 修复 Docker 镜像版本号显示错误（容器内始终回退到过期的 `package.json` 版本而非实际发布版本，#794）：#673 重构 `docker-publish.yml` 时移除了产生 `outputs.version` 的步骤，而 #677 引入的 `--build-arg PROXY_VERSION` 仍引用该输出，导致注入值为空。恢复 "Resolve image tags" 步骤的 `version` 输出（tag 构建取 tag 本身，分支构建取 `package.json` 与最新 stable tag 的较大者），并在 checkout 中启用 `fetch-tags` 以保证分支构建能读到历史 tag；新增 workflow 输出引用完整性测试防止同类回归。（`.github/workflows/docker-publish.yml`、`tests/unit/ci/workflow-outputs.test.ts`）
+- 修复 No-Node Lite zip 制品全部条目以 STORE（不压缩）模式写入的问题：传给 `writestr()` 的 `ZipInfo` 会忽略归档级压缩配置并默认 `ZIP_STORED`，导致制品体积约为正常 deflate -9 的两倍以上（实测 18.8MB → 3.6MB 量级）；现在为每个文件条目显式设置 `compress_type = ZIP_DEFLATED` 与 `compresslevel=9`，归档级测试新增"文件条目必须为 deflate 且压缩率有效"的防回归断言（`scripts/portable/build-portable.mjs`、`scripts/portable/test-portable.mjs`）。
+- 修复 Dashboard 底栏在更新状态尚未缓存时无法显示 Codex Desktop 版本的问题，并更新 2026 年版权文案。
+
+- 修复速率限制重置卡（Reset Cards）在请求转发后从控制台消失的问题：被动响应头更新 quota 时保留已知的 `reset_credits_available`，并在重置卡查询与消耗逻辑中同步更新账号配额缓存（`src/auth/account-registry.ts`、`src/auth/active-quota-refresher.ts`、`src/routes/accounts.ts`）。
+
+- 修复 Dashboard 顶部导航栏与侧栏「Codex Proxy」左侧品牌图标错误的问题：将手绘六边形 SVG 替换为官方 Logo 图片（`web/public/icon.png`），与桌面端 / Web 应用图标保持一致。（`web/src/components/Header.tsx`、`web/src/components/Sidebar.tsx`）
+
+- 修复上一条改动后在桌面 / 生产构建中品牌图标与 favicon 仍显示裂图的问题：后端 Web 路由对非哈希资源改为显式读文件返回（此前挂载在精确路径上的 `serveStatic` 无法推导相对路径，`/icon.png`、`/favicon.ico` 始终 404）。（`src/routes/web.ts`）
+
+- 修复并统一桌面端与 Web 端应用图标与 Logo：生成包含 Windows 完整多分辨率的 `icon.ico`、Web `favicon.ico` / `icon.png`，Electron 主进程窗口配置中注入应用图标并移除 `electron-builder` 的 `signAndEditExecutable: false` 以确保可执行文件与任务栏/桌面快捷方式正确嵌入图标；统一 Dashboard 顶部导航栏 Logo 为品牌立方体图标。（`packages/electron/`、`web/`、`scripts/build/generate-ico.ps1`）
+
+- 移除 Dashboard 顶部导航栏与侧栏重复展示的「服务运行中」状态徽标（`web/src/components/Header.tsx`）。
 
 ### Added
 
@@ -110,84 +188,6 @@
 - 官方模型识别改为按名称形态前缀放行（`gpt*` / `codex*` / `oN*`），不再要求模型已收录于本地 catalog：当后端/账号尚未下发的新官方模型（如 `gpt-6-astra`）被客户端请求时，不再返回 `404 model_not_found` 或静默回退默认模型，而是按原名透传交由上游裁决；`resolveModelId` 对官方形态模型原样解析、不回退默认。边界保持不变：非官方形态的未知模型仍 `404`，裸 `codex` 哨兵仍解析为默认模型（`src/models/model-store.ts`）。
 
 - 点击「添加账户」不再立即弹出授权网页，改为弹出对话框展示授权 URL，提供「复制」与「打开链接」按钮，由用户自行选择打开时机；下方保留 RT（Refresh Token）输入与导入入口。（`web/src/components/AddAccount.tsx`、`shared/hooks/use-accounts.ts`）
-
-### Fixed
-
-- 修复日志窗口「出口模型」列显示本地处理后缀的问题（#848）：带 `-high` / `-fast` 等本地后缀的请求（如 `gpt-6-high`）此前在出口日志中显示为「解析后模型名 + 后缀」（`gpt-6-astra-high`），与实际请求上游的模型 ID 不符。现在出口模型一律取翻译层实际写出的模型 ID，复用既有模型解析逻辑（未新增后缀正则）；入口模型仍保留客户端原始请求名，客户端回显、推理等级、快速模式与路由行为均未改动。（`src/routes/shared/proxy-egress-log.ts`、`src/routes/shared/direct-request-handler.ts`、`src/routes/shared/streaming-handler.ts`、`src/routes/shared/non-streaming-helpers.ts`、`src/routes/shared/response-processor.ts`、`src/routes/shared/proxy-handler-utils.ts`、`tests/unit/routes/shared/direct-egress-model.test.ts`）
-
-- dev→main 晋升现在可安全验证自动生成的 changelog-only 同步提交：仅当其父提交通过质量门禁且同步提交仅修改发布日志时，才继承 CI 绿灯并纳入已同步的 v2.1.x 发布说明；同秒的质量门禁记录按 run 编号确定最新结果。（`.github/scripts/check-promote-ci.sh`）
-
-- Gemini / Antigravity 工具参数及结构化输出 schema 会剥除 Gemini 不支持的 JSON Schema 关键字；清理 Claude Code 工具定义中的 `prefixItems` 后，为缺少 `items` 的数组补充宽松 schema，避免上游 400。（`src/translation/codex-request-to-gemini.ts`）
-
-- 修复原生 `/v1/responses` 带 `{"type":"message","role":"system"}` 的 input 被 Codex 上游以 `System messages are not allowed`（400）拒绝的问题；非流式下该 400 还会被误报为 `Codex returned empty responses`。现在 `CodexApi.createResponse()`（HTTP / WebSocket / WS→HTTP 降级共用）与 `createCompactResponse()` 在发往上游前把 input 中的 `system` 角色改写为 `developer`，不修改调用方对象，第三方 Responses/OpenAI/Anthropic/Gemini adapter 不受影响。（`src/proxy/codex-input-normalizer.ts`、`src/proxy/codex-api.ts`）
-
-- 修复 Anthropic Messages 转 Gemini/Antigravity 时复杂工具声明被拒绝、工具选择配置被覆盖、工具结果丢失名称和原生 ID、图片被降为文本、工具结果与后续文本顺序错误的问题；保留工具调用签名（含前置思考 part），在缺失签名时使用 Gemini 官方兼容值，并明确拒绝畸形参数和无法配对的结果。（`src/translation/anthropic-to-codex.ts`、`src/translation/codex-request-to-gemini.ts`、`src/proxy/gemini-upstream.ts`）
-
-- 修复 Codex 请求转发至 Anthropic Messages 时图片 data URI、函数工具定义和工具选择格式不匹配的问题：base64 图片改为 `source` 数据块，函数参数改为 `input_schema`，`required` 与指定函数选择分别映射为 `any` 与 `tool`。（`src/translation/codex-request-to-anthropic.ts`）
-
-- 修复 Anthropic Messages 扩展思考预算达到或超过 `max_tokens` 时请求被拒绝的问题：新型号扩大输出上限，旧型号将思考预算限制在输出上限以内。（`src/translation/codex-request-to-anthropic.ts`）
-
-- 修复 Responses 请求转发到 OpenAI Chat Completions 上游时的工具格式错配：函数工具定义与指定工具选择转换为 Chat Completions 包络，保留并行调用设置；自定义工具的调用、结果及流式事件保持对应；网页搜索工具映射到 `web_search_options`，不受支持的工具明确返回错误；结构化输出 schema 使用 Chat Completions 的 `json_schema` 包络。
-
-- 修复 Gemini `functionCallingConfig.allowedFunctionNames` 未限制可调用函数，以及 Gemini 响应遗漏函数调用 ID 的问题；指定单个必选函数时保留该选择，并在流式与非流式响应中返回调用 ID。（`src/translation/gemini-to-codex.ts`、`src/translation/codex-to-gemini.ts`）
-
-- Gemini 请求入口保留原生工具调用 ID，并在跨轮和并行同名工具调用时稳定匹配无 ID 的工具结果，避免错误关联或重复 ID。（`src/types/gemini.ts`、`src/translation/gemini-to-codex.ts`）
-
-- 修复 OpenAI Chat Completions 请求的旧版 `function_call` 选择和 `parallel_tool_calls` 设置在转译为 Codex Responses 请求时丢失的问题。（`src/translation/openai-to-codex.ts`）
-
-- Anthropic Messages 入站请求现在接受 `tool_choice: { type: "none" }` 和 URL 图片来源，并将其正确转为 Codex Responses 的工具选择与图片输入；工具结果中的 URL 图片也会保留。（`src/types/anthropic.ts`、`src/translation/tool-format.ts`、`src/translation/anthropic-to-codex.ts`）
-
-- 修复显式 `previous_response_id` 会话在拥有它的池内 WebSocket 死亡后被本地永久判死的问题（#789）:此前 `acquireForResponse` 以 `missing_owner` / `dead` / `expired` / `transport` 旁路后直接抛 `PreviousResponseWebSocketError`,而显式续传既被排除在 strip-retry 之外(剥离会丢历史)、也不适用状态码 0 传输重试,错误一路落到兜底 502——同一会话后续每一轮都复用同一个死 id 反复 502,换模型也无法恢复,只能新开会话。现在这类"本地 owner 丢失但上游链可能完好"(响应通常在池连接死亡前已建成)的旁路会在全新 recovery WS 上原样重试同一次请求(不改动 prev id / 输入 / 账号),由上游裁决 id 是否仍有效;若上游返回 not-found,既有失效逻辑照常清除本地映射。`busy`(活兄弟分支串行化护栏)与 `account_mismatch` / `disabled` / `no_key`(跨账号 fail-closed 护栏)维持原语义不重试;每个请求最多重连一次,防止循环。(`src/routes/shared/proxy-retry-classifier.ts`、`src/routes/shared/proxy-handler.ts`、`tests/unit/routes/shared/proxy-retry-classifier.test.ts`)
-
-- 修复 Docker 部署下已有配置卷永远拿不到镜像新增默认文件的问题（#837）:标准版与 Lite 版 entrypoint 此前只在配置目录**完全为空**时从镜像 `/defaults` 复制一次，配置卷一旦被播种过，后续镜像升级新增的配置文件（如 `model-pricing.yaml`）就再也不会进入运行时配置目录——表现为 token 统计正常但估算成本恒为 0，旧版 `models.yaml` 等默认值同样不会更新。现在每次启动都按文件补种:递归 `cp -rn`（no-clobber）只补齐缺失文件，用户改过的文件与旧默认值一概不覆盖，嵌套新增文件（如 `prompts/` 目录内新增的提示词）同样补齐，并输出本次补种文件数;补种失败（目录不可创建或不可写）只告警、不阻断启动。路径可用 `CODEX_ENTRYPOINT_DEFAULTS_DIR` / `CODEX_ENTRYPOINT_CONFIG_DIR` 覆盖。（`docker-entrypoint.sh`、`scripts/docker/lite-entrypoint.sh`、`tests/unit/ci/docker-entrypoint-seed.test.ts`）
-
-- 修复价格表加载失败完全静默、且失败产生的空价格表被进程永久缓存的问题（#837）:`src/logs/metrics.ts` 的 `getCatalog()` 捕获异常后静默把价格表设为 `{}` 并永久缓存，`annotateUsageCost()` 也特意吞掉 ENOENT 警告，用户容易把「价格表没加载」误认为「成本真的是 0」。现在加载失败会带实际文件路径与原因告警（按路径+原因去重、5 分钟冷却，避免每请求刷屏），空表只缓存 60 秒后重试，把缺失文件补进配置卷后无需重启即可恢复计价并输出恢复日志。（`src/auth/usage-pricing.ts`、`src/logs/metrics.ts`、`src/routes/shared/proxy-handler-utils.ts`、`tests/unit/logs/metrics.test.ts`）
-
-> 暂无其他已记录的变更。
-
-- 修复流式 API-key 上游错误被包装成 HTTP 200 的问题，保留真实错误状态；上游返回 429 时透传 `Retry-After`，让 Claude Code 等客户端按配额恢复时间退避。（`src/routes/shared/direct-request-handler.ts`）
-
-- 修复流式请求失败时 HTTP 状态码被吞成 200 的问题：共享的 SSE 错误响应路径（`src/routes/shared/stream-error-response.ts`）只写了 `Content-Type` 等响应头，从未设置状态码，Hono 于是保留默认 200。上游拒绝、令牌过期、账号池耗尽等失败因此以“成功”状态返回，客户端与反向代理会把它当作正常完成，仅靠 SSE 错误帧无法触发重试或退避。现在状态码在响应体开始前写入上下文，三个调用点一并修正：直连上游的通用异常（502）、`respondWithProxyError` 的流式错误（原本按 500/503 传入却返回 200）、`respondWithNoAccount` 的流式无账号（503）。（`src/routes/shared/stream-error-response.ts`）
-
-- Antigravity/Gemini 流只有在上游报告终止原因且产生文本或工具调用后才标记成功；提前结束和空输出会作为流错误返回，避免 Claude Code 收到伪成功的空响应。（`src/proxy/gemini-upstream.ts`）
-
-- Antigravity OAuth 按 Google Cloud Code 返回的套餐选择请求端点：Pro / Ultra 账号使用 daily 端点，Free 账号仍使用 production 端点；loadCodeAssist 在生产端点遇到连接失败或 408 / 404 / 429 / 5xx 时回退到 daily，显式配置的 Base URL 保持优先。修复 CRLF SSE 分块解析，避免上游返回 HTTP 200 但下游收到空响应。（src/proxy/antigravity-upstream.ts、src/proxy/codex-sse.ts）
-
-- Antigravity 遇到 Cloud Code 端点级 `Resource has been exhausted` 限流时自动切换备用 daily 端点重试；模型容量限流保持原样。
-
-- Antigravity 请求会按上游兼容方式处理中性化后的 Claude Code / Codex 身份提示，并始终携带 Cloud Code 所需的工具配置和稳定会话 ID。（`src/proxy/antigravity-upstream.ts`）
-- Antigravity OAuth 授权码换取令牌时使用程序自动探测到的代理；Google 网络不可达时提示检查代理或网络。（`src/proxy/fetch-dispatcher.ts`、`src/routes/auth.ts`）
-
-- 修复 `/v1/images/generations` 被同名路由静默遮蔽的问题：API-key 辅助端点引入后，`responsesRoutes` 先于 `imagesRoutes` 挂载且 Hono 同路径先注册者胜出，导致账号登录模式下该端点恒返回 400 `unsupported_codex_auxiliary_route`，与 API.md 文档描述的账号模式生图流程不符。现在 Images 两条路由（generations / edits）由 `createImagesRoutes` 独家注册并按模型路由分发：模型命中声明 Codex JSON 辅助能力的 API-key provider 时继续逐字节透传给上游 `/images/*`（行为与原 aux 通道一致），其余可路由模型走账号模式 `image_generation` 工具转换；未路由模型返回 404 `model_not_found`。（`src/routes/images.ts`、`src/routes/responses.ts`、`src/index.ts`、`tests/e2e/images.test.ts`、`tests/unit/routes/responses-compact.test.ts`）
-
-- 修复 OpenCode（Console Go，`opencode.ai/zen/go`）上游因缺少 `x-opencode-session` 请求头而拒绝请求的问题（#814）：Codex / Kilo Code 等客户端直连时会携带该头与真实 User-Agent，经代理转发后被丢弃或覆盖。现由代理识别 OpenCode 上游，透传客户端原始 `x-opencode-session` 与 User-Agent；客户端未提供会话头时，以每个对话稳定的标识符自动补上（`src/proxy/opencode-headers.ts`、`src/proxy/codex-responses-upstream.ts`、`src/proxy/responses-upstream.ts`、`src/proxy/openai-upstream.ts`）。
-
-- 修复 `latest-lite` 等 Alpine 镜像在 x86_64 上启动即崩溃（`Error loading shared library ld-linux-x86-64.so.2: No such file or directory`，#805）：镜像发布流水线此前在 glibc runner 上以 musl target 交叉编译 `codex-tls.linux-x64-musl.node`，aws-lc 等 C 依赖仍被链接到 glibc，产出名为 musl 实为 glibc 的二进制，在 Alpine 中无法加载。现改为在 `napi-rs/nodejs-rust:lts-alpine` 容器内原生构建（与 Lite zip / Release 流水线一致），并新增 readelf glibc 依赖断言与**推送到远程仓库前**的本地冒烟门禁测试（镜像自带 Node 下 dlopen addon + 空卷启动 + `/health`）。（`.github/workflows/docker-publish.yml`）
-
-
-- 完善 Token 刷新错误与过载流关闭处理：将 `refresh_token_invalidated` 纳入永久失效错误避免无效轮转；流关闭事件中可重试的 `server_is_overloaded` 不再持久化到错误日志（`src/auth/refresh-scheduler.ts`、`src/logs/stream-close-event.ts`）。
-- 废弃的 `/api/v2/auth/login` 与 `/api/v2/app/version` 端点改为返回 410 响应及迁移提示，便于区分旧客户端探测并避免误记为服务端故障（`src/routes/web.ts`）。
-
-- 修复发布 Docker 镜像内根 `package.json` / `package-lock.json` 仍保留旧版本的问题：构建时将解析出的 `PROXY_VERSION` 同步写入包元数据，并让 Docker smoke test 校验运行时版本与包元数据一致（`Dockerfile`、`.github/scripts/sync-package-version.mjs`、`.github/workflows/ci-docker.yml`）。
-
-- 修复第三方供应商模型列表长期不更新导致新模型（如 gpt-6）最长 7 天不可见的问题：原缓存按 URL 共享、TTL 7 天且无任何刷新入口，现默认 1 小时 TTL 并提供手动强制刷新与每日自动刷新。（#802）
-
-- **确定性的工具 schema 校验错误不再被当成可重试的 5xx。** 真实复现：Claude Code 内置 Artifact 工具的 JSON Schema 用了上游校验器不认的正则语法，上游报 `Invalid schema for function 'Artifact': ... is not a 'regex'.`；这类错误重放多少次都是同一个结果，不是传输抖动，但上游把它报成 5xx，而 `withRetry` 只按 `status >= 500` 判定可重试（Claude Code 客户端自己的 502 退避重试同理），于是交互式会话被无限重试拖住、用户拿不到任何回答。新增 `isDeterministicSchemaOrParamErrorBody()` / `classifyRawUpstreamError()`（`src/proxy/error-classification.ts`）：命中这类文本特征时把 5xx 改写成 400，`withRetry` 因此不再重试；只对 5xx 生效，不影响真正的传输层 5xx，也不把 4xx（401/402/429…）的既有语义压平成 400。接入点：原始 HTTP 错误路径（`codex-api.ts` 的 `createResponseViaHttp` / `createCompactResponse`、`anthropic-upstream.ts`、`gemini-upstream.ts`、`openai-upstream.ts`、`responses-upstream.ts`、`codex-responses-upstream.ts`）与 SSE/WS 事件错误路径（`codex-api-error-from-event.ts` 的 `codexApiErrorFromEvent`）共用同一份判据，不再各自维护。
-- **转发工具 schema 前清掉上游正则引擎编译不了的 `pattern`，不再因此被上游拒收整个请求。** 真实复现：Claude Code 2.1.265+ 内置 Artifact 工具的 `field` 参数 pattern 同时含 `\p{Cc}` 这类 Unicode 属性转义和 `(?!__.*__$)` 负向前瞻，`collection` / `doc_id` 参数也各带一条 `(?!`；GPT 系上游用 RE2（从设计上不支持前瞻），多数厂商的 JSON Schema 校验器则把 `\p{...}` 判成 `is not a 'regex'`，于是上游在收到请求那一刻就拒收整个请求——Artifact 是默认自带工具，每一轮正常对话都失败。新增 `sanitizeSchemaPatterns()`：复用既有的 `walkSchema` 递归管线（不另写第二份遍历器），对含 `\p{` / `\P{` / `(?=` / `(?!` / `(?<=` / `(?<!` / `(?>` / `(?(` 的 `pattern` **整键删除**，`patternProperties` 的**键名**是正则、命中同样删掉整个条目；覆盖位置包括 `properties` / `patternProperties` / `$defs` / `definitions` / `items`（对象与 draft-07 数组两种写法）/ `prefixItems` / `oneOf` / `anyOf` / `allOf` / `if`-`then`-`else`-`not`，以及既有遍历器从不进入、但值同样是 schema 的 `additionalProperties` / `unevaluatedProperties` / `unevaluatedItems` / `propertyNames` / `contains` / `dependentSchemas` 条目（这些扩展位置只在清 pattern 时下钻、且下钻时不带 `additionalProperties` 注入，以免改变结构化输出的既有行为）。选择整键删除而非改写：`(?!__.*__$)` 在 RE2 里无法等价表达，而 `pattern` 只是校验约束、不是工具的功能定义，删掉不影响工具可用性；也**不按上游模型区分**（实测 claude-* / qwen3.8 / kimi-k3 本可通过）——清洗发生在路由之前、拿不到最终命中的上游（换号/降级都可能改），模型白名单必然过时，能保留的合法 `pattern` 仍然保留。三条协议的工具参数路径（Anthropic / OpenAI / Gemini）统一经 `normalizeSchema()` 接入。（`src/translation/shared-utils.ts`、`src/translation/tool-format.ts`）
-
-- 修复 Docker 镜像版本号显示错误（容器内始终回退到过期的 `package.json` 版本而非实际发布版本，#794）：#673 重构 `docker-publish.yml` 时移除了产生 `outputs.version` 的步骤，而 #677 引入的 `--build-arg PROXY_VERSION` 仍引用该输出，导致注入值为空。恢复 "Resolve image tags" 步骤的 `version` 输出（tag 构建取 tag 本身，分支构建取 `package.json` 与最新 stable tag 的较大者），并在 checkout 中启用 `fetch-tags` 以保证分支构建能读到历史 tag；新增 workflow 输出引用完整性测试防止同类回归。（`.github/workflows/docker-publish.yml`、`tests/unit/ci/workflow-outputs.test.ts`）
-- 修复 No-Node Lite zip 制品全部条目以 STORE（不压缩）模式写入的问题：传给 `writestr()` 的 `ZipInfo` 会忽略归档级压缩配置并默认 `ZIP_STORED`，导致制品体积约为正常 deflate -9 的两倍以上（实测 18.8MB → 3.6MB 量级）；现在为每个文件条目显式设置 `compress_type = ZIP_DEFLATED` 与 `compresslevel=9`，归档级测试新增"文件条目必须为 deflate 且压缩率有效"的防回归断言（`scripts/portable/build-portable.mjs`、`scripts/portable/test-portable.mjs`）。
-- 修复 Dashboard 底栏在更新状态尚未缓存时无法显示 Codex Desktop 版本的问题，并更新 2026 年版权文案。
-
-- 修复速率限制重置卡（Reset Cards）在请求转发后从控制台消失的问题：被动响应头更新 quota 时保留已知的 `reset_credits_available`，并在重置卡查询与消耗逻辑中同步更新账号配额缓存（`src/auth/account-registry.ts`、`src/auth/active-quota-refresher.ts`、`src/routes/accounts.ts`）。
-
-- 修复 Dashboard 顶部导航栏与侧栏「Codex Proxy」左侧品牌图标错误的问题：将手绘六边形 SVG 替换为官方 Logo 图片（`web/public/icon.png`），与桌面端 / Web 应用图标保持一致。（`web/src/components/Header.tsx`、`web/src/components/Sidebar.tsx`）
-
-- 修复上一条改动后在桌面 / 生产构建中品牌图标与 favicon 仍显示裂图的问题：后端 Web 路由对非哈希资源改为显式读文件返回（此前挂载在精确路径上的 `serveStatic` 无法推导相对路径，`/icon.png`、`/favicon.ico` 始终 404）。（`src/routes/web.ts`）
-
-- 修复并统一桌面端与 Web 端应用图标与 Logo：生成包含 Windows 完整多分辨率的 `icon.ico`、Web `favicon.ico` / `icon.png`，Electron 主进程窗口配置中注入应用图标并移除 `electron-builder` 的 `signAndEditExecutable: false` 以确保可执行文件与任务栏/桌面快捷方式正确嵌入图标；统一 Dashboard 顶部导航栏 Logo 为品牌立方体图标。（`packages/electron/`、`web/`、`scripts/build/generate-ico.ps1`）
-
-- 移除 Dashboard 顶部导航栏与侧栏重复展示的「服务运行中」状态徽标（`web/src/components/Header.tsx`）。
 
 ### Removed
 
