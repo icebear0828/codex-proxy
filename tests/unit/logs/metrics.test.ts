@@ -39,8 +39,8 @@ describe("calculateLogMetrics", () => {
     expect(metrics.ttftMs).toBe(200);
     // (500 * 3.0 + 500 * 0.75 + 40 * 15.0) / 1,000,000 = (1500 + 375 + 600) / 1,000,000 = 2475 / 1,000,000 = 0.002475
     expect(metrics.costUsd).toBeCloseTo(0.002475, 6);
-    // streaming generation time = 2000 - 1200 = 800ms = 0.8s; tokens = 40; speed = 40 / 0.8 = 50 tokens/s
-    expect(metrics.tokensPerSecond).toBe(50);
+    // 40 output tokens < MIN_OUTPUT_TOKENS_FOR_SPEED (100) — speed is not recorded
+    expect(metrics.tokensPerSecond).toBeNull();
     expect(metrics.inputTokens).toBe(1000);
     expect(metrics.outputTokens).toBe(40);
     expect(metrics.cachedTokens).toBe(500);
@@ -63,6 +63,41 @@ describe("calculateLogMetrics", () => {
     expect(metrics.durationMs).toBe(2000);
     expect(metrics.ttftMs).toBe(2000);
     expect(metrics.tokensPerSecond).toBe(50); // 100 tokens / 2s = 50
+  });
+
+  it("calculates streaming speed when output meets the 100-token minimum", () => {
+    const metrics = calculateLogMetrics({
+      startMs: 1000,
+      firstTokenMs: 1200,
+      endMs: 2000,
+      model: "gpt-5.5",
+      usage: {
+        input_tokens: 1000,
+        output_tokens: 100,
+        cached_tokens: 500,
+      },
+      pricingCatalog: catalog,
+    });
+
+    // streaming generation time = 2000 - 1200 = 800ms = 0.8s; speed = 100 / 0.8 = 125 tokens/s
+    expect(metrics.tokensPerSecond).toBe(125);
+  });
+
+  it("does not record a speed for outputs below 100 tokens", () => {
+    const metrics = calculateLogMetrics({
+      startMs: 1000,
+      firstTokenMs: 1200,
+      endMs: 2000,
+      model: "gpt-5.5",
+      usage: {
+        input_tokens: 1000,
+        output_tokens: 99,
+      },
+      pricingCatalog: catalog,
+    });
+
+    expect(metrics.tokensPerSecond).toBeNull();
+    expect(metrics.outputTokens).toBe(99);
   });
 
   it("sets ttftMs to null for streaming requests when firstTokenMs is null", () => {

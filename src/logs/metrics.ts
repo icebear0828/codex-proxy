@@ -31,6 +31,13 @@ let catalogRetryAfter = 0;
 const EMPTY_PRICING_CATALOG: PricingCatalog = {};
 const PRICING_RETRY_MS = 60_000;
 
+/**
+ * Minimum output tokens required before a tokens-per-second value is
+ * recorded. Short completions produce speeds dominated by timing noise
+ * (and inflated averages), so they are excluded from speed stats.
+ */
+export const MIN_OUTPUT_TOKENS_FOR_SPEED = 100;
+
 function getCatalog(): PricingCatalog {
   if (cachedCatalog) return cachedCatalog;
   if (Date.now() < catalogRetryAfter) return EMPTY_PRICING_CATALOG;
@@ -100,7 +107,7 @@ export function calculateLogMetrics(options: CalculateLogMetricsOptions): LogMet
       costUsd = Math.round(costUsd * 1_000_000) / 1_000_000;
     }
 
-    if (outputTokens > 0) {
+    if (outputTokens >= MIN_OUTPUT_TOKENS_FOR_SPEED) {
       // If streaming and we know when the first token arrived, calculate generation speed based on generation duration.
       // If generation duration is very small (< 20ms), fallback to total duration to avoid division by zero or inflated spikes.
       if (firstTokenMs != null && endMs - firstTokenMs >= 20) {
@@ -110,6 +117,11 @@ export function calculateLogMetrics(options: CalculateLogMetricsOptions): LogMet
         const durationSec = durationMs / 1000;
         tokensPerSecond = Math.round((outputTokens / durationSec) * 10) / 10;
       }
+    } else if (outputTokens > 0) {
+      // Below the minimum sample size the measured speed is dominated by
+      // timing noise, so leave it null: the row shows no speed and the
+      // dashboard average excludes it.
+      tokensPerSecond = null;
     } else {
       tokensPerSecond = 0;
     }
