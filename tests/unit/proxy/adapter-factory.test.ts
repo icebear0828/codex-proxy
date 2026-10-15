@@ -1,11 +1,18 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-const { mockWithFetchDispatcher } = vi.hoisted(() => ({
-  mockWithFetchDispatcher: vi.fn((init: RequestInit) => ({ ...init, dispatcher: "mock-dispatcher" })),
+const { mockWithFetchDispatcher, mockGetFetchDispatcher } = vi.hoisted(() => ({
+  mockWithFetchDispatcher: vi.fn((init: RequestInit, dispatcher?: unknown) => ({
+    ...init,
+    dispatcher: dispatcher ?? "mock-dispatcher",
+  })),
+  mockGetFetchDispatcher: vi.fn((proxyUrl?: string | null) =>
+    proxyUrl !== undefined ? { customProxy: proxyUrl } : undefined,
+  ),
 }));
 
 vi.mock("@src/proxy/fetch-dispatcher.js", () => ({
   withFetchDispatcher: mockWithFetchDispatcher,
+  getFetchDispatcher: mockGetFetchDispatcher,
 }));
 
 import { createAdapterForEntry } from "@src/proxy/adapter-factory.js";
@@ -188,3 +195,45 @@ describe("non-Codex upstream adapters — deterministic schema-error reclassific
     });
   }
 });
+
+describe("createAdapterForEntry — proxy resolution", () => {
+  it("resolves proxyId via proxyPool and creates adapter with dispatcher", async () => {
+    const mockProxyPool = {
+      resolveProxyUrlById: vi.fn((proxyId?: string | null) =>
+        proxyId === "proxy-1" ? "http://127.0.0.1:8888" : undefined,
+      ),
+    };
+
+    const targetEntry = {
+      ...entry("openai", "chat"),
+      proxyId: "proxy-1",
+    };
+
+    const adapter = createAdapterForEntry(targetEntry, mockProxyPool as never);
+    expect(mockProxyPool.resolveProxyUrlById).toHaveBeenCalledWith("proxy-1");
+    expect(mockGetFetchDispatcher).toHaveBeenCalledWith("http://127.0.0.1:8888");
+
+    vi.stubGlobal("fetch", vi.fn(async () => new Response("data: [DONE]\n\n", { status: 200 })));
+    await adapter.createResponse(codexRequest("m"), new AbortController().signal);
+    expect(mockWithFetchDispatcher).toHaveBeenCalledWith(
+      expect.anything(),
+      { customProxy: "http://127.0.0.1:8888" },
+    );
+  });
+
+  it("treats null and global proxyId as undefined (global dispatcher), and direct as null", () => {
+    // Without proxyPool
+    createAdapterForEntry({ ...entry("openai", "chat"), proxyId: null });
+    expect(mockGetFetchDispatcher).toHaveBeenLastCalledWith(undefined);
+
+    createAdapterForEntry({ ...entry("openai", "chat"), proxyId: undefined });
+    expect(mockGetFetchDispatcher).toHaveBeenLastCalledWith(undefined);
+
+    createAdapterForEntry({ ...entry("openai", "chat"), proxyId: "global" });
+    expect(mockGetFetchDispatcher).toHaveBeenLastCalledWith(undefined);
+
+    createAdapterForEntry({ ...entry("openai", "chat"), proxyId: "direct" });
+    expect(mockGetFetchDispatcher).toHaveBeenLastCalledWith(null);
+  });
+});
+

@@ -188,15 +188,21 @@ export class ProxyPool {
   }
 
   /**
-   * Get display name for an assignment.
+   * Get display name for an assignment or proxy ID.
+   */
+  getProxyDisplayName(proxyId: string | null | undefined): string {
+    if (!proxyId || proxyId === "global") return "Global Default";
+    if (proxyId === "direct") return "Direct (No Proxy)";
+    if (proxyId === "auto") return "Auto (Round-Robin)";
+    const proxy = this.proxies.get(proxyId);
+    return proxy ? proxy.name : "Unknown Proxy";
+  }
+
+  /**
+   * Get display name for an account assignment.
    */
   getAssignmentDisplayName(accountId: string): string {
-    const assignment = this.getAssignment(accountId);
-    if (assignment === "global") return "Global Default";
-    if (assignment === "direct") return "Direct (No Proxy)";
-    if (assignment === "auto") return "Auto (Round-Robin)";
-    const proxy = this.proxies.get(assignment);
-    return proxy ? proxy.name : "Unknown Proxy";
+    return this.getProxyDisplayName(this.getAssignment(accountId));
   }
 
   // ── Resolution ────────────────────────────────────────────────────
@@ -209,27 +215,32 @@ export class ProxyPool {
    *   string   — specific proxy URL
    */
   resolveProxyUrl(accountId: string, skipUnhealthy = false): string | null | undefined {
-    const assignment = this.getAssignment(accountId);
+    return this.resolveProxyUrlById(this.getAssignment(accountId), skipUnhealthy);
+  }
 
-    if (assignment === "global") return undefined;
-    if (assignment === "direct") return null;
+  /**
+   * Resolve a proxy URL directly by proxy ID or special assignment name.
+   * Returns:
+   *   undefined — use global proxy (default behavior)
+   *   null     — direct connection (no proxy)
+   *   string   — specific proxy URL
+   */
+  resolveProxyUrlById(proxyId: string | null | undefined, skipUnhealthy = false): string | null | undefined {
+    if (!proxyId || proxyId === "global") return undefined;
+    if (proxyId === "direct") return null;
 
-    if (assignment === "auto") {
+    if (proxyId === "auto") {
       return this.pickRoundRobin();
     }
 
-    // Specific proxy ID
-    const proxy = this.proxies.get(assignment);
+    const proxy = this.proxies.get(proxyId);
     if (!proxy) {
-      // Proxy deleted — fall back to global
       return undefined;
     }
     if (proxy.status === "disabled") {
-      // Manually disabled — fall back to global
       return undefined;
     }
     if (proxy.status === "unreachable" && skipUnhealthy) {
-      // Health-check failed — caller requested skipping unhealthy proxies
       return undefined;
     }
     return proxy.url;

@@ -14,6 +14,7 @@ import { getConfig } from "../config.js";
 import { apiKeyAuth } from "../middleware/api-key-auth.js";
 import { withFetchDispatcher } from "../proxy/fetch-dispatcher.js";
 import type { ClientKeyPool } from "../auth/client-key-pool.js";
+import type { ProxyPool } from "../proxy/proxy-pool.js";
 import { validateClientKeyModel, recordClientKeyUsage } from "./shared/proxy-handler-utils.js";
 
 const EmbeddingInputSchema = z.union([
@@ -102,6 +103,7 @@ export function createEmbeddingsRoutes(
   accountPool: AccountPool,
   apiKeyPool: ApiKeyPool,
   clientKeyPool?: ClientKeyPool,
+  proxyPool?: ProxyPool,
 ): Hono {
   const app = new Hono();
 
@@ -134,6 +136,10 @@ export function createEmbeddingsRoutes(
       ));
     }
 
+    const proxyUrl = proxyPool
+      ? proxyPool.resolveProxyUrlById(resolved.entry.proxyId)
+      : (resolved.entry.proxyId === "direct" ? null : undefined);
+
     const upstream = await fetch(`${normalizeBaseUrl(resolved.entry.baseUrl)}/embeddings`, withFetchDispatcher({
       method: "POST",
       headers: {
@@ -143,7 +149,7 @@ export function createEmbeddingsRoutes(
       },
       body: JSON.stringify(buildUpstreamRequestBody(parsed.data, resolved.upstreamModel)),
       signal: c.req.raw.signal,
-    }));
+    }, proxyUrl));
 
     const text = await upstream.text();
     if (upstream.ok) {

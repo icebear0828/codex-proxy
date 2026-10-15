@@ -15,6 +15,14 @@ import { ApiKeyModelCache, ProviderModelFetchError } from "../auth/api-key-model
 import { ApiKeyMemoStore, memoSignature } from "../auth/api-key-memo-store.js";
 import type { ApiKeyMemo } from "../auth/api-key-memo-store.js";
 import type { ApiKeyCapability } from "../auth/api-key-pool.js";
+import type { ProxyPool } from "../proxy/proxy-pool.js";
+
+function isValidProxyId(proxyId: string | null | undefined, proxyPool?: ProxyPool): boolean {
+  if (proxyId === null || proxyId === undefined || proxyId === "global" || proxyId === "direct" || proxyId === "auto") {
+    return true;
+  }
+  return proxyPool ? Boolean(proxyPool.getById(proxyId)) : true;
+}
 
 const VALID_PROVIDERS = ["anthropic", "openai", "gemini", "openrouter", "antigravity", "custom"] as const;
 const MODEL_PROVIDERS = ["anthropic", "openai", "gemini", "openrouter", "custom"] as const;
@@ -33,6 +41,7 @@ const ApiKeyBindingObjectSchema = z.object({
   label: z.string().max(64).nullable().optional(),
   capabilities: CapabilitiesSchema,
   wire: WireSchema,
+  proxyId: z.string().trim().max(64).nullable().optional(),
   memoId: z.string().trim().min(1).optional(),
 });
 
@@ -162,6 +171,7 @@ function addEntries(pool: ApiKeyPool, items: Array<Omit<ApiKeyBindingInput, "api
           label: item.label,
           capabilities: item.capabilities,
           wire: item.wire,
+          proxyId: item.proxyId,
         }));
       } catch (err) {
         errors.push(err instanceof Error ? err.message : String(err));
@@ -181,6 +191,7 @@ function toImportableEntries<T extends { model?: string }>(items: T[]): Array<Om
 
 const LabelSchema = z.object({ label: z.string().max(64).nullable() });
 const StatusSchema = z.object({ status: z.enum(["active", "disabled"]) });
+const ProxySchema = z.object({ proxyId: z.string().trim().max(64).nullable() });
 const BatchDeleteSchema = z.object({ ids: z.array(z.string()).min(1) });
 
 async function parseJsonRequest<T>(c: Context, schema: z.ZodSchema<T>): Promise<
@@ -203,7 +214,12 @@ async function parseJsonRequest<T>(c: Context, schema: z.ZodSchema<T>): Promise<
   return { ok: true, data: result.data };
 }
 
-export function createApiKeyRoutes(pool: ApiKeyPool, modelCache = new ApiKeyModelCache(), memoStore = new ApiKeyMemoStore()): Hono {
+export function createApiKeyRoutes(
+  pool: ApiKeyPool,
+  modelCache = new ApiKeyModelCache(),
+  memoStore = new ApiKeyMemoStore(),
+  proxyPool?: ProxyPool,
+): Hono {
   const app = new Hono();
 
   // ── Catalog (predefined models) ──────────────────────────────
@@ -287,6 +303,10 @@ export function createApiKeyRoutes(pool: ApiKeyPool, modelCache = new ApiKeyMode
     if (!binding.apiKey) {
       c.status(400);
       return c.json({ error: "apiKey is required" });
+    }
+    if (!isValidProxyId(binding.proxyId, proxyPool)) {
+      c.status(400);
+      return c.json({ error: `Invalid proxyId: "${binding.proxyId}". Use 'global', 'direct', 'auto', or a valid proxy ID.` });
     }
 
     // Skip (model, key) pairs that already exist in the pool — re-submitting a
@@ -435,6 +455,18 @@ export function createApiKeyRoutes(pool: ApiKeyPool, modelCache = new ApiKeyMode
     const parsed = await parseJsonRequest(c, StatusSchema);
     if (!parsed.ok) return parsed.response;
     if (!pool.setStatus(c.req.param("id"), parsed.data.status)) { c.status(404); return c.json({ error: "API key not found" }); }
+    return c.json({ success: true });
+  });
+
+  app.patch("/auth/api-keys/:id/proxy", async (c) => {
+    const parsed = await parseJsonRequest(c, ProxySchema);
+    if (!parsed.ok) return parsed.response;
+    const { proxyId } = parsed.data;
+    if (!isValidProxyId(proxyId, proxyPool)) {
+      c.status(400);
+      return c.json({ error: `Invalid proxyId: "${proxyId}". Use 'global', 'direct', 'auto', or a valid proxy ID.` });
+    }
+    if (!pool.setProxy(c.req.param("id"), proxyId)) { c.status(404); return c.json({ error: "API key not found" }); }
     return c.json({ success: true });
   });
 

@@ -1,5 +1,7 @@
 import { useState, useCallback, useEffect, useMemo, useRef } from "preact/hooks";
 import { useApiKeys } from "../../../shared/hooks/use-api-keys";
+import { useProxies } from "../../../shared/hooks/use-proxies";
+import type { ProxyEntry } from "../../../shared/types";
 import { useT } from "../../../shared/i18n/context";
 import type { ApiKeyCapability, ApiKeyProvider, ApiKeyMemoProvider, ApiKeyWire, ApiKeyEntry, ApiKeyMemo, CatalogModel } from "../../../shared/hooks/use-api-keys";
 import { accountToolbarIconClass } from "../lib/account-toolbar";
@@ -44,7 +46,7 @@ function renderModelChecklist(models: CatalogModel[], selectedModelSet: Set<stri
   );
 }
 
-function AddKeyForm({ onAdd, catalog, fetchProviderModels, memos, memoCoverage, createMemo, deleteMemo, fetchMemoModels, generateMemos, loadMemoCoverage, loadMemos }: {
+function AddKeyForm({ onAdd, catalog, fetchProviderModels, memos, memoCoverage, createMemo, deleteMemo, fetchMemoModels, generateMemos, loadMemoCoverage, loadMemos, proxies }: {
   onAdd: (input: {
     provider: ApiKeyProvider;
     models: string[];
@@ -54,6 +56,7 @@ function AddKeyForm({ onAdd, catalog, fetchProviderModels, memos, memoCoverage, 
     label?: string;
     capabilities?: ApiKeyCapability[];
     wire?: ApiKeyWire;
+    proxyId?: string | null;
     memoId?: string;
   }) => Promise<{ ok: boolean; error?: string }>;
   catalog: Record<string, { displayName: string; defaultBaseUrl: string; models: Array<{ id: string; displayName: string }> }>;
@@ -69,6 +72,7 @@ function AddKeyForm({ onAdd, catalog, fetchProviderModels, memos, memoCoverage, 
   generateMemos: () => Promise<{ created: number; skipped: number }>;
   loadMemoCoverage: () => Promise<void>;
   loadMemos: () => Promise<void>;
+  proxies?: ProxyEntry[];
 }) {
   const t = useT();
   const [provider, setProvider] = useState<ApiKeyProvider>("anthropic");
@@ -77,6 +81,7 @@ function AddKeyForm({ onAdd, catalog, fetchProviderModels, memos, memoCoverage, 
   const [projectId, setProjectId] = useState("");
   const [baseUrl, setBaseUrl] = useState("");
   const [label, setLabel] = useState("");
+  const [proxyId, setProxyId] = useState<string>("global");
   const [manualModelsInput, setManualModelsInput] = useState("");
   const [capabilities, setCapabilities] = useState<ApiKeyCapability[]>(["chat"]);
   const [wire, setWire] = useState<ApiKeyWire>("chat");
@@ -390,6 +395,7 @@ function AddKeyForm({ onAdd, catalog, fetchProviderModels, memos, memoCoverage, 
       label: label.trim() || undefined,
       capabilities,
       wire: wireSelectable ? submittedWire : undefined,
+      proxyId: proxyId === "global" ? undefined : proxyId,
       memoId: usingMemoKey ? activeMemo.id : undefined,
     });
     setAdding(false);
@@ -695,6 +701,27 @@ function AddKeyForm({ onAdd, catalog, fetchProviderModels, memos, memoCoverage, 
         </div>
       )}
 
+      {proxies && proxies.length > 0 && (
+        <div class="flex flex-col gap-1">
+          <label class="text-[0.7rem] font-medium text-slate-500 dark:text-text-dim">{t("proxyAssignment")}</label>
+          <select
+            value={proxyId}
+            onChange={(e) => setProxyId((e.target as HTMLSelectElement).value)}
+            class="px-2.5 py-1.5 text-sm rounded-lg border border-gray-200 dark:border-border-dark bg-slate-50 dark:bg-bg-dark text-slate-800 dark:text-text-main cursor-pointer"
+          >
+            <option value="global">{t("globalDefault")}</option>
+            <option value="direct">{t("directNoProxy")}</option>
+            <option value="auto">{t("autoRoundRobin")}</option>
+            {proxies.filter((p) => p.status !== "disabled").map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.name}
+                {p.health?.exitIp ? ` (${p.health.exitIp})` : ""}
+              </option>
+            ))}
+          </select>
+        </div>
+      )}
+
       <div class="flex gap-3 items-end">
         <div class="flex flex-col gap-1 flex-1">
           <label class="text-[0.7rem] font-medium text-slate-500 dark:text-text-dim">{t("labelOptionalField")}</label>
@@ -744,10 +771,12 @@ function providerBadgeColor(provider: ApiKeyProvider): string {
   }
 }
 
-function KeyRow({ entry, onDelete, onToggle }: {
+function KeyRow({ entry, onDelete, onToggle, proxies, onProxyChange }: {
   entry: ApiKeyEntry;
   onDelete: (id: string) => void;
   onToggle: (id: string, status: "active" | "disabled") => void;
+  proxies?: ProxyEntry[];
+  onProxyChange?: (id: string, proxyId: string | null) => void;
 }) {
   const t = useT();
   const isActive = entry.status === "active";
@@ -771,6 +800,27 @@ function KeyRow({ entry, onDelete, onToggle }: {
       <span class="text-xs text-slate-400 dark:text-text-dim">
         {entry.capabilities.join(", ")}{entry.provider === "custom" ? ` · ${entry.wire}` : ""}
       </span>
+
+      {proxies && onProxyChange && (
+        <select
+          value={entry.proxyId || "global"}
+          onChange={(e) => {
+            const val = (e.target as HTMLSelectElement).value;
+            onProxyChange(entry.id, val === "global" ? null : val);
+          }}
+          class="text-xs px-2 py-1 rounded-md border border-gray-200 dark:border-border-dark bg-white dark:bg-bg-dark text-slate-700 dark:text-text-main focus:outline-none cursor-pointer"
+        >
+          <option value="global">{t("globalDefault")}</option>
+          <option value="direct">{t("directNoProxy")}</option>
+          <option value="auto">{t("autoRoundRobin")}</option>
+          {proxies.filter((p) => p.status !== "disabled").map((p) => (
+            <option key={p.id} value={p.id}>
+              {p.name}
+              {p.health?.exitIp ? ` (${p.health.exitIp})` : ""}
+            </option>
+          ))}
+        </select>
+      )}
 
       <span class="text-xs font-mono text-slate-400 dark:text-text-dim ml-auto hidden sm:inline">
         {entry.apiKey}
@@ -803,7 +853,8 @@ function KeyRow({ entry, onDelete, onToggle }: {
 
 export function ApiKeyManager() {
   const t = useT();
-  const { keys, catalog, memos, memoCoverage, loading, addKey, deleteKey, toggleStatus, importKeys, fetchProviderModels, createMemo, deleteMemo, fetchMemoModels, generateMemos, loadMemos, loadMemoCoverage } = useApiKeys();
+  const { keys, catalog, memos, memoCoverage, loading, addKey, deleteKey, toggleStatus, updateProxy, importKeys, fetchProviderModels, createMemo, deleteMemo, fetchMemoModels, generateMemos, loadMemos, loadMemoCoverage } = useApiKeys();
+  const { proxies } = useProxies();
   const [showForm, setShowForm] = useState(false);
   const [importResult, setImportResult] = useState<string | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
@@ -882,6 +933,7 @@ export function ApiKeyManager() {
           generateMemos={generateMemos}
           loadMemoCoverage={loadMemoCoverage}
           loadMemos={loadMemos}
+          proxies={proxies}
         />
       )}
 
@@ -897,6 +949,8 @@ export function ApiKeyManager() {
               entry={entry}
               onDelete={deleteKey}
               onToggle={toggleStatus}
+              proxies={proxies}
+              onProxyChange={updateProxy}
             />
           ))}
         </div>

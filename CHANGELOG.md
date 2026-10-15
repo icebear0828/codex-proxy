@@ -8,7 +8,13 @@
 
 ## [Unreleased]
 
-> 暂无已记录的变更。
+### Added
+
+- API Keys 支持自定义代理路由分配：可在添加与列表管理中为第三方 Key 单独绑定代理策略（全局默认、直连 bypass、自动轮询或指定具体代理节点），并新增 `PATCH /auth/api-keys/:id/proxy` 端点。（`src/auth/api-key-pool.ts`、`src/proxy/proxy-pool.ts`、`src/proxy/adapter-factory.ts`、`src/routes/api-keys.ts`、`web/src/components/ApiKeyManager.tsx`）
+
+### Fixed
+
+- 全局 Fetch Dispatcher 默认旁路回环地址（`localhost`、`127.0.0.1`、`::1`）并遵循 `NO_PROXY` 规范，解决断网或代理客户端开启时发往本机本地模型的请求被错误转发至代理导致连接失败的问题。（`src/proxy/fetch-dispatcher.ts`）
 
 ## [v2.1.x](https://github.com/icebear0828/codex-proxy/releases?q=2.1) - 2026-09-01 至 2026-09-07
 

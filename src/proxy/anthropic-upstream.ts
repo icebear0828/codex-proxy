@@ -19,6 +19,7 @@ import type { UpstreamAdapter } from "./upstream-adapter.js";
 import type { CodexResponsesRequest, CodexSSEEvent } from "./codex-types.js";
 import { CodexApiError } from "./codex-types.js";
 import { classifyRawUpstreamError } from "./error-classification.js";
+import type { Dispatcher } from "undici";
 import { parseSSEStream } from "./codex-sse.js";
 import { translateCodexToAnthropicRequest } from "../translation/codex-request-to-anthropic.js";
 import { withFetchDispatcher } from "./fetch-dispatcher.js";
@@ -33,10 +34,12 @@ export class AnthropicUpstream implements UpstreamAdapter {
   readonly tag = "anthropic" as const;
   private apiKey: string;
   readonly baseUrl: string;
+  private dispatcher?: Dispatcher;
 
-  constructor(apiKey: string, baseUrl = "https://api.anthropic.com/v1") {
+  constructor(apiKey: string, baseUrl = "https://api.anthropic.com/v1", dispatcher?: Dispatcher) {
     this.apiKey = apiKey;
     this.baseUrl = baseUrl.replace(/\/+$/, "");
+    this.dispatcher = dispatcher;
   }
 
   async createResponse(
@@ -56,7 +59,7 @@ export class AnthropicUpstream implements UpstreamAdapter {
       },
       body: JSON.stringify(body),
       signal,
-    }));
+    }, this.dispatcher));
 
     if (!response.ok) {
       const errorText = await response.text().catch(() => `HTTP ${response.status}`);

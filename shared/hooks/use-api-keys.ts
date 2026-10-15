@@ -16,6 +16,7 @@ export interface ApiKeyEntry {
   label: string | null;
   capabilities: ApiKeyCapability[];
   wire: ApiKeyWire;
+  proxyId?: string | null;
   status: "active" | "disabled" | "error";
   addedAt: string;
   lastUsedAt: string | null;
@@ -119,6 +120,7 @@ export function useApiKeys() {
     label?: string | null;
     capabilities?: ApiKeyCapability[];
     wire?: ApiKeyWire;
+    proxyId?: string | null;
     memoId?: string;
   }): Promise<{ ok: boolean; error?: string }> => {
     try {
@@ -164,6 +166,17 @@ export function useApiKeys() {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ label }),
+      });
+      await loadKeys();
+    } catch { /* ignore */ }
+  }, [loadKeys]);
+
+  const updateProxy = useCallback(async (id: string, proxyId: string | null) => {
+    try {
+      await fetch(`/auth/api-keys/${id}/proxy`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ proxyId }),
       });
       await loadKeys();
     } catch { /* ignore */ }
@@ -303,6 +316,7 @@ export function useApiKeys() {
     deleteKey,
     toggleStatus,
     updateLabel,
+    updateProxy,
     importKeys,
     exportKeys,
     fetchProviderModels,

@@ -17,6 +17,7 @@ import type { UpstreamAdapter } from "./upstream-adapter.js";
 import type { CodexResponsesRequest, CodexSSEEvent } from "./codex-types.js";
 import { CodexApiError } from "./codex-types.js";
 import { classifyRawUpstreamError } from "./error-classification.js";
+import type { Dispatcher } from "undici";
 import { parseSSEStream } from "./codex-sse.js";
 import { translateCodexToGeminiRequest } from "../translation/codex-request-to-gemini.js";
 import { withFetchDispatcher } from "./fetch-dispatcher.js";
@@ -33,10 +34,12 @@ export class GeminiUpstream implements UpstreamAdapter {
   readonly tag = "gemini" as const;
   private apiKey: string;
   readonly baseUrl: string;
+  private dispatcher?: Dispatcher;
 
-  constructor(apiKey: string, baseUrl = "https://generativelanguage.googleapis.com/v1beta") {
+  constructor(apiKey: string, baseUrl = "https://generativelanguage.googleapis.com/v1beta", dispatcher?: Dispatcher) {
     this.apiKey = apiKey;
     this.baseUrl = baseUrl.replace(/\/+$/, "");
+    this.dispatcher = dispatcher;
   }
 
   async createResponse(
@@ -57,7 +60,7 @@ export class GeminiUpstream implements UpstreamAdapter {
       },
       body: JSON.stringify(body),
       signal,
-    }));
+    }, this.dispatcher));
 
     if (!response.ok) {
       const errorText = await response.text().catch(() => `HTTP ${response.status}`);

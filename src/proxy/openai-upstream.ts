@@ -12,6 +12,7 @@ import type { UpstreamAdapter } from "./upstream-adapter.js";
 import type { CodexResponsesRequest, CodexSSEEvent } from "./codex-types.js";
 import { CodexApiError } from "./codex-types.js";
 import { classifyRawUpstreamError } from "./error-classification.js";
+import type { Dispatcher } from "undici";
 import { parseSSEStream } from "./codex-sse.js";
 import { translateCodexToOpenAIRequest } from "../translation/codex-request-to-openai.js";
 import { withFetchDispatcher } from "./fetch-dispatcher.js";
@@ -27,11 +28,13 @@ export class OpenAIUpstream implements UpstreamAdapter {
   readonly tag: string;
   private apiKey: string;
   private baseUrl: string;
+  private dispatcher?: Dispatcher;
 
-  constructor(tag: string, apiKey: string, baseUrl = "https://api.openai.com/v1") {
+  constructor(tag: string, apiKey: string, baseUrl = "https://api.openai.com/v1", dispatcher?: Dispatcher) {
     this.tag = tag;
     this.apiKey = apiKey;
     this.baseUrl = baseUrl.replace(/\/$/, "");
+    this.dispatcher = dispatcher;
   }
 
   async createResponse(
@@ -60,7 +63,7 @@ export class OpenAIUpstream implements UpstreamAdapter {
       headers,
       body: JSON.stringify(body),
       signal,
-    }));
+    }, this.dispatcher));
 
     if (!response.ok) {
       const errorText = await response.text().catch(() => `HTTP ${response.status}`);
