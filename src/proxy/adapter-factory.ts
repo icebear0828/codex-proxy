@@ -42,7 +42,7 @@ function createCustomAdapter(entry: ApiKeyEntry, dispatcher?: Dispatcher): Upstr
 export function createAdapterForEntry(entry: ApiKeyEntry, proxyPool?: ProxyPool): UpstreamAdapter {
   const proxyUrl = proxyPool
     ? proxyPool.resolveProxyUrlById(entry.proxyId)
-    : (entry.proxyId === "direct" ? null : (entry.proxyId?.startsWith("http") ? entry.proxyId : undefined));
+    : (entry.proxyId === "direct" ? null : undefined);
   const dispatcher = getFetchDispatcher(proxyUrl);
 
   switch (entry.provider) {

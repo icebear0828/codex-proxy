@@ -210,7 +210,7 @@ export class ApiKeyPool {
       baseUrl,
       ...(input.provider === "antigravity" && input.projectId?.trim() ? { projectId: input.projectId.trim() } : {}),
       label: input.label ?? null,
-      proxyId: input.proxyId ?? null,
+      proxyId: normalizeProxyId(input.proxyId),
       ...(input.provider === "antigravity" && input.email?.trim() ? { email: input.email.trim() } : {}),
       ...(input.provider === "antigravity" && input.planType?.trim() ? { planType: input.planType.trim() } : {}),
       capabilities: input.provider === "antigravity" ? ["chat"] : normalizeCapabilities(input.capabilities),
@@ -281,7 +281,7 @@ export class ApiKeyPool {
   setProxy(id: string, proxyId: string | null): boolean {
     const entry = this.entries.find((e) => e.id === id);
     if (!entry) return false;
-    entry.proxyId = proxyId;
+    entry.proxyId = normalizeProxyId(proxyId);
     this.persist();
     return true;
   }
@@ -434,6 +434,11 @@ export function normalizeWireForProvider(provider: ApiKeyProvider, value: unknow
   return "chat";
 }
 
+export function normalizeProxyId(proxyId: string | null | undefined): string | null {
+  if (!proxyId || proxyId === "global") return null;
+  return proxyId;
+}
+
 function normalizeEntry(entry: PersistedApiKeyEntry): ApiKeyEntry {
   const baseUrl = isBuiltinProvider(entry.provider)
     ? PROVIDER_CATALOG[entry.provider].defaultBaseUrl
@@ -441,6 +446,7 @@ function normalizeEntry(entry: PersistedApiKeyEntry): ApiKeyEntry {
   return {
     ...entry,
     baseUrl,
+    proxyId: normalizeProxyId(entry.proxyId),
     capabilities: normalizeCapabilities(entry.capabilities),
     wire: normalizeWireForProvider(entry.provider, entry.wire),
   };

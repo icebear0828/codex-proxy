@@ -188,15 +188,21 @@ export class ProxyPool {
   }
 
   /**
-   * Get display name for an assignment.
+   * Get display name for an assignment or proxy ID.
+   */
+  getProxyDisplayName(proxyId: string | null | undefined): string {
+    if (!proxyId || proxyId === "global") return "Global Default";
+    if (proxyId === "direct") return "Direct (No Proxy)";
+    if (proxyId === "auto") return "Auto (Round-Robin)";
+    const proxy = this.proxies.get(proxyId);
+    return proxy ? proxy.name : "Unknown Proxy";
+  }
+
+  /**
+   * Get display name for an account assignment.
    */
   getAssignmentDisplayName(accountId: string): string {
-    const assignment = this.getAssignment(accountId);
-    if (assignment === "global") return "Global Default";
-    if (assignment === "direct") return "Direct (No Proxy)";
-    if (assignment === "auto") return "Auto (Round-Robin)";
-    const proxy = this.proxies.get(assignment);
-    return proxy ? proxy.name : "Unknown Proxy";
+    return this.getProxyDisplayName(this.getAssignment(accountId));
   }
 
   // ── Resolution ────────────────────────────────────────────────────
@@ -220,8 +226,8 @@ export class ProxyPool {
    *   string   — specific proxy URL
    */
   resolveProxyUrlById(proxyId: string | null | undefined, skipUnhealthy = false): string | null | undefined {
-    if (proxyId === undefined || proxyId === "global") return undefined;
-    if (proxyId === null || proxyId === "direct") return null;
+    if (!proxyId || proxyId === "global") return undefined;
+    if (proxyId === "direct") return null;
 
     if (proxyId === "auto") {
       return this.pickRoundRobin();

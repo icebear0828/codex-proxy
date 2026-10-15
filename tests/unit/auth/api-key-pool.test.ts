@@ -373,6 +373,17 @@ describe("ApiKeyPool", () => {
 
     pool.setProxy(entry.id, null);
     expect(pool.getEntry(entry.id)?.proxyId).toBeNull();
+
+    pool.setProxy(entry.id, "global");
+    expect(pool.getEntry(entry.id)?.proxyId).toBeNull();
+
+    const globalEntry = pool.add({
+      provider: "openai",
+      model: "gpt-5.4",
+      apiKey: "k2",
+      proxyId: "global",
+    });
+    expect(globalEntry.proxyId).toBeNull();
   });
 
   it("persists proxyId across reload", () => {

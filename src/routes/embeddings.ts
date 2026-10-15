@@ -138,7 +138,7 @@ export function createEmbeddingsRoutes(
 
     const proxyUrl = proxyPool
       ? proxyPool.resolveProxyUrlById(resolved.entry.proxyId)
-      : (resolved.entry.proxyId === "direct" ? null : (resolved.entry.proxyId?.startsWith("http") ? resolved.entry.proxyId : undefined));
+      : (resolved.entry.proxyId === "direct" ? null : undefined);
 
     const upstream = await fetch(`${normalizeBaseUrl(resolved.entry.baseUrl)}/embeddings`, withFetchDispatcher({
       method: "POST",

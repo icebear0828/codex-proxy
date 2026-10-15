@@ -8,17 +8,30 @@ export function createRuntimeUpstreamRouter(
   adapters: Map<string, UpstreamAdapter>,
   modelRouting: Record<string, string>,
   apiKeyPool: ApiKeyPool,
-  adapterFactoryOrProxyPool?: AdapterFactory | ProxyPool,
+  proxyPool?: ProxyPool,
+): UpstreamRouter;
+export function createRuntimeUpstreamRouter(
+  adapters: Map<string, UpstreamAdapter>,
+  modelRouting: Record<string, string>,
+  apiKeyPool: ApiKeyPool,
+  adapterFactory: AdapterFactory,
+  proxyPool?: ProxyPool,
+): UpstreamRouter;
+export function createRuntimeUpstreamRouter(
+  adapters: Map<string, UpstreamAdapter>,
+  modelRouting: Record<string, string>,
+  apiKeyPool: ApiKeyPool,
+  factoryOrPool?: AdapterFactory | ProxyPool,
   proxyPool?: ProxyPool,
 ): UpstreamRouter {
   let factory: AdapterFactory;
   let pool: ProxyPool | undefined;
 
-  if (typeof adapterFactoryOrProxyPool === "function") {
-    factory = adapterFactoryOrProxyPool;
+  if (typeof factoryOrPool === "function") {
+    factory = factoryOrPool;
     pool = proxyPool;
   } else {
-    pool = adapterFactoryOrProxyPool ?? proxyPool;
+    pool = factoryOrPool;
     factory = (entry) => createAdapterForEntry(entry, pool);
   }
 

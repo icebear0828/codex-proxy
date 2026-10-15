@@ -220,5 +220,20 @@ describe("createAdapterForEntry — proxy resolution", () => {
       { customProxy: "http://127.0.0.1:8888" },
     );
   });
+
+  it("treats null and global proxyId as undefined (global dispatcher), and direct as null", () => {
+    // Without proxyPool
+    createAdapterForEntry({ ...entry("openai", "chat"), proxyId: null });
+    expect(mockGetFetchDispatcher).toHaveBeenLastCalledWith(undefined);
+
+    createAdapterForEntry({ ...entry("openai", "chat"), proxyId: undefined });
+    expect(mockGetFetchDispatcher).toHaveBeenLastCalledWith(undefined);
+
+    createAdapterForEntry({ ...entry("openai", "chat"), proxyId: "global" });
+    expect(mockGetFetchDispatcher).toHaveBeenLastCalledWith(undefined);
+
+    createAdapterForEntry({ ...entry("openai", "chat"), proxyId: "direct" });
+    expect(mockGetFetchDispatcher).toHaveBeenLastCalledWith(null);
+  });
 });
 

@@ -43,4 +43,21 @@ describe("createRuntimeUpstreamRouter", () => {
       expect(match.adapter.tag).toBe("dynamic-late-runtime-model");
     }
   });
+
+  it("supports passing proxyPool directly as 4th argument without adapterFactory", () => {
+    const pool = new ApiKeyPool(createMemoryPersistence());
+    const mockProxyPool = {
+      resolveProxyUrlById: () => undefined,
+    };
+    const router = createRuntimeUpstreamRouter(new Map(), {}, pool, mockProxyPool as never);
+
+    pool.add({
+      provider: "openai",
+      model: "gpt-5.5",
+      apiKey: "sk-openai",
+    });
+
+    const match = router.resolveMatch("gpt-5.5");
+    expect(match.kind).toBe("api-key");
+  });
 });

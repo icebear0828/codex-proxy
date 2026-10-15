@@ -70,12 +70,21 @@ describe("ProxyPool.resolveProxyUrl", () => {
     expect(pool.resolveProxyUrlById("direct")).toBeNull();
     expect(pool.resolveProxyUrlById("global")).toBeUndefined();
     expect(pool.resolveProxyUrlById(undefined)).toBeUndefined();
-    expect(pool.resolveProxyUrlById(null)).toBeNull();
+    expect(pool.resolveProxyUrlById(null)).toBeUndefined();
     expect(pool.resolveProxyUrlById(proxyId)).toBe("http://proxy.local:870");
 
     expect(pool.resolveProxyUrlById("auto")).toBe("http://proxy.local:870");
 
     pool.disable(proxyId);
     expect(pool.resolveProxyUrlById(proxyId)).toBeUndefined();
+  });
+
+  it("returns display name for proxy assignments including null/global", () => {
+    expect(pool.getProxyDisplayName(null)).toBe("Global Default");
+    expect(pool.getProxyDisplayName(undefined)).toBe("Global Default");
+    expect(pool.getProxyDisplayName("global")).toBe("Global Default");
+    expect(pool.getProxyDisplayName("direct")).toBe("Direct (No Proxy)");
+    expect(pool.getProxyDisplayName("auto")).toBe("Auto (Round-Robin)");
+    expect(pool.getProxyDisplayName(proxyId)).toBe("test-http");
   });
 });

@@ -672,5 +672,62 @@ describe("api key routes", () => {
     expect(clearRes.status).toBe(200);
     expect(pool.getEntry(keyId)?.proxyId).toBeNull();
   });
+
+  it("validates proxyId against ProxyPool on POST and PATCH", async () => {
+    const mockProxyPool = {
+      getById: vi.fn((id: string) => (id === "known-proxy" ? { id: "known-proxy" } : undefined)),
+    };
+    const appWithProxy = createApiKeyRoutes(
+      pool,
+      new ApiKeyModelCache({ persistence: modelPersistence, fetchFn }),
+      new ApiKeyMemoStore(createMemoryMemoPersistence()),
+      mockProxyPool as never,
+    );
+
+    // Reject invalid proxyId on POST
+    const badPost = await appWithProxy.request("/auth/api-keys", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        provider: "openai",
+        models: ["gpt-5.5"],
+        apiKey: "sk-test",
+        proxyId: "unknown-proxy",
+      }),
+    });
+    expect(badPost.status).toBe(400);
+
+    // Accept known proxyId on POST
+    const goodPost = await appWithProxy.request("/auth/api-keys", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        provider: "openai",
+        models: ["gpt-5.5"],
+        apiKey: "sk-test",
+        proxyId: "known-proxy",
+      }),
+    });
+    expect(goodPost.status).toBe(200);
+    const createdKey = pool.getAll().find((k) => k.apiKey === "sk-test")!;
+
+    // Reject invalid proxyId on PATCH
+    const badPatch = await appWithProxy.request(`/auth/api-keys/${createdKey.id}/proxy`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ proxyId: "bogus-proxy" }),
+    });
+    expect(badPatch.status).toBe(400);
+
+    // Accept special keywords on PATCH
+    for (const special of ["direct", "auto", "global", null]) {
+      const goodPatch = await appWithProxy.request(`/auth/api-keys/${createdKey.id}/proxy`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ proxyId: special }),
+      });
+      expect(goodPatch.status).toBe(200);
+    }
+  });
 });
 
