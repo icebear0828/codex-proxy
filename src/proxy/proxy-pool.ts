@@ -209,27 +209,32 @@ export class ProxyPool {
    *   string   — specific proxy URL
    */
   resolveProxyUrl(accountId: string, skipUnhealthy = false): string | null | undefined {
-    const assignment = this.getAssignment(accountId);
+    return this.resolveProxyUrlById(this.getAssignment(accountId), skipUnhealthy);
+  }
 
-    if (assignment === "global") return undefined;
-    if (assignment === "direct") return null;
+  /**
+   * Resolve a proxy URL directly by proxy ID or special assignment name.
+   * Returns:
+   *   undefined — use global proxy (default behavior)
+   *   null     — direct connection (no proxy)
+   *   string   — specific proxy URL
+   */
+  resolveProxyUrlById(proxyId: string | null | undefined, skipUnhealthy = false): string | null | undefined {
+    if (proxyId === undefined || proxyId === "global") return undefined;
+    if (proxyId === null || proxyId === "direct") return null;
 
-    if (assignment === "auto") {
+    if (proxyId === "auto") {
       return this.pickRoundRobin();
     }
 
-    // Specific proxy ID
-    const proxy = this.proxies.get(assignment);
+    const proxy = this.proxies.get(proxyId);
     if (!proxy) {
-      // Proxy deleted — fall back to global
       return undefined;
     }
     if (proxy.status === "disabled") {
-      // Manually disabled — fall back to global
       return undefined;
     }
     if (proxy.status === "unreachable" && skipUnhealthy) {
-      // Health-check failed — caller requested skipping unhealthy proxies
       return undefined;
     }
     return proxy.url;

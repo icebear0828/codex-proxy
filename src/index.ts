@@ -171,7 +171,7 @@ export async function startServer(options?: StartOptions): Promise<ServerHandle>
   // Initialize API key pool for runtime-managed third-party keys
   const apiKeyPool = new ApiKeyPool();
   const hasApiKeys = apiKeyPool.getAll().length > 0;
-  const upstreamRouter = createRuntimeUpstreamRouter(adapters, cfg.model_routing, apiKeyPool);
+  const upstreamRouter = createRuntimeUpstreamRouter(adapters, cfg.model_routing, apiKeyPool, undefined, proxyPool);
   if (hasApiKeys) console.log(`[Init] API key pool: ${apiKeyPool.getAll().length} key(s) loaded`);
 
   // Daily memo model-list refresher (opt-out via local.yaml: api_keys.memo_auto_refresh: false)
@@ -205,7 +205,7 @@ export async function startServer(options?: StartOptions): Promise<ServerHandle>
   const responsesRoutes = createResponsesRoutes(accountPool, cookieJar, proxyPool, upstreamRouter, clientKeyPool, fallbackUpstreamStore);
   const imagesRoutes = createImagesRoutes(accountPool, cookieJar, proxyPool, clientKeyPool, upstreamRouter);
   const apiKeyRoutes = createApiKeyRoutes(apiKeyPool, apiKeyModelCache, memoStore);
-  const embeddingsRoutes = createEmbeddingsRoutes(accountPool, apiKeyPool, clientKeyPool);
+  const embeddingsRoutes = createEmbeddingsRoutes(accountPool, apiKeyPool, clientKeyPool, proxyPool);
   const proxyRoutes = createProxyRoutes(proxyPool, accountPool);
   const usageStats = new UsageStatsStore();
   usageStats.recoverBaseline(accountPool);

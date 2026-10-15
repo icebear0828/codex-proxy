@@ -1,4 +1,5 @@
 import { createHash, randomUUID } from "crypto";
+import type { Dispatcher } from "undici";
 import type { UpstreamAdapter } from "./upstream-adapter.js";
 import type { CodexResponsesRequest, CodexSSEEvent } from "./codex-types.js";
 import { CodexApiError } from "./codex-types.js";
@@ -121,6 +122,7 @@ export class AntigravityUpstream implements UpstreamAdapter {
     private readonly refreshToken: string,
     projectId?: string,
     baseUrl?: string,
+    private readonly dispatcher?: Dispatcher,
   ) {
     this.resolvedProjectId = projectId?.trim() || null;
     const configuredBaseUrl = baseUrl?.trim().replace(/\/+$/, "") ?? "";
@@ -142,7 +144,7 @@ export class AntigravityUpstream implements UpstreamAdapter {
       const response = await fetch("https://www.googleapis.com/oauth2/v2/userinfo", withFetchDispatcher({
         headers: { Authorization: `Bearer ${await this.getAccessToken()}`, Accept: "application/json" },
         signal,
-      }));
+      }, this.dispatcher));
       const profile: unknown = await response.json().catch(() => null);
       if (response.ok && isRecord(profile) && typeof profile.email === "string" && profile.email.trim()) {
         email = profile.email.trim();
@@ -348,7 +350,7 @@ export class AntigravityUpstream implements UpstreamAdapter {
       headers: { "Content-Type": "application/x-www-form-urlencoded", Accept: "application/json" },
       body: form.toString(),
       signal: AbortSignal.timeout(15_000),
-    }));
+    }, this.dispatcher));
     const data: unknown = await response.json().catch(() => null);
     if (!response.ok || !isRecord(data) || typeof data.access_token !== "string") {
       const detail = isRecord(data) && typeof data.error_description === "string"
@@ -430,7 +432,7 @@ export class AntigravityUpstream implements UpstreamAdapter {
         },
         body,
         signal,
-      }),
+      }, this.dispatcher),
     );
 
     const sendWithRefresh = async (targetBaseUrl: string): Promise<Response> => {

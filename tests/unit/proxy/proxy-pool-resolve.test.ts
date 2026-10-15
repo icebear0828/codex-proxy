@@ -63,4 +63,19 @@ describe("ProxyPool.resolveProxyUrl", () => {
     pool.assign("account-1", "direct");
     expect(pool.resolveProxyUrl("account-1")).toBeNull();
   });
+
+  // ── resolveProxyUrlById ───────────────────────────────────────
+
+  it("resolves proxy URL directly by proxyId", () => {
+    expect(pool.resolveProxyUrlById("direct")).toBeNull();
+    expect(pool.resolveProxyUrlById("global")).toBeUndefined();
+    expect(pool.resolveProxyUrlById(undefined)).toBeUndefined();
+    expect(pool.resolveProxyUrlById(null)).toBeNull();
+    expect(pool.resolveProxyUrlById(proxyId)).toBe("http://proxy.local:870");
+
+    expect(pool.resolveProxyUrlById("auto")).toBe("http://proxy.local:870");
+
+    pool.disable(proxyId);
+    expect(pool.resolveProxyUrlById(proxyId)).toBeUndefined();
+  });
 });

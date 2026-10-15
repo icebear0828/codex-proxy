@@ -356,4 +356,38 @@ describe("ApiKeyPool", () => {
     expect(pool2.getAll()[0].wire).toBe("chat");
   });
 
+  // ── Proxy binding ─────────────────────────────────────────────
+
+  it("stores and updates proxyId for an entry", () => {
+    const entry = pool.add({
+      provider: "openai",
+      model: "gpt-5.5",
+      apiKey: "k",
+      proxyId: "proxy-custom-uuid",
+    });
+    expect(entry.proxyId).toBe("proxy-custom-uuid");
+
+    const updated = pool.setProxy(entry.id, "direct");
+    expect(updated).toBe(true);
+    expect(pool.getEntry(entry.id)?.proxyId).toBe("direct");
+
+    pool.setProxy(entry.id, null);
+    expect(pool.getEntry(entry.id)?.proxyId).toBeNull();
+  });
+
+  it("persists proxyId across reload", () => {
+    const persistence = createMemoryPersistence();
+    const pool1 = new ApiKeyPool(persistence);
+    const added = pool1.add({
+      provider: "custom",
+      model: "local-llama",
+      apiKey: "ollama",
+      baseUrl: "http://127.0.0.1:11434/v1",
+      proxyId: "direct",
+    });
+
+    const pool2 = new ApiKeyPool(persistence);
+    expect(pool2.getEntry(added.id)?.proxyId).toBe("direct");
+  });
 });
+

@@ -634,4 +634,43 @@ describe("api key routes", () => {
     expect((await (await app.request("/auth/api-keys/memos")).json()).memos).toHaveLength(0);
     expect(pool.getAll()).toHaveLength(1);
   });
+
+  // ── Proxy routes ──────────────────────────────────────────────
+
+  it("adds an API key with proxyId and allows updating proxyId via PATCH", async () => {
+    const createRes = await app.request("/auth/api-keys", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        provider: "openai",
+        models: ["gpt-5.5"],
+        apiKey: "sk-test-proxy-key",
+        proxyId: "proxy-custom-uuid",
+      }),
+    });
+    expect(createRes.status).toBe(200);
+    const createdBody = await createRes.json() as { keys: Array<{ id: string; proxyId?: string | null }> };
+    expect(createdBody.keys[0].proxyId).toBe("proxy-custom-uuid");
+
+    const keyId = createdBody.keys[0].id;
+
+    // PATCH to "direct"
+    const patchRes = await app.request(`/auth/api-keys/${keyId}/proxy`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ proxyId: "direct" }),
+    });
+    expect(patchRes.status).toBe(200);
+    expect(pool.getEntry(keyId)?.proxyId).toBe("direct");
+
+    // PATCH to null
+    const clearRes = await app.request(`/auth/api-keys/${keyId}/proxy`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ proxyId: null }),
+    });
+    expect(clearRes.status).toBe(200);
+    expect(pool.getEntry(keyId)?.proxyId).toBeNull();
+  });
 });
+

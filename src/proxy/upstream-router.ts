@@ -28,8 +28,8 @@ export type UpstreamRouteMatch =
 export class UpstreamRouter {
   private apiKeyPool: ApiKeyPool | null = null;
   private adapterFactory: AdapterFactory | null = null;
-  /** Cache: apiKeyEntry.id → adapter instance. Invalidated when key changes. */
-  private dynamicAdapters = new Map<string, { apiKey: string; adapter: UpstreamAdapter }>();
+  /** Cache: apiKeyEntry.id → adapter instance. Invalidated when key or proxyId changes. */
+  private dynamicAdapters = new Map<string, { apiKey: string; proxyId?: string | null; adapter: UpstreamAdapter }>();
 
   private splitExplicitProvider(model: string): { tag: string; bareModel: string } | null {
     const colonIdx = model.indexOf(":");
@@ -175,9 +175,9 @@ export class UpstreamRouter {
 
   private getOrCreateDynamicAdapter(entry: ApiKeyEntry): UpstreamAdapter {
     const cached = this.dynamicAdapters.get(entry.id);
-    if (cached && cached.apiKey === entry.apiKey) return cached.adapter;
+    if (cached && cached.apiKey === entry.apiKey && cached.proxyId === entry.proxyId) return cached.adapter;
     const adapter = this.adapterFactory!(entry);
-    this.dynamicAdapters.set(entry.id, { apiKey: entry.apiKey, adapter });
+    this.dynamicAdapters.set(entry.id, { apiKey: entry.apiKey, proxyId: entry.proxyId, adapter });
     return adapter;
   }
 }

@@ -33,6 +33,7 @@ const ApiKeyBindingObjectSchema = z.object({
   label: z.string().max(64).nullable().optional(),
   capabilities: CapabilitiesSchema,
   wire: WireSchema,
+  proxyId: z.string().trim().max(64).nullable().optional(),
   memoId: z.string().trim().min(1).optional(),
 });
 
@@ -162,6 +163,7 @@ function addEntries(pool: ApiKeyPool, items: Array<Omit<ApiKeyBindingInput, "api
           label: item.label,
           capabilities: item.capabilities,
           wire: item.wire,
+          proxyId: item.proxyId,
         }));
       } catch (err) {
         errors.push(err instanceof Error ? err.message : String(err));
@@ -181,6 +183,7 @@ function toImportableEntries<T extends { model?: string }>(items: T[]): Array<Om
 
 const LabelSchema = z.object({ label: z.string().max(64).nullable() });
 const StatusSchema = z.object({ status: z.enum(["active", "disabled"]) });
+const ProxySchema = z.object({ proxyId: z.string().trim().max(64).nullable() });
 const BatchDeleteSchema = z.object({ ids: z.array(z.string()).min(1) });
 
 async function parseJsonRequest<T>(c: Context, schema: z.ZodSchema<T>): Promise<
@@ -435,6 +438,13 @@ export function createApiKeyRoutes(pool: ApiKeyPool, modelCache = new ApiKeyMode
     const parsed = await parseJsonRequest(c, StatusSchema);
     if (!parsed.ok) return parsed.response;
     if (!pool.setStatus(c.req.param("id"), parsed.data.status)) { c.status(404); return c.json({ error: "API key not found" }); }
+    return c.json({ success: true });
+  });
+
+  app.patch("/auth/api-keys/:id/proxy", async (c) => {
+    const parsed = await parseJsonRequest(c, ProxySchema);
+    if (!parsed.ok) return parsed.response;
+    if (!pool.setProxy(c.req.param("id"), parsed.data.proxyId)) { c.status(404); return c.json({ error: "API key not found" }); }
     return c.json({ success: true });
   });
 
