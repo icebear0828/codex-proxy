@@ -363,11 +363,15 @@ jobs:
           done
 
       - name: Attach offline npm bundle to the release
-        # Only tag runs correspond to a GitHub Release; give readers a
-        # no-auth install path (download zip, node install.mjs) until the
-        # npm registry is available. Version-free asset name so the
+        # Any tag ref corresponds to a GitHub Release, and the stable release
+        # path reaches this workflow as a `workflow_dispatch --ref <tag>`
+        # (bot-pushed tags don't trigger workflows), so key off the ref alone
+        # — requiring event_name == 'push' silently skipped this on every
+        # stable release.
+        # The bundle gives readers a no-auth install path (download zip, run
+        # install.mjs). Version-free asset name so the
         # /releases/latest/download/codex-proxy-npm.zip link never goes stale.
-        if: github.event_name == 'push' && github.ref_type == 'tag'
+        if: startsWith(github.ref, 'refs/tags/')
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
