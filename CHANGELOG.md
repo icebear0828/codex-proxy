@@ -8,7 +8,9 @@
 
 ## [Unreleased]
 
-> 暂无已记录的变更。
+### Fixed
+
+- 修复 npm 离线包 `codex-proxy-npm.zip` 从未附加到 Release 的问题：上传步骤的触发条件要求事件为 `push` 且 ref 为 tag，但稳定版发布是通过 `workflow_dispatch --ref <tag>` 触发的（bot 推送的 tag 不会触发工作流），条件永不成立，步骤被静默跳过，导致 v2.1.16 / v2.1.17 等稳定版 Release 缺少该资产、README 推荐的 `/releases/latest/download/codex-proxy-npm.zip` 链接返回 404。改为仅依据 ref 是否为 tag 判断。（`.github/workflows/npm-publish.yml`）
 
 ## [v2.1.x](https://github.com/icebear0828/codex-proxy/releases?q=2.1) - 2026-09-01 至 2026-09-07
 
