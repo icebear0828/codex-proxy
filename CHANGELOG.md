@@ -8,7 +8,9 @@
 
 ## [Unreleased]
 
-> 暂无已记录的变更。
+### Added
+
+- 新增可开关的「安全策略熔断」（`policy_guard`，默认关闭）：上游安全检测拒绝某段对话后，代理记住该对话并对后续轮次直接返回 400，不再把同一段内容重复提交给上游——同一拒绝对话的上游提交恒为 1 次，避免重试放大违规上报导致封号。判定优先匹配结构化错误码（`cyber_policy` / `session_blocked_by_cyber_policy`），文本关键字兜底，HTTP 状态码仅作可选收窄（普通 403 仍按封号、429 仍按限流处理，仅当错误体命中码/文案才视为策略拒绝）；隔离按会话级「输入前缀包含」判定，历史被编辑或超过 TTL（默认 1 小时）自动解除。覆盖账号路径与 API-key / custom / 无账号回退上游路径（含流式终态帧与 collect 路径）。设置页新增「安全策略熔断」区块（开关/错误码/文案/状态码/TTL + 被拒绝对话列表与手动解除），新增管理端点 `GET/POST /admin/policy-guard-settings`、`GET /admin/policy-guard-quarantines`、`POST /admin/policy-guard-quarantines/reset`。（`src/proxy/policy-rejection.ts`、`src/proxy/conversation-quarantine.ts`、`src/routes/shared/`、`src/routes/admin/policy-guard.ts`、`src/config-schema.ts`、`config/default.yaml`、`web/src/components/PolicyGuardSettings.tsx`、`shared/i18n/translations.ts`）
 
 ## [v2.1.x](https://github.com/icebear0828/codex-proxy/releases?q=2.1) - 2026-09-01 至 2026-09-07
 

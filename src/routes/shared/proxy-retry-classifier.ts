@@ -11,6 +11,7 @@ import {
   isPreviousResponseNotFoundError,
   isUnansweredFunctionCallError,
 } from "../../proxy/error-classification.js";
+import { isPolicyRejection } from "../../proxy/policy-rejection.js";
 
 // ── Types ─────────────────────────────────────────────────────────
 
@@ -28,6 +29,7 @@ export interface RetryState {
 }
 
 export type RetryAction =
+  | { type: "policy_rejected"; message: string }
   | { type: "implicit_resume_replay" }
   | { type: "dead_owner_reconnect" }
   | { type: "strip_and_retry"; kind: "previous_response_not_found" | "unanswered_function_call" }
@@ -54,12 +56,21 @@ const DEAD_OWNER_RECONNECT_REASONS = new Set([
  * Classify the retry action for a caught error during an upstream attempt.
  *
  * Priority order:
+ *   0. Policy rejection (never retry — see below)
  *   1. Implicit resume replay (WebSocket failures on resumed connections)
  *   2. Explicit-chain dead-owner reconnect (stale owner, chain may live upstream)
  *   3. Strip previous_response_id (stale session references)
  *   4. Error handler (429/4xx/5xx → fallback account or respond)
  *
  * This is a pure function — no side effects. The caller applies the decision.
+ *
+ * Priority 0 is checked before everything else on purpose. A safety-policy
+ * rejection is a function of the content, so *every* retry path below is
+ * guaranteed to fail and to report another violation upstream: replaying full
+ * input (1), reconnecting the chain (2), stripping `previous_response_id` (3)
+ * and rotating to another account (4) all resend the same rejected content.
+ * Guarding only path 4 would leave the other three live. `isPolicyRejection`
+ * consults config (disabled by default), which is the one impurity here.
  */
 export function classifyRetryAction(
   err: unknown,
@@ -68,6 +79,11 @@ export function classifyRetryAction(
 ): RetryAction {
   if (!(err instanceof CodexApiError)) {
     return { type: "not_codex_error" };
+  }
+
+  // Priority 0: safety-policy rejection — fail closed, do not resend.
+  if (isPolicyRejection(err)) {
+    return { type: "policy_rejected", message: err.message };
   }
 
   // Priority 1: implicit resume can replay with full input

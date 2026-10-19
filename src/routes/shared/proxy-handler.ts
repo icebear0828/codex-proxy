@@ -59,6 +59,8 @@ import {
   invalidateRejectedPreviousResponse,
 } from "./proxy-retry-recovery.js";
 import { classifyRetryAction } from "./proxy-retry-classifier.js";
+import { peekConversationQuarantine, recordConversationQuarantine } from "../../proxy/conversation-quarantine.js";
+import { extractPolicyErrorCode } from "../../proxy/policy-rejection.js";
 import { buildProxySessionContext } from "./proxy-session-context.js";
 import { staggerIfNeeded } from "./proxy-stagger.js";
 import { sendProxyUpstreamAttempt } from "./proxy-upstream-attempt.js";
@@ -159,6 +161,33 @@ export async function handleProxyRequest(options: HandleProxyRequestOptions): Pr
 
   const released = new Set<string>();
   const verifiedExcludeIds: string[] = [];
+
+  // ── Safety-policy quarantine ──
+  // The upstream gate already rejected this conversation's content. Resending
+  // it cannot succeed — the verdict is a function of the content — and each
+  // resend reports another violation upstream, which is what escalates to an
+  // account ban. Refuse locally, before acquiring an account, so nothing
+  // reaches upstream. This is the guard that covers the paths a retry-loop fix
+  // cannot: the client's own retries and autonomous "goal"-mode continuations
+  // arrive as brand-new requests. Checked before the pool so a quarantined
+  // conversation never consumes an account slot or rotates credentials.
+  const quarantine = peekConversationQuarantine({
+    conversationId: sessionContext.chainConversationId,
+    input: req.codexRequest.input,
+  });
+  if (quarantine.blocked) {
+    console.warn(
+      `[${fmt.tag}] conversation ${sessionContext.chainConversationId.slice(0, 8)} is quarantined ` +
+        `after an upstream safety-policy rejection — refusing locally without contacting upstream`,
+    );
+    return respondWithProxyError({
+      c,
+      req,
+      fmt,
+      status: 400,
+      message: quarantine.message ?? "Upstream safety policy rejected this conversation.",
+    });
+  }
 
   // Single acquire call — preferredEntryId is a hint, not a hard requirement
   let acquired = acquireAccount(accountPool, req.codexRequest.model, undefined, fmt.tag, sessionContext.preferredEntryId ?? undefined, req.codexRequest.service_tier);
@@ -445,6 +474,30 @@ export async function handleProxyRequest(options: HandleProxyRequestOptions): Pr
       );
 
       switch (retryAction.type) {
+        case "policy_rejected": {
+          // Upstream's safety gate rejected this conversation. Stop here — no
+          // replay, no strip, no rotation — and remember the conversation so
+          // later turns are refused locally (see the pre-flight check above).
+          releaseAccount(accountPool, entryId, annotateImageGenOutcome(undefined, req.expectsImageGen), released);
+          recordConversationQuarantine({
+            conversationId: sessionContext.chainConversationId,
+            input: req.codexRequest.input,
+            code: extractPolicyErrorCode((err as CodexApiError).body),
+            message: retryAction.message,
+          });
+          console.warn(
+            `[${fmt.tag}] upstream safety-policy rejection — quarantined conversation ` +
+              `${sessionContext.chainConversationId.slice(0, 8)}, refusing to resend`,
+          );
+          return respondWithProxyError({
+            c,
+            req,
+            fmt,
+            status: 400,
+            message: retryAction.message,
+          });
+        }
+
         case "not_codex_error":
           releaseAccount(accountPool, entryId, annotateImageGenOutcome(undefined, req.expectsImageGen), released);
           throw err;

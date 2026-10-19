@@ -2,6 +2,7 @@ import { GeneralSettings } from "./GeneralSettings";
 import { LogsSettings } from "./LogsSettings";
 import { ModelAliasSettings } from "./ModelAliasSettings";
 import { OllamaBridgeSettings } from "./OllamaBridgeSettings";
+import { PolicyGuardSettings } from "./PolicyGuardSettings";
 import { QuotaSettings } from "./QuotaSettings";
 import { RotationSettings } from "./RotationSettings";
 import { SettingsPanel } from "./SettingsPanel";
@@ -20,6 +21,7 @@ export function SettingsTab(props: SettingsTabProps) {
       <GeneralSettings layoutMode={props.layoutMode} onLayoutModeChange={props.onLayoutModeChange} />
       <ModelAliasSettings models={props.models} />
       <QuotaSettings />
+      <PolicyGuardSettings />
       <RotationSettings />
       <LogsSettings />
       <OllamaBridgeSettings />
