@@ -109,6 +109,8 @@ export interface ExtractedEvent {
   reasoningDelta?: string;
   usage?: UsageInfo;
   error?: { code: string; message: string };
+  /** Truncation/filter reason from response.incomplete (e.g. "max_output_tokens"). */
+  incompleteReason?: string;
   functionCallStart?: FunctionCallStart;
   functionCallDelta?: FunctionCallDelta;
   functionCallDone?: FunctionCallDone;
@@ -271,6 +273,9 @@ export async function* iterateCodexEvents(
         // Response was truncated/incomplete
         if (typed.response.id) extracted.responseId = typed.response.id;
         if (typed.response.usage) extracted.usage = typed.response.usage;
+        if (typed.response.incomplete_details?.reason) {
+          extracted.incompleteReason = typed.response.incomplete_details.reason;
+        }
         break;
 
       case "response.queued":
