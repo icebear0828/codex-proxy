@@ -18,6 +18,7 @@ import type {
   AnthropicUsage,
 } from "../types/anthropic.js";
 import { iterateCodexEvents, EmptyResponseError, type UsageInfo } from "./codex-event-extractor.js";
+import { incompleteReasonToAnthropicStopReason } from "./incomplete-stop-reason.js";
 import { isRecord } from "./shared-utils.js";
 import { codexApiErrorFromEvent } from "./codex-api-error-from-event.js";
 
@@ -97,6 +98,8 @@ export async function* streamCodexToAnthropic(
   let cachedTokens: number | undefined;
   let hasToolCalls = false;
   let hasContent = false;
+  /** Set when the stream ends with response.incomplete — drives the real stop_reason. */
+  let incompleteReason: string | undefined;
   let contentIndex = 0;
   let textBlockStarted = false;
   let thinkingBlockStarted = false;
@@ -147,6 +150,21 @@ export async function* streamCodexToAnthropic(
       textBlockStarted = true;
     }
   }
+
+  // Shared terminal-usage capture: both response.completed and
+  // response.incomplete carry the final usage object.
+  const captureUsage = (usage: UsageInfo): void => {
+    inputTokens = usage.input_tokens;
+    outputTokens = usage.output_tokens;
+    const adjusted = resolveCacheUsage(inputTokens, usage.cached_tokens, usageHint);
+    cachedTokens = adjusted.cacheReadTokens || undefined;
+    onUsage?.({
+      input_tokens: inputTokens,
+      output_tokens: outputTokens,
+      cached_tokens: cachedTokens,
+      reasoning_tokens: usage.reasoning_tokens,
+    });
+  };
 
   // 1. message_start
   yield formatSSE("message_start", {
@@ -341,19 +359,33 @@ export async function* streamCodexToAnthropic(
 
       case "response.completed": {
         if (evt.usage) {
-          inputTokens = evt.usage.input_tokens;
-          outputTokens = evt.usage.output_tokens;
-          const adjusted = resolveCacheUsage(inputTokens, evt.usage.cached_tokens, usageHint);
-          cachedTokens = adjusted.cacheReadTokens || undefined;
-          onUsage?.({
-            input_tokens: inputTokens,
-            output_tokens: outputTokens,
-            cached_tokens: cachedTokens,
-            reasoning_tokens: evt.usage.reasoning_tokens,
-          });
+          captureUsage(evt.usage);
         }
         onResponseCompleted?.(evt.responseId);
         // Inject error text if stream completed with no content
+        if (!hasContent) {
+          yield* ensureTextBlock();
+          yield formatSSE("content_block_delta", {
+            type: "content_block_delta",
+            index: contentIndex,
+            delta: { type: "text_delta", text: "[Error] Codex returned an empty response. Please retry." },
+          });
+        }
+        break;
+      }
+
+      case "response.incomplete": {
+        // response.incomplete is a terminal event too. Before this case
+        // existed it fell through the switch: usage was dropped, the stream
+        // ended via the generic close path, and a truncated answer was
+        // reported as a normal "end_turn" in the closing message_delta.
+        if (evt.usage) {
+          captureUsage(evt.usage);
+        }
+        onResponseCompleted?.(evt.responseId);
+        incompleteReason = evt.incompleteReason;
+        // Same empty-stream guard as response.completed: a truncated-but-
+        // empty stream still deserves an explicit hint instead of silence.
         if (!hasContent) {
           yield* ensureTextBlock();
           yield formatSSE("content_block_delta", {
@@ -375,9 +407,15 @@ export async function* streamCodexToAnthropic(
   // Anthropic API: input_tokens = uncached only, cache_read_input_tokens = cached
   // cacheCreationTokens here = inputTokens - cacheReadTokens = uncached portion
   const { cacheReadTokens, cacheCreationTokens } = resolveCacheUsage(inputTokens, cachedTokens, usageHint);
+  // Truncation/filter wins over the tool_use/end_turn priority: a response cut
+  // by max_output_tokens must not be reported as a clean end_turn, and
+  // content_filter maps to Anthropic's refusal stop_reason.
+  const stopReason =
+    incompleteReasonToAnthropicStopReason(incompleteReason) ??
+    (hasToolCalls ? "tool_use" : "end_turn");
   yield formatSSE("message_delta", {
     type: "message_delta",
-    delta: { stop_reason: hasToolCalls ? "tool_use" : "end_turn" },
+    delta: { stop_reason: stopReason },
     usage: {
       input_tokens: cacheCreationTokens,
       output_tokens: outputTokens,
@@ -414,6 +452,8 @@ export async function collectCodexToAnthropicResponse(
   let outputTokens = 0;
   let cachedTokens: number | undefined;
   let responseId: string | null = null;
+  /** Set when the stream ends with response.incomplete — drives the real stop_reason. */
+  let incompleteReason: string | undefined;
   const functionCallIds = new Set<string>();
 
   // Collect tool calls
@@ -426,6 +466,7 @@ export async function collectCodexToAnthropicResponse(
     }
     if (evt.textDelta) fullText += evt.textDelta;
     if (evt.reasoningDelta) fullReasoning += evt.reasoningDelta;
+    if (evt.incompleteReason) incompleteReason = evt.incompleteReason;
     if (evt.usage) {
       inputTokens = evt.usage.input_tokens;
       outputTokens = evt.usage.output_tokens;
@@ -500,7 +541,11 @@ export async function collectCodexToAnthropicResponse(
       role: "assistant",
       content,
       model,
-      stop_reason: hasToolCalls ? "tool_use" : "end_turn",
+      // Truncation/filter wins over tool_use/end_turn (mirrors the streaming
+      // path): a max_output_tokens cut must not be reported as a clean end_turn.
+      stop_reason:
+        incompleteReasonToAnthropicStopReason(incompleteReason) ??
+        (hasToolCalls ? "tool_use" : "end_turn"),
       stop_sequence: null,
       usage,
     },
