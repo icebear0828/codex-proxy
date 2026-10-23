@@ -13,6 +13,7 @@ import { createOllamaAdminRoutes } from "./admin/ollama.js";
 import { createUsageStatsRoutes } from "./admin/usage-stats.js";
 import { createLogRoutes } from "./admin/logs.js";
 import { createErrorLogRoutes } from "./admin/error-logs.js";
+import { createPolicyGuardRoutes } from "./admin/policy-guard.js";
 import { createClientKeyAdminRoutes } from "./admin/client-keys.js";
 import { createKeepaliveRoutes } from "./admin/keepalive.js";
 import { getConfig } from "../config.js";
@@ -96,6 +97,7 @@ export function createWebRoutes(
   app.route("/", createUsageStatsRoutes(accountPool, usageStats));
   app.route("/", createLogRoutes());
   app.route("/", createErrorLogRoutes());
+  app.route("/", createPolicyGuardRoutes());
   if (clientKeyPool) {
     app.route(
       "/",

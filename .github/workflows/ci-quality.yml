@@ -76,6 +76,13 @@ jobs:
       - name: Run Linux root vitest suite
         run: npm run test:linux
 
+      # End-to-end acceptance for the safety-policy guard: a real proxy
+      # process plus the netlab mock upstream. Runs against the addon built
+      # above and asserts the upstream is contacted exactly once per rejection
+      # and never again for the quarantined conversation.
+      - name: Run policy-guard end-to-end smoke
+        run: npm run netlab:policy-guard
+
   windows-tests:
     runs-on: windows-latest
     timeout-minutes: 20
