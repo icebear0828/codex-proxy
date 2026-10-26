@@ -57,8 +57,10 @@ function useUpdateMessage() {
   const desktop = update.status?.desktop;
   if (desktop?.error) { msg = desktop.error; color = "text-red-500"; }
   else if (desktop?.updateAvailable) {
-    msg = `发现版本 v${desktop.version}（${update.applying || update.restarting ? "正在重启更新" : desktop.downloaded ? "点击重启应用更新" : `正在下载 ${desktop.progress}%`}）`;
-    color = "text-amber-500";
+    if (update.error) { msg = update.error; color = "text-red-500"; }
+    else if (update.applying || update.restarting) { msg = t("desktopUpdateRestarting"); color = "text-amber-500"; }
+    else if (desktop.downloaded) { msg = t("desktopUpdateReady", { version: desktop.version ?? "" }); color = "text-amber-500"; }
+    else { msg = t("desktopUpdateDownloading", { version: desktop.version ?? "", progress: desktop.progress }); color = "text-amber-500"; }
   }
   const hasUpdate = desktop ? desktop.updateAvailable : update.status?.proxy.update_available ?? false;
   const showUpdateDialog = !desktop && getShowUpdateDialogPreference(update.status);
@@ -292,6 +294,7 @@ function Dashboard() {
               models={status.models}
               layoutMode={layoutMode}
               onLayoutModeChange={handleLayoutModeChange}
+              isDesktop={!!update.status?.desktop}
             />
           )}
         </div>

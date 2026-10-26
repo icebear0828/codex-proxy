@@ -8,9 +8,10 @@ import { SettingItemControl } from "./settings/SettingItemControl";
 interface GeneralSettingsProps {
   layoutMode?: LayoutMode;
   onLayoutModeChange?: (mode: LayoutMode) => void;
+  isDesktop?: boolean;
 }
 
-export function GeneralSettings({ layoutMode, onLayoutModeChange }: GeneralSettingsProps = {}) {
+export function GeneralSettings({ layoutMode, onLayoutModeChange, isDesktop = false }: GeneralSettingsProps = {}) {
   const t = useT();
   const settings = useSettings();
   const gs = useGeneralSettings(settings.apiKey);
@@ -759,7 +760,8 @@ export function GeneralSettings({ layoutMode, onLayoutModeChange }: GeneralSetti
               </label>
             </SettingItemControl>
 
-            {/* Auto Download */}
+            {/* Desktop updates run automatically — the legacy download/dialog options don't apply */}
+            {!isDesktop && (
             <SettingItemControl
               label={t("generalSettingsAutoDownload")}
               hint={t("generalSettingsAutoDownloadHint")}
@@ -786,6 +788,7 @@ export function GeneralSettings({ layoutMode, onLayoutModeChange }: GeneralSetti
                 {t("generalSettingsAutoDownload")}
               </label>
             </SettingItemControl>
+            )}
 
             {/* Allow Prerelease / Beta */}
             <SettingItemControl
@@ -811,7 +814,7 @@ export function GeneralSettings({ layoutMode, onLayoutModeChange }: GeneralSetti
               </label>
             </SettingItemControl>
 
-            {/* Update Dialog */}
+            {!isDesktop && (
             <SettingItemControl
               label={t("generalSettingsShowUpdateDialog")}
               hint={t("generalSettingsShowUpdateDialogHint")}
@@ -834,6 +837,7 @@ export function GeneralSettings({ layoutMode, onLayoutModeChange }: GeneralSetti
                 {t("generalSettingsShowUpdateDialog")}
               </label>
             </SettingItemControl>
+            )}
           </div>
         )}
       </section>
