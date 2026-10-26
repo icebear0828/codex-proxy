@@ -54,8 +54,14 @@ function useUpdateMessage() {
     msg = parts.length > 0 ? parts.join(" · ") : t("upToDate");
   } else if (!update.checking && update.error) { msg = update.error; color = "text-red-500"; }
 
-  const hasUpdate = update.status?.proxy.update_available ?? false;
-  const showUpdateDialog = getShowUpdateDialogPreference(update.status);
+  const desktop = update.status?.desktop;
+  if (desktop?.error) { msg = desktop.error; color = "text-red-500"; }
+  else if (desktop?.updateAvailable) {
+    msg = `发现版本 v${desktop.version}（${update.applying || update.restarting ? "正在重启更新" : desktop.downloaded ? "点击重启应用更新" : `正在下载 ${desktop.progress}%`}）`;
+    color = "text-amber-500";
+  }
+  const hasUpdate = desktop ? desktop.updateAvailable : update.status?.proxy.update_available ?? false;
+  const showUpdateDialog = !desktop && getShowUpdateDialogPreference(update.status);
   const proxyUpdateInfo = hasUpdate
     ? { mode: update.status!.proxy.mode, commits: update.status!.proxy.commits, changelog: update.status!.proxy.changelog ?? null, release: update.status!.proxy.release }
     : null;
@@ -166,7 +172,11 @@ function Dashboard() {
       <Header
         onAddAccount={accounts.startAdd}
         onCheckUpdate={update.checkForUpdate}
-        onOpenUpdateModal={() => setShowModal(true)}
+        onOpenUpdateModal={() => {
+            if (update.status?.desktop) {
+              if (update.status.desktop.downloaded && !update.applying && !update.restarting) void update.applyUpdate();
+            } else setShowModal(true);
+          }}
         checking={update.checking}
         updateStatusMsg={update.msg}
         updateStatusColor={update.color}

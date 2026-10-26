@@ -43,7 +43,7 @@ vi.mock("../electron/constants.js", () => ({
 }));
 
 // Import after mocks are set up
-const { getAutoUpdateState, initAutoUpdater, stopAutoUpdater } = await import(
+const { getAutoUpdateState, initAutoUpdater, stopAutoUpdater, installUpdate } = await import(
   "../electron/auto-updater.js"
 );
 
@@ -74,12 +74,12 @@ describe("auto-updater state machine", () => {
     expect(state.error).toBeNull();
   });
 
-  it("configures autoUpdater on init (autoDownload defaults to false)", () => {
+  it("configures autoUpdater on init (autoDownload defaults to true)", () => {
     initAutoUpdater(mockOptions);
 
-    // autoDownload defaults to false — user must confirm before downloading
-    expect(mockAutoUpdater.autoDownload).toBe(false);
-    expect(mockAutoUpdater.autoInstallOnAppQuit).toBe(true);
+    // autoDownload defaults to true — user must confirm before downloading
+    expect(mockAutoUpdater.autoDownload).toBe(true);
+    expect(mockAutoUpdater.autoInstallOnAppQuit).toBe(false);
     expect(mockAutoUpdater.allowPrerelease).toBe(false);
   });
 
@@ -89,10 +89,10 @@ describe("auto-updater state machine", () => {
     expect(mockAutoUpdater.autoDownload).toBe(true);
   });
 
-  it("autoDownload=false even when autoUpdate is explicitly false", () => {
+  it("manual checks also download silently when autoUpdate is false", () => {
     initAutoUpdater({ ...mockOptions, autoUpdate: false });
 
-    expect(mockAutoUpdater.autoDownload).toBe(false);
+    expect(mockAutoUpdater.autoDownload).toBe(true);
   });
 
   it("does not schedule update checks when autoUpdate is explicitly false", () => {
@@ -286,14 +286,14 @@ describe("auto-updater state machine", () => {
     expect(mockDialog.showMessageBox).not.toHaveBeenCalled();
   });
 
-  it("shows update-available dialog when explicitly enabled", () => {
+  it("ignores legacy dialog preference", () => {
     initAutoUpdater({ ...mockOptions, autoUpdate: true, showUpdateDialog: true });
 
     mockAutoUpdater.emit("update-available", { version: "3.0.0" });
 
     const state = getAutoUpdateState();
     expect(state.updateAvailable).toBe(true);
-    expect(mockDialog.showMessageBox).toHaveBeenCalledTimes(1);
+    expect(mockDialog.showMessageBox).not.toHaveBeenCalled();
   });
 
   it("skips dialog when autoDownload=true", () => {
@@ -304,6 +304,17 @@ describe("auto-updater state machine", () => {
     const state = getAutoUpdateState();
     expect(state.updateAvailable).toBe(true);
     // autoDownload silently handles it — no dialog
+    expect(mockDialog.showMessageBox).not.toHaveBeenCalled();
+  });
+
+  it("installs silently and relaunches only after download", () => {
+    initAutoUpdater(mockOptions);
+    mockAutoUpdater.emit("update-available", { version: "4.0.0" });
+    installUpdate();
+    expect(mockAutoUpdater.quitAndInstall).not.toHaveBeenCalled();
+    mockAutoUpdater.emit("update-downloaded", { version: "4.0.0" });
+    installUpdate();
+    expect(mockAutoUpdater.quitAndInstall).toHaveBeenCalledWith(true, true);
     expect(mockDialog.showMessageBox).not.toHaveBeenCalled();
   });
 

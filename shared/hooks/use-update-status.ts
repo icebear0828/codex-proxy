@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from "preact/hooks";
 
 export interface UpdateStatus {
+  desktop?: { checking: boolean; updateAvailable: boolean; downloading: boolean; downloaded: boolean; progress: number; version: string | null; error: string | null } | null;
   settings: {
     show_update_dialog: boolean;
     allow_prerelease?: boolean;
@@ -126,7 +127,11 @@ export function useUpdateStatus() {
     } catch { /* ignore */ }
   }, []);
 
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => {
+    void load();
+    const timer = setInterval(() => { void load(); }, 3000);
+    return () => clearInterval(timer);
+  }, [load]);
 
   const checkForUpdate = useCallback(async () => {
     setChecking(true);
@@ -163,6 +168,13 @@ export function useUpdateStatus() {
           setError(text || "Apply failed");
         }
         setApplying(false);
+        return;
+      }
+
+      if (resp.headers.get("content-type")?.includes("application/json")) {
+        const data = await resp.json() as { restarting?: boolean };
+        setApplying(false);
+        if (data.restarting) startRestartPolling();
         return;
       }
 

@@ -1,3 +1,4 @@
+import { getDesktopUpdater } from "../../desktop-updater.js";
 import { Hono } from "hono";
 import { stream } from "hono/streaming";
 import { getUpdateState, checkForUpdate, isUpdateInProgress } from "../../update-checker.js";
@@ -17,6 +18,7 @@ export function createUpdateRoutes(): Hono {
     const allowPrerelease = config.update?.allow_prerelease ?? false;
 
     return c.json({
+      desktop: getDesktopUpdater()?.getState() ?? null,
       settings: {
         show_update_dialog: showUpdateDialog,
         allow_prerelease: allowPrerelease,
@@ -46,6 +48,7 @@ export function createUpdateRoutes(): Hono {
   });
 
   app.post("/admin/check-update", async (c) => {
+    getDesktopUpdater()?.check();
     const results: {
       proxy?: {
         commits_behind: number;
@@ -115,6 +118,13 @@ export function createUpdateRoutes(): Hono {
   });
 
   app.post("/admin/apply-update", async (c) => {
+    const desktop = getDesktopUpdater();
+    if (desktop) {
+      if (!desktop.getState().downloaded) return c.json({ error: "Update is not downloaded" }, 409);
+      // Let the response reach the renderer before quitting the process.
+      setTimeout(() => desktop.install(), 300);
+      return c.json({ started: true, restarting: true });
+    }
     if (!canSelfUpdate()) {
       const mode = getDeployMode();
       c.status(400);
