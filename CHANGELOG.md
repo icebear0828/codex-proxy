@@ -8,7 +8,9 @@
 
 ## [Unreleased]
 
-> 暂无已记录的变更。
+### Added
+
+- Electron 桌面端新增应用内更新流程：打包模式下（macOS 除外）自动发现新版本并静默下载，更新状态经 Node 桥接层暴露给服务端；Dashboard 顶栏实时显示桌面端更新进度（发现版本 / 下载百分比），下载完成后点击顶栏提示或更新入口即可就地重启安装，无需手动打开 Release 页。`GET /admin/update-status` 新增 `desktop` 字段，`POST /admin/check-update` 同时触发桌面端检查，`POST /admin/apply-update` 在桌面端更新已下载时直接重启安装并返回 `{restarting: true}`。移除旧的弹窗提示（update dialog）与「已下载后退出时安装」逻辑，改为一律从页面内触发。（`packages/electron/electron/auto-updater.ts`、`packages/electron/electron/main.ts`、`packages/electron/src/electron-entry.ts`、`src/desktop-updater.ts`、`src/routes/admin/update.ts`、`shared/hooks/use-update-status.ts`、`web/src/App.tsx`）
 
 ## [v2.1.x](https://github.com/icebear0828/codex-proxy/releases?q=2.1) - 2026-09-01 至 2026-09-07
 
