@@ -15,6 +15,12 @@
 - Gemini / Antigravity 的工具参数及结构化输出 schema 必须按 Gemini 支持的字段白名单清洗；清除 `prefixItems` 等不支持字段后，如果 schema 仍为 `type: array` 且缺少 `items`，需补宽松的 `{}` schema，避免 Gemini 的 `missing field` 校验错误。为此类变换补充嵌套 schema 回归测试。
 - 持久化请求/错误诊断时，必须先脱敏并限制单条记录和文件大小；不要提交临时的原始 tools / request dump，也不要记录凭据。
 
+## PR 合并后的自动同步
+
+- PR 合并到 `dev` 后，默认自动同步主工作目录的本地 `dev`，无需再次询问用户；执行前确认当前分支为 `dev` 且工作区干净，然后运行 `git pull --ff-only origin dev`。
+- 若主工作目录不在 `dev`、有未提交改动或无法快进，停止自动拉取并说明原因；不得擅自切换分支、stash、reset、覆盖改动或创建合并提交。不得改动其他任务的工作树。
+- 同步成功后核对本地 `dev` 与 `origin/dev` 的提交是否一致，并在完成报告中说明同步结果。
+
 ## Keepalive safety
 
 - Account keepalive is disabled by default. Enabling the scheduler or calling `POST /admin/keepalive-run` sends real requests to `/codex/usage`; unit tests must mock `CodexApi`, and real-account execution requires explicit user authorization.

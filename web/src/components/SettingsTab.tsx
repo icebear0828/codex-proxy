@@ -11,13 +11,14 @@ interface SettingsTabProps {
   models: string[];
   layoutMode: LayoutMode;
   onLayoutModeChange: (mode: LayoutMode) => void;
+  isDesktop?: boolean;
 }
 
 export function SettingsTab(props: SettingsTabProps) {
   return (
     <div class="flex flex-col gap-6">
       <SettingsPanel />
-      <GeneralSettings layoutMode={props.layoutMode} onLayoutModeChange={props.onLayoutModeChange} />
+      <GeneralSettings layoutMode={props.layoutMode} onLayoutModeChange={props.onLayoutModeChange} isDesktop={props.isDesktop} />
       <ModelAliasSettings models={props.models} />
       <QuotaSettings />
       <RotationSettings />
