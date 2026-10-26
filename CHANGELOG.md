@@ -8,11 +8,76 @@
 
 ## [Unreleased]
 
+> 暂无已记录的变更。
+
+## [v2.1.x](https://github.com/icebear0828/codex-proxy/releases?q=2.1) - 2026-09-01 至 2026-09-07
+
 ### Added
 
 - Electron 桌面端新增应用内更新流程：打包模式下（macOS 除外）自动发现新版本并静默下载，更新状态经 Node 桥接层暴露给服务端；Dashboard 顶栏实时显示桌面端更新进度（发现版本 / 下载百分比，文案覆盖 en / zh / zh-TW / zh-HK / ja），下载完成后点击顶栏提示或更新入口即可就地重启安装，无需手动打开 Release 页，应用失败时顶栏显示错误。`GET /admin/update-status` 新增 `desktop` 字段，`POST /admin/check-update` 同时触发桌面端检查，`POST /admin/apply-update` 在桌面端更新已下载时直接重启安装并返回 `{restarting: true}`。移除旧的弹窗提示（update dialog）与「已下载后退出时安装」逻辑，改为一律从页面内触发；桌面模式下设置页隐藏随之失效的「自动下载安装包」「显示更新对话框」开关（配置字段保留以兼容旧配置解析）。（`packages/electron/electron/auto-updater.ts`、`packages/electron/electron/main.ts`、`packages/electron/src/electron-entry.ts`、`src/desktop-updater.ts`、`src/routes/admin/update.ts`、`shared/hooks/use-update-status.ts`、`shared/i18n/translations.ts`、`web/src/App.tsx`、`web/src/components/GeneralSettings.tsx`）
 
-## [v2.1.x](https://github.com/icebear0828/codex-proxy/releases?q=2.1) - 2026-09-01 至 2026-09-07
+- API Keys 支持自定义代理路由分配：可在添加与列表管理中为第三方 Key 单独绑定代理策略（全局默认、直连 bypass、自动轮询或指定具体代理节点），并新增 `PATCH /auth/api-keys/:id/proxy` 端点。（`src/auth/api-key-pool.ts`、`src/proxy/proxy-pool.ts`、`src/proxy/adapter-factory.ts`、`src/routes/api-keys.ts`、`web/src/components/ApiKeyManager.tsx`）
+
+- 首页新增 Antigravity OAuth 账号管理和用量展示，按模型显示独立额度，并展示账号邮箱、套餐与模型数量；支持账号启停及按套餐选择 Cloud Code 请求端点。（`src/auth/api-key-pool.ts`、`src/proxy/antigravity-upstream.ts`、`src/routes/auth.ts`、`web/src/components/AntigravityAccounts.tsx`）
+
+- 本地请求日志可镜像持久化到 `data/request-log.jsonl`，终态上游错误记录截断后的响应详情；错误文本与响应体中的凭据会脱敏并限制单条记录大小。日志仍受 `logs.enabled` 控制，清空日志时也会删除活动及轮转文件。（`src/logs/request-log-file.ts`、`src/logs/store.ts`、`src/logs/error-log.ts`、`src/routes/shared/direct-request-handler.ts`、`src/routes/shared/proxy-error-handler.ts`）
+
+- 上游传输弱网韧性三件套（状态码 0 重试、流空闲看门狗、原生层请求取消）：其一,上游建流阶段的状态码 0 传输失败（连接被重置/拒绝等）现在按指数退避自动重试（默认 2 次,客户端断开即停止,`PreviousResponseWebSocketError` 续链错误不适用）,重试耗尽后以 502 干净报错,不再直接把传输失败当作"无可用账号";其二,新增 `tls.stream_idle_timeout_ms`（默认 120s,0 关闭）上游无进度看门狗,同时覆盖两阶段——响应 header 迟迟不到（预 header 挂起,超时后取消上游 send 并按可重试传输失败处理）与 body 字节间静默（首个 body 字节起计时,首 token 前的合法思考停顿不会被误杀）,触发后按流提前断开暴露给客户端并归因日志;其三,rustls 原生层新增 inflight 注册表与 `httpCancel(requestId)` 绑定（tokio watch 通道贯穿 header 与 body 两阶段）,看门狗触发/客户端断开/下游流取消/预 header 超时四条路径都会终止上游请求并回收连接,旧版 addon 无此导出时自动降级为原行为。netlab 弱网实验环境（`tests/netlab/`,mock 上游 + toxiproxy 注入 + 隔离 runtime）提供可重复场景与"连接回收"验收（mock `openConnections` 归零断言）,新增 `npm run netlab:baseline` 命令与 `scripts/native/smoke-addon.mjs` ABI 冒烟,`.github/workflows/native-ci-matrix.yml` 支持 fork 侧 win-msvc/linux-musl/darwin-arm64 三平台 addon 矩阵验证。（`src/tls/native-transport.ts`、`native/src/lib.rs`、`src/routes/shared/`、`src/config-schema.ts`、`config/default.yaml`、`tests/netlab/`、`scripts/native/`、`.github/workflows/native-ci-matrix.yml`）
+
+> 暂无其他已记录的变更。
+
+- 首页新增 Antigravity OAuth 账号区，支持按账号启用、停用和整组移除；授权成功后自动登记 Sub2API 支持的 Claude 与 Gemini 模型，添加弹窗显示模型清单和操作结果。（`src/auth/antigravity-models.ts`、`src/routes/auth.ts`、`web/src/App.tsx`、`web/src/components/AntigravityAccounts.tsx`、`web/src/components/AddAccount.tsx`）
+
+- 主页「添加账户」弹窗新增 Antigravity Google OAuth 登录：使用 PKCE 生成授权链接，登录后粘贴浏览器的完整 localhost 回调 URL 即可交换并保存刷新令牌；默认绑定 Claude Sonnet 模型，也可填写多个模型 ID。（`src/auth/antigravity-oauth.ts`、`src/routes/auth.ts`、`web/src/components/AddAccount.tsx`）
+
+- 新增 Antigravity OAuth Provider：通过刷新令牌接入，支持自动发现 Google Cloud Project ID、手动配置模型，并按 `antigravity:<model-id>` 路由聊天请求。（`src/proxy/antigravity-upstream.ts`、`src/auth/api-key-pool.ts`、`web/src/components/ApiKeyManager.tsx`）
+
+- 模型列表支持 Codex 后端富元数据：运行时抓取的模型条目现在保留此前被丢弃的后端字段（`visibility`、`priority`、`supported_in_api`、`shell_type`、`service_tiers` / `default_service_tier`、`prefer_websockets`、`model_specialty`、`tool_mode`、verbosity 支持、`effective_context_window_percent`、truncation 策略 mode 等），并适配当前后端的对象形 `upgrade`（归一化为升级目标 slug + 完整迁移信息）。`/v1/models` 与 `/v1/models/:modelId` 在 OpenAI 标准字段之上以 snake_case 超集附带这些元数据（含 `display_name`、`description`、`supported_reasoning_efforts`、输入/输出模态），OpenAI 客户端忽略未知字段不受影响；Dashboard 的 `/v1/models/catalog` 与 `/v1/models/:modelId/info` 自动获得新字段。新增 `runtime` 模型来源标记运行时发现的 API Key 模型。（`src/models/model-store.ts`、`src/routes/models.ts`、`src/types/openai.ts`）
+
+- 新增 Codex CLI 富目录端点 `GET /v1/models/catalog/codex`：返回下游 Codex CLI 可原生解码的 `{models: [ModelInfo]}` 形状（必填键 `slug` / `display_name` / `supported_reasoning_levels` / `shell_type` / `visibility` / `supported_in_api` / `priority` / `support_verbosity` / `truncation_policy` 恒有值，后端未上报的字段按 CLI fallback 语义补默认值）。把 provider 配置的 `model_catalog_url` 指向该端点即可让下游 Codex CLI 获得经代理的全量模型元数据；端点遵循 client key `allowed_models` 过滤，并并入静态目录与运行时发现的模型。（`src/models/codex-catalog.ts`、`src/routes/models.ts`、`README.md`）
+
+> 暂无其他已记录的变更。
+
+- `/v1/images/edits` 补齐账号登录模式支持（JSON 协议）：请求体为 Codex CLI `images/edits` JSON 协议——`{model, prompt, images: [{image_url: "data:image/...;base64,..."}], size?, quality?, background?, output_format?, output_compression?, moderation?, partial_images?}`，参考图 1–16 张（data: 或 https URL），`n` 仅支持 1，PNG 输出仅允许压缩值 100；代理将其转换为 Codex Responses Edit mode 请求（参考图以 `input_image` 内容块进入 user 消息 + `image_generation` 工具）经账号池执行，宿主模型取 `model.image_host_model`，响应仍为 OpenAI Images JSON 形状。API-key wire 行为不变（逐字节透传给上游 `/images/edits`，字段校验由上游决定）。（`src/routes/shared/image-generation.ts`、`src/routes/images.ts`、`tests/e2e/images.test.ts`、`API.md`）
+
+- `/v1/images/edits` 接受 multipart/form-data 文件上传（OpenAI Images edits 标准格式）：`image`/`image[]` 文件段（可重复）、`prompt`/`model` 必填，可选 `size`/`quality`/`background`/`output_format`/`output_compression`/`moderation`/`partial_images`/`n`/`response_format`（仅 `b64_json`）。代理在入口将上传统一转换为 JSON 协议体后进入模型分发，API-key 透传与账号模式转换共享同一转换结果；`mask` 蒙版上游后端不支持、显式 400 拒绝（避免客户端误以为蒙版生效）；`/v1/images/generations` 收到 multipart 时返回 400 并提示仅 edits 支持。（`src/routes/shared/image-generation.ts`、`src/routes/images.ts`、`tests/e2e/images.test.ts`、`API.md`）
+
+> 暂无其他已记录的变更。
+
+- 新增 npm 分发渠道 `@icebear0828/codex-proxy`（#813）：`npm install -g @icebear0828/codex-proxy` 后以 `codex-proxy` 命令启动，功能与桌面版一致（Web 面板、账号管理、Ollama 桥接）；要求 Node.js 22.13+（内置 `node:sqlite`）。主包含 esbuild 单文件 bundle、前端资源与默认配置，各平台 TLS native addon（win32-x64/arm64-msvc、linux-x64/arm64 的 glibc+musl、darwin-x64/arm64）拆分为 `@icebear0828/codex-tls-<triple>` 平台包（与主包同 scope，loader 按 `CODEX_NPM_SCOPE` 解析），经 `optionalDependencies`（os/cpu/libc 字段）按系统自动选择，其他系统的二进制不下载（GitHub Packages 例外，见下文）；运行数据默认存于用户数据目录（与 Lite 非便携模式一致），`--portable` / `CODEX_PROXY_DATA_DIR` 可迁移。新增 `scripts/npm/stage-npm-packages.mjs` 打包脚本（主包 + 平台包，manifest 由 `packages/npm/package.json` 模板生成）与 `.github/workflows/npm-publish.yml`（tag 触发；6 平台矩阵构建（arm64 平台跑在免费 arm64 runner 上原生编译）+ 双架构 alpine 容器 musl 构建（含 cargo target 缓存）+ 打包冒烟 + 仅在上游仓库凭 `NPM_TOKEN` 发布，fork 运行时跳过发布并上传 tarball 产物）。npm 安装在后端被准确归类为 npm 分发模式：共享的 portable 启动器从所在包的 `manifest.json` 读取分发标识（Lite 清单无此字段、行为不变），`/admin/apply-update` 据此给出 `npm install -g @icebear0828/codex-proxy@latest` 升级指引，Web 更新弹窗提供一键复制该命令的按钮。预发布 tag（`vX.Y.Z-beta.*`）发布的包使用 npm `beta` dist-tag、不占 `latest`，`npm i -g` 始终安装最新稳定版。稳定 tag 现在由 bump 工作流显式 dispatch `npm-publish.yml`（bot 推送的 tag 不会触发下游工作流），未配置 `NPM_TOKEN` 时发布 job 绿色跳过、不打扰。 `napi build` 每次都会重新生成 loader、覆盖 scope 化的 require，构建后自动运行幂等脚本 `native/patch-loader.mjs` 恢复（本地与 CI 均得到与提交版一致的 loader）。包默认发布到 GitHub Packages（`npm.pkg.github.com`，用内置 GITHUB_TOKEN、无需外部 npm 账号；新包默认 private，而 GitHub 不提供更改包可见性的 API，需维护者在每个包的设置页手工一次性转 public，workflow 会输出 9 个直达链接；该 registry 的 npm 包即使 public 也必须用带 `read:packages` 的 token 认证安装，且会剥离 `libc` 元数据——Linux 上 glibc/musl 两个 addon 都会下载，loader 运行时按 `isMusl()` 选用正确的一个）。配置 `NPM_TOKEN` 后同步发布到 npmjs（免认证安装、平台过滤正常，仍是推荐的公开分发渠道）。tag 发布时还会把 9 个 tarball 与平台自识别安装脚本 `install.mjs` 打成 `codex-proxy-npm.zip` 附到该 Release（免认证下载、运行 `node install.mjs` 即全局安装，作为 npmjs 上线前的公开安装路径；README 通过 `/releases/latest/download/` 固定链接引用）。（`packages/npm/`、`scripts/npm/`、`scripts/portable/server.mjs`、`src/paths.ts`、`src/self-update.ts`、`src/routes/admin/update.ts`、`web/src/components/UpdateModal.tsx`、`.github/workflows/npm-publish.yml`、`.github/workflows/bump-electron.yml`、`tests/unit/npm/`、`native/patch-loader.mjs`、`scripts/npm/offline-install.mjs`、`tests/unit/self-update.test.ts`）
+
+- Alpine 镜像（`latest-lite`）新增 linux/arm64 平台，补齐 #800 发布时披露的 amd64-only 缺口：`linux-arm64-musl` TLS addon 在 arm64 runner 的 Alpine 容器内原生构建（不交叉编译，避免 #805 类链接污染），与 x86_64 走同一套 readelf 校验；`Dockerfile.lite` 按目标架构只保留本架构可加载的 musl addon；lite 镜像发布改为 amd64+arm64 双平台 buildx，推送前对两个平台分别执行 dlopen + 空卷启动 + `/health` 冒烟。顺带两项构建优化：移除仅为 glibc 宿主机冒烟而构建的 gnu addon（打包冒烟改在 `node:22-alpine` 容器内直接使用 musl addon，每次发布少一次完整 Rust 构建），musl 容器构建接入 cargo target 缓存（命中时全量构建降为增量重建）。（`Dockerfile.lite`、`scripts/docker/stage-lite.mjs`、`.github/workflows/docker-publish.yml`、`native/package.json`）
+
+> 暂无其他已记录的变更。
+
+- API Keys 新增「备忘录」：保存第三方供应商的 API Key / Base URL / 协议 / 能力作为添加模板，模型清单随模板保存并可一键刷新；添加条目时点选备忘录即可预填表单并勾选模型（支持筛选），无需重复输入凭据，条目添加后与备忘录解耦（自持 key 快照，不影响现有路由与轮询）。提供「从现有条目生成备忘录」一键迁移（仅当存在未被覆盖的凭据组合时显示）。（`src/auth/api-key-memo-store.ts`、`src/routes/api-keys.ts`、`web/src/components/ApiKeyManager.tsx`、`shared/hooks/use-api-keys.ts`）
+
+- API Keys 添加面板支持每日后台自动刷新备忘录模型清单（串行、逐备忘录强制直连上游，不同 token 的模型列表差异不会被 URL 级缓存污染），可通过 `api_keys.memo_auto_refresh: false` 关闭。（`src/memo-model-refresher.ts`、`src/config-schema.ts`）
+
+- 新增基于 Alpine 的 Docker 镜像变体 `ghcr.io/icebear0828/codex-proxy:latest-lite`（及 `:sha-*-lite`、`<版本>-lite` tag；标签名 lite 仅为内部变体标识）：**功能与现有 Debian 镜像完全一致**，镜像只包含应用本体与运行时必需内容——`node:22-alpine` 基底、esbuild 单文件 bundle、前端资源、仅 Linux musl TLS addon（不含 gnu/Windows/macOS 文件、node_modules 与构建工具链），压缩拉取体积约为 Debian 镜像的 1/12.6（GHCR manifest 实测 57.2MB vs 722MB）；sqlite 使用 Node 22 内置 `node:sqlite`（node:20 alpine 未内置），健康检查用 Node fetch（无 curl）；与 Debian 镜像保持相同的 `/app` 目录布局、`./data`/`./config` 卷契约及空 config 卷自动播种（entrypoint 从 `/defaults` 拷贝），stock `docker-compose.yml` 仅替换 image tag 即可互换；发布流水线在 glibc runner 上借 gnu addon 完成冒烟测试后将其移出镜像构建上下文。（`Dockerfile.lite`、`scripts/docker/stage-lite.mjs`、`.github/workflows/docker-publish.yml`）
+- No-Node Lite 在 Windows 缺少 WebView2 运行时且显式指定 `--mode=webview2` 时，新增经用户确认后的按需安装路径：从微软官方端点下载 Evergreen Bootstrapper（约 2MB），校验 Windows 可执行格式与 Authenticode 签名（须为 Microsoft 签发）后以 `/silent /install` 静默安装，下载器缓存于系统临时目录并复用；下载或校验失败时回退为打开官方安装页，仍支持 `CODEX_PROXY_WEBVIEW2_BOOTSTRAPPER` 指定本地安装器。（`scripts/portable/server.mjs`）
+
+- 新增 Linux x64 musl TLS native addon 构建与验证流程，并将 `codex-tls.linux-x64-musl.node` 接入 No-Node Lite 的构建和发布包，使 Lite 可在 Alpine 等 musl Linux 环境中使用。（`native/package.json`、`scripts/native/`、`scripts/portable/`、`.github/workflows/native-musl-ci.yml`）
+
+- 新增可选 No-Node Lite Browser/Server 发行版：保留现有 Electron 安装包不变，额外提供 `codex-proxy-<版本>-no-node-lite-all-platforms.tar.xz`，包含后端、前端资源、各平台 native addon 和启动器，支持无图形界面的 server 模式以及浏览器模式；Windows 通过 MSYS2 MinGW 构建 x86/x64 WebView2 host，并可选携带 Evergreen Bootstrapper。（`scripts/portable/`、`.github/workflows/lite-ci.yml`、`.github/workflows/release.yml`）
+
+- 支持 OpenAI GPT-6 Astra 系列（`gpt-6-astra`、`gpt-6-astra-aeon` 及别名 `gpt-6`）与 GPT-Reserve（`gpt-reserve`）：内置静态模型元数据与推理级别定义（`/v1/models/catalog` 可见），`gpt-6` 别名解析到 `gpt-6-astra`，可路由性已由 #776 的名称形态放行覆盖；同步适配 1,050,000 上下文窗口、Ollama 桥接架构系列识别与官方定价估算（`src/models/model-store.ts`、`src/ollama/bridge.ts`、`config/model-pricing.yaml`、`README.md`）。
+
+- 重构 Dashboard UI 视觉体系与设置交互逻辑：
+  - 移除窗口顶部菜单栏，并将窗口标题统一为「Codex Proxy」（`packages/electron/electron/main.ts`、`web/index.html`）。
+  - 全局优化浅色与深色色彩体系及统一系统/等宽字体层级渲染（`web/src/index.css`、`web/tailwind.config.ts`）。
+  - 新增独立「信息」Tab 页（`#/info`），归拢 API 配置、Anthropic SDK 配置、代码示例及连通性测试只读卡片（`web/src/pages/InfoPage.tsx`、`web/src/navigation.ts`、`shared/i18n/`）。
+  - 改版设置界面（`#/settings`）：重新组织分类设置项，升级为项级即时生效机制（修改后行内显示 `✅` 保存按钮，点击转圈加载，生效后平滑淡出，需重启项显示 `🔄 等待重启` 徽章），移除底部全局保存按钮（`web/src/components/`）。
+
+- 请求日志新增「账号 / 后备」列：展示每条请求实际服务的账号（label / 邮箱 / ID 短标识），走了后备（备用账号重试或后备上游 apikey）时显示橙色「后备」徽章；详情抽屉同步展示账号信息（`src/logs/`、`src/routes/shared/proxy-*.ts`、`shared/hooks/use-logs.ts`、`web/src/pages/LogsPage.tsx`、`shared/i18n/`）。
+
+- 首页「后备上游 (API Key)」卡片新增运行状态指示：请求切到后备（备用账号或后备上游）时卡片橙色高亮并脉冲闪动，显示「后备中」徽章；停止走后约 60 秒内自动恢复（`src/auth/fallback-state.ts`、`src/routes/accounts.ts`、`shared/hooks/use-accounts.ts`、`web/src/components/FallbackUpstreamCard.tsx`）。
+
+- 通用设置新增「更新到测试版 (Beta)」选项（默认关闭）：开启后自动更新检查将包含测试版（GitHub Releases 预发布版本与 Docker `-beta.` 标签），Electron 客户端同步开启测试版通道（`config/default.yaml`、`src/routes/admin/`、`src/self-update.ts`、`web/src/components/GeneralSettings.tsx`、`shared/i18n/`）。
+
+- 控制台新增日語 (ja)、繁體中文 (台灣, zh-TW)、繁體中文 (香港, zh-HK) 完整語言字典與本地化支援，並將頂部導航列語言切換升級為多語言下拉選擇器（`shared/i18n/`、`web/src/components/Header.tsx`、`shared/utils/format.ts`）。
+
+- 新增「后备上游 (API Key)」账户类型：配置一个 baseUrl + apiKey，固定走 Responses 接口，仅在所有账号均不可用时作为最后兜底启用；添加账户弹窗可添加，账户列表末尾独占一行展示，支持卡片上编辑/删除，仅允许配置一个。（`src/auth/fallback-upstream.ts`、`src/routes/accounts.ts`、`src/routes/shared/proxy-handler.ts`、`web/src/components/FallbackUpstreamCard.tsx`、`web/src/components/AddAccount.tsx`）
 
 ### Fixed
 
@@ -97,71 +162,6 @@
 - 修复并统一桌面端与 Web 端应用图标与 Logo：生成包含 Windows 完整多分辨率的 `icon.ico`、Web `favicon.ico` / `icon.png`，Electron 主进程窗口配置中注入应用图标并移除 `electron-builder` 的 `signAndEditExecutable: false` 以确保可执行文件与任务栏/桌面快捷方式正确嵌入图标；统一 Dashboard 顶部导航栏 Logo 为品牌立方体图标。（`packages/electron/`、`web/`、`scripts/build/generate-ico.ps1`）
 
 - 移除 Dashboard 顶部导航栏与侧栏重复展示的「服务运行中」状态徽标（`web/src/components/Header.tsx`）。
-
-### Added
-
-- API Keys 支持自定义代理路由分配：可在添加与列表管理中为第三方 Key 单独绑定代理策略（全局默认、直连 bypass、自动轮询或指定具体代理节点），并新增 `PATCH /auth/api-keys/:id/proxy` 端点。（`src/auth/api-key-pool.ts`、`src/proxy/proxy-pool.ts`、`src/proxy/adapter-factory.ts`、`src/routes/api-keys.ts`、`web/src/components/ApiKeyManager.tsx`）
-
-- 首页新增 Antigravity OAuth 账号管理和用量展示，按模型显示独立额度，并展示账号邮箱、套餐与模型数量；支持账号启停及按套餐选择 Cloud Code 请求端点。（`src/auth/api-key-pool.ts`、`src/proxy/antigravity-upstream.ts`、`src/routes/auth.ts`、`web/src/components/AntigravityAccounts.tsx`）
-
-- 本地请求日志可镜像持久化到 `data/request-log.jsonl`，终态上游错误记录截断后的响应详情；错误文本与响应体中的凭据会脱敏并限制单条记录大小。日志仍受 `logs.enabled` 控制，清空日志时也会删除活动及轮转文件。（`src/logs/request-log-file.ts`、`src/logs/store.ts`、`src/logs/error-log.ts`、`src/routes/shared/direct-request-handler.ts`、`src/routes/shared/proxy-error-handler.ts`）
-
-- 上游传输弱网韧性三件套（状态码 0 重试、流空闲看门狗、原生层请求取消）：其一,上游建流阶段的状态码 0 传输失败（连接被重置/拒绝等）现在按指数退避自动重试（默认 2 次,客户端断开即停止,`PreviousResponseWebSocketError` 续链错误不适用）,重试耗尽后以 502 干净报错,不再直接把传输失败当作"无可用账号";其二,新增 `tls.stream_idle_timeout_ms`（默认 120s,0 关闭）上游无进度看门狗,同时覆盖两阶段——响应 header 迟迟不到（预 header 挂起,超时后取消上游 send 并按可重试传输失败处理）与 body 字节间静默（首个 body 字节起计时,首 token 前的合法思考停顿不会被误杀）,触发后按流提前断开暴露给客户端并归因日志;其三,rustls 原生层新增 inflight 注册表与 `httpCancel(requestId)` 绑定（tokio watch 通道贯穿 header 与 body 两阶段）,看门狗触发/客户端断开/下游流取消/预 header 超时四条路径都会终止上游请求并回收连接,旧版 addon 无此导出时自动降级为原行为。netlab 弱网实验环境（`tests/netlab/`,mock 上游 + toxiproxy 注入 + 隔离 runtime）提供可重复场景与"连接回收"验收（mock `openConnections` 归零断言）,新增 `npm run netlab:baseline` 命令与 `scripts/native/smoke-addon.mjs` ABI 冒烟,`.github/workflows/native-ci-matrix.yml` 支持 fork 侧 win-msvc/linux-musl/darwin-arm64 三平台 addon 矩阵验证。（`src/tls/native-transport.ts`、`native/src/lib.rs`、`src/routes/shared/`、`src/config-schema.ts`、`config/default.yaml`、`tests/netlab/`、`scripts/native/`、`.github/workflows/native-ci-matrix.yml`）
-
-> 暂无其他已记录的变更。
-
-- 首页新增 Antigravity OAuth 账号区，支持按账号启用、停用和整组移除；授权成功后自动登记 Sub2API 支持的 Claude 与 Gemini 模型，添加弹窗显示模型清单和操作结果。（`src/auth/antigravity-models.ts`、`src/routes/auth.ts`、`web/src/App.tsx`、`web/src/components/AntigravityAccounts.tsx`、`web/src/components/AddAccount.tsx`）
-
-- 主页「添加账户」弹窗新增 Antigravity Google OAuth 登录：使用 PKCE 生成授权链接，登录后粘贴浏览器的完整 localhost 回调 URL 即可交换并保存刷新令牌；默认绑定 Claude Sonnet 模型，也可填写多个模型 ID。（`src/auth/antigravity-oauth.ts`、`src/routes/auth.ts`、`web/src/components/AddAccount.tsx`）
-
-- 新增 Antigravity OAuth Provider：通过刷新令牌接入，支持自动发现 Google Cloud Project ID、手动配置模型，并按 `antigravity:<model-id>` 路由聊天请求。（`src/proxy/antigravity-upstream.ts`、`src/auth/api-key-pool.ts`、`web/src/components/ApiKeyManager.tsx`）
-
-- 模型列表支持 Codex 后端富元数据：运行时抓取的模型条目现在保留此前被丢弃的后端字段（`visibility`、`priority`、`supported_in_api`、`shell_type`、`service_tiers` / `default_service_tier`、`prefer_websockets`、`model_specialty`、`tool_mode`、verbosity 支持、`effective_context_window_percent`、truncation 策略 mode 等），并适配当前后端的对象形 `upgrade`（归一化为升级目标 slug + 完整迁移信息）。`/v1/models` 与 `/v1/models/:modelId` 在 OpenAI 标准字段之上以 snake_case 超集附带这些元数据（含 `display_name`、`description`、`supported_reasoning_efforts`、输入/输出模态），OpenAI 客户端忽略未知字段不受影响；Dashboard 的 `/v1/models/catalog` 与 `/v1/models/:modelId/info` 自动获得新字段。新增 `runtime` 模型来源标记运行时发现的 API Key 模型。（`src/models/model-store.ts`、`src/routes/models.ts`、`src/types/openai.ts`）
-
-- 新增 Codex CLI 富目录端点 `GET /v1/models/catalog/codex`：返回下游 Codex CLI 可原生解码的 `{models: [ModelInfo]}` 形状（必填键 `slug` / `display_name` / `supported_reasoning_levels` / `shell_type` / `visibility` / `supported_in_api` / `priority` / `support_verbosity` / `truncation_policy` 恒有值，后端未上报的字段按 CLI fallback 语义补默认值）。把 provider 配置的 `model_catalog_url` 指向该端点即可让下游 Codex CLI 获得经代理的全量模型元数据；端点遵循 client key `allowed_models` 过滤，并并入静态目录与运行时发现的模型。（`src/models/codex-catalog.ts`、`src/routes/models.ts`、`README.md`）
-
-> 暂无其他已记录的变更。
-
-- `/v1/images/edits` 补齐账号登录模式支持（JSON 协议）：请求体为 Codex CLI `images/edits` JSON 协议——`{model, prompt, images: [{image_url: "data:image/...;base64,..."}], size?, quality?, background?, output_format?, output_compression?, moderation?, partial_images?}`，参考图 1–16 张（data: 或 https URL），`n` 仅支持 1，PNG 输出仅允许压缩值 100；代理将其转换为 Codex Responses Edit mode 请求（参考图以 `input_image` 内容块进入 user 消息 + `image_generation` 工具）经账号池执行，宿主模型取 `model.image_host_model`，响应仍为 OpenAI Images JSON 形状。API-key wire 行为不变（逐字节透传给上游 `/images/edits`，字段校验由上游决定）。（`src/routes/shared/image-generation.ts`、`src/routes/images.ts`、`tests/e2e/images.test.ts`、`API.md`）
-
-- `/v1/images/edits` 接受 multipart/form-data 文件上传（OpenAI Images edits 标准格式）：`image`/`image[]` 文件段（可重复）、`prompt`/`model` 必填，可选 `size`/`quality`/`background`/`output_format`/`output_compression`/`moderation`/`partial_images`/`n`/`response_format`（仅 `b64_json`）。代理在入口将上传统一转换为 JSON 协议体后进入模型分发，API-key 透传与账号模式转换共享同一转换结果；`mask` 蒙版上游后端不支持、显式 400 拒绝（避免客户端误以为蒙版生效）；`/v1/images/generations` 收到 multipart 时返回 400 并提示仅 edits 支持。（`src/routes/shared/image-generation.ts`、`src/routes/images.ts`、`tests/e2e/images.test.ts`、`API.md`）
-
-> 暂无其他已记录的变更。
-
-- 新增 npm 分发渠道 `@icebear0828/codex-proxy`（#813）：`npm install -g @icebear0828/codex-proxy` 后以 `codex-proxy` 命令启动，功能与桌面版一致（Web 面板、账号管理、Ollama 桥接）；要求 Node.js 22.13+（内置 `node:sqlite`）。主包含 esbuild 单文件 bundle、前端资源与默认配置，各平台 TLS native addon（win32-x64/arm64-msvc、linux-x64/arm64 的 glibc+musl、darwin-x64/arm64）拆分为 `@icebear0828/codex-tls-<triple>` 平台包（与主包同 scope，loader 按 `CODEX_NPM_SCOPE` 解析），经 `optionalDependencies`（os/cpu/libc 字段）按系统自动选择，其他系统的二进制不下载（GitHub Packages 例外，见下文）；运行数据默认存于用户数据目录（与 Lite 非便携模式一致），`--portable` / `CODEX_PROXY_DATA_DIR` 可迁移。新增 `scripts/npm/stage-npm-packages.mjs` 打包脚本（主包 + 平台包，manifest 由 `packages/npm/package.json` 模板生成）与 `.github/workflows/npm-publish.yml`（tag 触发；6 平台矩阵构建（arm64 平台跑在免费 arm64 runner 上原生编译）+ 双架构 alpine 容器 musl 构建（含 cargo target 缓存）+ 打包冒烟 + 仅在上游仓库凭 `NPM_TOKEN` 发布，fork 运行时跳过发布并上传 tarball 产物）。npm 安装在后端被准确归类为 npm 分发模式：共享的 portable 启动器从所在包的 `manifest.json` 读取分发标识（Lite 清单无此字段、行为不变），`/admin/apply-update` 据此给出 `npm install -g @icebear0828/codex-proxy@latest` 升级指引，Web 更新弹窗提供一键复制该命令的按钮。预发布 tag（`vX.Y.Z-beta.*`）发布的包使用 npm `beta` dist-tag、不占 `latest`，`npm i -g` 始终安装最新稳定版。稳定 tag 现在由 bump 工作流显式 dispatch `npm-publish.yml`（bot 推送的 tag 不会触发下游工作流），未配置 `NPM_TOKEN` 时发布 job 绿色跳过、不打扰。 `napi build` 每次都会重新生成 loader、覆盖 scope 化的 require，构建后自动运行幂等脚本 `native/patch-loader.mjs` 恢复（本地与 CI 均得到与提交版一致的 loader）。包默认发布到 GitHub Packages（`npm.pkg.github.com`，用内置 GITHUB_TOKEN、无需外部 npm 账号；新包默认 private，而 GitHub 不提供更改包可见性的 API，需维护者在每个包的设置页手工一次性转 public，workflow 会输出 9 个直达链接；该 registry 的 npm 包即使 public 也必须用带 `read:packages` 的 token 认证安装，且会剥离 `libc` 元数据——Linux 上 glibc/musl 两个 addon 都会下载，loader 运行时按 `isMusl()` 选用正确的一个）。配置 `NPM_TOKEN` 后同步发布到 npmjs（免认证安装、平台过滤正常，仍是推荐的公开分发渠道）。tag 发布时还会把 9 个 tarball 与平台自识别安装脚本 `install.mjs` 打成 `codex-proxy-npm.zip` 附到该 Release（免认证下载、运行 `node install.mjs` 即全局安装，作为 npmjs 上线前的公开安装路径；README 通过 `/releases/latest/download/` 固定链接引用）。（`packages/npm/`、`scripts/npm/`、`scripts/portable/server.mjs`、`src/paths.ts`、`src/self-update.ts`、`src/routes/admin/update.ts`、`web/src/components/UpdateModal.tsx`、`.github/workflows/npm-publish.yml`、`.github/workflows/bump-electron.yml`、`tests/unit/npm/`、`native/patch-loader.mjs`、`scripts/npm/offline-install.mjs`、`tests/unit/self-update.test.ts`）
-
-- Alpine 镜像（`latest-lite`）新增 linux/arm64 平台，补齐 #800 发布时披露的 amd64-only 缺口：`linux-arm64-musl` TLS addon 在 arm64 runner 的 Alpine 容器内原生构建（不交叉编译，避免 #805 类链接污染），与 x86_64 走同一套 readelf 校验；`Dockerfile.lite` 按目标架构只保留本架构可加载的 musl addon；lite 镜像发布改为 amd64+arm64 双平台 buildx，推送前对两个平台分别执行 dlopen + 空卷启动 + `/health` 冒烟。顺带两项构建优化：移除仅为 glibc 宿主机冒烟而构建的 gnu addon（打包冒烟改在 `node:22-alpine` 容器内直接使用 musl addon，每次发布少一次完整 Rust 构建），musl 容器构建接入 cargo target 缓存（命中时全量构建降为增量重建）。（`Dockerfile.lite`、`scripts/docker/stage-lite.mjs`、`.github/workflows/docker-publish.yml`、`native/package.json`）
-
-> 暂无其他已记录的变更。
-
-- API Keys 新增「备忘录」：保存第三方供应商的 API Key / Base URL / 协议 / 能力作为添加模板，模型清单随模板保存并可一键刷新；添加条目时点选备忘录即可预填表单并勾选模型（支持筛选），无需重复输入凭据，条目添加后与备忘录解耦（自持 key 快照，不影响现有路由与轮询）。提供「从现有条目生成备忘录」一键迁移（仅当存在未被覆盖的凭据组合时显示）。（`src/auth/api-key-memo-store.ts`、`src/routes/api-keys.ts`、`web/src/components/ApiKeyManager.tsx`、`shared/hooks/use-api-keys.ts`）
-
-- API Keys 添加面板支持每日后台自动刷新备忘录模型清单（串行、逐备忘录强制直连上游，不同 token 的模型列表差异不会被 URL 级缓存污染），可通过 `api_keys.memo_auto_refresh: false` 关闭。（`src/memo-model-refresher.ts`、`src/config-schema.ts`）
-
-- 新增基于 Alpine 的 Docker 镜像变体 `ghcr.io/icebear0828/codex-proxy:latest-lite`（及 `:sha-*-lite`、`<版本>-lite` tag；标签名 lite 仅为内部变体标识）：**功能与现有 Debian 镜像完全一致**，镜像只包含应用本体与运行时必需内容——`node:22-alpine` 基底、esbuild 单文件 bundle、前端资源、仅 Linux musl TLS addon（不含 gnu/Windows/macOS 文件、node_modules 与构建工具链），压缩拉取体积约为 Debian 镜像的 1/12.6（GHCR manifest 实测 57.2MB vs 722MB）；sqlite 使用 Node 22 内置 `node:sqlite`（node:20 alpine 未内置），健康检查用 Node fetch（无 curl）；与 Debian 镜像保持相同的 `/app` 目录布局、`./data`/`./config` 卷契约及空 config 卷自动播种（entrypoint 从 `/defaults` 拷贝），stock `docker-compose.yml` 仅替换 image tag 即可互换；发布流水线在 glibc runner 上借 gnu addon 完成冒烟测试后将其移出镜像构建上下文。（`Dockerfile.lite`、`scripts/docker/stage-lite.mjs`、`.github/workflows/docker-publish.yml`）
-- No-Node Lite 在 Windows 缺少 WebView2 运行时且显式指定 `--mode=webview2` 时，新增经用户确认后的按需安装路径：从微软官方端点下载 Evergreen Bootstrapper（约 2MB），校验 Windows 可执行格式与 Authenticode 签名（须为 Microsoft 签发）后以 `/silent /install` 静默安装，下载器缓存于系统临时目录并复用；下载或校验失败时回退为打开官方安装页，仍支持 `CODEX_PROXY_WEBVIEW2_BOOTSTRAPPER` 指定本地安装器。（`scripts/portable/server.mjs`）
-
-- 新增 Linux x64 musl TLS native addon 构建与验证流程，并将 `codex-tls.linux-x64-musl.node` 接入 No-Node Lite 的构建和发布包，使 Lite 可在 Alpine 等 musl Linux 环境中使用。（`native/package.json`、`scripts/native/`、`scripts/portable/`、`.github/workflows/native-musl-ci.yml`）
-
-- 新增可选 No-Node Lite Browser/Server 发行版：保留现有 Electron 安装包不变，额外提供 `codex-proxy-<版本>-no-node-lite-all-platforms.tar.xz`，包含后端、前端资源、各平台 native addon 和启动器，支持无图形界面的 server 模式以及浏览器模式；Windows 通过 MSYS2 MinGW 构建 x86/x64 WebView2 host，并可选携带 Evergreen Bootstrapper。（`scripts/portable/`、`.github/workflows/lite-ci.yml`、`.github/workflows/release.yml`）
-
-- 支持 OpenAI GPT-6 Astra 系列（`gpt-6-astra`、`gpt-6-astra-aeon` 及别名 `gpt-6`）与 GPT-Reserve（`gpt-reserve`）：内置静态模型元数据与推理级别定义（`/v1/models/catalog` 可见），`gpt-6` 别名解析到 `gpt-6-astra`，可路由性已由 #776 的名称形态放行覆盖；同步适配 1,050,000 上下文窗口、Ollama 桥接架构系列识别与官方定价估算（`src/models/model-store.ts`、`src/ollama/bridge.ts`、`config/model-pricing.yaml`、`README.md`）。
-
-- 重构 Dashboard UI 视觉体系与设置交互逻辑：
-  - 移除窗口顶部菜单栏，并将窗口标题统一为「Codex Proxy」（`packages/electron/electron/main.ts`、`web/index.html`）。
-  - 全局优化浅色与深色色彩体系及统一系统/等宽字体层级渲染（`web/src/index.css`、`web/tailwind.config.ts`）。
-  - 新增独立「信息」Tab 页（`#/info`），归拢 API 配置、Anthropic SDK 配置、代码示例及连通性测试只读卡片（`web/src/pages/InfoPage.tsx`、`web/src/navigation.ts`、`shared/i18n/`）。
-  - 改版设置界面（`#/settings`）：重新组织分类设置项，升级为项级即时生效机制（修改后行内显示 `✅` 保存按钮，点击转圈加载，生效后平滑淡出，需重启项显示 `🔄 等待重启` 徽章），移除底部全局保存按钮（`web/src/components/`）。
-
-- 请求日志新增「账号 / 后备」列：展示每条请求实际服务的账号（label / 邮箱 / ID 短标识），走了后备（备用账号重试或后备上游 apikey）时显示橙色「后备」徽章；详情抽屉同步展示账号信息（`src/logs/`、`src/routes/shared/proxy-*.ts`、`shared/hooks/use-logs.ts`、`web/src/pages/LogsPage.tsx`、`shared/i18n/`）。
-
-- 首页「后备上游 (API Key)」卡片新增运行状态指示：请求切到后备（备用账号或后备上游）时卡片橙色高亮并脉冲闪动，显示「后备中」徽章；停止走后约 60 秒内自动恢复（`src/auth/fallback-state.ts`、`src/routes/accounts.ts`、`shared/hooks/use-accounts.ts`、`web/src/components/FallbackUpstreamCard.tsx`）。
-
-- 通用设置新增「更新到测试版 (Beta)」选项（默认关闭）：开启后自动更新检查将包含测试版（GitHub Releases 预发布版本与 Docker `-beta.` 标签），Electron 客户端同步开启测试版通道（`config/default.yaml`、`src/routes/admin/`、`src/self-update.ts`、`web/src/components/GeneralSettings.tsx`、`shared/i18n/`）。
-
-- 控制台新增日語 (ja)、繁體中文 (台灣, zh-TW)、繁體中文 (香港, zh-HK) 完整語言字典與本地化支援，並將頂部導航列語言切換升級為多語言下拉選擇器（`shared/i18n/`、`web/src/components/Header.tsx`、`shared/utils/format.ts`）。
-
-- 新增「后备上游 (API Key)」账户类型：配置一个 baseUrl + apiKey，固定走 Responses 接口，仅在所有账号均不可用时作为最后兜底启用；添加账户弹窗可添加，账户列表末尾独占一行展示，支持卡片上编辑/删除，仅允许配置一个。（`src/auth/fallback-upstream.ts`、`src/routes/accounts.ts`、`src/routes/shared/proxy-handler.ts`、`web/src/components/FallbackUpstreamCard.tsx`、`web/src/components/AddAccount.tsx`）
 
 ### Changed
 
