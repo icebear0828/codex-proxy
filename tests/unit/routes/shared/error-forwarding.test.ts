@@ -364,7 +364,10 @@ describe("handleDirectRequest error forwarding", () => {
     expect(typeof options.onResponseId).toBe("function");
     expect(options.tupleSchema).toBe(tupleSchema);
     expect(options.usageHint).toBeUndefined();
-    expect(options.onResponseMetadata).toBeUndefined();
+    // The streaming path carries a metadata collector so a terminal
+    // safety-policy frame can quarantine the conversation; the collect path
+    // (asserted above) reports rejections by throwing instead.
+    expect(typeof options.onResponseMetadata).toBe("function");
     expect(options.streamContext).toMatchObject({
       tag: "Test",
       provider: "openai",

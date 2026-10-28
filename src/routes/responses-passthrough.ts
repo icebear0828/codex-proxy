@@ -18,6 +18,8 @@ import type {
   StreamTranslatorContext,
 } from "./shared/proxy-handler-types.js";
 import { isRecord } from "../translation/shared-utils.js";
+import { isPolicyRejection } from "../proxy/policy-rejection.js";
+import { codexApiErrorFromEvent } from "../translation/codex-api-error-from-event.js";
 import {
   containsInvalidEncryptedContentSignal,
   sanitizeReasoningReplayItems,
@@ -251,6 +253,13 @@ export async function* streamPassthrough(
           detail: `${raw.event}: ${err.code}: ${err.message}`,
         });
         onResponseMetadata?.({ terminalFailure: true });
+        // A safety-policy rejection arrives as a terminal frame, so the HTTP
+        // response is already committed — this cannot be turned into a 4xx.
+        // Report it so the caller can quarantine the conversation and refuse
+        // the *next* turn locally; see src/proxy/policy-rejection.ts.
+        if (isPolicyRejection({ code: err.code, message: err.message })) {
+          onResponseMetadata?.({ policyRejection: { code: err.code, message: err.message } });
+        }
         if (containsInvalidEncryptedContentSignal(raw.data)) {
           onResponseMetadata?.({ invalidReasoningReplay: true });
         }
@@ -457,6 +466,16 @@ export async function collectPassthrough(
           onResponseMetadata?.({ invalidReasoningReplay: true });
         }
         const err = extractCodexError(data);
+        // A terminal failure frame is a verdict about the request, not an
+        // empty stream. Report a safety-policy rejection as such so the caller
+        // quarantines the conversation and refuses the next turn instead of
+        // retrying the same content (see src/proxy/policy-rejection.ts). The
+        // typed error keeps the code reachable for the retry classifier; only
+        // this case is rethrown past the EmptyResponseError conversion below.
+        if (isPolicyRejection({ code: err.code, message: err.message })) {
+          onResponseMetadata?.({ policyRejection: { code: err.code, message: err.message } });
+          throw codexApiErrorFromEvent(err);
+        }
         throw new Error(
           `Codex API error: ${err.code}: ${err.message}`,
         );
@@ -464,6 +483,7 @@ export async function collectPassthrough(
     }
   } catch (streamErr) {
     if (!finalResponse) {
+      if (isPolicyRejection(streamErr)) throw streamErr;
       throw new EmptyResponseError(responseId, usage);
     }
     throw streamErr;

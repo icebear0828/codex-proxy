@@ -3,11 +3,20 @@
  */
 
 import { describe, it, expect } from "vitest";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
+import yaml from "js-yaml";
 import {
   ConfigSchema,
   FingerprintSchema,
   ROTATION_STRATEGIES,
 } from "@src/config-schema.js";
+import {
+  DEFAULT_POLICY_ERROR_CODES,
+  DEFAULT_POLICY_MESSAGE_PATTERNS,
+  DEFAULT_POLICY_STATUS_CODES,
+} from "@src/proxy/policy-rejection.js";
+import { DEFAULT_QUARANTINE_TTL_SECONDS } from "@src/proxy/conversation-quarantine.js";
 
 describe("ROTATION_STRATEGIES", () => {
   it("contains expected values", () => {
@@ -269,6 +278,38 @@ describe("ConfigSchema", () => {
     expect(result.quota.concurrency).toBe(10);
     expect(result.update.auto_update).toBe(true);
     expect(result.update.show_update_dialog).toBe(false);
+  });
+});
+
+describe("policy_guard defaults", () => {
+  const minimalConfig = {
+    api: {}, client: {}, model: {}, auth: {}, server: {}, session: {},
+  };
+
+  it("matches the matcher and quarantine module constants", () => {
+    // The guard's built-in detection lists and its quarantine TTL exist both
+    // as schema defaults and as module constants; enabling the guard without
+    // writing the config block must behave exactly like the constants do.
+    const result = ConfigSchema.parse(minimalConfig);
+    expect(result.policy_guard).toEqual({
+      enabled: false,
+      error_codes: [...DEFAULT_POLICY_ERROR_CODES],
+      message_patterns: [...DEFAULT_POLICY_MESSAGE_PATTERNS],
+      status_codes: [...DEFAULT_POLICY_STATUS_CODES],
+      ttl_seconds: DEFAULT_QUARANTINE_TTL_SECONDS,
+    });
+  });
+
+  it("keeps config/default.yaml in step with the schema defaults", () => {
+    // The shipped file, the schema defaults and the module constants are
+    // three copies of the same contract; drift between them is invisible
+    // until a deployment relies on one of the copies.
+    const file = readFileSync(
+      resolve(import.meta.dirname, "../../config/default.yaml"),
+      "utf8",
+    );
+    const parsed = ConfigSchema.parse(yaml.load(file));
+    expect(parsed.policy_guard).toEqual(ConfigSchema.parse(minimalConfig).policy_guard);
   });
 });
 
