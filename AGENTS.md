@@ -15,6 +15,11 @@
 - Gemini / Antigravity 的工具参数及结构化输出 schema 必须按 Gemini 支持的字段白名单清洗；清除 `prefixItems` 等不支持字段后，如果 schema 仍为 `type: array` 且缺少 `items`，需补宽松的 `{}` schema，避免 Gemini 的 `missing field` 校验错误。为此类变换补充嵌套 schema 回归测试。
 - 持久化请求/错误诊断时，必须先脱敏并限制单条记录和文件大小；不要提交临时的原始 tools / request dump，也不要记录凭据。
 
+## PR 合并策略
+
+- 所有以 `dev` 或 `main` 为目标分支的 PR，必须使用 Squash merge 压缩合并。
+- 禁止使用普通 merge commit 或 rebase merge 合入 `dev` / `main`。
+
 ## PR 合并后的自动同步
 
 - PR 合并到 `dev` 后，默认自动同步主工作目录的本地 `dev`，无需再次询问用户；执行前确认当前分支为 `dev` 且工作区干净，然后运行 `git pull --ff-only origin dev`。
