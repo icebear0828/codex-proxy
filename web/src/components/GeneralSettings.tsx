@@ -1,3 +1,4 @@
+import { LanAccessSettings } from "./LanAccessSettings";
 import { useState, useCallback, useRef, useEffect } from "preact/hooks";
 import { useT } from "../../../shared/i18n/context";
 import { useGeneralSettings, type SystemPromptStrategy } from "../../../shared/hooks/use-general-settings";
@@ -278,6 +279,7 @@ export function GeneralSettings({ layoutMode, onLayoutModeChange, isDesktop = fa
         </div>
 
         <div class="px-5 py-2">
+          {isDesktop && <LanAccessSettings settings={gs} />}
           {/* Server Port */}
           <SettingItemControl
             label={t("generalSettingsPort")}
