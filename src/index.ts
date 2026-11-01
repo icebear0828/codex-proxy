@@ -1,3 +1,4 @@
+import { readLanRuntime, type LanRuntimeState } from "./utils/lan-access.js";
 import "./utils/install-dev-logger.js";
 
 import { Hono } from "hono";
@@ -209,7 +210,8 @@ export async function startServer(options?: StartOptions): Promise<ServerHandle>
   const proxyRoutes = createProxyRoutes(proxyPool, accountPool);
   const usageStats = new UsageStatsStore();
   usageStats.recoverBaseline(accountPool);
-  const webRoutes = createWebRoutes(accountPool, usageStats, clientKeyPool, keepaliveScheduler);
+  let getLanRuntime: () => LanRuntimeState | null = () => null;
+  const webRoutes = createWebRoutes(accountPool, usageStats, clientKeyPool, keepaliveScheduler, () => getLanRuntime());
 
   app.route("/", createDashboardAuthRoutes());
   app.route("/", authRoutes);
@@ -309,6 +311,7 @@ export async function startServer(options?: StartOptions): Promise<ServerHandle>
   // Resolve actual port (may differ from requested when port=0)
   const addr = server.address();
   const actualPort = (addr && typeof addr === "object") ? addr.port : port;
+  getLanRuntime = () => readLanRuntime(server);
   const upstreamBaseUrl = `http://${urlHostForLocalRequest(host)}:${actualPort}`;
   await startOllamaBridge(getConfig(), { upstreamBaseUrl });
 

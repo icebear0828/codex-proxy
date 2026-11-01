@@ -1,3 +1,5 @@
+import { networkInterfaces } from "node:os";
+import { listLanIpv4Addresses, type LanRuntimeState } from "../../utils/lan-access.js";
 import { Hono } from "hono";
 import { getConnInfo } from "@hono/node-server/conninfo";
 import { getConfig, getLocalConfigPath, reloadAllConfigs, ROTATION_STRATEGIES } from "../../config.js";
@@ -48,7 +50,7 @@ function normalizeModelAliases(input: unknown): {
   return { aliases, error: null };
 }
 
-export function createSettingsRoutes(accountPool?: AccountPool): Hono {
+export function createSettingsRoutes(accountPool?: AccountPool, getLanRuntime?: () => LanRuntimeState | null): Hono {
   const app = new Hono();
 
 
@@ -118,11 +120,19 @@ export function createSettingsRoutes(accountPool?: AccountPool): Hono {
     return c.json({ success: true, proxy_api_key: newKey });
   });
 
+  const lanFields = (host: string) => ({
+    host,
+    lan_access: host === "0.0.0.0",
+    lan_runtime: getLanRuntime?.() ?? null,
+    lan_ipv4_addresses: listLanIpv4Addresses(networkInterfaces()),
+  });
+
   // --- General (server/tls) settings ---
 
   app.get("/admin/general-settings", (c) => {
     const config = getConfig();
     return c.json({
+      ...lanFields(config.server.host),
       port: config.server.port,
       proxy_url: config.tls.proxy_url,
       force_http11: config.tls.force_http11,
@@ -158,6 +168,7 @@ export function createSettingsRoutes(accountPool?: AccountPool): Hono {
     const config = getConfig();
     const body = await c.req.json() as {
       port?: number;
+      lan_access?: boolean;
       proxy_url?: string | null;
       force_http11?: boolean;
       inject_desktop_context?: boolean;
@@ -186,6 +197,15 @@ export function createSettingsRoutes(accountPool?: AccountPool): Hono {
     };
 
     // --- validation ---
+    if (body.lan_access !== undefined) {
+      if (typeof body.lan_access !== "boolean") {
+        return c.json({ error: "lan_access must be a boolean" }, 400);
+      }
+      const key = config.server.proxy_api_key?.trim();
+      if (body.lan_access && (!key || key === "pwd")) {
+        return c.json({ error: "Set a non-default management API key before enabling LAN access" }, 400);
+      }
+    }
     if (body.port !== undefined) {
       if (!Number.isInteger(body.port) || body.port < 1 || body.port > 65535) {
         c.status(400);
@@ -314,9 +334,15 @@ export function createSettingsRoutes(accountPool?: AccountPool): Hono {
     }
 
     const oldPort = config.server.port;
+    const savedHost = body.lan_access === undefined ? config.server.host : body.lan_access ? "0.0.0.0" : "127.0.0.1";
+    const runningHost = getLanRuntime?.()?.host ?? config.server.host;
     const oldDefaultModel = config.model.default;
 
     mutateYaml(getLocalConfigPath(), (data) => {
+      if (body.lan_access !== undefined) {
+        if (!data.server) data.server = {};
+        (data.server as Record<string, unknown>).host = savedHost;
+      }
       if (body.port !== undefined) {
         if (!data.server) data.server = {};
         (data.server as Record<string, unknown>).port = body.port;
@@ -433,10 +459,12 @@ export function createSettingsRoutes(accountPool?: AccountPool): Hono {
 
     const updated = getConfig();
     const restartRequired =
+      savedHost !== runningHost ||
       (body.port !== undefined && body.port !== oldPort) ||
       (body.default_model !== undefined && body.default_model !== oldDefaultModel);
     return c.json({
       success: true,
+      ...lanFields(savedHost),
       port: updated.server.port,
       proxy_url: updated.tls.proxy_url,
       force_http11: updated.tls.force_http11,
