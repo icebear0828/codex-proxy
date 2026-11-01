@@ -111,6 +111,14 @@ export function createSettingsRoutes(accountPool?: AccountPool, getLanRuntime?: 
       }
     }
 
+    // Require a strong, non-default key when LAN access is enabled or listening on all interfaces
+    const isLanActive = config.server.host === "0.0.0.0" || getLanRuntime?.()?.host === "0.0.0.0";
+    const trimmedKey = newKey?.trim();
+    if (isLanActive && (!trimmedKey || trimmedKey === "pwd")) {
+      c.status(400);
+      return c.json({ error: "Cannot disable or use default management API key while LAN access is enabled" });
+    }
+
     mutateYaml(getLocalConfigPath(), (data) => {
       if (!data.server) data.server = {};
       (data.server as Record<string, unknown>).proxy_api_key = newKey;

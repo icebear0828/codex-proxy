@@ -1,6 +1,8 @@
+import { createServer } from "node:http";
+import { once } from "node:events";
+import type { networkInterfaces } from "node:os";
 import { describe, it, expect } from "vitest";
 import { listLanIpv4Addresses, readLanRuntime } from "../../../src/utils/lan-access.js";
-import type { networkInterfaces } from "node:os";
 
 describe("LAN addresses", () => {
   it("filters loopback and IPv6, deduplicates and sorts candidates", () => {
@@ -17,10 +19,6 @@ describe("LAN addresses", () => {
     expect(listLanIpv4Addresses({})).toEqual([]);
   });
 });
-
-
-import { createServer } from "node:http";
-import { once } from "node:events";
 
 it("reads ephemeral ports per server and returns null after close", async () => {
   const first = createServer();

@@ -633,4 +633,27 @@ describe("LAN access settings", () => {
     const res = await app.request("/admin/general-settings", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ port: 8080 }) });
     expect((await res.json()).restart_required).toBe(true);
   });
+  it.each([null, "", "  ", "pwd", " pwd "])("rejects setting weak key %s in POST /admin/settings when LAN access is active", async (key) => {
+    mockConfig.server.host = "0.0.0.0";
+    const res = await makeApp().request("/admin/settings", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ proxy_api_key: key }),
+    });
+    expect(res.status).toBe(400);
+    expect((await res.json()).error).toContain("LAN access");
+    expect(mutateYaml).not.toHaveBeenCalled();
+  });
+  it("rejects setting weak key in POST /admin/settings when runtime host is 0.0.0.0", async () => {
+    mockConfig.server.host = "127.0.0.1";
+    const app = createWebRoutes(mockPool, mockUsageStats, undefined, undefined, () => ({ host: "0.0.0.0", port: 8080 }));
+    const res = await app.request("/admin/settings", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ proxy_api_key: "pwd" }),
+    });
+    expect(res.status).toBe(400);
+    expect((await res.json()).error).toContain("LAN access");
+    expect(mutateYaml).not.toHaveBeenCalled();
+  });
 });

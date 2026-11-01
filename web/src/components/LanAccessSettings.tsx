@@ -1,15 +1,25 @@
-import { useState } from "preact/hooks";
+import { useState, useRef, useEffect } from "preact/hooks";
 import { useT } from "../../../shared/i18n/context";
 import type { useGeneralSettings } from "../../../shared/hooks/use-general-settings";
+import { clipboardCopy } from "../../../shared/utils/clipboard";
 import { SettingItemControl } from "./settings/SettingItemControl";
 
 export function LanAccessSettings({ settings }: { settings: ReturnType<typeof useGeneralSettings> }) {
   const t = useT();
+  const mountedRef = useRef(true);
   const [draft, setDraft] = useState<boolean | null>(null);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [copyStatus, setCopyStatus] = useState<string | null>(null);
+
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+    };
+  }, []);
+
   const data = settings.data;
   const custom = !!data && data.host !== "127.0.0.1" && data.host !== "0.0.0.0";
   const runtime = data?.lan_runtime;
@@ -24,6 +34,9 @@ export function LanAccessSettings({ settings }: { settings: ReturnType<typeof us
       await settings.save({ lan_access: draft });
       setDraft(null);
       setSaved(true);
+      setTimeout(() => {
+        if (mountedRef.current) setSaved(false);
+      }, 2000);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
@@ -32,11 +45,19 @@ export function LanAccessSettings({ settings }: { settings: ReturnType<typeof us
   };
   const copy = async (url: string) => {
     try {
-      await navigator.clipboard.writeText(url);
-      setCopyStatus(t("lanAccessCopied"));
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(url);
+        setCopyStatus(t("lanAccessCopied"));
+      } else {
+        const ok = await clipboardCopy(url);
+        setCopyStatus(ok ? t("lanAccessCopied") : t("lanAccessCopyFailed"));
+      }
     } catch {
       setCopyStatus(t("lanAccessCopyFailed"));
     }
+    setTimeout(() => {
+      if (mountedRef.current) setCopyStatus(null);
+    }, 2000);
   };
   return (
     <div>
@@ -47,15 +68,20 @@ export function LanAccessSettings({ settings }: { settings: ReturnType<typeof us
         saving={saving} saved={saved} error={error} requiresRestart onSave={save}
         disabled={!data}
       >
-        <label class="flex items-center gap-2 text-sm text-slate-700 dark:text-text-main">
-          <input type="checkbox" checked={draft ?? data?.lan_access ?? false}
-            disabled={!data || saving} onChange={(e) => { setDraft(e.currentTarget.checked); setSaved(false); setError(null); }} />
-          {t("lanAccessLabel")}
+        <label class="flex items-center gap-2 text-sm text-slate-700 dark:text-text-main cursor-pointer">
+          <input
+            type="checkbox"
+            checked={draft ?? data?.lan_access ?? false}
+            disabled={!data || saving}
+            onChange={(e) => { setDraft(e.currentTarget.checked); setSaved(false); setError(null); }}
+            class="w-4 h-4 rounded border-gray-300 dark:border-border-dark text-primary focus:ring-primary cursor-pointer"
+          />
+          <span class="text-xs font-semibold text-slate-700 dark:text-text-main">{t("lanAccessLabel")}</span>
         </label>
-        {custom && <p class="text-xs text-amber-600">{t("lanAccessCustom")}: {data?.host}
+        {custom && <p class="text-xs text-amber-600 mt-1">{t("lanAccessCustom")}: {data?.host}
           <button type="button" class="ml-2 text-primary underline" onClick={() => setDraft(false)}>{t("lanAccessLocal")}</button>
         </p>}
-        <p class="text-xs text-slate-500 dark:text-text-dim">{t("lanAccessKeyHint")}</p>
+        <p class="text-xs text-slate-500 dark:text-text-dim mt-1">{t("lanAccessKeyHint")}</p>
       </SettingItemControl>
       <div class="pb-3 space-y-2 text-xs text-slate-500 dark:text-text-dim" aria-live="polite">
         {pending && <p class="text-amber-600">{t("lanAccessRestart")}</p>}
@@ -64,8 +90,8 @@ export function LanAccessSettings({ settings }: { settings: ReturnType<typeof us
           {(data?.lan_ipv4_addresses ?? []).map(ip => {
             const url = `http://${ip}:${runtime.port}/v1`;
             return <div key={ip} class="flex items-center gap-2 flex-wrap">
-              <code class="select-all break-all">{url}</code>
-              <button type="button" class="text-primary underline" onClick={() => void copy(url)}>{t("lanAccessCopy")}</button>
+              <code class="select-all break-all px-2 py-0.5 rounded bg-slate-100 dark:bg-border-dark text-xs font-mono">{url}</code>
+              <button type="button" class="text-primary hover:underline" onClick={() => void copy(url)}>{t("lanAccessCopy")}</button>
             </div>;
           })}
           {!data?.lan_ipv4_addresses?.length && <p>{t("lanAccessNoAddress")}</p>}

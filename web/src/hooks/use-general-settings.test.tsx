@@ -2,6 +2,7 @@
 import { it, expect, vi, afterEach } from "vitest";
 import { renderHook, waitFor, act, cleanup } from "@testing-library/preact";
 import { useGeneralSettings } from "../../../shared/hooks/use-general-settings";
+import { translations } from "../../../shared/i18n/translations";
 
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
 
@@ -31,8 +32,6 @@ it("preserves saved and running states separately after saving", async () => {
   expect(result.current.restartRequired).toBe(true);
 });
 
-
-import { translations } from "../../../shared/i18n/translations";
 it("provides every LAN setting translation in every supported language", () => {
   const keys = Object.keys(translations.en).filter(key => key.startsWith("lanAccess"));
   for (const locale of Object.values(translations)) {
