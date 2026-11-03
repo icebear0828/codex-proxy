@@ -54,10 +54,31 @@ const X_RESPONSESAPI_INCLUDE_TIMING_METRICS_HEADER = "x-responsesapi-include-tim
 const X_CODEX_PARENT_THREAD_ID_HEADER = "x-codex-parent-thread-id";
 const X_CODEX_WINDOW_ID_HEADER = "x-codex-window-id";
 
+const MAX_RESPONSE_METADATA_ENTRIES = 16;
+const MAX_RESPONSE_METADATA_KEY_LENGTH = 64;
+const MAX_RESPONSE_METADATA_VALUE_LENGTH = 512;
+const MAX_SAFETY_IDENTIFIER_LENGTH = 512;
+
 // ── Helpers ───────────────────────────────────────────────────────
 
 function nonEmptyString(value: unknown): string | null {
   return typeof value === "string" && value.trim() ? value.trim() : null;
+}
+
+/**
+ * Public Responses `metadata` is a flat string map, distinct from Codex
+ * `client_metadata` (header/affinity hints). It is sanitized separately:
+ * non-string values are dropped and entry count plus key/value sizes are
+ * bounded so a client cannot inflate the upstream body or the request log.
+ */
+function sanitizeResponseMetadata(value: unknown): Record<string, string> | null {
+  const entries = Object.entries(sanitizeClientMetadata(value))
+    .slice(0, MAX_RESPONSE_METADATA_ENTRIES)
+    .map(([key, raw]) => [
+      key.slice(0, MAX_RESPONSE_METADATA_KEY_LENGTH),
+      raw.slice(0, MAX_RESPONSE_METADATA_VALUE_LENGTH),
+    ] as const);
+  return entries.length > 0 ? Object.fromEntries(entries) : null;
 }
 
 function firstHeaderOrMetadata(
@@ -173,7 +194,10 @@ export function createResponsesRoutes(
         ? [{ role: "user", content: [{ type: "input_text", text: body.input }] }]
         : Array.isArray(body.input) ? sanitizeCodexInputItems(body.input) : [],
       stream: true,
-      store: false,
+      // Only a boolean is meaningful; anything else keeps the historical
+      // store:false default. The ChatGPT Codex backend still pins this to
+      // false in codex-api.ts — only public Responses upstreams honour true.
+      store: typeof body.store === "boolean" ? body.store : false,
     };
 
     codexRequest.useWebSocket = true;
@@ -197,6 +221,20 @@ export function createResponsesRoutes(
     }
     if (Array.isArray(body.include) && body.include.every((v) => typeof v === "string")) {
       codexRequest.include = body.include as string[];
+    }
+    // Public Responses controls. Malformed values are ignored rather than
+    // rejected so existing clients keep working; forwarding them unchanged is
+    // what OpenAI-compatible SDKs expect.
+    if (body.truncation === "auto" || body.truncation === "disabled") {
+      codexRequest.truncation = body.truncation;
+    }
+    const safetyIdentifier = nonEmptyString(body.safety_identifier);
+    if (safetyIdentifier) {
+      codexRequest.safety_identifier = safetyIdentifier.slice(0, MAX_SAFETY_IDENTIFIER_LENGTH);
+    }
+    const responseMetadata = sanitizeResponseMetadata(body.metadata);
+    if (responseMetadata) {
+      codexRequest.metadata = responseMetadata;
     }
     codexRequest.turnState =
       nonEmptyString(body.turnState) ??

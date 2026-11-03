@@ -8,11 +8,28 @@ export interface CodexResponsesRequest {
   instructions?: string | null;
   input: CodexInputItem[];
   stream: true;
-  store: false;
+  /**
+   * Client-requested Responses `store` flag. The ChatGPT Codex backend rejects
+   * `store: true` (the official client always sends false), so `codex-api.ts`
+   * pins it back to false for account traffic; third-party Responses
+   * adapters forward it verbatim.
+   */
+  store: boolean;
   /** Optional: reasoning effort + summary mode */
   reasoning?: { effort?: string; summary?: string };
   /** Optional: service tier ("fast" / "flex") */
   service_tier?: string | null;
+  /** Optional: public Responses `truncation` control. Not serialized to the
+   *  ChatGPT Codex backend (unsupported there); forwarded to third-party
+   *  Responses adapters. */
+  truncation?: "auto" | "disabled";
+  /** Optional: stable end-user identifier (`safety_identifier`). Not
+   *  serialized to the ChatGPT Codex backend; forwarded to third-party
+   *  Responses adapters. */
+  safety_identifier?: string;
+  /** Optional: public Responses `metadata` string map. Kept separate from
+   *  Codex `client_metadata`; not serialized to the ChatGPT Codex backend. */
+  metadata?: Record<string, string>;
   /** Optional: tools available to the model */
   tools?: unknown[];
   /** Optional: tool choice strategy */

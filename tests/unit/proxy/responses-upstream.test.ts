@@ -92,6 +92,31 @@ describe("buildResponsesUpstreamBody", () => {
     expect(buildResponsesUpstreamBody(baseRequest({ service_tier: "flex" }), "m").service_tier).toBe("flex");
     expect(buildResponsesUpstreamBody(baseRequest({ service_tier: null }), "m")).not.toHaveProperty("service_tier");
   });
+
+  it("forwards public Responses controls: truncation, safety_identifier, metadata", () => {
+    const body = buildResponsesUpstreamBody(
+      baseRequest({
+        truncation: "auto",
+        safety_identifier: "user-123",
+        metadata: { team: "core" },
+      }),
+      "m",
+    );
+    expect(body.truncation).toBe("auto");
+    expect(body.safety_identifier).toBe("user-123");
+    expect(body.metadata).toEqual({ team: "core" });
+
+    // Absent optional fields are not emitted.
+    const bare = buildResponsesUpstreamBody(baseRequest(), "m");
+    for (const field of ["truncation", "safety_identifier", "metadata"]) {
+      expect(bare).not.toHaveProperty(field);
+    }
+  });
+
+  it("honours an explicit store:true only on this wire", () => {
+    expect(buildResponsesUpstreamBody(baseRequest({ store: true }), "m").store).toBe(true);
+    expect(buildResponsesUpstreamBody(baseRequest({ store: false }), "m").store).toBe(false);
+  });
 });
 
 describe("ResponsesUpstream", () => {

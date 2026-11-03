@@ -411,6 +411,12 @@ export class CodexApi {
       clientUserAgent: _clientUserAgent,
       opencodeSessionId: _opencodeSessionId,
       service_tier,
+      // The ChatGPT Codex backend rejects `store: true` and does not accept
+      // the public Responses controls below (codex-rs never sends them).
+      store: _store,
+      truncation: _truncation,
+      safety_identifier: _safetyIdentifier,
+      metadata: _responseMetadata,
       ...bodyFields
     } = request;
     const upstreamServiceTier = normalizeServiceTierForUpstream(service_tier);
@@ -418,6 +424,9 @@ export class CodexApi {
       ...bodyFields,
       ...(upstreamServiceTier ? { service_tier: upstreamServiceTier } : {}),
       ...(identity.conversationId ? { prompt_cache_key: identity.conversationId } : {}),
+      // The Codex backend only accepts store:false (official client behaviour);
+      // `store:true` is honoured only by third-party Responses adapters.
+      store: false,
       client_metadata: buildCodexClientMetadata(
         request,
         installationId,
