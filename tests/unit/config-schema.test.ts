@@ -38,6 +38,8 @@ describe("ConfigSchema", () => {
     expect(result.auth.max_concurrent_per_account).toBe(3);
     expect(result.auth.request_interval_ms).toBe(50);
     expect(result.model.default).toBe("gpt-5.6-sol");
+    expect(result.model.official_catalog_sync).toBe(true);
+    expect(result.model.official_catalog_refresh_hours).toBe(6);
     expect(result.model.default_reasoning_effort).toBeNull();
     expect(result.model.aliases).toEqual({});
     expect(result.model.custom_models).toEqual([]);
@@ -174,6 +176,18 @@ describe("ConfigSchema", () => {
     expect(result.official_agent.api_key).toBe("agent-key");
     expect(result.official_agent.app_server_url).toBe("ws://127.0.0.1:4777");
     expect(result.official_agent.auth).toEqual({ type: "capability_token", token_file: "/tmp/codex-token" });
+  });
+
+  it("normalizes official_catalog_refresh_hours", () => {
+    const parse = (hours: unknown) => ConfigSchema.parse({
+      api: {}, client: {}, model: { official_catalog_refresh_hours: hours }, auth: {}, server: {}, session: {},
+    }).model.official_catalog_refresh_hours;
+
+    expect(parse(12)).toBe(12);
+    expect(parse(0.4)).toBe(1);
+    expect(parse(0)).toBe(6);
+    expect(parse(-3)).toBe(6);
+    expect(parse(4.6)).toBe(5);
   });
 
   it("rejects non-websocket official agent URLs", () => {

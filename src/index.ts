@@ -1,7 +1,5 @@
 import { readLanRuntime, type LanRuntimeState } from "./utils/lan-access.js";
 import "./utils/install-dev-logger.js";
-import { existsSync } from "fs";
-import { resolve } from "path";
 
 import { Hono } from "hono";
 import { serve } from "@hono/node-server";
@@ -40,10 +38,14 @@ import { startProxyUpdateChecker, stopProxyUpdateChecker, setCloseHandler, getDe
 import { initProxy } from "./tls/proxy.js";
 import { cleanupStaleLocks } from "./auth/refresh-lock.js";
 import { initTransport, getTransport } from "./tls/transport.js";
-import { loadStaticModels, applyBackendModelsForPlan } from "./models/model-store.js";
+import {
+  loadStaticModels,
+  applyBackendModelsForPlan,
+  hasAccountSnapshots,
+  OFFICIAL_CATALOG_PLAN,
+} from "./models/model-store.js";
 import { startModelRefresh, stopModelRefresh } from "./models/model-fetcher.js";
 import { OfficialCatalogSync, toBackendModelEntries } from "./models/official-model-catalog.js";
-import { getDataDir } from "./paths.js";
 import { startQuotaRefresh, stopQuotaRefresh } from "./auth/usage-refresher.js";
 import { ActiveQuotaRefresher } from "./auth/active-quota-refresher.js";
 import { UsageStatsStore } from "./auth/usage-stats.js";
@@ -100,21 +102,21 @@ export async function startServer(options?: StartOptions): Promise<ServerHandle>
   loadStaticModels();
 
   // Official catalog sync (Branch C). Runs after loadStaticModels() so the
-  // normal config/data cache load happens first; on a cold start (no
-  // data/models-cache.yaml) the cached official snapshot seeds the store.
-  // No credentials are involved, so all failures only warn and startup
-  // continues to the authenticated backend fetch.
+  // normal config/data cache load happens first. The snapshot is refreshed
+  // when missing or older than `model.official_catalog_refresh_hours`, and
+  // seeds the store only when no authenticated snapshot exists. ModelFetcher
+  // keeps it fresh on later cycles. No credentials are involved, so all
+  // failures only warn and startup continues to the authenticated fetch.
   let officialCatalogSync: OfficialCatalogSync | null = null;
   if (config.model.official_catalog_sync) {
-    officialCatalogSync = new OfficialCatalogSync();
+    officialCatalogSync = new OfficialCatalogSync({
+      maxAgeMs: config.model.official_catalog_refresh_hours * 60 * 60 * 1000,
+    });
     try {
-      const modelsCachePath = resolve(getDataDir(), "models-cache.yaml");
-      if (!existsSync(modelsCachePath)) {
-        const snapshot = officialCatalogSync.loadCached() ?? await officialCatalogSync.fetchAndSave();
-        if (snapshot && snapshot.models.length > 0) {
-          applyBackendModelsForPlan("official", toBackendModelEntries(snapshot.models));
-          console.log(`[Init] Seeded ${snapshot.models.length} official models from ${snapshot.sourceUrl}`);
-        }
+      const snapshot = await officialCatalogSync.refreshIfStale();
+      if (snapshot && snapshot.models.length > 0 && !hasAccountSnapshots()) {
+        applyBackendModelsForPlan(OFFICIAL_CATALOG_PLAN, toBackendModelEntries(snapshot.models));
+        console.log(`[Init] Seeded ${snapshot.models.length} official models from ${snapshot.sourceUrl}`);
       }
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);

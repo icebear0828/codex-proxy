@@ -36,6 +36,8 @@ model:
   # Sync the official Codex model catalog from the openai/codex repository
   # (no credentials). Failures are silent and fall back to backend fetching.
   official_catalog_sync: true
+  # Re-fetch the cached official catalog at most this often (hours, min 1).
+  official_catalog_refresh_hours: 6
 auth:
   jwt_token: null
   chatgpt_oauth: true
