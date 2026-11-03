@@ -380,7 +380,7 @@ export function GeneralSettings({ layoutMode, onLayoutModeChange, isDesktop = fa
               value={displayDefaultModel}
               onInput={(e) => setDraftDefaultModel((e.target as HTMLInputElement).value)}
               onKeyDown={(e) => { if (e.key === "Enter") handleSaveDefaultModel(); }}
-              placeholder="gpt-5.2-codex"
+              placeholder="gpt-6.1-sol"
             />
           </SettingItemControl>
 
@@ -403,7 +403,7 @@ export function GeneralSettings({ layoutMode, onLayoutModeChange, isDesktop = fa
               list="image-host-model-allowed-models"
               onInput={(e) => setDraftImageHostModel((e.target as HTMLInputElement).value)}
               onKeyDown={(e) => { if (e.key === "Enter") handleSaveImageHostModel(); }}
-              placeholder="gpt-5.5"
+              placeholder="gpt-6.1-sol"
             />
             <datalist id="image-host-model-allowed-models">
               {currentImageHostModelAllowedModels.map((model: string) => <option key={model} value={model} />)}
