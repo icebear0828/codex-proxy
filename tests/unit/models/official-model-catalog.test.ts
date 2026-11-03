@@ -177,6 +177,139 @@ describe("OfficialCatalogSync", () => {
     expect(snapshot!.models.map((m) => m.id)).toEqual(["gpt-6.1-sol", "gpt-6.1-terra"]);
     expect(snapshot!.models[0].displayName).toBe("GPT-6.1 Sol");
   });
+
+  it("treats a snapshot older than maxAgeMs as stale", async () => {
+    let nowMs = Date.parse("2026-11-03T00:00:00.000Z");
+    const fetchFn = (async () => jsonResponse({ models: [modelEntry()] })) as unknown as typeof fetch;
+    const { sync } = makeSync({
+      fetchFn,
+      now: () => new Date(nowMs),
+      maxAgeMs: 6 * 60 * 60 * 1000,
+    });
+
+    await sync.fetchAndSave();
+    expect(sync.isStale()).toBe(false);
+    expect(sync.getFreshSnapshot()).not.toBeNull();
+
+    // 5h59m — still fresh.
+    nowMs += (6 * 60 * 60 * 1000) - 60_000;
+    expect(sync.isStale()).toBe(false);
+
+    // 6h01m — stale, but the snapshot is still readable.
+    nowMs += 2 * 60_000;
+    expect(sync.isStale()).toBe(true);
+    expect(sync.getFreshSnapshot()).toBeNull();
+    expect(sync.getModels().map((m) => m.id)).toEqual(["gpt-6.1-sol"]);
+  });
+
+  it("marks a cached snapshot written without fetchedAt as stale", () => {
+    const cacheFile = makeCachePath();
+    writeFileSync(cacheFile, JSON.stringify({
+      sourceUrl: "https://example.test/models.json",
+      models: [{ id: "gpt-6.1-sol", displayName: "Sol" }],
+    }), "utf-8");
+
+    const sync = new OfficialCatalogSync({ cacheFile });
+    expect(sync.getSnapshot()).not.toBeNull();
+    expect(sync.isStale()).toBe(true);
+    expect(sync.getFreshSnapshot()).toBeNull();
+  });
+
+  it("returns the cached snapshot without fetching while it is fresh", async () => {
+    let fetchCalls = 0;
+    const fetchFn = (async () => {
+      fetchCalls++;
+      return jsonResponse({ models: [modelEntry()] });
+    }) as unknown as typeof fetch;
+    const nowMs = Date.parse("2026-11-03T00:00:00.000Z");
+    const { sync } = makeSync({ fetchFn, now: () => new Date(nowMs) });
+
+    const first = await sync.refreshIfStale();
+    expect(first?.models.map((m) => m.id)).toEqual(["gpt-6.1-sol"]);
+    expect(fetchCalls).toBe(1);
+
+    const second = await sync.refreshIfStale();
+    expect(second?.models.map((m) => m.id)).toEqual(["gpt-6.1-sol"]);
+    expect(fetchCalls).toBe(1);
+  });
+
+  it("refreshes a stale snapshot and keeps the previous one when the refresh fails", async () => {
+    let nowMs = Date.parse("2026-11-03T00:00:00.000Z");
+    let fail = false;
+    let fetchCalls = 0;
+    const fetchFn = (async () => {
+      fetchCalls++;
+      if (fail) return jsonResponse({ error: "boom" }, 503);
+      return jsonResponse({ models: [modelEntry({ slug: "gpt-6.1-sol" })] });
+    }) as unknown as typeof fetch;
+    const { sync } = makeSync({
+      fetchFn,
+      now: () => new Date(nowMs),
+      maxAgeMs: 60_000,
+      retryAfterMs: 0,
+    });
+
+    await sync.fetchAndSave();
+    nowMs += 61_000;
+    expect(sync.isStale()).toBe(true);
+
+    // Failed refresh: no new data, but the old snapshot survives.
+    fail = true;
+    const afterFailure = await sync.refreshIfStale();
+    expect(fetchCalls).toBe(2);
+    expect(afterFailure?.models.map((m) => m.id)).toEqual(["gpt-6.1-sol"]);
+    expect(sync.getSnapshot()).not.toBeNull();
+
+    // Recovery replaces the stale snapshot.
+    fail = false;
+    const refreshed = await sync.refreshIfStale();
+    expect(fetchCalls).toBe(3);
+    expect(refreshed?.fetchedAt).toBe(new Date(nowMs).toISOString());
+    expect(sync.isStale()).toBe(false);
+  });
+
+  it("defers retries after a failure for retryAfterMs", async () => {
+    let nowMs = Date.parse("2026-11-03T00:00:00.000Z");
+    let fetchCalls = 0;
+    const fetchFn = (async () => {
+      fetchCalls++;
+      return jsonResponse({ error: "boom" }, 503);
+    }) as unknown as typeof fetch;
+    const { sync } = makeSync({
+      fetchFn,
+      now: () => new Date(nowMs),
+      retryAfterMs: 5 * 60 * 1000,
+    });
+
+    await expect(sync.refreshIfStale()).resolves.toBeNull();
+    await expect(sync.refreshIfStale()).resolves.toBeNull();
+    expect(fetchCalls).toBe(1);
+
+    nowMs += 5 * 60 * 1000 + 1;
+    await expect(sync.refreshIfStale()).resolves.toBeNull();
+    expect(fetchCalls).toBe(2);
+  });
+
+  it("shares one in-flight refresh between concurrent callers", async () => {
+    let fetchCalls = 0;
+    let release: (() => void) | null = null;
+    const fetchFn = (async () => {
+      fetchCalls++;
+      await new Promise<void>((resolve) => { release = resolve; });
+      return jsonResponse({ models: [modelEntry()] });
+    }) as unknown as typeof fetch;
+    const { sync } = makeSync({ fetchFn });
+
+    const first = sync.refreshIfStale();
+    const second = sync.refreshIfStale();
+    await Promise.resolve();
+    expect(fetchCalls).toBe(1);
+    release!();
+    const [a, b] = await Promise.all([first, second]);
+    expect(a?.models).toHaveLength(1);
+    expect(b?.models).toHaveLength(1);
+    expect(fetchCalls).toBe(1);
+  });
 });
 
 describe("toBackendModelEntries", () => {

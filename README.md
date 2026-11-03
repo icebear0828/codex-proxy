@@ -841,13 +841,15 @@ server:
 | `server` | `host`, `port`, `proxy_api_key` | 监听地址与 API 密钥 |
 | `api` | `base_url`, `timeout_seconds` | 上游 API 地址与超时 |
 | `client` | `profile`, `originator`, `app_version`, `build_number`, `platform`, `arch`, `chromium_version` | 客户端指纹预设（`codex_cli` / `codex_desktop` / `opencode` / `pi` / `custom`）及版本参数 |
-| `model` | `default`, `default_reasoning_effort`, `default_service_tier`, `aliases`, `custom_models`, `inject_desktop_context` | 默认模型、推理配置、模型映射与自定义模型目录 |
+| `model` | `default`, `default_reasoning_effort`, `default_service_tier`, `aliases`, `custom_models`, `inject_desktop_context`, `official_catalog_sync`, `official_catalog_refresh_hours` | 默认模型、推理配置、模型映射与自定义模型目录 |
 | `auth` | `rotation_strategy`, `rate_limit_backoff_seconds` | 轮换策略与限流退避 |
 | `tls` | `proxy_url`, `force_http11` | TLS 代理与 HTTP 版本 |
 | `quota` | `refresh_interval_minutes`, `warning_thresholds`, `skip_exhausted` | 用量快照、阈值配置与耗尽账号跳过 |
 | `session` | `ttl_minutes`, `cleanup_interval_minutes` | Dashboard session 管理 |
 | `ollama` | `enabled`, `host`, `port`, `version`, `disable_vision` | Ollama 兼容桥接 |
 | `official_agent` | `enabled`, `api_key`, `app_server_url`, `auth` | 官方 Codex app-server 桥接，用于复用 Chrome/browser 插件 |
+
+`model.official_catalog_sync`（默认 `true`）会从 `openai/codex` 仓库的官方 `models.json` 同步模型目录，无需账号凭据；缓存位于 `data/official-model-catalog.json`。`model.official_catalog_refresh_hours`（默认 6，最小 1）控制重新拉取间隔，进程运行期间定时检查并在过期后自动刷新，因此官方新增模型无需手工改表；仅在没有任何账号后端快照时才用该目录兜底，账号返回的实时列表始终优先。
 
 ### 客户端 Profile 与指纹预设
 

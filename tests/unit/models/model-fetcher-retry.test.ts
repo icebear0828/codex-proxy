@@ -21,6 +21,9 @@ vi.mock("@src/proxy/codex-api.js", () => ({
 
 vi.mock("@src/models/model-store.js", () => ({
   applyBackendModelsForPlan: vi.fn(),
+  hasAccountSnapshots: vi.fn(() => false),
+  removePlanSnapshot: vi.fn(),
+  OFFICIAL_CATALOG_PLAN: "official",
 }));
 
 vi.mock("@src/utils/jitter.js", () => ({
@@ -34,6 +37,12 @@ import {
   stopModelRefresh,
   hasFetchedModels,
 } from "@src/models/model-fetcher.js";
+import {
+  applyBackendModelsForPlan,
+  hasAccountSnapshots,
+  removePlanSnapshot,
+} from "@src/models/model-store.js";
+import type { OfficialCatalogSync } from "@src/models/official-model-catalog.js";
 
 function createMockAccountPool(authenticated: boolean): AccountPool {
   return {
@@ -53,6 +62,7 @@ describe("model-fetcher retry logic", () => {
   beforeEach(() => {
     vi.useFakeTimers();
     vi.clearAllMocks();
+    vi.mocked(hasAccountSnapshots).mockReturnValue(false);
     stopModelRefresh();
   });
 
@@ -130,5 +140,76 @@ describe("model-fetcher retry logic", () => {
 
     expect(hasFetchedModels()).toBe(true);
     expect(pool.release).toHaveBeenCalledWith("e1");
+  });
+
+  it("seeds the official catalog on every cycle when no account snapshot exists", async () => {
+    const pool = createMockAccountPool(false);
+    const refreshIfStale = vi.fn(async () => ({
+      fetchedAt: "2026-11-03T00:00:00.000Z",
+      sourceUrl: "https://example.test/models.json",
+      models: [{
+        id: "gpt-6.1-sol",
+        displayName: "GPT-6.1 Sol",
+        description: "",
+        isDefault: false,
+        supportedReasoningEfforts: [{ reasoningEffort: "low", description: "" }],
+        defaultReasoningEffort: "low",
+        inputModalities: ["text"],
+        supportsPersonality: false,
+        upgrade: null,
+        source: "static" as const,
+      }],
+    }));
+    const officialSync = { refreshIfStale } as unknown as OfficialCatalogSync;
+
+    startModelRefresh(pool, mockCookieJar, undefined, officialSync);
+    await vi.advanceTimersByTimeAsync(1_000);
+
+    expect(refreshIfStale).toHaveBeenCalledTimes(1);
+    expect(applyBackendModelsForPlan).toHaveBeenCalledWith(
+      "official",
+      [expect.objectContaining({ slug: "gpt-6.1-sol" })],
+    );
+
+    // Unauthenticated cycle keeps retrying; the TTL guard lives inside the
+    // sync itself, so the fetcher may ask again without forcing a fetch.
+    await vi.advanceTimersByTimeAsync(10_000);
+    expect(refreshIfStale).toHaveBeenCalledTimes(2);
+  });
+
+  it("does not overwrite account snapshots with the official catalog", async () => {
+    vi.mocked(hasAccountSnapshots).mockReturnValue(true);
+    const pool = createMockAccountPool(true);
+    mockGetModels.mockResolvedValue([{ slug: "gpt-6.1-sol" }]);
+    const refreshIfStale = vi.fn(async () => ({
+      fetchedAt: "2026-11-03T00:00:00.000Z",
+      sourceUrl: "https://example.test/models.json",
+      models: [{
+        id: "gpt-6.1-sol",
+        displayName: "GPT-6.1 Sol",
+        description: "",
+        isDefault: false,
+        supportedReasoningEfforts: [{ reasoningEffort: "low", description: "" }],
+        defaultReasoningEffort: "low",
+        inputModalities: ["text"],
+        supportsPersonality: false,
+        upgrade: null,
+        source: "static" as const,
+      }],
+    }));
+    const officialSync = { refreshIfStale } as unknown as OfficialCatalogSync;
+
+    startModelRefresh(
+      pool,
+      mockCookieJar,
+      undefined,
+      officialSync,
+    );
+    await vi.advanceTimersByTimeAsync(1_000);
+
+    expect(refreshIfStale).toHaveBeenCalledTimes(1);
+    expect(applyBackendModelsForPlan).toHaveBeenCalledWith("team", [{ slug: "gpt-6.1-sol" }]);
+    expect(applyBackendModelsForPlan).not.toHaveBeenCalledWith("official", expect.anything());
+    expect(removePlanSnapshot).toHaveBeenCalledWith("official");
   });
 });

@@ -85,6 +85,11 @@ export const ConfigSchema = z.object({
     /** Sync the official Codex model manifest from the openai/codex repository.
      *  Credential-free; failures silently fall back to the backend fetch. */
     official_catalog_sync: z.boolean().default(true),
+    /** How often the cached official manifest is re-fetched. Values <= 0 fall
+     *  back to the default (6h); the minimum effective value is 1h. */
+    official_catalog_refresh_hours: z.number()
+      .default(6)
+      .transform((hours) => (Number.isFinite(hours) && hours > 0 ? Math.max(1, Math.round(hours)) : 6)),
     /** Codex chat model that hosts `POST /v1/images/generations` requests via the
      *  Responses `image_generation` tool. Cannot be `gpt-image-2` — that name is
      *  only the Images API's client-facing identifier, not a routable Codex model. */

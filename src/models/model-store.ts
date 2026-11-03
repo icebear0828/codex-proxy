@@ -403,6 +403,14 @@ export const BUILTIN_MODEL_ALIASES: Readonly<Record<string, string>> = {
   "gpt-6": "gpt-6-astra",
 };
 
+/**
+ * Pseudo plan used for the credential-free official catalog sync.
+ *
+ * It is not an account plan: models registered here must never be used for
+ * account routing (no account has this plan type), so the plan index skips it.
+ */
+export const OFFICIAL_CATALOG_PLAN = "official";
+
 function isAdmittedBackendModel(model: Pick<CodexModelInfo, "id">): boolean {
   return !CHATGPT_ONLY_MODEL_IDS.has(model.id);
 }
@@ -504,6 +512,13 @@ export class ModelStore {
             this.planModelSnapshots.set(planType, backendModels);
             this.planModelMap.set(planType, new Set(backendModels.map((m) => m.id)));
           }
+          // The credential-free official fallback must not linger once real
+          // account snapshots are cached — it would keep advertising models
+          // the accounts may not be entitled to.
+          if (this.hasAccountSnapshots()) {
+            this.planModelSnapshots.delete(OFFICIAL_CATALOG_PLAN);
+            this.planModelMap.delete(OFFICIAL_CATALOG_PLAN);
+          }
           this.rebuildCatalogFromPlanSnapshots();
           console.log(`[ModelStore] Loaded ${this.catalog.length} cached backend models from data/models-cache.yaml`);
         } else {
@@ -560,6 +575,28 @@ export class ModelStore {
 
   isPlanFetched(planType: string): boolean {
     return this.planModelMap.has(planType);
+  }
+
+  /**
+   * Whether any authenticated backend snapshot (per plan) is present.
+   *
+   * The official catalog pseudo-plan is excluded: it is a credential-free
+   * fallback and must not mask "we have never talked to a real account".
+   */
+  hasAccountSnapshots(): boolean {
+    for (const planType of this.planModelSnapshots.keys()) {
+      if (planType !== OFFICIAL_CATALOG_PLAN) return true;
+    }
+    return false;
+  }
+
+  /** Drop one plan snapshot (used to retire the official fallback). */
+  removePlanSnapshot(planType: string): void {
+    if (!this.planModelSnapshots.has(planType) && !this.planModelMap.has(planType)) return;
+    this.planModelSnapshots.delete(planType);
+    this.planModelMap.delete(planType);
+    this.rebuildCatalogFromPlanSnapshots();
+    this.syncCache();
   }
 
   resolveModelId(input: string): string {
@@ -758,6 +795,10 @@ export class ModelStore {
   private rebuildPlanIndex(): void {
     this.modelPlanIndex = new Map();
     for (const [plan, modelIds] of this.planModelMap) {
+      // The official catalog is not an account plan: indexing it would make
+      // `getModelPlanTypes()` report "official" and account-lifecycle would
+      // then find no eligible account for those models.
+      if (plan === OFFICIAL_CATALOG_PLAN) continue;
       for (const id of modelIds) {
         let plans = this.modelPlanIndex.get(id);
         if (!plans) {
@@ -1030,6 +1071,14 @@ export function getModelPlanTypes(modelId: string): string[] {
 
 export function isPlanFetched(planType: string): boolean {
   return _instance.isPlanFetched(planType);
+}
+
+export function hasAccountSnapshots(): boolean {
+  return _instance.hasAccountSnapshots();
+}
+
+export function removePlanSnapshot(planType: string): void {
+  _instance.removePlanSnapshot(planType);
 }
 
 export function resolveModelId(input: string): string {

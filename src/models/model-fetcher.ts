@@ -6,7 +6,12 @@
  */
 
 import { CodexApi } from "../proxy/codex-api.js";
-import { applyBackendModelsForPlan } from "./model-store.js";
+import {
+  applyBackendModelsForPlan,
+  hasAccountSnapshots,
+  OFFICIAL_CATALOG_PLAN,
+  removePlanSnapshot,
+} from "./model-store.js";
 import { toBackendModelEntries, type OfficialCatalogSync } from "./official-model-catalog.js";
 import type { AccountPool } from "../auth/account-pool.js";
 import type { CookieJar } from "../proxy/cookie-jar.js";
@@ -26,8 +31,6 @@ export class ModelFetcher {
   private cookieJar: CookieJar;
   private proxyPool: ProxyPool | null;
   private officialSync: OfficialCatalogSync | null;
-  /** Guards the official-catalog fallback to a single attempt per instance. */
-  private officialSyncAttempted = false;
 
   constructor(
     pool: AccountPool,
@@ -60,7 +63,8 @@ export class ModelFetcher {
   }
 
   triggerImmediate(): void {
-    this.fetchModelsFromBackend()
+    this.refreshOfficialCatalog()
+      .then(() => this.fetchModelsFromBackend())
       .then((success) => {
         if (success) this.hasFetchedOnce = true;
       })
@@ -76,14 +80,12 @@ export class ModelFetcher {
 
   private async fetchModelsFromBackend(): Promise<boolean> {
     if (!this.pool.isAuthenticated()) {
-      await this.tryOfficialCatalogFallback();
       return false;
     }
 
     const planAccounts = this.pool.getDistinctPlanAccounts();
     if (planAccounts.length === 0) {
       console.warn("[ModelFetcher] No available accounts — skipping model fetch");
-      await this.tryOfficialCatalogFallback();
       return false;
     }
 
@@ -116,34 +118,45 @@ export class ModelFetcher {
       }
     }
 
-    if (!anySuccess) {
-      await this.tryOfficialCatalogFallback();
-    }
+    // Real account data is available now: retire the credential-free fallback
+    // so the advertised catalog reflects what these accounts can actually use.
+    if (anySuccess) removePlanSnapshot(OFFICIAL_CATALOG_PLAN);
 
     return anySuccess;
   }
 
   /**
-   * Cold-start fallback: when no account can provide models, inject the
-   * credential-free official catalog snapshot once per instance.
+   * Keep the credential-free official catalog fresh (TTL-based, so repeated
+   * cycles usually do no network work) and seed the store from it when no
+   * authenticated backend snapshot is available.
+   *
+   * Account snapshots always win: the official manifest is a cold-start /
+   * outage fallback, and injecting it while account data exists would
+   * advertise models those accounts may not be entitled to.
    */
-  private async tryOfficialCatalogFallback(): Promise<void> {
-    if (!this.officialSync || this.officialSyncAttempted) return;
-    this.officialSyncAttempted = true;
+  private async refreshOfficialCatalog(): Promise<void> {
+    if (!this.officialSync) return;
     try {
-      const snapshot = await this.officialSync.fetchAndSave();
+      const snapshot = await this.officialSync.refreshIfStale();
       if (!snapshot || snapshot.models.length === 0) return;
-      applyBackendModelsForPlan("official", toBackendModelEntries(snapshot.models));
-      console.log(`[ModelFetcher] Official catalog fallback: ${snapshot.models.length} models`);
+      if (hasAccountSnapshots()) {
+        console.log(
+          `[ModelFetcher] Official catalog refreshed (${snapshot.models.length} models); account snapshots take precedence`,
+        );
+        return;
+      }
+      applyBackendModelsForPlan(OFFICIAL_CATALOG_PLAN, toBackendModelEntries(snapshot.models));
+      console.log(`[ModelFetcher] Official catalog seeded: ${snapshot.models.length} models`);
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
-      console.warn(`[ModelFetcher] Official catalog fallback failed: ${msg}`);
+      console.warn(`[ModelFetcher] Official catalog refresh failed: ${msg}`);
     }
   }
 
   private attemptInitialFetch(attempt: number): void {
     if (this.stopped) return;
-    this.fetchModelsFromBackend()
+    this.refreshOfficialCatalog()
+      .then(() => this.fetchModelsFromBackend())
       .then((success) => {
         if (this.stopped) return;
         if (success) {
@@ -169,6 +182,7 @@ export class ModelFetcher {
     const intervalMs = jitter(REFRESH_INTERVAL_HOURS * 3600 * 1000, 0.15);
     this.refreshTimer = setTimeout(async () => {
       try {
+        await this.refreshOfficialCatalog();
         await this.fetchModelsFromBackend();
       } finally {
         if (!this.stopped) this.scheduleNext();

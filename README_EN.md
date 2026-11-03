@@ -646,12 +646,14 @@ server:
 | `server` | `host`, `port`, `proxy_api_key` | Listen address and API key |
 | `api` | `base_url`, `timeout_seconds` | Upstream API URL and timeout |
 | `client` | `profile`, `originator`, `app_version`, `build_number`, `platform`, `arch`, `chromium_version` | Client fingerprint preset (`codex_cli` / `codex_desktop` / `opencode` / `pi` / `custom`) and version metadata |
-| `model` | `default`, `default_reasoning_effort`, `default_service_tier`, `aliases`, `custom_models`, `inject_desktop_context` | Default model, reasoning config, aliases, and custom catalog entries |
+| `model` | `default`, `default_reasoning_effort`, `default_service_tier`, `aliases`, `custom_models`, `inject_desktop_context`, `official_catalog_sync`, `official_catalog_refresh_hours` | Default model, reasoning config, aliases, and custom catalog entries |
 | `auth` | `rotation_strategy`, `rate_limit_backoff_seconds` | Rotation strategy and rate limit backoff |
 | `tls` | `proxy_url`, `force_http11` | TLS proxy and HTTP version |
 | `quota` | `refresh_interval_minutes`, `warning_thresholds`, `skip_exhausted` | Usage snapshots, threshold config, exhausted-account skipping |
 | `session` | `ttl_minutes`, `cleanup_interval_minutes` | Dashboard session management |
 | `ollama` | `enabled`, `host`, `port`, `version`, `disable_vision` | Ollama-compatible bridge |
+
+`model.official_catalog_sync` (default `true`) keeps the model catalog aligned with the official `models.json` published in the `openai/codex` repository — no account credentials required. The snapshot is cached at `data/official-model-catalog.json`, and `model.official_catalog_refresh_hours` (default 6, minimum 1) controls how often it is re-fetched. A running proxy re-checks the snapshot on its refresh cycle, so newly released official models appear without hand-editing catalog tables. The snapshot only seeds the store when no authenticated backend snapshot exists; live account data always takes precedence.
 
 ### Client Profile & Fingerprint Presets
 

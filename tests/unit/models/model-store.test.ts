@@ -68,6 +68,8 @@ import {
   getModelPlanTypes,
   KNOWN_OFFICIAL_MODELS,
   applyBackendModelsForPlan,
+  hasAccountSnapshots,
+  removePlanSnapshot,
 } from "@src/models/model-store.js";
 
 describe("KNOWN_OFFICIAL_MODELS — GPT-6.1 / GPT-6 entries", () => {
@@ -796,6 +798,33 @@ aliases: {}
       }]);
       const plans = getModelPlanTypes("gpt-5.4");
       expect(plans).toContain("plus");
+    });
+
+    it("keeps the official pseudo-plan out of the routing plan index", () => {
+      loadStaticModels("/tmp/test-config");
+      applyBackendModelsForPlan("official", [{
+        slug: "gpt-6.1-sol",
+        display_name: "GPT-6.1 Sol",
+      }]);
+
+      // The model is in the catalog, but no account plan claims it — otherwise
+      // account-lifecycle would filter out every account for it.
+      expect(getModelInfo("gpt-6.1-sol")).toBeDefined();
+      expect(getModelPlanTypes("gpt-6.1-sol")).toEqual([]);
+      expect(hasAccountSnapshots()).toBe(false);
+
+      applyBackendModelsForPlan("team", [{
+        slug: "gpt-6.1-sol",
+        display_name: "GPT-6.1 Sol",
+      }]);
+      expect(getModelPlanTypes("gpt-6.1-sol")).toEqual(["team"]);
+      expect(hasAccountSnapshots()).toBe(true);
+
+      // Retiring the fallback keeps the account-sourced entry.
+      removePlanSnapshot("official");
+      expect(getModelInfo("gpt-6.1-sol")).toBeDefined();
+      expect(getModelPlanTypes("gpt-6.1-sol")).toEqual(["team"]);
+      expect(hasAccountSnapshots()).toBe(true);
     });
 
     it("uses backend default flag only when rebuilding snapshots", () => {

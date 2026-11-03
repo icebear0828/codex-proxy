@@ -18,6 +18,11 @@ export const DEFAULT_OFFICIAL_CATALOG_URL =
   "https://raw.githubusercontent.com/openai/codex/main/codex-rs/models-manager/models.json";
 
 const DEFAULT_TIMEOUT_MS = 8_000;
+/** Default freshness window for the cached snapshot (6 hours). */
+export const DEFAULT_OFFICIAL_CATALOG_MAX_AGE_MS = 6 * 60 * 60 * 1000;
+/** After a failed refresh, wait this long before trying again (covers the
+ *  10s account-retry loop without hammering the network). */
+const DEFAULT_RETRY_AFTER_MS = 60 * 1000;
 const CACHE_FILE_NAME = "official-model-catalog.json";
 
 export interface OfficialCatalogSnapshot {
@@ -32,6 +37,10 @@ export interface OfficialCatalogSyncOptions {
   cacheFile?: string;
   sourceUrl?: string;
   timeoutMs?: number;
+  /** Snapshot freshness window; older snapshots are considered stale. */
+  maxAgeMs?: number;
+  /** Cooldown after a failed refresh, so retry loops (every 10s) don't hammer the network. */
+  retryAfterMs?: number;
 }
 
 /** Raw entry shape from the official models.json manifest. */
@@ -155,7 +164,11 @@ export class OfficialCatalogSync {
   private readonly cacheFile: string;
   readonly sourceUrl: string;
   private readonly timeoutMs: number;
+  private readonly maxAgeMs: number;
+  private readonly retryAfterMs: number;
   private snapshot: OfficialCatalogSnapshot | null = null;
+  private refreshPromise: Promise<OfficialCatalogSnapshot | null> | null = null;
+  private nextAttemptAt = 0;
 
   constructor(options: OfficialCatalogSyncOptions = {}) {
     this.fetchFn = options.fetchFn ?? fetch;
@@ -163,6 +176,12 @@ export class OfficialCatalogSync {
     this.cacheFile = options.cacheFile ?? resolve(getDataDir(), CACHE_FILE_NAME);
     this.sourceUrl = options.sourceUrl ?? DEFAULT_OFFICIAL_CATALOG_URL;
     this.timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
+    this.maxAgeMs = typeof options.maxAgeMs === "number" && options.maxAgeMs > 0
+      ? options.maxAgeMs
+      : DEFAULT_OFFICIAL_CATALOG_MAX_AGE_MS;
+    this.retryAfterMs = typeof options.retryAfterMs === "number" && options.retryAfterMs >= 0
+      ? options.retryAfterMs
+      : DEFAULT_RETRY_AFTER_MS;
     this.snapshot = this.loadCached();
   }
 
@@ -238,6 +257,47 @@ export class OfficialCatalogSync {
 
   getSnapshot(): OfficialCatalogSnapshot | null {
     return this.snapshot;
+  }
+
+  /**
+   * Whether the current snapshot is missing, unparsable, or older than
+   * `maxAgeMs`. A snapshot dated in the future (clock skew) counts as fresh.
+   */
+  isStale(snapshot: OfficialCatalogSnapshot | null = this.snapshot): boolean {
+    if (!snapshot) return true;
+    const fetchedAt = Date.parse(snapshot.fetchedAt);
+    if (!Number.isFinite(fetchedAt)) return true;
+    return this.now().getTime() - fetchedAt > this.maxAgeMs;
+  }
+
+  /** Cached snapshot only when it is still within the freshness window. */
+  getFreshSnapshot(): OfficialCatalogSnapshot | null {
+    return this.snapshot && !this.isStale(this.snapshot) ? this.snapshot : null;
+  }
+
+  /**
+   * Refresh only when the cached snapshot is stale. On network/parse failure
+   * the previous (possibly stale) snapshot is returned and kept in memory —
+   * never cleared. Concurrent callers share one in-flight request.
+   */
+  async refreshIfStale(): Promise<OfficialCatalogSnapshot | null> {
+    const fresh = this.getFreshSnapshot();
+    if (fresh) return fresh;
+    if (this.refreshPromise) return this.refreshPromise;
+    if (this.now().getTime() < this.nextAttemptAt) return this.snapshot;
+
+    this.refreshPromise = this.fetchAndSave()
+      .catch(() => null)
+      .then((snapshot) => {
+        // A failed attempt keeps the previous snapshot and defers the next try.
+        this.nextAttemptAt = snapshot ? 0 : this.now().getTime() + this.retryAfterMs;
+        return snapshot ?? this.snapshot;
+      })
+      .finally(() => {
+        this.refreshPromise = null;
+      });
+
+    return this.refreshPromise;
   }
 
   private writeSnapshot(snapshot: OfficialCatalogSnapshot): void {
