@@ -152,4 +152,51 @@ describe("GET /v1/models/catalog", () => {
     expect(catalog.length).toBe(1);
     expect(catalog[0].id).toBe("gpt-5.4");
   });
+
+  it("does not leak stale static fallback models into the catalog", async () => {
+    const app = createModelRoutes();
+
+    const res = await app.request("/v1/models/catalog");
+    const catalog = (await res.json()) as Array<{ id: string }>;
+    expect(catalog.some((m) => m.id === "gpt-reserve")).toBe(false);
+    expect(catalog.some((m) => m.id === "gpt-6-astra-aeon")).toBe(false);
+  });
+
+  it("serves backend models loaded from data/models-cache.yaml", async () => {
+    const { existsSync, readFileSync } = await import("fs");
+    vi.mocked(existsSync).mockReturnValue(true);
+    vi.mocked(readFileSync).mockImplementation((filePath) => {
+      if (String(filePath).endsWith("models-cache.yaml")) {
+        return `
+models:
+  - id: gpt-5.5
+    displayName: GPT-5.5
+    description: Cached snapshot model
+    isDefault: false
+    supportedReasoningEfforts:
+      - { reasoningEffort: medium, description: "Medium" }
+    defaultReasoningEffort: medium
+    inputModalities: [text]
+    supportsPersonality: false
+    upgrade: null
+aliases: {}
+`;
+      }
+      return FIXTURE_YAML;
+    });
+
+    loadStaticModels();
+
+    const app = createModelRoutes();
+    const res = await app.request("/v1/models");
+    const body = (await res.json()) as { data: Array<{ id: string }> };
+
+    expect(body.data.some((m) => m.id === "gpt-5.5")).toBe(true);
+    expect(body.data.some((m) => m.id === "gpt-reserve")).toBe(false);
+
+    vi.mocked(existsSync).mockReturnValue(false);
+    vi.mocked(readFileSync).mockImplementation((filePath) =>
+      typeof filePath === "string" && filePath.includes("models.yaml") ? FIXTURE_YAML : "",
+    );
+  });
 });

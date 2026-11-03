@@ -12,10 +12,10 @@ import type { CookieJar } from "../proxy/cookie-jar.js";
 import type { ProxyPool } from "../proxy/proxy-pool.js";
 import { jitter } from "../utils/jitter.js";
 
-const REFRESH_INTERVAL_HOURS = 1;
+const REFRESH_INTERVAL_HOURS = 6;
 const INITIAL_DELAY_MS = 1_000;
 const RETRY_DELAY_MS = 10_000;
-const MAX_RETRIES = 12;
+const MAX_RETRIES = 24;
 
 export class ModelFetcher {
   private refreshTimer: ReturnType<typeof setTimeout> | null = null;

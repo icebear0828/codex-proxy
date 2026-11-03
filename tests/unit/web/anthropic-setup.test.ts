@@ -7,15 +7,15 @@ import {
 describe("AnthropicSetup defaults", () => {
   it("maps current Claude families to the desired Codex defaults", () => {
     expect(DEFAULT_ANTHROPIC_MODELS).toEqual({
-      opus: "gpt-5.6-sol",
-      sonnet: "gpt-5.6-terra",
-      haiku: "gpt-5.6-luna",
+      opus: "gpt-6.1-sol",
+      sonnet: "gpt-6.1-terra",
+      haiku: "gpt-6-luna",
     });
 
     expect(ANTHROPIC_MODEL_PRESETS.slice(0, 3)).toEqual([
-      { label: "gpt-5.6-sol (Opus)", value: "gpt-5.6-sol" },
-      { label: "gpt-5.6-terra (Sonnet)", value: "gpt-5.6-terra" },
-      { label: "gpt-5.6-luna (Haiku)", value: "gpt-5.6-luna" },
+      { label: "gpt-6.1-sol (Opus)", value: "gpt-6.1-sol" },
+      { label: "gpt-6.1-terra (Sonnet)", value: "gpt-6.1-terra" },
+      { label: "gpt-6-luna (Haiku)", value: "gpt-6-luna" },
     ]);
   });
 });

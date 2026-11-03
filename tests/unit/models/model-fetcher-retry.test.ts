@@ -104,12 +104,12 @@ describe("model-fetcher retry logic", () => {
     expect(hasFetchedModels()).toBe(true);
   });
 
-  it("falls back to hourly after max retries", async () => {
+  it("falls back to periodic refresh after max retries", async () => {
     const pool = createMockAccountPool(false);
     startModelRefresh(pool, mockCookieJar);
 
-    // Initial delay + 12 retries × 10s = 1s + 120s
-    await vi.advanceTimersByTimeAsync(1_000 + 12 * 10_000);
+    // Initial delay + 24 retries × 10s = 1s + 240s
+    await vi.advanceTimersByTimeAsync(1_000 + 24 * 10_000);
     expect(hasFetchedModels()).toBe(false);
 
     // Should have logged max retries and scheduled hourly
