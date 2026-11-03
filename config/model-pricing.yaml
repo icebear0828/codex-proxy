@@ -3,7 +3,7 @@
 # Unit: USD per 1,000,000 tokens. Keep this file as the single maintenance
 # point when OpenAI adds a model or changes a public API price.
 # Source: https://platform.openai.com/docs/pricing.md
-# Last verified: 2026-08-13
+# Last verified: 2026-11-03
 #
 # These values estimate the equivalent API cost of proxy traffic. They are
 # not the account balance or quota returned by chatgpt.com.
@@ -65,6 +65,22 @@ models:
     input_usd_per_million: 10
     cached_input_usd_per_million: 1
     output_usd_per_million: 50
+  gpt-6.1-sol:
+    input_usd_per_million: 5
+    cached_input_usd_per_million: 0.5
+    output_usd_per_million: 30
+  gpt-6.1-terra:
+    input_usd_per_million: 2
+    cached_input_usd_per_million: 0.2
+    output_usd_per_million: 12
+  gpt-6-sol:
+    input_usd_per_million: 5
+    cached_input_usd_per_million: 0.5
+    output_usd_per_million: 30
+  gpt-6-luna:
+    input_usd_per_million: 0.2
+    cached_input_usd_per_million: 0.02
+    output_usd_per_million: 1.2
   gpt-reserve:
     input_usd_per_million: 0.2
     cached_input_usd_per_million: 0.02

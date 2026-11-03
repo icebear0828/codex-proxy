@@ -54,10 +54,16 @@ class OllamaBridgeError extends Error {
 }
 
 const CONTEXT_WINDOW_OVERRIDES = new Map<string, number>([
-  // GPT-6 family (GA 2026-09-03) — 1 M token context window
+  // GPT-6 family (GA 2026-09-03) — Ollama bridge reports the unified
+  // 1,050,000-token bridge context window for all GPT-6 / GPT-6.1 models,
+  // regardless of Codex-side catalog limits.
   ["gpt-6-astra", 1050000],
   ["gpt-6-astra-aeon", 1050000],
   ["gpt-6", 1050000],
+  ["gpt-6.1-sol", 1050000],
+  ["gpt-6.1-terra", 1050000],
+  ["gpt-6-sol", 1050000],
+  ["gpt-6-luna", 1050000],
   // GPT-5.6 family (GA 2026-07-09) — 1 M token context window
   ["gpt-5.6-sol", 1050000],
   ["gpt-5.6-terra", 1050000],
