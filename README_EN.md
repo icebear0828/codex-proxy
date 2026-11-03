@@ -259,19 +259,15 @@ If you see streaming AI text, the setup is working. If you get 401, double-check
 
 | Model ID | Reasoning | Current context | Max context | Max output | Output | Description |
 |----------|-----------|-----------------|-------------|------------|--------|-------------|
-| `gpt-6-astra` | low / medium / high / xhigh / max / ultra | 1,050,000 | 1,050,000 | 128,000 | text | GPT-6 frontier flagship for complex reasoning & coding (`gpt-6` is an alias) |
-| `gpt-6-astra-aeon` | low / medium / high / xhigh / max / ultra | 1,050,000 | 1,050,000 | 128,000 | text | GPT-6 variant for long-horizon multi-agent tasks & deep reasoning |
-| `gpt-reserve` | low / medium / high / xhigh / max | 272,000 | 872,000 | 128,000 | text | Fast and affordable agentic coding model (all plans) |
-| `gpt-5.6-sol` | low / medium / high / xhigh / max / ultra | 1,050,000 | 1,050,000 | 128,000 | text | GPT-5.6 flagship for complex reasoning & coding (default; `gpt-5.6` is an alias) |
-| `gpt-5.6-terra` | low / medium / high / xhigh / max / ultra | 1,050,000 | 1,050,000 | 128,000 | text | GPT-5.6 balanced intelligence and cost |
-| `gpt-5.6-luna` | low / medium / high / xhigh / max / ultra | 1,050,000 | 1,050,000 | 128,000 | text | GPT-5.6 cost-efficient / high-throughput |
+| `gpt-6.1-sol` | low / medium / high / xhigh / max / ultra | 272,000 | 872,000 | 128,000 | text | GPT-6.1 latest workhorse for coding and everyday tasks |
+| `gpt-6-astra` | low / medium / high / xhigh / max / ultra | 272,000 | 872,000 | 128,000 | text | GPT-6 frontier flagship for complex reasoning & coding (`gpt-6` is an alias) |
+| `gpt-6-sol` | low / medium / high / xhigh / max / ultra | 272,000 | 872,000 | 128,000 | text | Previous-generation GPT-6 workhorse |
+| `gpt-6-luna` | low / medium / high / xhigh / max | 272,000 | 872,000 | 128,000 | text | Fast and economical for lightweight tasks |
+| `gpt-5.6-sol` | low / medium / high / xhigh / max / ultra | 272,000 | 872,000 | 128,000 | text | GPT-5.6 flagship for complex reasoning & coding (default; `gpt-5.6` is an alias) |
+| `gpt-6.1-terra` | low / medium / high / xhigh / max / ultra | 500,000 | 872,000 | 128,000 | text | GPT-6.1 Terra Codex model |
+| `gpt-5.6-terra` | low / medium / high / xhigh / max / ultra | 272,000 | 872,000 | 128,000 | text | GPT-5.6 balanced intelligence and cost |
+| `gpt-5.6-luna` | low / medium / high / xhigh / max | 272,000 | 872,000 | 128,000 | text | GPT-5.6 cost-efficient / high-throughput |
 | `gpt-5.5` | low / medium / high / xhigh | 272,000 | 272,000 | 128,000 | text | Complex coding, research, and real-world work |
-| `gpt-5.4` | low / medium / high / xhigh | 272,000 | 1,000,000 | 128,000 | text | Strong model for everyday coding |
-| `gpt-5.4-mini` | low / medium / high / xhigh | 400,000 | — | 128,000 | text | GPT-5.4 lightweight model |
-| `gpt-5.3-codex` | low / medium / high / xhigh | 400,000 | — | 128,000 | text | GPT-5.3 coding-optimized model |
-| `gpt-5.2` | low / medium / high / xhigh | 400,000 | — | 128,000 | text | Professional work & long-running agents |
-| `gpt-5-codex` | low / medium / high | 400,000 | — | 128,000 | text | GPT-5 coding-optimized model |
-| `gpt-5-codex-mini` | medium / high | — | — | — | text | Lightweight Codex / CLI coding model |
 | `gpt-oss-120b` | low / medium / high | 131,072 | — | — | text | Open-source 120B model |
 | `gpt-oss-20b` | low / medium / high | 131,072 | — | — | text | Open-source 20B model |
 | `gpt-image-2` | — | — | — | — | image | Image-generation tool backend, invoked via `image_generation` |
@@ -495,14 +491,14 @@ Edit `~/.pi/agent/models.json`:
         {
           "id": "gpt-5.6-sol",
           "name": "Codex GPT-5.6 Sol",
-          "contextWindow": 1050000,
+          "contextWindow": 272000,
           "maxTokens": 128000,
           "input": ["text", "image"]
         },
         {
           "id": "gpt-5.6-terra",
           "name": "Codex GPT-5.6 Terra",
-          "contextWindow": 1050000,
+          "contextWindow": 272000,
           "maxTokens": 128000,
           "input": ["text", "image"]
         }
@@ -527,7 +523,7 @@ Edit `~/.pi/agent/models.json`:
         {
           "id": "gpt-5.6-sol",
           "name": "Codex GPT-5.6 Sol",
-          "contextWindow": 1050000,
+          "contextWindow": 272000,
           "maxTokens": 128000,
           "input": ["text", "image"]
         }
@@ -550,7 +546,7 @@ Edit `~/.pi/agent/models.json`:
         {
           "id": "gpt-5.6-sol",
           "name": "Codex GPT-5.6 Sol",
-          "contextWindow": 1050000,
+          "contextWindow": 272000,
           "maxTokens": 128000,
           "input": ["text", "image"]
         }

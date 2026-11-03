@@ -347,23 +347,15 @@ curl http://localhost:8080/v1/chat/completions \
 
 | 模型 ID | 推理等级 | 当前上下文 | 最大上下文 | 最大输出 | 输出 | 说明 |
 |---------|---------|------------|------------|----------|------|------|
-| `gpt-6-astra` | low / medium / high / xhigh / max / ultra | 1,050,000 | 1,050,000 | 128,000 | 文本 | GPT-6 前沿旗舰：复杂推理与端到端 Agent 编码（`gpt-6` 为其别名） |
-| `gpt-6-astra-aeon` | low / medium / high / xhigh / max / ultra | 1,050,000 | 1,050,000 | 128,000 | 文本 | GPT-6 长程多 Agent 编排与深度推理变体 |
 | `gpt-6.1-sol` | low / medium / high / xhigh / max / ultra | 272,000 | 872,000 | 128,000 | 文本 | GPT-6.1 最新工作主力：编码与日常任务 |
-| `gpt-6.1-terra` | low / medium / high / xhigh / max / ultra | 500,000 | 872,000 | 128,000 | 文本 | GPT-6.1 Terra Codex 模型 |
+| `gpt-6-astra` | low / medium / high / xhigh / max / ultra | 272,000 | 872,000 | 128,000 | 文本 | GPT-6 前沿旗舰：复杂推理与端到端 Agent 编码（`gpt-6` 为其别名） |
 | `gpt-6-sol` | low / medium / high / xhigh / max / ultra | 272,000 | 872,000 | 128,000 | 文本 | 上一代 GPT-6 工作主力模型 |
 | `gpt-6-luna` | low / medium / high / xhigh / max | 272,000 | 872,000 | 128,000 | 文本 | 快速且经济，适合轻量任务 |
-| `gpt-reserve` | low / medium / high / xhigh / max | 272,000 | 872,000 | 128,000 | 文本 | 快速高性价比 Agent 编码模型（全计划开放） |
-| `gpt-5.6-sol` | low / medium / high / xhigh / max / ultra | 1,050,000 | 1,050,000 | 128,000 | 文本 | GPT-5.6 旗舰：复杂推理与编码（默认；`gpt-5.6` 为其别名） |
-| `gpt-5.6-terra` | low / medium / high / xhigh / max / ultra | 1,050,000 | 1,050,000 | 128,000 | 文本 | GPT-5.6 智能与成本平衡 |
-| `gpt-5.6-luna` | low / medium / high / xhigh / max / ultra | 1,050,000 | 1,050,000 | 128,000 | 文本 | GPT-5.6 高性价比 / 高吞吐 |
+| `gpt-5.6-sol` | low / medium / high / xhigh / max / ultra | 272,000 | 872,000 | 128,000 | 文本 | GPT-5.6 旗舰：复杂推理与编码（默认；`gpt-5.6` 为其别名） |
+| `gpt-6.1-terra` | low / medium / high / xhigh / max / ultra | 500,000 | 872,000 | 128,000 | 文本 | GPT-6.1 Terra Codex 模型 |
+| `gpt-5.6-terra` | low / medium / high / xhigh / max / ultra | 272,000 | 872,000 | 128,000 | 文本 | GPT-5.6 智能与成本平衡 |
+| `gpt-5.6-luna` | low / medium / high / xhigh / max | 272,000 | 872,000 | 128,000 | 文本 | GPT-5.6 高性价比 / 高吞吐 |
 | `gpt-5.5` | low / medium / high / xhigh | 272,000 | 272,000 | 128,000 | 文本 | 复杂编码、研究和真实工作流 |
-| `gpt-5.4` | low / medium / high / xhigh | 272,000 | 1,000,000 | 128,000 | 文本 | 日常编码强模型 |
-| `gpt-5.4-mini` | low / medium / high / xhigh | 400,000 | — | 128,000 | 文本 | 5.4 轻量版 |
-| `gpt-5.3-codex` | low / medium / high / xhigh | 400,000 | — | 128,000 | 文本 | 5.3 编程优化模型 |
-| `gpt-5.2` | low / medium / high / xhigh | 400,000 | — | 128,000 | 文本 | 专业工作 + 长时间代理 |
-| `gpt-5-codex` | low / medium / high | 400,000 | — | 128,000 | 文本 | GPT-5 编程优化模型 |
-| `gpt-5-codex-mini` | medium / high | — | — | — | 文本 | 轻量 Codex / CLI 编程模型 |
 | `gpt-oss-120b` | low / medium / high | 131,072 | — | — | 文本 | 开源 120B 模型 |
 | `gpt-oss-20b` | low / medium / high | 131,072 | — | — | 文本 | 开源 20B 模型 |
 | `gpt-image-2` | — | — | — | — | 图像 | 图像生成工具后端（通过 `image_generation` 调用） |
@@ -669,14 +661,14 @@ aider --model openai/gpt-5.6-sol
         {
           "id": "gpt-5.6-sol",
           "name": "Codex GPT-5.6 Sol",
-          "contextWindow": 1050000,
+          "contextWindow": 272000,
           "maxTokens": 128000,
           "input": ["text", "image"]
         },
         {
           "id": "gpt-5.6-terra",
           "name": "Codex GPT-5.6 Terra",
-          "contextWindow": 1050000,
+          "contextWindow": 272000,
           "maxTokens": 128000,
           "input": ["text", "image"]
         }
@@ -704,7 +696,7 @@ aider --model openai/gpt-5.6-sol
         {
           "id": "gpt-5.6-sol",
           "name": "Codex GPT-5.6 Sol",
-          "contextWindow": 1050000,
+          "contextWindow": 272000,
           "maxTokens": 128000,
           "input": ["text", "image"]
         }
@@ -730,7 +722,7 @@ aider --model openai/gpt-5.6-sol
         {
           "id": "gpt-5.6-sol",
           "name": "Codex GPT-5.6 Sol",
-          "contextWindow": 1050000,
+          "contextWindow": 272000,
           "maxTokens": 128000,
           "input": ["text", "image"]
         }

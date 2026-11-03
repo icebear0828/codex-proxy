@@ -253,16 +253,15 @@ curl http://localhost:8080/v1/chat/completions \
 
 | 模型 ID | 推理等級 | 當前上下文 | 最大上下文 | 最大輸出 | 輸出 | 說明 |
 |---------|---------|------------|------------|----------|------|------|
-| `gpt-5.6-sol` | low / medium / high / xhigh / max / ultra | 1,050,000 | 1,050,000 | 128,000 | 文字 | GPT-5.6 旗艦：複雜推理與程式設計（預設；`gpt-5.6` 為其別名） |
-| `gpt-5.6-terra` | low / medium / high / xhigh / max / ultra | 1,050,000 | 1,050,000 | 128,000 | 文字 | GPT-5.6 智慧與成本平衡 |
-| `gpt-5.6-luna` | low / medium / high / xhigh / max / ultra | 1,050,000 | 1,050,000 | 128,000 | 文字 | GPT-5.6 高性價比 / 高吞吐 |
+| `gpt-6.1-sol` | low / medium / high / xhigh / max / ultra | 272,000 | 872,000 | 128,000 | 文字 | GPT-6.1 最新工作主力：程式設計與日常任務 |
+| `gpt-6-astra` | low / medium / high / xhigh / max / ultra | 272,000 | 872,000 | 128,000 | 文字 | GPT-6 前沿旗艦：複雜推理與端到端 Agent 程式設計（`gpt-6` 為其別名） |
+| `gpt-6-sol` | low / medium / high / xhigh / max / ultra | 272,000 | 872,000 | 128,000 | 文字 | 上一代 GPT-6 工作主力模型 |
+| `gpt-6-luna` | low / medium / high / xhigh / max | 272,000 | 872,000 | 128,000 | 文字 | 快速且經濟，適合輕量任務 |
+| `gpt-5.6-sol` | low / medium / high / xhigh / max / ultra | 272,000 | 872,000 | 128,000 | 文字 | GPT-5.6 旗艦：複雜推理與程式設計（預設；`gpt-5.6` 為其別名） |
+| `gpt-6.1-terra` | low / medium / high / xhigh / max / ultra | 500,000 | 872,000 | 128,000 | 文字 | GPT-6.1 Terra Codex 模型 |
+| `gpt-5.6-terra` | low / medium / high / xhigh / max / ultra | 272,000 | 872,000 | 128,000 | 文字 | GPT-5.6 智慧與成本平衡 |
+| `gpt-5.6-luna` | low / medium / high / xhigh / max | 272,000 | 872,000 | 128,000 | 文字 | GPT-5.6 高性價比 / 高吞吐 |
 | `gpt-5.5` | low / medium / high / xhigh | 272,000 | 272,000 | 128,000 | 文字 | 複雜程式設計、研究與真實工作流程 |
-| `gpt-5.4` | low / medium / high / xhigh | 272,000 | 1,000,000 | 128,000 | 文字 | 日常程式設計強模型 |
-| `gpt-5.4-mini` | low / medium / high / xhigh | 400,000 | — | 128,000 | 文字 | 5.4 輕量版 |
-| `gpt-5.3-codex` | low / medium / high / xhigh | 400,000 | — | 128,000 | 文字 | 5.3 程式設計最佳化模型 |
-| `gpt-5.2` | low / medium / high / xhigh | 400,000 | — | 128,000 | 文字 | 專業工作 + 長時間 Agent 代理 |
-| `gpt-5-codex` | low / medium / high | 400,000 | — | 128,000 | 文字 | GPT-5 程式設計最佳化模型 |
-| `gpt-5-codex-mini` | medium / high | — | — | — | 文字 | 輕量 Codex / CLI 程式設計模型 |
 | `gpt-oss-120b` | low / medium / high | 131,072 | — | — | 文字 | 開源 120B 模型 |
 | `gpt-oss-20b` | low / medium / high | 131,072 | — | — | 文字 | 開源 20B 模型 |
 | `gpt-image-2` | — | — | — | — | 圖像 | 圖像生成工具後端（透過 `image_generation` 呼叫） |
