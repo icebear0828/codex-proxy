@@ -258,11 +258,11 @@ AI からストリーミング応答が返ってくれば正常に動作して�
 
 | モデル ID | 推論レベル | 現在のコンテキスト | 最大コンテキスト | 最大出力 | 出力種別 | 説明 |
 |-----------|------------|-------------------|------------------|----------|----------|------|
-| `gpt-6.1-sol` | low / medium / high / xhigh / max / ultra | 272,000 | 872,000 | 128,000 | テキスト | GPT-6.1 最新のワークホース：コーディングと日常タスク |
+| `gpt-6.1-sol` | low / medium / high / xhigh / max / ultra | 272,000 | 872,000 | 128,000 | テキスト | GPT-6.1 最新のワークホース：コーディングと日常タスク（デフォルト） |
 | `gpt-6-astra` | low / medium / high / xhigh / max / ultra | 272,000 | 872,000 | 128,000 | テキスト | GPT-6 フロンティア flagship：高度な推論とエンドツーエンドの Agent コーディング（`gpt-6` はエイリアス） |
 | `gpt-6-sol` | low / medium / high / xhigh / max / ultra | 272,000 | 872,000 | 128,000 | テキスト | 前世代 GPT-6 ワークホースモデル |
 | `gpt-6-luna` | low / medium / high / xhigh / max | 272,000 | 872,000 | 128,000 | テキスト | 高速で経済的、軽量タスク向け |
-| `gpt-5.6-sol` | low / medium / high / xhigh / max / ultra | 272,000 | 872,000 | 128,000 | テキスト | GPT-5.6 フラッグシップ：高度な推論とコーディング（デフォルト、`gpt-5.6` はエイリアス） |
+| `gpt-5.6-sol` | low / medium / high / xhigh / max / ultra | 272,000 | 872,000 | 128,000 | テキスト | GPT-5.6 フラッグシップ：高度な推論とコーディング（`gpt-5.6` はエイリアス） |
 | `gpt-6.1-terra` | low / medium / high / xhigh / max / ultra | 500,000 | 872,000 | 128,000 | テキスト | GPT-6.1 Terra Codex モデル |
 | `gpt-5.6-terra` | low / medium / high / xhigh / max / ultra | 272,000 | 872,000 | 128,000 | テキスト | GPT-5.6 知能とコストのバランスモデル |
 | `gpt-5.6-luna` | low / medium / high / xhigh / max | 272,000 | 872,000 | 128,000 | テキスト | GPT-5.6 高コストパフォーマンス / 高スループット |
@@ -311,7 +311,7 @@ curl -N http://localhost:8080/v1/responses \
 
 ## 🔗 クライアント設定
 
-> すべてのクライアントで使用する API Key はコントロールパネル（`http://localhost:8080`）から取得してください。モデル名には具体的な ID（デフォルト: `gpt-5.6-sol`）または任意の [利用可能なモデル](#-利用可能なモデル) ID を入力します。
+> すべてのクライアントで使用する API Key はコントロールパネル（`http://localhost:8080`）から取得してください。モデル名には具体的な ID（デフォルト: `gpt-6.1-sol`）または任意の [利用可能なモデル](#-利用可能なモデル) ID を入力します。
 
 <details>
 <summary><h3>Claude Code (CLI)</h3></summary>

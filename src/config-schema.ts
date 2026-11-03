@@ -81,7 +81,7 @@ export const ConfigSchema = z.object({
   }),
 
   model: z.object({
-    default: z.string().default("gpt-5.6-sol"),
+    default: z.string().default("gpt-6.1-sol"),
     /** Sync the official Codex model manifest from the openai/codex repository.
      *  Credential-free; failures silently fall back to the backend fetch. */
     official_catalog_sync: z.boolean().default(true),
