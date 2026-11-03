@@ -70,6 +70,28 @@ import {
   applyBackendModelsForPlan,
 } from "@src/models/model-store.js";
 
+describe("KNOWN_OFFICIAL_MODELS — GPT-6.1 / GPT-6 entries", () => {
+  it.each([
+    ["gpt-6.1-sol", 272000, 872000, "low"],
+    ["gpt-6.1-terra", 500000, 872000, "low"],
+    ["gpt-6-sol", 272000, 872000, "medium"],
+    ["gpt-6-luna", 272000, 872000, "medium"],
+  ])("exposes %s with expected catalog metadata", (id, contextWindow, maxContextWindow, defaultEffort) => {
+    const info = getModelInfo(id);
+    expect(info).toBeDefined();
+    expect(info?.id).toBe(id);
+    expect(info?.contextWindow).toBe(contextWindow);
+    expect(info?.maxContextWindow).toBe(maxContextWindow);
+    expect(info?.defaultReasoningEffort).toBe(defaultEffort);
+    expect(KNOWN_OFFICIAL_MODELS.has(id)).toBe(true);
+  });
+
+  it("restricts gpt-6-luna to efforts up to max", () => {
+    const efforts = getModelInfo("gpt-6-luna")?.supportedReasoningEfforts.map((e) => e.reasoningEffort);
+    expect(efforts).toEqual(["low", "medium", "high", "xhigh", "max"]);
+  });
+});
+
 // Minimal YAML content that js-yaml can parse
 const FIXTURE_YAML = `
 models:
