@@ -611,15 +611,14 @@ aliases: {}
       expect(isRecognizedModelName("local-simple-high-fast")).toBe(true);
     });
 
-    it("accepts known official models (gpt-6-astra, gpt-reserve) and aliases", () => {
+    it("accepts known official models (gpt-6-astra, gpt-6.1-sol) and aliases", () => {
       expect(isRecognizedModelName("gpt-6-astra")).toBe(true);
-      expect(isRecognizedModelName("gpt-6-astra-aeon")).toBe(true);
       expect(isRecognizedModelName("gpt-6-astra-high")).toBe(true);
       expect(isRecognizedModelName("gpt-6-astra-ultra-fast")).toBe(true);
       expect(isRecognizedModelName("gpt-6")).toBe(true);
       expect(isRecognizedModelName("gpt-6-fast")).toBe(true);
-      expect(isRecognizedModelName("gpt-reserve")).toBe(true);
-      expect(isRecognizedModelName("gpt-reserve-high")).toBe(true);
+      expect(isRecognizedModelName("gpt-6.1-sol")).toBe(true);
+      expect(isRecognizedModelName("gpt-6.1-sol-high")).toBe(true);
     });
 
     it("rejects unknown model names even with valid-looking suffixes", () => {
@@ -633,8 +632,8 @@ aliases: {}
       expect(isRecognizedModelName("gpt-6-astra-high-fast")).toBe(true);
       expect(isRecognizedModelName("gpt-6")).toBe(true);
       expect(isRecognizedModelName("gpt-6-fast")).toBe(true);
-      expect(isRecognizedModelName("gpt-reserve")).toBe(true);
-      expect(isRecognizedModelName("gpt-reserve-high")).toBe(true);
+      expect(isRecognizedModelName("gpt-6.1-terra")).toBe(true);
+      expect(isRecognizedModelName("gpt-6.1-terra-high")).toBe(true);
       expect(isRecognizedModelName("o4-mini-high")).toBe(true);
     });
   });
@@ -675,12 +674,12 @@ aliases: {}
     });
 
     it("accepts newly released gpt-6 family without static definitions", () => {
-      // gpt-6-astra / gpt-reserve are not in the catalog/aliases/custom, yet they
-      // must be requestable so clients aren't 404'd or silently downgraded.
+      // gpt-6-astra / gpt-6.1-sol are not in the catalog/aliases/custom, yet
+      // they must be requestable so clients aren't 404'd or downgraded.
       expect(isRequestableModel("gpt-6-astra")).toBe(true);
       expect(isRequestableModel("gpt-6-astra-high-fast")).toBe(true);
       expect(isRequestableModel("gpt-6")).toBe(true);
-      expect(isRequestableModel("gpt-reserve")).toBe(true);
+      expect(isRequestableModel("gpt-6.1-sol")).toBe(true);
       expect(resolveModelId("gpt-6-astra")).toBe("gpt-6-astra");
     });
   });
@@ -690,7 +689,9 @@ aliases: {}
       const info = getModelInfo("gpt-6-astra");
       expect(info).toBeDefined();
       expect(info!.displayName).toBe("GPT-6 Astra");
-      expect(info!.contextWindow).toBe(1_050_000);
+      expect(info!.contextWindow).toBe(272_000);
+      expect(info!.maxContextWindow).toBe(872_000);
+      expect(info!.defaultReasoningEffort).toBe("low");
       expect(info!.maxOutputTokens).toBe(128_000);
     });
     it("returns model info by ID", () => {
@@ -718,8 +719,10 @@ aliases: {}
     it("exposes static official models alongside the live catalog", () => {
       const ids = getModelCatalog().map((m) => m.id);
       expect(ids).toContain("gpt-6-astra");
-      expect(ids).toContain("gpt-6-astra-aeon");
-      expect(ids).toContain("gpt-reserve");
+      expect(ids).toContain("gpt-6.1-sol");
+      // Removed: not present in the official models.json manifest.
+      expect(ids).not.toContain("gpt-6-astra-aeon");
+      expect(ids).not.toContain("gpt-reserve");
     });
   });
 

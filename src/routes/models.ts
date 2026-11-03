@@ -157,7 +157,42 @@ export function createModelRoutes(apiKeyPool?: ApiKeyPool, clientKeyPool?: Clien
     return key?.allowed_models && key.allowed_models.length > 0 ? key.allowed_models : null;
   }
 
+  /**
+   * Codex-native catalog entries (`{models: [ModelInfo]}`).
+   *
+   * Shared by `/v1/models/catalog/codex` and `GET /v1/models?client_version=…`
+   * so both surfaces emit byte-identical entries.
+   */
+  function buildCodexCatalogModels(c: import("hono").Context) {
+    const catalog = getLiveCatalog();
+    const modelsById = new Map<string, CodexModelInfo>();
+    for (const model of catalog) {
+      modelsById.set(model.id, model);
+    }
+    for (const modelId of apiKeyPool?.getActiveModels() ?? []) {
+      if (!modelsById.has(modelId)) {
+        modelsById.set(modelId, toRuntimeCatalogModel(modelId));
+      }
+    }
+
+    let data = [...modelsById.values()];
+    const allowed = getClientKeyAllowedModels(c);
+    if (allowed) {
+      data = data.filter((m) => allowed.includes(m.id));
+    }
+
+    return data.map(toCodexCatalogEntry);
+  }
+
   app.get("/v1/models", (c) => {
+    // Codex CLI polls `/v1/models?client_version=…` when `openai_base_url`
+    // points at the proxy and only decodes the native `{models: [ModelInfo]}`
+    // shape. Any other client keeps the OpenAI list envelope below.
+    const clientVersion = c.req.query("client_version");
+    if (clientVersion) {
+      return c.json({ models: buildCodexCatalogModels(c) });
+    }
+
     const catalog = getLiveCatalog();
     const modelsById = new Map<string, OpenAIModel>();
 
@@ -206,24 +241,7 @@ export function createModelRoutes(apiKeyPool?: ApiKeyPool, clientKeyPool?: Clien
   // Codex-native rich catalog ({models: [ModelInfo]}) for downstream Codex CLI
   // `model_catalog_url`. Two segments, so :modelId can never shadow it.
   app.get("/v1/models/catalog/codex", (c) => {
-    const catalog = getLiveCatalog();
-    const modelsById = new Map<string, CodexModelInfo>();
-    for (const model of catalog) {
-      modelsById.set(model.id, model);
-    }
-    for (const modelId of apiKeyPool?.getActiveModels() ?? []) {
-      if (!modelsById.has(modelId)) {
-        modelsById.set(modelId, toRuntimeCatalogModel(modelId));
-      }
-    }
-
-    let data = [...modelsById.values()];
-    const allowed = getClientKeyAllowedModels(c);
-    if (allowed) {
-      data = data.filter((m) => allowed.includes(m.id));
-    }
-
-    return c.json({ models: data.map(toCodexCatalogEntry) });
+    return c.json({ models: buildCodexCatalogModels(c) });
   });
 
   app.get("/v1/models/:modelId", (c) => {
