@@ -24,7 +24,7 @@ export function toCodexCatalogEntry(info: CodexModelInfo) {
       }
     : null;
 
-  return {
+  const entry = {
     // `id` mirrors slug so non-CLI consumers can key entries like on /v1/models.
     id: info.id,
     slug: info.id,
@@ -49,9 +49,11 @@ export function toCodexCatalogEntry(info: CodexModelInfo) {
     })),
     default_service_tier: info.defaultServiceTier ?? null,
     available_access_programs: null,
-    availability_nux: null,
+    // Only echo what the backend reported — never fabricate onboarding copy.
+    availability_nux: info.availabilityNux ?? null,
     upgrade,
-    model_messages: null,
+    // Backend-reported prompt/copy overrides; omitted fields stay null.
+    model_messages: info.modelMessages ?? null,
     include_skills_usage_instructions: false,
     include_plugin_usage_instructions: false,
     include_apps_usage_instructions: true,
@@ -85,4 +87,11 @@ export function toCodexCatalogEntry(info: CodexModelInfo) {
     multi_agent_version: info.multiAgentVersion ?? null,
     multi_agent_reasoning_effort: info.multiAgentReasoningEffort ?? null,
   };
+
+  // Codex `ModelInfo.minimal_client_version` is optional: emit the key only
+  // when the backend reported a real version gate instead of inventing one.
+  if (info.minimalClientVersion) {
+    return { ...entry, minimal_client_version: info.minimalClientVersion };
+  }
+  return entry;
 }
