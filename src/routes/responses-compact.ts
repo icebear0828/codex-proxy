@@ -100,7 +100,9 @@ export async function handleCompact(
 
   const compactRequest: CodexCompactRequest = {
     model: modelId,
-    input: Array.isArray(body.input) ? sanitizeCodexInputItems(body.input) : [],
+    input: typeof body.input === "string"
+      ? [{ role: "user", content: [{ type: "input_text", text: body.input }] }]
+      : Array.isArray(body.input) ? sanitizeCodexInputItems(body.input) : [],
     instructions: typeof body.instructions === "string" ? body.instructions : "",
   };
   if (Array.isArray(body.tools) && body.tools.length > 0) {

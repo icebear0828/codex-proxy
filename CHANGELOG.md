@@ -8,7 +8,9 @@
 
 ## [Unreleased]
 
-> 暂无已记录的变更。
+### Fixed
+
+- 修复 `/v1/responses` 与 `/v1/responses/compact` 接口中 `string` 类型 `input` 被丢弃置空的问题，自动将其规范化包装为包含 `input_text` 的 user message，提升与 LiteLLM 等客户端的兼容性；修复 `/v1/responses` 在客户端省略 `stream` 参数时错误默认使用流式 SSE 的问题，使其按规范默认保持非流式 JSON 响应。Closes #866。
 
 ## [v2.1.x](https://github.com/icebear0828/codex-proxy/releases?q=2.1) - 2026-09-01 至 2026-09-07
 
