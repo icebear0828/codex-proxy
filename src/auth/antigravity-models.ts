@@ -15,6 +15,7 @@ export const ANTIGRAVITY_SUPPORTED_MODELS: AntigravitySupportedModel[] = [
   { id: "claude-opus-4-7", displayName: "Claude Opus 4.7", family: "claude" },
   { id: "claude-opus-4-8", displayName: "Claude Opus 4.8", family: "claude" },
   { id: "claude-sonnet-4-6", displayName: "Claude Sonnet 4.6", family: "claude" },
+  { id: "gemini-2.5-pro", displayName: "Gemini 2.5 Pro", family: "gemini" },
   { id: "gemini-2.5-flash", displayName: "Gemini 2.5 Flash", family: "gemini" },
   { id: "gemini-2.5-flash-image", displayName: "Gemini 2.5 Flash Image", family: "gemini" },
   { id: "gemini-2.5-flash-image-preview", displayName: "Gemini 2.5 Flash Image Preview", family: "gemini" },
