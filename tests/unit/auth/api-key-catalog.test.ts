@@ -41,4 +41,23 @@ describe("api-key-catalog", () => {
     expect(isBuiltinProvider("custom")).toBe(false);
     expect(isBuiltinProvider("groq")).toBe(false);
   });
+
+  it("uses current OpenAI fallback models", () => {
+    expect(PROVIDER_CATALOG.openai.models.map((m) => m.id)).toEqual([
+      "gpt-5.6-sol",
+      "gpt-5.6-terra",
+      "gpt-5.6-luna",
+    ]);
+  });
+
+  it("uses current OpenRouter fallback models", () => {
+    expect(PROVIDER_CATALOG.openrouter.models.map((m) => m.id)).toEqual([
+      "anthropic/claude-sonnet-4-5",
+      "openai/gpt-5.6-sol",
+      "openai/gpt-5.6-terra",
+      "openai/gpt-5.6-luna",
+      "google/gemini-2.5-pro",
+      "deepseek/deepseek-r1",
+    ]);
+  });
 });

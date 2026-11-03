@@ -5,10 +5,9 @@
 import { Hono } from "hono";
 import type { OpenAIModel, OpenAIModelList } from "../types/openai.js";
 import {
-  getModelCatalog,
-  getModelInfo,
   getModelStoreDebug,
   resolveModelId,
+  getModelCatalog,
   type CodexModelInfo,
 } from "../models/model-store.js";
 import { triggerImmediateRefresh } from "../models/model-fetcher.js";
@@ -137,6 +136,16 @@ function toRuntimeCatalogModel(id: string): CodexModelInfo {
   };
 }
 
+/**
+ * Live catalog only (backend/static/custom) — no KNOWN_OFFICIAL_MODELS fallback.
+ * `getModelCatalog()` appends static-only fallback entries; the debug snapshot
+ * exposes exactly the live `catalog` IDs, so use it to filter those out.
+ */
+function getLiveCatalog(): CodexModelInfo[] {
+  const liveIds = new Set(getModelStoreDebug().models.map((m) => m.id));
+  return getModelCatalog().filter((m) => liveIds.has(m.id));
+}
+
 export function createModelRoutes(apiKeyPool?: ApiKeyPool, clientKeyPool?: ClientKeyPool): Hono {
   const app = new Hono();
 
@@ -149,7 +158,7 @@ export function createModelRoutes(apiKeyPool?: ApiKeyPool, clientKeyPool?: Clien
   }
 
   app.get("/v1/models", (c) => {
-    const catalog = getModelCatalog();
+    const catalog = getLiveCatalog();
     const modelsById = new Map<string, OpenAIModel>();
 
     for (const model of catalog) {
@@ -174,7 +183,7 @@ export function createModelRoutes(apiKeyPool?: ApiKeyPool, clientKeyPool?: Clien
   // Full catalog with reasoning efforts (for dashboard UI)
   // Must be before :modelId to avoid being matched as a model ID
   app.get("/v1/models/catalog", (c) => {
-    let catalog = getModelCatalog();
+    let catalog = getLiveCatalog();
     const config = getConfig();
     const rawDefault = config.model?.default?.trim();
     const configDefault = rawDefault ? resolveModelId(rawDefault) : undefined;
@@ -197,7 +206,7 @@ export function createModelRoutes(apiKeyPool?: ApiKeyPool, clientKeyPool?: Clien
   // Codex-native rich catalog ({models: [ModelInfo]}) for downstream Codex CLI
   // `model_catalog_url`. Two segments, so :modelId can never shadow it.
   app.get("/v1/models/catalog/codex", (c) => {
-    const catalog = getModelCatalog();
+    const catalog = getLiveCatalog();
     const modelsById = new Map<string, CodexModelInfo>();
     for (const model of catalog) {
       modelsById.set(model.id, model);
@@ -232,7 +241,7 @@ export function createModelRoutes(apiKeyPool?: ApiKeyPool, clientKeyPool?: Clien
       });
     }
 
-    const catalog = getModelCatalog();
+    const catalog = getLiveCatalog();
 
     const info = catalog.find((m) => m.id === modelId);
     if (info) return c.json(toOpenAIModel(info));
@@ -261,7 +270,7 @@ export function createModelRoutes(apiKeyPool?: ApiKeyPool, clientKeyPool?: Clien
       return c.json({ error: `Model '${modelId}' not found` });
     }
 
-    const info = getModelInfo(modelId);
+    const info = getLiveCatalog().find((m) => m.id === modelId);
     if (!info) {
       c.status(404);
       return c.json({ error: `Model '${modelId}' not found` });
