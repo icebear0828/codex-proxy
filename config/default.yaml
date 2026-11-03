@@ -33,6 +33,9 @@ model:
   # The two `_inline` modes can bypass Codex backend's built-in base prompt prior
   # in cases where the `instructions` field is overridden by server-injected context.
   system_prompt_strategy: instructions
+  # Sync the official Codex model catalog from the openai/codex repository
+  # (no credentials). Failures are silent and fall back to backend fetching.
+  official_catalog_sync: true
 auth:
   jwt_token: null
   chatgpt_oauth: true
