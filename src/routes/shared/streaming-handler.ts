@@ -15,6 +15,7 @@ import { streamResponse } from "./response-processor.js";
 import { createResponseMetadataCollector } from "./response-metadata-collector.js";
 import { logProxyUsage } from "./proxy-usage-log.js";
 import { getReasoningReplayCache } from "../../proxy/reasoning-replay-cache.js";
+import { recordConversationQuarantine } from "../../proxy/conversation-quarantine.js";
 import { getWsPool } from "../../proxy/ws-pool.js";
 import { forwardCodexRateLimitHeaders } from "./codex-rate-limit-response-headers.js";
 import { relayCodexTurnState } from "./codex-turn-state.js";
@@ -199,6 +200,24 @@ export function handleStreaming(options: HandleStreamingOptions): Response {
         abortController.abort();
       }
       recordStreamAffinity();
+      // A safety-policy rejection reaches us as a terminal frame *inside* the
+      // stream, so it never passes through the retry classifier or the error
+      // handler — and the client is free to fire its next request (or its
+      // autonomous "goal"-mode continuation) as soon as it sees that frame.
+      // Record the quarantine here so that next request is refused locally.
+      if (metadataCollector.policyRejection) {
+        recordConversationQuarantine({
+          conversationId,
+          input: req.codexRequest.input,
+          code: metadataCollector.policyRejection.code,
+          message: metadataCollector.policyRejection.message,
+        });
+        console.warn(
+          `[policy-quarantine] rid=${requestId.slice(0, 8)} tag=${fmt.tag} ` +
+            `conv=${conversationId.slice(0, 8)} code=${metadataCollector.policyRejection.code} — ` +
+            `conversation will be refused locally until its history changes or the TTL expires`,
+        );
+      }
       if (implicitResumeActive && !responseCompleted && !clientAborted) {
         // A resumed stream that ends without response.completed — whether via
         // silent close, an upstream terminal error/response.failed frame, or a

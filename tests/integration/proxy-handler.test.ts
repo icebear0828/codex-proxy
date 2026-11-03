@@ -19,6 +19,7 @@ import {
   _resetAllCfChallengeCooldowns,
   getCfChallengeCooldown,
 } from "@src/auth/cf-challenge-cooldown.js";
+import { _resetAllConversationQuarantines } from "@src/proxy/conversation-quarantine.js";
 
 // ── Module-level control for CodexApi.createResponse ──────────────────
 
@@ -103,8 +104,17 @@ vi.mock("@src/proxy/codex-api.js", () => {
   return { CodexApi, CodexApiError, PreviousResponseWebSocketError };
 });
 
+// Mutable so individual tests can opt into the safety-policy guard; the shipped
+// default is disabled, which keeps every other test on its original path.
+const policyGuard = vi.hoisted(() => ({
+  enabled: false,
+  error_codes: ["cyber_policy", "session_blocked_by_cyber_policy"],
+  message_patterns: ["possible cybersecurity risk", "网络安全策略屏蔽"],
+  ttl_seconds: 3600,
+}));
+
 vi.mock("@src/config.js", () => ({
-  getConfig: vi.fn(() => ({ auth: { request_interval_ms: 0 } })),
+  getConfig: vi.fn(() => ({ auth: { request_interval_ms: 0 }, policy_guard: policyGuard })),
 }));
 
 vi.mock("@src/utils/jitter.js", () => ({
@@ -228,12 +238,25 @@ function buildTestApp(opts: {
 
 // ── Tests ─────────────────────────────────────────────────────────────
 
+/** The shape a relay emits for a content-safety rejection: the provider's own
+ *  code plus its bilingual template. */
+const SAFETY_POLICY_BODY = JSON.stringify({
+  error: {
+    type: "permission_error",
+    code: "session_blocked_by_cyber_policy",
+    message:
+      "该会话已被网络安全策略屏蔽，请开启新会话 / This session is blocked by cyber-security policy, please start a new session",
+  },
+});
+
 describe("proxy-handler integration", () => {
   beforeEach(() => {
     mockCreateResponse = null;
     mockGetUsage = null;
     getSessionAffinityMap().dispose();
     _resetAllCfChallengeCooldowns();
+    _resetAllConversationQuarantines();
+    policyGuard.enabled = false;
     vi.clearAllMocks();
   });
 
@@ -795,6 +818,76 @@ describe("proxy-handler integration", () => {
 
     expect(accountPool.markStatus).toHaveBeenCalledWith("e1", "banned");
     expect(accountPool.release).not.toHaveBeenCalled();
+  });
+
+  // 5b-2. Safety-policy rejection → stop, no rotation, no account mutation
+  it("does not rotate or ban the account on an upstream safety-policy rejection", async () => {
+    // Set explicitly: an earlier test replaces getConfig with a persistent
+    // mockReturnValue that carries no policy_guard.
+    vi.mocked(getConfig).mockReturnValue({
+      auth: { request_interval_ms: 0 },
+      policy_guard: policyGuard,
+    } as never);
+    policyGuard.enabled = true;
+    let upstreamCalls = 0;
+    mockCreateResponse = () => {
+      upstreamCalls += 1;
+      return Promise.reject(new CodexApiError(403, SAFETY_POLICY_BODY));
+    };
+
+    const accountPool = createMockAccountPool({
+      acquire: vi.fn()
+        .mockReturnValueOnce({ entryId: "e1", token: "tok1", accountId: "acc1" })
+        .mockReturnValueOnce(null),
+    });
+    const { app } = buildTestApp({ accountPool });
+
+    const res = await app.request("/test", { method: "POST" });
+    expect(res.status).toBe(400);
+
+    // Exactly one submission: the retry paths that would resend the rejected
+    // content (rotation, replay, strip) must all stay closed.
+    expect(upstreamCalls).toBe(1);
+    expect(accountPool.acquire).toHaveBeenCalledTimes(1);
+    expect(accountPool.markStatus).not.toHaveBeenCalled();
+  });
+
+  // 5b-3. The acceptance criterion: one rejection ⇒ exactly one submission.
+  it("refuses a quarantined conversation locally, so later turns never reach upstream", async () => {
+    vi.mocked(getConfig).mockReturnValue({
+      auth: { request_interval_ms: 0 },
+      policy_guard: policyGuard,
+    } as never);
+    policyGuard.enabled = true;
+    let upstreamCalls = 0;
+    mockCreateResponse = () => {
+      upstreamCalls += 1;
+      return Promise.reject(new CodexApiError(403, SAFETY_POLICY_BODY));
+    };
+
+    const first = buildTestApp({
+      req: createDefaultRequest(),
+      accountPool: createMockAccountPool({
+        acquire: vi.fn()
+          .mockReturnValueOnce({ entryId: "e1", token: "tok1", accountId: "acc1" })
+          .mockReturnValueOnce(null),
+      }),
+    });
+    expect((await first.app.request("/test", { method: "POST" })).status).toBe(400);
+    expect(upstreamCalls).toBe(1);
+
+    // A fresh request carrying the same conversation — a client retry, or an
+    // autonomous "goal"-mode continuation. Same model/instructions/first user
+    // message, so it derives the same conversation key.
+    const second = buildTestApp({
+      req: createDefaultRequest(),
+      accountPool: createMockAccountPool({ acquire: vi.fn(() => null) }),
+    });
+    expect((await second.app.request("/test", { method: "POST" })).status).toBe(400);
+
+    expect(upstreamCalls).toBe(1);
+    // Refused before the pool, so no account was consumed for a doomed request.
+    expect(second.accountPool.acquire).not.toHaveBeenCalled();
   });
 
   // 5c. CF 403 (Cloudflare challenge) → cooldown + fallback retry, NOT ban

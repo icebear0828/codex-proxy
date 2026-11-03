@@ -279,6 +279,42 @@ export const ConfigSchema = z.object({
   }).default({}),
   /** Explicit model → provider name routing table. */
   model_routing: z.record(z.string(), z.string()).default({}),
+  /**
+   * Refuse to resend a conversation the upstream safety gate already rejected.
+   *
+   * A policy rejection is a function of the content, so retrying it — on the
+   * same account, another account, or after stripping `previous_response_id`
+   * — reproduces the rejection and adds another violation report, which is what
+   * escalates to an account ban. Disabled by default: it changes request
+   * behavior, and the built-in patterns are worth reviewing first.
+   * See `src/proxy/policy-rejection.ts` and `src/proxy/conversation-quarantine.ts`.
+   */
+  policy_guard: z.object({
+    enabled: z.boolean().default(false),
+    /** Structured `error.code` values that identify a policy rejection. */
+    error_codes: z.array(z.string().trim().min(1)).default([
+      "cyber_policy",
+      "session_blocked_by_cyber_policy",
+    ]),
+    /** Substring fallbacks for deployments that strip or rewrite the code.
+     *  Matched against upstream error output only — never request content. */
+    message_patterns: z.array(z.string().trim().min(1)).default([
+      "possible cybersecurity risk",
+      "high-risk cyber activity",
+      "cyber-security policy",
+      "网络安全策略屏蔽",
+    ]),
+    /** Optional narrowing filter: when non-empty, only these HTTP statuses are
+     *  eligible to be treated as a policy rejection. Empty (default) means no
+     *  restriction. A status never triggers the guard on its own — 403 also
+     *  means account ban and 429 also means rate limit — so this can only make
+     *  the guard stricter, not looser. Ignored for stream terminal frames,
+     *  which carry no HTTP status. */
+    status_codes: z.array(z.number().int().min(100).max(599)).default([]),
+    /** How long a quarantined conversation stays blocked, in seconds. The
+     *  content-prefix check releases it earlier when the history is edited. */
+    ttl_seconds: z.number().int().min(1).default(3600),
+  }).default({}),
   /** Scheduled keepalive pings to keep accounts' quota windows fresh. */
   account_keepalive: z.object({
     enabled: z.boolean().default(false),

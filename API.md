@@ -464,6 +464,10 @@ Manage API keys for upstream providers (Anthropic, OpenAI, Gemini, OpenRouter, C
 | POST | `/admin/rotation-settings` | Set rotation strategy (`least_used` \| `round_robin` \| `sticky`) |
 | GET | `/admin/quota-settings` | Get quota skip & refresh settings |
 | POST | `/admin/quota-settings` | Set quota skip & refresh settings |
+| GET | `/admin/policy-guard-settings` | Get safety-policy guard settings |
+| POST | `/admin/policy-guard-settings` | Set safety-policy guard settings |
+| GET | `/admin/policy-guard-quarantines` | List conversations currently refused locally |
+| POST | `/admin/policy-guard-quarantines/reset` | Release one conversation (`conversation_id`) or all (`all: true`) |
 | GET | `/admin/ollama-settings` | Get Ollama Bridge settings plus runtime status |
 | POST | `/admin/ollama-settings` | Persist Ollama Bridge settings and restart bridge |
 | GET | `/admin/ollama-status` | Get Ollama Bridge runtime status |

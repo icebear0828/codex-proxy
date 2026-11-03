@@ -20,6 +20,10 @@ import { toErrorStatus } from "./proxy-error-handler.js";
 import type { HandleDirectRequestOptions, ProxyRequest } from "./proxy-handler-types.js";
 import { canReturnStreamError, streamErrorResponse } from "./stream-error-response.js";
 import { recordClientKeyUsage, upstreamModelOf } from "./proxy-handler-utils.js";
+import { extractPolicyErrorCode, isPolicyRejection } from "../../proxy/policy-rejection.js";
+import { peekConversationQuarantine, recordConversationQuarantine } from "../../proxy/conversation-quarantine.js";
+import { resolvePromptCacheIdentity } from "./proxy-session-helpers.js";
+import { createResponseMetadataCollector } from "./response-metadata-collector.js";
 
 /** Transport-level failures (status 0) get bounded retries: weak networks
  *  produce transient connection errors routinely, and the direct path has no
@@ -34,6 +38,38 @@ function isTransportFailure(err: unknown): boolean {
   return err instanceof CodexApiError
     && err.status === 0
     && !(err instanceof PreviousResponseWebSocketError);
+}
+
+/** The code/message pair to remember for a rejection thrown as an error. */
+function policyRejectionFacts(err: unknown): { code?: string; message: string } {
+  return {
+    code: extractPolicyErrorCode(err instanceof CodexApiError ? err.body : ""),
+    message: err instanceof Error ? err.message : String(err),
+  };
+}
+
+/**
+ * Remember a safety-policy rejection so later turns of the same conversation
+ * are refused locally. The direct path has no retry loop and no account
+ * rotation to amplify a rejection, but the client's own retry and its
+ * autonomous "goal"-mode continuations arrive as brand-new requests on this
+ * same path — and every resend reports another violation upstream.
+ */
+function quarantineRejectedConversation(
+  conversationId: string,
+  req: ProxyRequest,
+  rejection: { code?: string; message: string },
+): void {
+  recordConversationQuarantine({
+    conversationId,
+    input: req.codexRequest.input,
+    code: rejection.code,
+    message: rejection.message,
+  });
+  console.warn(
+    `[policy-quarantine] conversation ${conversationId.slice(0, 8)} quarantined after an upstream `
+    + "safety-policy rejection — later turns are refused locally",
+  );
 }
 
 /**
@@ -87,6 +123,35 @@ export async function handleDirectRequest(options: HandleDirectRequestOptions): 
   const isFallback = upstream.tag === "fallback";
   const accountLog = isFallback ? "fallback" : options.account;
   const upstreamPath = upstream.logPath ?? "/v1/responses";
+
+  // ── Safety-policy quarantine ──
+  // The upstream safety gate answers as a function of the content, so a
+  // conversation it already rejected cannot succeed on this path either (a
+  // custom provider, an API-key upstream, or the account-less fallback leg).
+  // The account path — the one this handler is reached from when no account is
+  // available — runs the same check; without it here, a rejection relayed
+  // through a custom provider would be resent on every later turn.
+  const conversationId = resolvePromptCacheIdentity(
+    req.codexRequest,
+    req.clientConversationId,
+  ).conversationId;
+  const quarantine = peekConversationQuarantine({
+    conversationId,
+    input: req.codexRequest.input,
+  });
+  if (quarantine.blocked) {
+    const message = quarantine.message ?? "Upstream safety policy rejected this conversation.";
+    console.warn(
+      `[${fmt.tag}] conversation ${conversationId.slice(0, 8)} is quarantined after an upstream `
+      + `safety-policy rejection (${upstream.tag}) — refusing locally without contacting upstream`,
+    );
+    c.status(400);
+    if (canReturnStreamError(req, fmt)) {
+      return streamErrorResponse(c, fmt, 400, message);
+    }
+    return c.json(fmt.formatError(400 as StatusCode, message));
+  }
+
   let rawResponse: Response;
   try {
     rawResponse = await createResponseWithTransportRetry(upstream, req, abortController.signal);
@@ -128,6 +193,18 @@ export async function handleDirectRequest(options: HandleDirectRequestOptions): 
         stream: req.codexRequest.stream,
       },
     });
+    // A rejection that got a status instead of a stream frame (relays answer
+    // with a plain 4xx/5xx JSON body) lands here. Report it as a 400 like the
+    // account path does — not as the raw upstream status, which a client is
+    // free to retry — and quarantine the conversation.
+    if (isPolicyRejection(err)) {
+      quarantineRejectedConversation(conversationId, req, policyRejectionFacts(err));
+      c.status(400);
+      if (canReturnStreamError(req, fmt)) {
+        return streamErrorResponse(c, fmt, 400, msg);
+      }
+      return c.json(fmt.formatError(400 as StatusCode, msg));
+    }
     // Persist terminal direct-upstream errors (with truncated body) so
     // Gemini/Anthropic-passthrough failures are debuggable from disk.
     appendErrorLog({
@@ -186,6 +263,7 @@ export async function handleDirectRequest(options: HandleDirectRequestOptions): 
       let usageInfo: UsageInfo | null = null;
       let firstTokenMs: number | null = null;
       let clientAborted = false;
+      const metadataCollector = createResponseMetadataCollector();
       s.onAbort(() => {
         clientAborted = true;
         console.warn(`[stream-client-abort] rid=${requestId.slice(0, 8)} tag=${fmt.tag} model=${req.model}`);
@@ -215,6 +293,7 @@ export async function handleDirectRequest(options: HandleDirectRequestOptions): 
           },
           tupleSchema: req.tupleSchema,
           onResponseId: () => {},
+          onResponseMetadata: (metadata) => metadataCollector.onResponseMetadata(metadata),
           onFirstToken: (ts) => {
             firstTokenMs = ts;
           },
@@ -228,6 +307,13 @@ export async function handleDirectRequest(options: HandleDirectRequestOptions): 
           },
         });
       } finally {
+        // A terminal safety-policy frame arrives *inside* the stream, so it
+        // never reaches a catch block — the client can send its next turn as
+        // soon as it reads the frame. Record the quarantine here so that turn
+        // is refused locally instead of being relayed upstream again.
+        if (metadataCollector.policyRejection) {
+          quarantineRejectedConversation(conversationId, req, metadataCollector.policyRejection);
+        }
         const metrics = calculateLogMetrics({
           startMs,
           firstTokenMs,
@@ -304,6 +390,15 @@ export async function handleDirectRequest(options: HandleDirectRequestOptions): 
       },
       context: { requestId, model: req.model, provider: upstream.tag, status: code },
     });
+    // Non-streaming rejections surface as a thrown `Codex API error: <code>:
+    // <message>` — the code is the same signal the streaming frame carries,
+    // so the same quarantine applies (and the client must not see a retryable
+    // status for a verdict that is a function of the content).
+    if (isPolicyRejection(err)) {
+      quarantineRejectedConversation(conversationId, req, policyRejectionFacts(err));
+      c.status(400);
+      return c.json(fmt.formatError(400 as StatusCode, msg));
+    }
     return c.json(fmt.formatError(code, msg));
   }
 }

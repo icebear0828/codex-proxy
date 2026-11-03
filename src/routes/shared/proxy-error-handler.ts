@@ -19,6 +19,11 @@ import {
   isModelNotSupportedError,
 } from "../../proxy/error-classification.js";
 import { PreviousResponseWebSocketError, type CodexApiError } from "../../proxy/codex-api.js";
+import {
+  extractPolicyErrorCode,
+  isPolicyRejection,
+  policyRejectionSignature,
+} from "../../proxy/policy-rejection.js";
 import type { StatusCode } from "hono/utils/http-status";
 import type { CookieJar } from "../../proxy/cookie-jar.js";
 import { recordCfPathBlock } from "../../auth/cf-path-block-tracker.js";
@@ -76,6 +81,42 @@ export function handleCodexApiError(
   transportRetried = false,
 ): ErrorAction {
   const email = pool.getEntry(entryId)?.email ?? "?";
+
+  // 0. Safety-policy rejection. Checked before every other branch, including
+  //    the transport and ban branches below: the verdict is a function of the
+  //    request content, so rotating accounts cannot succeed — it only reports
+  //    the same violation from another credential, which is what escalates to
+  //    an account ban. A relay typically surfaces this as 403 or 5xx, so
+  //    without this branch it lands in the ban path (marking a healthy account
+  //    banned) or the generic terminal path after retries already fired.
+  //    Responding with a non-retryable 4xx is deliberate: 5xx invites the
+  //    client's own retry loop to resend the same content.
+  //    Account state is intentionally left untouched — the account is not at
+  //    fault, and quarantining the *conversation* is the caller's job (it holds
+  //    the conversation identity, this function does not).
+  if (isPolicyRejection(err)) {
+    console.warn(
+      `[${tag}] Account ${entryId} (${email}) | upstream safety-policy rejection, ` +
+        `not retrying (retries only report the same violation): ${err.message.slice(0, 160)}`,
+    );
+    appendErrorLog({
+      source: "server",
+      error: { name: "PolicyRejection", message: err.message },
+      context: {
+        entryId,
+        email,
+        model,
+        tag,
+        status: err.status,
+        signature: policyRejectionSignature({
+          status: err.status,
+          code: extractPolicyErrorCode(err.body),
+          message: err.message,
+        }),
+      },
+    });
+    return { action: "respond", status: 400, message: err.message };
+  }
 
   // 0. Transport-level failure (status 0): connection refused / reset / DNS /
   //    connection closed before any response. The request never reached the

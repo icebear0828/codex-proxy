@@ -841,6 +841,7 @@ server:
 | `auth` | `rotation_strategy`, `rate_limit_backoff_seconds` | 轮换策略与限流退避 |
 | `tls` | `proxy_url`, `force_http11` | TLS 代理与 HTTP 版本 |
 | `quota` | `refresh_interval_minutes`, `warning_thresholds`, `skip_exhausted` | 用量快照、阈值配置与耗尽账号跳过 |
+| `policy_guard` | `enabled`, `error_codes`, `message_patterns`, `status_codes`, `ttl_seconds` | 上游安全策略熔断：不再重发已被上游安全检测拒绝的对话，账号路径与 API-key/回退上游路径同时生效（默认关闭） |
 | `session` | `ttl_minutes`, `cleanup_interval_minutes` | Dashboard session 管理 |
 | `ollama` | `enabled`, `host`, `port`, `version`, `disable_vision` | Ollama 兼容桥接 |
 | `official_agent` | `enabled`, `api_key`, `app_server_url`, `auth` | 官方 Codex app-server 桥接，用于复用 Chrome/browser 插件 |
@@ -1174,6 +1175,9 @@ curl -X POST http://localhost:8080/auth/accounts/import \
 |------|------|------|
 | `/admin/rotation-settings` | GET/POST | 轮换策略配置 |
 | `/admin/quota-settings` | GET/POST | 额度刷新与预警配置 |
+| `/admin/policy-guard-settings` | GET/POST | 安全策略熔断配置 |
+| `/admin/policy-guard-quarantines` | GET | 当前被本地拒绝的对话列表 |
+| `/admin/policy-guard-quarantines/reset` | POST | 手动解除某个对话（或全部）的拒绝状态 |
 | `/admin/ollama-settings` | GET/POST | Ollama Bridge 配置 |
 | `/admin/ollama-status` | GET | Ollama Bridge 运行状态 |
 | `/admin/refresh-models` | POST | 手动刷新模型列表 |

@@ -1,12 +1,19 @@
 import type { ResponseMetadata } from "./proxy-handler-types.js";
 import type { ReasoningReplayItem } from "../../proxy/reasoning-replay-cache.js";
 
+export interface PolicyRejectionDetail {
+  code: string;
+  message: string;
+}
+
 export interface ResponseMetadataCollector {
   responseFunctionCallIds: Set<string>;
   reasoningReplayItems: ReasoningReplayItem[];
   invalidReasoningReplay: boolean;
   prematureClose: boolean;
   terminalFailure: boolean;
+  /** Set when a stream terminal frame was an upstream safety-policy rejection. */
+  policyRejection: PolicyRejectionDetail | null;
   onResponseMetadata: (metadata: ResponseMetadata) => void;
 }
 
@@ -19,6 +26,7 @@ export function createResponseMetadataCollector(): ResponseMetadataCollector {
     invalidReasoningReplay: false,
     prematureClose: false,
     terminalFailure: false,
+    policyRejection: null,
     onResponseMetadata: (metadata) => {
       for (const callId of metadata.functionCallIds ?? []) {
         responseFunctionCallIds.add(callId);
@@ -32,6 +40,9 @@ export function createResponseMetadataCollector(): ResponseMetadataCollector {
       }
       if (metadata.terminalFailure) {
         collector.terminalFailure = true;
+      }
+      if (metadata.policyRejection) {
+        collector.policyRejection = metadata.policyRejection;
       }
     },
   };
