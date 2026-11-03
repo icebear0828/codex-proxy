@@ -21,7 +21,7 @@ import {
 } from "../translation/codex-to-gemini.js";
 import { getConfig } from "../config.js";
 import { apiKeyAuth } from "../middleware/api-key-auth.js";
-import { getModelCatalog } from "../models/model-store.js";
+import { getModelCatalog, getModelStoreDebug } from "../models/model-store.js";
 import {
   handleProxyRequest,
 } from "./shared/proxy-handler.js";
@@ -64,6 +64,16 @@ function parseModelAction(param: string): {
     model: param.slice(0, lastColon),
     action: param.slice(lastColon + 1),
   };
+}
+
+/**
+ * Live-only catalog (no static fallback entries): `getModelCatalog()` appends
+ * hardcoded `KNOWN_OFFICIAL_MODELS` that may already be retired, so restrict
+ * it to the IDs present in the live model store.
+ */
+function getLiveCatalog() {
+  const liveIds = new Set(getModelStoreDebug().models.map((m) => m.id));
+  return getModelCatalog().filter((m) => liveIds.has(m.id));
 }
 
 const GEMINI_FORMAT: FormatAdapter = {
@@ -200,7 +210,7 @@ export function createGeminiRoutes(
 
   // List available models (Gemini format)
   app.get("/v1beta/models", apiKeyAuth(accountPool, clientKeyPool), (c) => {
-    let catalog = getModelCatalog();
+    let catalog = getLiveCatalog();
     const token = extractProxyApiKey(c);
     if (token && clientKeyPool) {
       const clientKey = clientKeyPool.getByKey(token);
