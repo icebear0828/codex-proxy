@@ -169,7 +169,9 @@ export function createResponsesRoutes(
     const codexRequest: CodexResponsesRequest = {
       model: modelId,
       instructions: typeof body.instructions === "string" ? body.instructions : "",
-      input: Array.isArray(body.input) ? sanitizeCodexInputItems(body.input) : [],
+      input: typeof body.input === "string"
+        ? [{ role: "user", content: [{ type: "input_text", text: body.input }] }]
+        : Array.isArray(body.input) ? sanitizeCodexInputItems(body.input) : [],
       stream: true,
       store: false,
     };
@@ -294,7 +296,7 @@ export function createResponsesRoutes(
       };
     }
 
-    const clientWantsStream = body.stream !== false;
+    const clientWantsStream = body.stream === true;
     const proxyReq = {
       codexRequest,
       model: displayModel,

@@ -157,6 +157,23 @@ describe("POST /v1/responses/compact", () => {
     expect(body).toEqual({ output: [{ role: "user", content: "compacted" }] });
   });
 
+  it("normalizes string input into a user message with input_text", async () => {
+    const res = await app.request("/v1/responses/compact", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        model: "codex",
+        input: "Reply only OK.",
+        instructions: "You are helpful",
+      }),
+    });
+
+    expect(res.status).toBe(200);
+    expect(capturedCompactRequest).toMatchObject({
+      input: [{ role: "user", content: [{ type: "input_text", text: "Reply only OK." }] }],
+    });
+  });
+
   it("rejects an unrecognized model with model_not_found instead of falling back to default", async () => {
     const res = await app.request("/v1/responses/compact", {
       method: "POST",
