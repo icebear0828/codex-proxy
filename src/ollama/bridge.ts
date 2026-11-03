@@ -54,24 +54,21 @@ class OllamaBridgeError extends Error {
 }
 
 const CONTEXT_WINDOW_OVERRIDES = new Map<string, number>([
-  // GPT-6 family (GA 2026-09-03) — Ollama bridge reports the unified
-  // 1,050,000-token bridge context window for all GPT-6 / GPT-6.1 models,
-  // regardless of Codex-side catalog limits.
-  ["gpt-6-astra", 1050000],
-  ["gpt-6-astra-aeon", 1050000],
-  ["gpt-6", 1050000],
-  ["gpt-6.1-sol", 1050000],
-  ["gpt-6.1-terra", 1050000],
-  ["gpt-6-sol", 1050000],
-  ["gpt-6-luna", 1050000],
-  // GPT-5.6 family (GA 2026-07-09) — 1 M token context window
-  ["gpt-5.6-sol", 1050000],
-  ["gpt-5.6-terra", 1050000],
-  ["gpt-5.6-luna", 1050000],
-  ["gpt-5.6", 1050000],
+  // GPT-6 family (GA 2026-09-03) — context windows follow the official
+  // catalog: 272,000 tokens, except gpt-6.1-terra at 500,000.
+  ["gpt-6-astra", 272000],
+  ["gpt-6", 272000],
+  ["gpt-6.1-sol", 272000],
+  ["gpt-6.1-terra", 500000],
+  ["gpt-6-sol", 272000],
+  ["gpt-6-luna", 272000],
+  // GPT-5.6 family (GA 2026-07-09) — official catalog context is 272,000.
+  ["gpt-5.6-sol", 272000],
+  ["gpt-5.6-terra", 272000],
+  ["gpt-5.6-luna", 272000],
+  ["gpt-5.6", 272000],
   // GPT-5.5 — the only visible GPT-5.x model left in the official catalog.
-  ["gpt-5.5", 400000],
-  ["gpt-reserve", 872000],
+  ["gpt-5.5", 272000],
 ]);
 
 const encoder = new TextEncoder();
@@ -125,7 +122,6 @@ function inferFamily(modelId: string): string {
   if (normalized.startsWith("gpt-5.6")) return "gpt-5.6";
   if (normalized.startsWith("gpt-5.5")) return "gpt-5.5";
   if (normalized.startsWith("gpt-oss")) return "gpt-oss";
-  if (normalized.startsWith("gpt-reserve")) return "gpt-reserve";
   if (normalized.startsWith("codex")) return "codex";
   return normalized.split(/[:/-]/, 1)[0] || normalized;
 }
