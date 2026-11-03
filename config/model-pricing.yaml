@@ -7,36 +7,13 @@
 #
 # These values estimate the equivalent API cost of proxy traffic. They are
 # not the account balance or quota returned by chatgpt.com.
+#
+# Entries below follow the models currently served by the official API.
+# `gpt-6-astra-aeon` and `gpt-reserve` are kept because they remain in the
+# local static model catalog even though the upstream catalog no longer lists
+# them.
 
 models:
-  gpt-5:
-    input_usd_per_million: 1.25
-    cached_input_usd_per_million: 0.125
-    output_usd_per_million: 10
-  gpt-5.1:
-    input_usd_per_million: 1.25
-    cached_input_usd_per_million: 0.125
-    output_usd_per_million: 10
-  gpt-5.2:
-    input_usd_per_million: 1.75
-    cached_input_usd_per_million: 0.175
-    output_usd_per_million: 14
-  gpt-5.3-codex:
-    input_usd_per_million: 1.75
-    cached_input_usd_per_million: 0.175
-    output_usd_per_million: 14
-  gpt-5.4:
-    input_usd_per_million: 2.5
-    cached_input_usd_per_million: 0.25
-    output_usd_per_million: 15
-  gpt-5.4-mini:
-    input_usd_per_million: 0.75
-    cached_input_usd_per_million: 0.075
-    output_usd_per_million: 4.5
-  gpt-5.4-nano:
-    input_usd_per_million: 0.2
-    cached_input_usd_per_million: 0.02
-    output_usd_per_million: 1.25
   gpt-5.5:
     input_usd_per_million: 5
     cached_input_usd_per_million: 0.5

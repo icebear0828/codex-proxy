@@ -112,8 +112,8 @@ describe("Ollama bridge routes", () => {
   it("maps the model catalog to Ollama tags", async () => {
     fetchMock.mockResolvedValueOnce(json([
       {
-        id: "gpt-5.4-mini",
-        displayName: "GPT 5.4 mini",
+        id: "gpt-6.1-sol",
+        displayName: "GPT 6.1 Sol",
         inputModalities: ["text", "image"],
         supportedReasoningEfforts: [{ reasoningEffort: "low" }, { reasoningEffort: "high" }],
       },
@@ -129,11 +129,11 @@ describe("Ollama bridge routes", () => {
     const body = await res.json() as { models: Array<Record<string, unknown>> };
     expect(body.models).toHaveLength(1);
     expect(body.models[0]).toMatchObject({
-      name: "gpt-5.4-mini",
-      model: "gpt-5.4-mini",
+      name: "gpt-6.1-sol",
+      model: "gpt-6.1-sol",
       size: 0,
       details: {
-        family: "gpt-5.4",
+        family: "gpt-6",
         format: "codex-proxy",
       },
     });
@@ -148,7 +148,6 @@ describe("Ollama bridge routes", () => {
     ["gpt-6-luna", "gpt-6", 1050000],
     ["gpt-5.6-sol", "gpt-5.6", 1050000],
     ["gpt-5.5", "gpt-5.5", 400000],
-    ["gpt-5.4-mini", "gpt-5.4", 400000],
     ["gpt-reserve", "gpt-reserve", 872000],
   ])(
     "returns context metadata for %s and can suppress vision capability",
@@ -187,7 +186,7 @@ describe("Ollama bridge routes", () => {
 
   it("converts non-streaming Ollama chat requests and responses", async () => {
     fetchMock.mockResolvedValueOnce(json({
-      model: "gpt-5.4-mini",
+      model: "gpt-6.1-sol",
       created: 1_700_000_000,
       choices: [{
         finish_reason: "tool_calls",
@@ -210,7 +209,7 @@ describe("Ollama bridge routes", () => {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        model: "gpt-5.4-mini",
+        model: "gpt-6.1-sol",
         stream: false,
         think: "high",
         format: "json",
@@ -232,7 +231,7 @@ describe("Ollama bridge routes", () => {
     expect(res.status).toBe(200);
     const upstreamBody = JSON.parse(fetchMock.mock.calls[0][1]?.body as string) as Record<string, unknown>;
     expect(upstreamBody).toMatchObject({
-      model: "gpt-5.4-mini",
+      model: "gpt-6.1-sol",
       stream: false,
       temperature: 0.2,
       top_p: 0.8,
@@ -264,7 +263,7 @@ describe("Ollama bridge routes", () => {
 
     const body = await res.json() as Record<string, unknown>;
     expect(body).toMatchObject({
-      model: "gpt-5.4-mini",
+      model: "gpt-6.1-sol",
       created_at: "2023-11-14T22:13:20.000Z",
       message: {
         role: "assistant",
@@ -308,7 +307,7 @@ describe("Ollama bridge routes", () => {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        model: "gpt-5.4-mini",
+        model: "gpt-6.1-sol",
         messages: [{ role: "user", content: "hello" }],
       }),
     });
@@ -321,17 +320,17 @@ describe("Ollama bridge routes", () => {
     const chunks = await readNdjson(res);
     expect(chunks).toHaveLength(3);
     expect(chunks[0]).toMatchObject({
-      model: "gpt-5.4-mini",
+      model: "gpt-6.1-sol",
       message: { role: "assistant", content: "", thinking: "think " },
       done: false,
     });
     expect(chunks[1]).toMatchObject({
-      model: "gpt-5.4-mini",
+      model: "gpt-6.1-sol",
       message: { role: "assistant", content: "hello" },
       done: false,
     });
     expect(chunks[2]).toMatchObject({
-      model: "gpt-5.4-mini",
+      model: "gpt-6.1-sol",
       message: {
         role: "assistant",
         content: "hello",
@@ -421,7 +420,7 @@ describe("Ollama bridge routes", () => {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        model: "gpt-5.4-mini",
+        model: "gpt-6.1-sol",
         messages: [{ role: "user", content: "hello" }],
       }),
     });

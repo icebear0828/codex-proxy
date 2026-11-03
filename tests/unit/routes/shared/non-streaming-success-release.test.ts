@@ -75,15 +75,15 @@ describe("releaseNonStreamingSuccessAccount", () => {
     releaseNonStreamingSuccessAccount({
       accountPool,
       entryId: "entry-priced",
-      model: "gpt-5.4",
+      model: "gpt-6.1-sol",
       usage,
       released: new Set<string>(),
     });
 
     expect(accountPool.release).toHaveBeenCalledWith("entry-priced", {
       ...usage,
-      model: "gpt-5.4",
-      estimated_cost_usd: 9.4375,
+      model: "gpt-6.1-sol",
+      estimated_cost_usd: 18.875,
     });
   });
 
