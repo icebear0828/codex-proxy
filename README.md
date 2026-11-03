@@ -347,11 +347,11 @@ curl http://localhost:8080/v1/chat/completions \
 
 | 模型 ID | 推理等级 | 当前上下文 | 最大上下文 | 最大输出 | 输出 | 说明 |
 |---------|---------|------------|------------|----------|------|------|
-| `gpt-6.1-sol` | low / medium / high / xhigh / max / ultra | 272,000 | 872,000 | 128,000 | 文本 | GPT-6.1 最新工作主力：编码与日常任务 |
+| `gpt-6.1-sol` | low / medium / high / xhigh / max / ultra | 272,000 | 872,000 | 128,000 | 文本 | GPT-6.1 最新工作主力：编码与日常任务（默认） |
 | `gpt-6-astra` | low / medium / high / xhigh / max / ultra | 272,000 | 872,000 | 128,000 | 文本 | GPT-6 前沿旗舰：复杂推理与端到端 Agent 编码（`gpt-6` 为其别名） |
 | `gpt-6-sol` | low / medium / high / xhigh / max / ultra | 272,000 | 872,000 | 128,000 | 文本 | 上一代 GPT-6 工作主力模型 |
 | `gpt-6-luna` | low / medium / high / xhigh / max | 272,000 | 872,000 | 128,000 | 文本 | 快速且经济，适合轻量任务 |
-| `gpt-5.6-sol` | low / medium / high / xhigh / max / ultra | 272,000 | 872,000 | 128,000 | 文本 | GPT-5.6 旗舰：复杂推理与编码（默认；`gpt-5.6` 为其别名） |
+| `gpt-5.6-sol` | low / medium / high / xhigh / max / ultra | 272,000 | 872,000 | 128,000 | 文本 | GPT-5.6 旗舰：复杂推理与编码（`gpt-5.6` 为其别名） |
 | `gpt-6.1-terra` | low / medium / high / xhigh / max / ultra | 500,000 | 872,000 | 128,000 | 文本 | GPT-6.1 Terra Codex 模型 |
 | `gpt-5.6-terra` | low / medium / high / xhigh / max / ultra | 272,000 | 872,000 | 128,000 | 文本 | GPT-5.6 智能与成本平衡 |
 | `gpt-5.6-luna` | low / medium / high / xhigh / max | 272,000 | 872,000 | 128,000 | 文本 | GPT-5.6 高性价比 / 高吞吐 |
@@ -412,7 +412,7 @@ curl -N http://localhost:8080/v1/responses \
 
 ## 🔗 客户端接入
 
-> 所有客户端的 API Key 均从控制面板 (`http://localhost:8080`) 获取。模型名填具体 ID（默认 `gpt-5.6-sol`）或任意 [可用模型](#-可用模型) ID。
+> 所有客户端的 API Key 均从控制面板 (`http://localhost:8080`) 获取。模型名填具体 ID（默认 `gpt-6.1-sol`）或任意 [可用模型](#-可用模型) ID。
 
 <details>
 <summary><h3>Claude Code (CLI)</h3></summary>

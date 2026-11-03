@@ -259,11 +259,11 @@ If you see streaming AI text, the setup is working. If you get 401, double-check
 
 | Model ID | Reasoning | Current context | Max context | Max output | Output | Description |
 |----------|-----------|-----------------|-------------|------------|--------|-------------|
-| `gpt-6.1-sol` | low / medium / high / xhigh / max / ultra | 272,000 | 872,000 | 128,000 | text | GPT-6.1 latest workhorse for coding and everyday tasks |
+| `gpt-6.1-sol` | low / medium / high / xhigh / max / ultra | 272,000 | 872,000 | 128,000 | text | GPT-6.1 latest workhorse for coding and everyday tasks (default) |
 | `gpt-6-astra` | low / medium / high / xhigh / max / ultra | 272,000 | 872,000 | 128,000 | text | GPT-6 frontier flagship for complex reasoning & coding (`gpt-6` is an alias) |
 | `gpt-6-sol` | low / medium / high / xhigh / max / ultra | 272,000 | 872,000 | 128,000 | text | Previous-generation GPT-6 workhorse |
 | `gpt-6-luna` | low / medium / high / xhigh / max | 272,000 | 872,000 | 128,000 | text | Fast and economical for lightweight tasks |
-| `gpt-5.6-sol` | low / medium / high / xhigh / max / ultra | 272,000 | 872,000 | 128,000 | text | GPT-5.6 flagship for complex reasoning & coding (default; `gpt-5.6` is an alias) |
+| `gpt-5.6-sol` | low / medium / high / xhigh / max / ultra | 272,000 | 872,000 | 128,000 | text | GPT-5.6 flagship for complex reasoning & coding (`gpt-5.6` is an alias) |
 | `gpt-6.1-terra` | low / medium / high / xhigh / max / ultra | 500,000 | 872,000 | 128,000 | text | GPT-6.1 Terra Codex model |
 | `gpt-5.6-terra` | low / medium / high / xhigh / max / ultra | 272,000 | 872,000 | 128,000 | text | GPT-5.6 balanced intelligence and cost |
 | `gpt-5.6-luna` | low / medium / high / xhigh / max | 272,000 | 872,000 | 128,000 | text | GPT-5.6 cost-efficient / high-throughput |
@@ -310,7 +310,7 @@ In the stream, the `image_generation_call` item's `result` field is a base64-enc
 
 ## 🔗 Client Setup
 
-> Get your API Key from the dashboard (`http://localhost:8080`). Use a concrete model ID (default `gpt-5.6-sol`) or any [model ID](#-available-models) as the model name.
+> Get your API Key from the dashboard (`http://localhost:8080`). Use a concrete model ID (default `gpt-6.1-sol`) or any [model ID](#-available-models) as the model name.
 
 ### Claude Code (CLI)
 
