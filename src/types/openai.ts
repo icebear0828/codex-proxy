@@ -5,6 +5,21 @@ import { z } from "zod";
 
 // --- Request ---
 
+/**
+ * Service tier values the official Responses API documents. Newer upstreams
+ * can add tiers (e.g. `ultrafast`), so unknown values are still accepted and
+ * forwarded verbatim instead of being rejected with a 400.
+ */
+export const ServiceTierSchema = z.union([
+  z.enum(["auto", "default", "fast", "flex", "priority"]),
+  z.string().min(1),
+]);
+export type ServiceTier = z.infer<typeof ServiceTierSchema>;
+
+/** Public Responses `truncation` control: `auto` or `disabled`. */
+export const ResponsesTruncationSchema = z.enum(["auto", "disabled"]);
+export type ResponsesTruncation = z.infer<typeof ResponsesTruncationSchema>;
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
@@ -343,7 +358,7 @@ const ChatCompletionRequestObjectSchema = z.object({
   user: z.string().optional(),
   // Codex-specific extensions
   reasoning_effort: z.enum(["low", "medium", "high", "xhigh"]).optional(),
-  service_tier: z.enum(["fast", "flex"]).nullable().optional(),
+  service_tier: ServiceTierSchema.nullable().optional(),
   // New tool format. In addition to function tools, accept hosted web search
   // tools so OpenAI-compatible clients can ask Codex to search natively.
   tools: z.array(z.union([

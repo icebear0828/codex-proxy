@@ -68,7 +68,12 @@ export function buildResponsesUpstreamBody(
     model: modelId,
     input: req.input,
     stream: req.stream,
-    store: req.store, // keep false — third parties must not retain proxied data
+    // Absent client intent stays false (the historical no-retention default);
+    // an explicit `store: true` from the client is honoured, because this is
+    // the user's own configured third-party /responses endpoint. Note that
+    // `previous_response_id` is still dropped below, so upstream retention
+    // does not enable server-side continuation on this wire.
+    store: req.store,
   };
   if (req.instructions != null) body.instructions = req.instructions;
   if (req.reasoning !== undefined) body.reasoning = req.reasoning;
@@ -77,6 +82,11 @@ export function buildResponsesUpstreamBody(
   if (req.parallel_tool_calls !== undefined) body.parallel_tool_calls = req.parallel_tool_calls;
   if (req.text !== undefined) body.text = req.text;
   if (req.prompt_cache_key !== undefined) body.prompt_cache_key = req.prompt_cache_key;
+  // Public Responses controls — standard OpenAI fields, safe to forward to a
+  // third-party /responses endpoint. Codex-only context stays dropped above.
+  if (req.truncation !== undefined) body.truncation = req.truncation;
+  if (req.safety_identifier !== undefined) body.safety_identifier = req.safety_identifier;
+  if (req.metadata !== undefined) body.metadata = req.metadata;
 
   const tier = normalizeServiceTier(req.service_tier);
   if (tier) body.service_tier = tier;

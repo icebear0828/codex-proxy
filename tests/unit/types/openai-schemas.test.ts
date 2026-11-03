@@ -276,6 +276,18 @@ describe("ChatCompletionRequestSchema", () => {
     }
   });
 
+  it("accepts every official service_tier and passes unknown tiers through", () => {
+    for (const tier of ["auto", "default", "fast", "flex", "priority", "ultrafast"]) {
+      const result = ChatCompletionRequestSchema.safeParse({
+        model: "gpt-6.1-sol",
+        messages: [{ role: "user", content: "hi" }],
+        service_tier: tier,
+      });
+      expect(result.success).toBe(true);
+      if (result.success) expect(result.data.service_tier).toBe(tier);
+    }
+  });
+
   it("parses multipart content", () => {
     const result = ChatCompletionRequestSchema.safeParse({
       model: "gpt-5.4",
