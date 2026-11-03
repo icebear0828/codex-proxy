@@ -99,6 +99,28 @@ export async function* streamCodexToGemini(
     }
 
     switch (evt.typed.type) {
+      case "response.reasoning_summary_text.delta": {
+        // Structured-output requests (tupleSchema) expect the answer stream to
+        // be pure JSON; a thought part would be extra noise for those clients.
+        if (evt.reasoningDelta && tupleTextBuffer === null) {
+          hasContent = true;
+          const thoughtChunk: GeminiGenerateContentResponse = {
+            candidates: [
+              {
+                content: {
+                  parts: [{ text: evt.reasoningDelta, thought: true }],
+                  role: "model",
+                },
+                index: 0,
+              },
+            ],
+            modelVersion: model,
+          };
+          yield `data: ${JSON.stringify(thoughtChunk)}\n\n`;
+        }
+        break;
+      }
+
       case "response.output_text.delta": {
         if (evt.textDelta) {
           hasContent = true;
@@ -212,6 +234,7 @@ export async function collectCodexToGeminiResponse(
   responseId: string | null;
 }> {
   let fullText = "";
+  let fullReasoning = "";
   let inputTokens = 0;
   let outputTokens = 0;
   let cachedTokens: number | undefined;
@@ -225,6 +248,7 @@ export async function collectCodexToGeminiResponse(
       throw codexApiErrorFromEvent(evt.error);
     }
     if (evt.textDelta) fullText += evt.textDelta;
+    if (evt.reasoningDelta) fullReasoning += evt.reasoningDelta;
     if (evt.usage) {
       inputTokens = evt.usage.input_tokens;
       outputTokens = evt.usage.output_tokens;
@@ -262,7 +286,9 @@ export async function collectCodexToGeminiResponse(
     ...(cachedTokens != null ? { cachedContentTokenCount: cachedTokens } : {}),
   };
 
-  // Detect empty response (HTTP 200 but no content)
+  // Detect empty response (HTTP 200 but no content). Reasoning-only output is
+  // not "content" for this check: a response that never produced an answer or
+  // a tool call is still an empty response worth retrying.
   if (!fullText && functionCallParts.length === 0 && imageParts.length === 0 && outputTokens === 0) {
     throw new EmptyResponseError(responseId, { input_tokens: inputTokens, output_tokens: outputTokens });
   }
@@ -275,8 +301,13 @@ export async function collectCodexToGeminiResponse(
     } catch (e) { console.warn("[tuple-reconvert] collect JSON parse failed, passing through:", e); }
   }
 
-  // Build response parts: text + function calls
+  // Build response parts: thought + text + function calls. Thought parts carry
+  // `thought: true` and stay separate from the user-visible answer text, which
+  // is what Gemini clients expect for reasoning.
   const parts: GeminiPart[] = [];
+  if (fullReasoning) {
+    parts.push({ text: fullReasoning, thought: true });
+  }
   if (fullText) {
     parts.push({ text: fullText });
   }

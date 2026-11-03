@@ -10,7 +10,7 @@
  * Non-streaming: collect all text, return Anthropic message response.
  */
 
-import { randomUUID } from "crypto";
+import { createHash, randomUUID } from "crypto";
 import type { UpstreamAdapter } from "../proxy/upstream-adapter.js";
 import type {
   AnthropicContentBlock,
@@ -28,6 +28,23 @@ interface CacheUsageHint {
 
 interface ResponseMetadata {
   functionCallIds?: string[];
+}
+
+/**
+ * Claude Code round-trips `thinking` blocks with their `signature`. The Codex
+ * backend exposes reasoning summaries only as `response.reasoning_summary_text`
+ * deltas — no signed reasoning payload — so there is nothing to forward.
+ * Emitting no signature at all makes Claude Code reject the replayed block on
+ * the next turn, so derive a deterministic non-empty placeholder from the
+ * text itself: retries of the same response produce the same value, and the
+ * value is never mistaken for a real upstream signature.
+ */
+function placeholderThinkingSignature(thinking: string): string {
+  const digest = createHash("sha256")
+    .update("codex-proxy:thinking:")
+    .update(thinking)
+    .digest("base64");
+  return `codex_proxy_${digest.replace(/=+$/, "")}`;
 }
 
 function sanitizeToolInput(toolName: string, input: Record<string, unknown>): Record<string, unknown> {
@@ -103,6 +120,15 @@ export async function* streamCodexToAnthropic(
   let contentIndex = 0;
   let textBlockStarted = false;
   let thinkingBlockStarted = false;
+  /** Accumulated thinking text for the currently open thinking block. Drives
+   *  the `signature_delta` emitted just before `content_block_stop`. */
+  let thinkingBlockText = "";
+  /** Real upstream signature for the current thinking block, when the backend
+   *  emits one on `response.reasoning_summary_part.done`. Held here because the
+   *  part.done event can arrive just before or just after the last delta; the
+   *  value is consumed (and cleared) when the thinking block closes. */
+  let thinkingBlockSignature: string | undefined;
+  let pendingThinkingSignature: string | undefined;
   const functionCallIds = new Set<string>();
   const callIdsWithForwardedDeltas = new Set<string>();
   const functionCallNames = new Map<string, string>();
@@ -120,12 +146,29 @@ export async function* streamCodexToAnthropic(
 
   // Helper: close an open block and advance the index
   function* closeBlock(blockType: "thinking" | "text"): Generator<string> {
+    if (blockType === "thinking") {
+      // Anthropic streams the thinking signature as a delta before the stop.
+      // Without it Claude Code cannot replay the block on the next turn.
+      yield formatSSE("content_block_delta", {
+        type: "content_block_delta",
+        index: contentIndex,
+        delta: {
+          type: "signature_delta",
+          signature: thinkingBlockSignature ?? placeholderThinkingSignature(thinkingBlockText),
+        },
+      });
+    }
     yield formatSSE("content_block_stop", {
       type: "content_block_stop",
       index: contentIndex,
     });
     contentIndex++;
-    if (blockType === "thinking") thinkingBlockStarted = false;
+    if (blockType === "thinking") {
+      thinkingBlockStarted = false;
+      thinkingBlockText = "";
+      thinkingBlockSignature = undefined;
+      pendingThinkingSignature = undefined;
+    }
     else textBlockStarted = false;
   }
 
@@ -204,13 +247,25 @@ export async function* streamCodexToAnthropic(
           content_block: { type: "thinking", thinking: "" },
         });
         thinkingBlockStarted = true;
+        thinkingBlockText = "";
+        // A signature may have arrived before the block opened; consume it.
+        thinkingBlockSignature = pendingThinkingSignature;
+        pendingThinkingSignature = undefined;
       }
+      thinkingBlockText += evt.reasoningDelta;
       yield formatSSE("content_block_delta", {
         type: "content_block_delta",
         index: contentIndex,
         delta: { type: "thinking_delta", thinking: evt.reasoningDelta },
       });
       continue;
+    }
+
+    // A reasoning summary part carrying an upstream signature: remember it so
+    // closeBlock can forward the real value instead of the placeholder.
+    if (evt.reasoningSignature && wantThinking) {
+      if (thinkingBlockStarted) thinkingBlockSignature = evt.reasoningSignature;
+      else pendingThinkingSignature = evt.reasoningSignature;
     }
 
     // Handle function call start → close open blocks, open tool_use block
@@ -448,6 +503,7 @@ export async function collectCodexToAnthropicResponse(
   const id = `msg_${randomUUID().replace(/-/g, "").slice(0, 24)}`;
   let fullText = "";
   let fullReasoning = "";
+  let fullReasoningSignature: string | undefined;
   let inputTokens = 0;
   let outputTokens = 0;
   let cachedTokens: number | undefined;
@@ -466,6 +522,7 @@ export async function collectCodexToAnthropicResponse(
     }
     if (evt.textDelta) fullText += evt.textDelta;
     if (evt.reasoningDelta) fullReasoning += evt.reasoningDelta;
+    if (evt.reasoningSignature) fullReasoningSignature = evt.reasoningSignature;
     if (evt.incompleteReason) incompleteReason = evt.incompleteReason;
     if (evt.usage) {
       inputTokens = evt.usage.input_tokens;
@@ -515,7 +572,11 @@ export async function collectCodexToAnthropicResponse(
   const content: AnthropicContentBlock[] = [];
   // Thinking block comes first if requested and available
   if (wantThinking && fullReasoning) {
-    content.push({ type: "thinking", thinking: fullReasoning });
+    content.push({
+      type: "thinking",
+      thinking: fullReasoning,
+      signature: fullReasoningSignature ?? placeholderThinkingSignature(fullReasoning),
+    });
   }
   if (fullText) {
     content.push({ type: "text", text: fullText });

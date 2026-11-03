@@ -2,6 +2,7 @@
  * Google Gemini API route handler.
  * POST /v1beta/models/{model}:generateContent — non-streaming
  * POST /v1beta/models/{model}:streamGenerateContent — streaming
+ * POST /v1beta/models/{model}:countTokens — local token estimate (no upstream)
  */
 
 import { Hono } from "hono";
@@ -9,6 +10,10 @@ import type { StatusCode } from "hono/utils/http-status";
 import type { GeminiErrorResponse } from "../types/gemini.js";
 import { GEMINI_STATUS_MAP } from "../types/gemini.js";
 import { GeminiGenerateContentRequestSchema } from "../types/gemini.js";
+import type {
+  GeminiGenerateContentRequest,
+  GeminiPart,
+} from "../types/gemini.js";
 import type { AccountPool } from "../auth/account-pool.js";
 import type { CookieJar } from "../proxy/cookie-jar.js";
 import type { ProxyPool } from "../proxy/proxy-pool.js";
@@ -35,6 +40,65 @@ import { validateClientKeyModel } from "./shared/proxy-handler-utils.js";
 import { extractProxyApiKey } from "../utils/extract-api-key.js";
 import { resolveDefaultTools, mergeDefaultTools } from "./shared/default-tools.js";
 import { isRecord } from "../translation/shared-utils.js";
+import { estimateTextTokens, estimateUnknownTokens } from "../utils/token-estimate.js";
+
+/** Flat per-image token charge: Gemini bills images by tile, not by base64
+ *  length, so estimating raw base64 characters would over-count enormously. */
+const GEMINI_IMAGE_TOKEN_ESTIMATE = 258;
+
+function estimatePartTokens(part: GeminiPart): number {
+  if (part.inlineData) return GEMINI_IMAGE_TOKEN_ESTIMATE;
+  if (part.functionCall) return estimateUnknownTokens(part.functionCall);
+  if (part.functionResponse) return estimateUnknownTokens(part.functionResponse);
+  return estimateTextTokens(part.text ?? "");
+}
+
+/**
+ * Local token estimate for `:countTokens`.
+ *
+ * Gemini clients call this before sending a request, so it must never touch
+ * the upstream. The accounting mirrors the Anthropic
+ * `/v1/messages/count_tokens` estimator: text + structural overhead, with CJK
+ * counted per character.
+ */
+function estimateGeminiTokens(
+  req: GeminiGenerateContentRequest,
+  model: string,
+): number {
+  const systemTokens = req.systemInstruction
+    ? estimateUnknownTokens(req.systemInstruction) + 4
+    : 0;
+  const contentTokens = req.contents.reduce(
+    (sum, content) =>
+      sum +
+      4 +
+      estimateTextTokens(content.role ?? "user") +
+      content.parts.reduce(
+        (partsSum, part) => partsSum + estimatePartTokens(part as GeminiPart),
+        0,
+      ),
+    0,
+  );
+  const toolTokens = (req.tools ?? []).reduce(
+    (sum, tool) => sum + 16 + estimateUnknownTokens(tool),
+    0,
+  );
+  const toolConfigTokens = req.toolConfig ? estimateUnknownTokens(req.toolConfig) : 0;
+  const generationConfigTokens = req.generationConfig
+    ? estimateUnknownTokens(req.generationConfig)
+    : 0;
+
+  return Math.max(
+    1,
+    estimateTextTokens(model) +
+      systemTokens +
+      contentTokens +
+      toolTokens +
+      toolConfigTokens +
+      generationConfigTokens +
+      3,
+  );
+}
 
 function makeError(
   code: number,
@@ -111,13 +175,14 @@ export function createGeminiRoutes(
     if (
       !parsedAction ||
       (parsedAction.action !== "generateContent" &&
-        parsedAction.action !== "streamGenerateContent")
+        parsedAction.action !== "streamGenerateContent" &&
+        parsedAction.action !== "countTokens")
     ) {
       c.status(400);
       return c.json(
         makeError(
           400,
-          `Invalid action. Expected :generateContent or :streamGenerateContent, got: ${modelActionParam}`,
+          `Invalid action. Expected :generateContent, :streamGenerateContent or :countTokens, got: ${modelActionParam}`,
         ),
       );
     }
@@ -127,7 +192,34 @@ export function createGeminiRoutes(
     const modelCheck = validateClientKeyModel(c, geminiModel);
     if (!modelCheck.allowed) {
       c.status(403);
-      return c.json(makeError(403, "PERMISSION_DENIED", modelCheck.message || "Model not allowed"));
+      // makeError(code, message, status): the allow-list message belongs in
+      // `message`; previously the two were swapped, so clients saw
+      // message="PERMISSION_DENIED" and status="'x' is not allowed...".
+      return c.json(
+        makeError(403, modelCheck.message || "Model not allowed", "PERMISSION_DENIED"),
+      );
+    }
+
+    // countTokens is answered locally — it must never reach the upstream and
+    // does not require an authenticated account (google-genai SDKs call it
+    // before the first real request, including during startup).
+    if (action === "countTokens") {
+      const rawBody = await c.req.json().catch(() => null);
+      const parsed = GeminiGenerateContentRequestSchema.safeParse(rawBody);
+      if (!parsed.success) {
+        c.status(400);
+        return c.json(
+          makeError(
+            400,
+            `Invalid request: ${parsed.error.message}`,
+            "INVALID_ARGUMENT",
+          ),
+        );
+      }
+
+      return c.json({
+        totalTokens: estimateGeminiTokens(parsed.data, geminiModel),
+      });
     }
 
     const routeMatch = upstreamRouter?.resolveMatch(geminiModel);
@@ -226,6 +318,7 @@ export function createGeminiRoutes(
       supportedGenerationMethods: [
         "generateContent",
         "streamGenerateContent",
+        "countTokens",
       ],
     }));
 

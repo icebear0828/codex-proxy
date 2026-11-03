@@ -12,6 +12,7 @@ import {
   multiToolCallStream,
   usageStream,
   imageGenerationStream,
+  reasoningStream,
 } from "@fixtures/sse-streams.js";
 
 let mockEvents: ExtractedEvent[] = [];
@@ -99,6 +100,30 @@ describe("streamCodexToGemini", () => {
     const errorChunk = dataChunks.find((c) => c.includes("empty response"));
     expect(errorChunk).toBeDefined();
   });
+
+  it("emits reasoning deltas as thought parts, not answer text", async () => {
+    const chunks = await collectStreamOutput(reasoningStream());
+    const parsed = chunks
+      .filter((c) => c.startsWith("data: "))
+      .map((c) => JSON.parse(c.slice(6)) as {
+        candidates?: Array<{ content?: { parts?: Array<{ text?: string; thought?: boolean }> } }>;
+      });
+
+    const thoughtParts = parsed.flatMap(
+      (chunk) => chunk.candidates?.[0]?.content?.parts?.filter((part) => part.thought) ?? [],
+    );
+    expect(thoughtParts.length).toBeGreaterThan(0);
+    expect(thoughtParts.map((p) => p.text).join("")).toContain("Let me think");
+
+    // The answer text must never be mixed into a thought part, and the
+    // reasoning text must never leak into a plain text part.
+    const textParts = parsed.flatMap(
+      (chunk) => chunk.candidates?.[0]?.content?.parts?.filter((part) => !part.thought) ?? [],
+    );
+    const joinedText = textParts.map((p) => p.text ?? "").join("");
+    expect(joinedText).toContain("The answer is 42.");
+    expect(joinedText).not.toContain("Let me think");
+  });
 });
 
 describe("collectCodexToGeminiResponse", () => {
@@ -134,6 +159,26 @@ describe("collectCodexToGeminiResponse", () => {
     mockEvents = emptyStream();
     await expect(collectCodexToGeminiResponse(fakeCodexApi, fakeResponse, "gpt-5.4"))
       .rejects.toThrow("empty response");
+  });
+
+  it("returns reasoning as a leading thought part, separate from the answer", async () => {
+    mockEvents = reasoningStream();
+    const { response } = await collectCodexToGeminiResponse(
+      fakeCodexApi, fakeResponse, "gpt-5.4",
+    );
+
+    const parts = response.candidates[0].content.parts;
+    expect(parts[0]).toEqual({ text: "Let me think... I need to consider", thought: true });
+    expect(parts[1]).toEqual({ text: "The answer is 42." });
+    expect(parts).toHaveLength(2);
+  });
+
+  it("does not emit any part for a stream with no reasoning", async () => {
+    mockEvents = simpleTextStream();
+    const { response } = await collectCodexToGeminiResponse(
+      fakeCodexApi, fakeResponse, "gpt-5.4",
+    );
+    expect(response.candidates[0].content.parts.some((part) => part.thought)).toBe(false);
   });
 });
 

@@ -280,6 +280,96 @@ describe("translateAnthropicToCodexRequest", () => {
       expect(result.input[0]).toEqual({ role: "user", content: "Line one\nLine two" });
     });
 
+    it("strips cache_control from text blocks instead of forwarding it upstream", () => {
+      const result = translateAnthropicToCodexRequest(
+        makeRequest({
+          messages: [
+            {
+              role: "user",
+              content: [
+                {
+                  type: "text" as const,
+                  text: "Cached context",
+                  cache_control: { type: "ephemeral" },
+                },
+              ],
+            },
+          ],
+        }),
+      );
+
+      // Text-only user content collapses to a plain string: no block object —
+      // and therefore no cache_control — survives translation.
+      expect(result.input[0]).toEqual({ role: "user", content: "Cached context" });
+      const serialized = JSON.stringify(result);
+      expect(serialized).not.toContain("cache_control");
+      expect(serialized).not.toContain("ephemeral");
+    });
+
+    it("strips cache_control from multimodal text while keeping the image", () => {
+      const result = translateAnthropicToCodexRequest(
+        makeRequest({
+          messages: [
+            {
+              role: "user",
+              content: [
+                {
+                  type: "text" as const,
+                  text: "Describe this",
+                  cache_control: { type: "ephemeral" },
+                },
+                {
+                  type: "image" as const,
+                  source: {
+                    type: "base64" as const,
+                    media_type: "image/png",
+                    data: "iVBOR...",
+                  },
+                },
+              ],
+            },
+          ],
+        }),
+      );
+
+      const parts = result.input[0].content as Array<Record<string, unknown>>;
+      expect(parts[0]).toEqual({ type: "input_text", text: "Describe this" });
+      expect(parts[1]).toEqual({
+        type: "input_image",
+        image_url: "data:image/png;base64,iVBOR...",
+      });
+      expect(JSON.stringify(result)).not.toContain("cache_control");
+    });
+
+    it("does not forward replayed thinking or redacted_thinking blocks", () => {
+      const result = translateAnthropicToCodexRequest(
+        makeRequest({
+          messages: [
+            { role: "user", content: "Hi" },
+            {
+              role: "assistant",
+              content: [
+                {
+                  type: "thinking" as const,
+                  thinking: "internal reasoning",
+                  signature: "sig_abc",
+                },
+                { type: "redacted_thinking" as const, data: "opaque" },
+                { type: "text" as const, text: "Visible answer" },
+              ],
+            },
+          ],
+        }),
+      );
+
+      expect(result.input).toHaveLength(2);
+      expect(result.input[1]).toEqual({ role: "assistant", content: "Visible answer" });
+      const serialized = JSON.stringify(result);
+      expect(serialized).not.toContain("internal reasoning");
+      expect(serialized).not.toContain("sig_abc");
+      expect(serialized).not.toContain("opaque");
+    });
+
     it("converts image block to input_image content part", () => {
       const result = translateAnthropicToCodexRequest(
         makeRequest({
