@@ -1,5 +1,7 @@
 import { readLanRuntime, type LanRuntimeState } from "./utils/lan-access.js";
 import "./utils/install-dev-logger.js";
+import { existsSync } from "fs";
+import { resolve } from "path";
 
 import { Hono } from "hono";
 import { serve } from "@hono/node-server";
@@ -38,8 +40,10 @@ import { startProxyUpdateChecker, stopProxyUpdateChecker, setCloseHandler, getDe
 import { initProxy } from "./tls/proxy.js";
 import { cleanupStaleLocks } from "./auth/refresh-lock.js";
 import { initTransport, getTransport } from "./tls/transport.js";
-import { loadStaticModels } from "./models/model-store.js";
+import { loadStaticModels, applyBackendModelsForPlan } from "./models/model-store.js";
 import { startModelRefresh, stopModelRefresh } from "./models/model-fetcher.js";
+import { OfficialCatalogSync, toBackendModelEntries } from "./models/official-model-catalog.js";
+import { getDataDir } from "./paths.js";
 import { startQuotaRefresh, stopQuotaRefresh } from "./auth/usage-refresher.js";
 import { ActiveQuotaRefresher } from "./auth/active-quota-refresher.js";
 import { UsageStatsStore } from "./auth/usage-stats.js";
@@ -94,6 +98,29 @@ export async function startServer(options?: StartOptions): Promise<ServerHandle>
 
   // Load static model catalog (before transport/auth init)
   loadStaticModels();
+
+  // Official catalog sync (Branch C). Runs after loadStaticModels() so the
+  // normal config/data cache load happens first; on a cold start (no
+  // data/models-cache.yaml) the cached official snapshot seeds the store.
+  // No credentials are involved, so all failures only warn and startup
+  // continues to the authenticated backend fetch.
+  let officialCatalogSync: OfficialCatalogSync | null = null;
+  if (config.model.official_catalog_sync) {
+    officialCatalogSync = new OfficialCatalogSync();
+    try {
+      const modelsCachePath = resolve(getDataDir(), "models-cache.yaml");
+      if (!existsSync(modelsCachePath)) {
+        const snapshot = officialCatalogSync.loadCached() ?? await officialCatalogSync.fetchAndSave();
+        if (snapshot && snapshot.models.length > 0) {
+          applyBackendModelsForPlan("official", toBackendModelEntries(snapshot.models));
+          console.log(`[Init] Seeded ${snapshot.models.length} official models from ${snapshot.sourceUrl}`);
+        }
+      }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      console.warn(`[Init] Official catalog seed skipped: ${msg}`);
+    }
+  }
 
   // Detect proxy (config > env > auto-detect local ports)
   await initProxy();
@@ -270,7 +297,7 @@ export async function startServer(options?: StartOptions): Promise<ServerHandle>
   }
 
   // Start background model refresh (requires auth to be ready)
-  startModelRefresh(accountPool, cookieJar, proxyPool);
+  startModelRefresh(accountPool, cookieJar, proxyPool, officialCatalogSync);
 
   // Start usage stats snapshot timer (no upstream requests — quota is collected passively)
   startQuotaRefresh(accountPool, usageStats);

@@ -82,6 +82,9 @@ export const ConfigSchema = z.object({
 
   model: z.object({
     default: z.string().default("gpt-5.6-sol"),
+    /** Sync the official Codex model manifest from the openai/codex repository.
+     *  Credential-free; failures silently fall back to the backend fetch. */
+    official_catalog_sync: z.boolean().default(true),
     /** Codex chat model that hosts `POST /v1/images/generations` requests via the
      *  Responses `image_generation` tool. Cannot be `gpt-image-2` — that name is
      *  only the Images API's client-facing identifier, not a routable Codex model. */
