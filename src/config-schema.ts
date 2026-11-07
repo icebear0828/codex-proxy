@@ -231,6 +231,17 @@ export const ConfigSchema = z.object({
     show_update_dialog: z.boolean().default(false),
     allow_prerelease: z.boolean().default(false),
   }).default({}),
+  pricing: z.object({
+    /** URLs to dynamically fetch updated model pricing tables from. */
+    table_urls: z.array(z.string().url()).default([
+      "https://cdn.jsdelivr.net/gh/BerriAI/litellm@main/model_prices_and_context_window.json",
+      "https://raw.githubusercontent.com/BerriAI/litellm/main/model_prices_and_context_window.json",
+    ]),
+    /** Enable automatic background sync of pricing catalog. */
+    auto_sync: z.boolean().default(true),
+    /** Sync interval in hours. */
+    sync_interval_hours: z.number().positive().default(24),
+  }).default({}),
   /** WebSocket connection pool — pins same (entryId, conversationId) to the
    *  same physical WS so the upstream LB keeps prompt cache warm across
    *  turns. See `src/proxy/ws-pool.ts` for the rationale. */

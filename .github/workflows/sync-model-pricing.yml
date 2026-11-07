@@ -1,0 +1,69 @@
+name: Sync model pricing
+
+on:
+  schedule:
+    - cron: "0 3 * * *"   # UTC 03:00 = PRC 11:00 daily
+  workflow_dispatch:
+
+concurrency:
+  group: sync-model-pricing
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout dev branch
+        uses: actions/checkout@v4
+        with:
+          ref: dev
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Sync pricing catalog from LiteLLM and OpenRouter
+        run: node .github/scripts/sync-model-pricing.mjs
+
+      - name: Verify test suite with updated catalog
+        run: npx vitest run tests/unit/auth/pricing-sync.test.ts tests/unit/routes/shared/non-streaming-success-release.test.ts
+
+      - name: Create or update Pull Request if changes detected
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          if git diff --quiet config/model-pricing.json; then
+            echo "No pricing changes detected; pricing catalog is up to date."
+            exit 0
+          fi
+
+          echo "Pricing changes detected. Preparing branch and PR..."
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          BRANCH_NAME="chore/sync-model-pricing"
+          git checkout -B "$BRANCH_NAME"
+          git add config/model-pricing.json
+          git commit -m "chore(pricing): sync model pricing catalog"
+          git push origin "$BRANCH_NAME" --force
+
+          EXISTING_PR=$(gh pr list --head "$BRANCH_NAME" --base dev --state open --json number -q '.[0].number' || echo "")
+          if [ -n "$EXISTING_PR" ]; then
+            echo "PR #$EXISTING_PR already exists and has been updated with the latest commit."
+          else
+            echo "Creating new pull request..."
+            gh pr create \
+              --base dev \
+              --head "$BRANCH_NAME" \
+              --title "chore(pricing): sync model pricing catalog" \
+              --body $'Automated daily sync of model pricing catalog from LiteLLM and OpenRouter.\n\n- Sources: LiteLLM (`model_prices_and_context_window.json`) & OpenRouter models API\n- Preserves local custom models\n- Updates `config/model-pricing.json`'
+          fi
