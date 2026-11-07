@@ -5,10 +5,10 @@
  * public API price list, not an upstream ChatGPT billing balance.
  */
 
-import { readFileSync } from "fs";
+import { existsSync, readFileSync } from "fs";
 import { resolve } from "path";
 import yaml from "js-yaml";
-import { getConfigDir } from "../paths.js";
+import { getConfigDir, getDataDir } from "../paths.js";
 
 export interface ModelPricing {
   input_usd_per_million: number;
@@ -20,8 +20,24 @@ export interface ModelPricing {
 
 export type PricingCatalog = Readonly<Record<string, ModelPricing>>;
 
-const PRICE_FILE = "model-pricing.yaml";
+const PRICE_FILE_YAML = "model-pricing.yaml";
+const PRICE_FILE_JSON = "model-pricing.json";
+const PRICE_FILE = PRICE_FILE_YAML;
 const MODEL_SUFFIX_PATTERN = /-(?:fast|flex|max|ultra|none|minimal|low|medium|high|xhigh)$/;
+
+let dynamicPricingCatalog: PricingCatalog | null = null;
+
+export function setDynamicPricingCatalog(catalog: PricingCatalog | null): void {
+  dynamicPricingCatalog = catalog;
+}
+
+export function getDynamicPricingCatalog(): PricingCatalog | null {
+  return dynamicPricingCatalog;
+}
+
+export function resetDynamicPricingCatalog(): void {
+  dynamicPricingCatalog = null;
+}
 
 export function createPricingCatalog(entries: Record<string, ModelPricing>): PricingCatalog {
   const catalog: Record<string, ModelPricing> = {};
@@ -37,10 +53,9 @@ export function createPricingCatalog(entries: Record<string, ModelPricing>): Pri
   return catalog;
 }
 
-export function loadPricingCatalog(configDir = getConfigDir()): PricingCatalog {
-  const parsed: unknown = yaml.load(readFileSync(resolve(configDir, PRICE_FILE), "utf8"));
+function parsePricingMapping(parsed: unknown, sourceFile: string): PricingCatalog {
   if (!isRecord(parsed) || !isRecord(parsed.models)) {
-    throw new Error(`${PRICE_FILE} must contain a models mapping`);
+    throw new Error(`${sourceFile} must contain a models mapping`);
   }
   const entries: Record<string, ModelPricing> = {};
   for (const [model, value] of Object.entries(parsed.models)) {
@@ -48,7 +63,7 @@ export function loadPricingCatalog(configDir = getConfigDir()): PricingCatalog {
         !isNumber(value.input_usd_per_million) ||
         !isNumber(value.cached_input_usd_per_million) ||
         !isNumber(value.output_usd_per_million)) {
-      throw new Error(`${PRICE_FILE}: invalid pricing entry for ${model}`);
+      throw new Error(`${sourceFile}: invalid pricing entry for ${model}`);
     }
     entries[model] = {
       input_usd_per_million: value.input_usd_per_million,
@@ -59,6 +74,38 @@ export function loadPricingCatalog(configDir = getConfigDir()): PricingCatalog {
     };
   }
   return createPricingCatalog(entries);
+}
+
+export function loadPricingCatalog(configDir = getConfigDir(), dataDir = getDataDir()): PricingCatalog {
+  // If an in-memory dynamic catalog has been loaded, use it
+  if (dynamicPricingCatalog && configDir === getConfigDir()) {
+    return dynamicPricingCatalog;
+  }
+
+  // If disk cache exists in dataDir, use it
+  if (configDir === getConfigDir()) {
+    const cacheFile = resolve(dataDir, "model-pricing-cache.json");
+    if (existsSync(cacheFile)) {
+      try {
+        const raw = JSON.parse(readFileSync(cacheFile, "utf8"));
+        return parsePricingMapping(raw, cacheFile);
+      } catch {
+        // Fall back to configDir files
+      }
+    }
+  }
+
+  // Check model-pricing.json in configDir
+  const jsonPath = resolve(configDir, PRICE_FILE_JSON);
+  if (existsSync(jsonPath)) {
+    const parsed: unknown = JSON.parse(readFileSync(jsonPath, "utf8"));
+    return parsePricingMapping(parsed, PRICE_FILE_JSON);
+  }
+
+  // Check model-pricing.yaml in configDir
+  const yamlPath = resolve(configDir, PRICE_FILE_YAML);
+  const parsed: unknown = yaml.load(readFileSync(yamlPath, "utf8"));
+  return parsePricingMapping(parsed, PRICE_FILE_YAML);
 }
 
 const PRICING_WARN_COOLDOWN_MS = 5 * 60_000;

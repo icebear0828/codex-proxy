@@ -34,6 +34,7 @@ import { ResponsesWebSocketServer } from "./routes/responses-websocket.js";
 import { createImagesRoutes } from "./routes/images.js";
 import { startUpdateChecker, stopUpdateChecker } from "./update-checker.js";
 import { startMemoModelRefresher } from "./memo-model-refresher.js";
+import { fetchRemotePricingCatalog, startPricingSyncScheduler } from "./auth/pricing-sync.js";
 import { startProxyUpdateChecker, stopProxyUpdateChecker, setCloseHandler, getDeployMode } from "./self-update.js";
 import { initProxy } from "./tls/proxy.js";
 import { cleanupStaleLocks } from "./auth/refresh-lock.js";
@@ -214,6 +215,15 @@ export async function startServer(options?: StartOptions): Promise<ServerHandle>
     if (memoCount > 0) console.log(`[Init] Memo model refresher: daily cycle for ${memoCount} memo(s)`);
   }
 
+  // Multi-source dynamic pricing catalog sync (opt-out via pricing.auto_sync: false)
+  let stopPricingSync: (() => void) | null = null;
+  if (cfg.pricing?.auto_sync !== false) {
+    const urls = cfg.pricing?.table_urls;
+    const intervalMs = (cfg.pricing?.sync_interval_hours ?? 24) * 60 * 60 * 1000;
+    stopPricingSync = startPricingSyncScheduler({ urls, intervalMs });
+    fetchRemotePricingCatalog({ urls }).catch(() => {});
+  }
+
   // Initialize Client Key pool for distribution
   const clientKeyPool = new ClientKeyPool(
     undefined,
@@ -351,6 +361,7 @@ export async function startServer(options?: StartOptions): Promise<ServerHandle>
       server.close(() => {
         stopUpdateChecker();
         stopMemoModelRefresher?.();
+        stopPricingSync?.();
         stopProxyUpdateChecker();
         stopModelRefresh();
         stopQuotaRefresh();
