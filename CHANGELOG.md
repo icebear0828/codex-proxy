@@ -8,13 +8,13 @@
 
 ## [Unreleased]
 
-### Added
-
-- 支持定时从 LiteLLM 与 OpenRouter 自动同步模型计费价格表，支持多源 CDN/镜像动态拉取（`pricingTableURLs`）：服务端与客户端运行时无需升级版本即可动态加载最新模型价格，优先保证本地官方模型定价；支持解析 LiteLLM 原生格式与本项目格式，并自动持久化本地缓存。（`src/auth/pricing-sync.ts`、`src/auth/usage-pricing.ts`、`src/config-schema.ts`、`src/index.ts`、`.github/workflows/sync-model-pricing.yml`、`.github/scripts/sync-model-pricing.mjs`）
+> 暂无已记录的变更。
 
 ## [v2.1.x](https://github.com/icebear0828/codex-proxy/releases?q=2.1) - 2026-09-01 至 2026-09-07
 
 ### Added
+
+- 支持定时从 LiteLLM 与 OpenRouter 自动同步模型计费价格表，支持多源 CDN/镜像动态拉取（`pricingTableURLs`）：服务端与客户端运行时无需升级版本即可动态加载最新模型价格，优先保证本地官方模型定价；支持解析 LiteLLM 原生格式与本项目格式，并自动持久化本地缓存。（`src/auth/pricing-sync.ts`、`src/auth/usage-pricing.ts`、`src/config-schema.ts`、`src/index.ts`、`.github/workflows/sync-model-pricing.yml`、`.github/scripts/sync-model-pricing.mjs`）
 
 - Antigravity 支持模型列表新增 `gemini-2.5-pro` 支持。（`src/auth/antigravity-models.ts`）
 
