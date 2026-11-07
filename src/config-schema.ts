@@ -234,10 +234,8 @@ export const ConfigSchema = z.object({
   pricing: z.object({
     /** URLs to dynamically fetch updated model pricing tables from. */
     table_urls: z.array(z.string().url()).default([
-      "https://cdn.jsdelivr.net/gh/icebear0828/codex-proxy@main/config/model-pricing.json",
-      "https://raw.githubusercontent.com/icebear0828/codex-proxy/main/config/model-pricing.json",
-      "https://ghproxy.net/https://raw.githubusercontent.com/icebear0828/codex-proxy/main/config/model-pricing.json",
       "https://cdn.jsdelivr.net/gh/BerriAI/litellm@main/model_prices_and_context_window.json",
+      "https://raw.githubusercontent.com/BerriAI/litellm/main/model_prices_and_context_window.json",
     ]),
     /** Enable automatic background sync of pricing catalog. */
     auto_sync: z.boolean().default(true),

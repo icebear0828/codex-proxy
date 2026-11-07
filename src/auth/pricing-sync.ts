@@ -9,6 +9,7 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "fs";
 import { resolve } from "path";
 import { getDataDir } from "../paths.js";
+import { withFetchDispatcher } from "../proxy/fetch-dispatcher.js";
 import {
   createPricingCatalog,
   setDynamicPricingCatalog,
@@ -18,10 +19,8 @@ import {
 
 /** Default public CDN and mirror URLs for fetching the converted pricing table. */
 export const DEFAULT_PRICING_TABLE_URLS: readonly string[] = [
-  "https://cdn.jsdelivr.net/gh/icebear0828/codex-proxy@main/config/model-pricing.json",
-  "https://raw.githubusercontent.com/icebear0828/codex-proxy/main/config/model-pricing.json",
-  "https://ghproxy.net/https://raw.githubusercontent.com/icebear0828/codex-proxy/main/config/model-pricing.json",
   "https://cdn.jsdelivr.net/gh/BerriAI/litellm@main/model_prices_and_context_window.json",
+  "https://raw.githubusercontent.com/BerriAI/litellm/main/model_prices_and_context_window.json",
 ];
 
 export const pricingTableURLs = DEFAULT_PRICING_TABLE_URLS;
@@ -29,6 +28,71 @@ export const pricingTableURLs = DEFAULT_PRICING_TABLE_URLS;
 const CACHE_FILE_NAME = "model-pricing-cache.json";
 const DEFAULT_TIMEOUT_MS = 10_000;
 const DEFAULT_SYNC_INTERVAL_MS = 24 * 60 * 60 * 1000; // 24 hours
+
+const OFFICIAL_PREFIX_ALLOWLIST: readonly string[] = [
+  "openai/",
+  "anthropic/",
+  "google/",
+  "deepseek/",
+];
+
+const THIRD_PARTY_PREFIX_BLOCKLIST: readonly string[] = [
+  "azure/",
+  "azure_ai/",
+  "bedrock/",
+  "bedrock_mantle/",
+  "openrouter/",
+  "together_ai/",
+  "groq/",
+  "fireworks_ai/",
+  "deepinfra/",
+  "perplexity/",
+  "cloudflare/",
+  "vertex_ai/",
+  "sagemaker/",
+  "anyscale/",
+  "replicate/",
+  "databricks/",
+  "kyma/",
+  "gmi/",
+  "zerogpu/",
+  "github_copilot/",
+];
+
+const OFFICIAL_MODEL_PATTERNS: readonly RegExp[] = [
+  /^gpt-/,
+  /^chatgpt-/,
+  /^o[1-9](?:-|$)/,
+  /^claude-/,
+  /^gemini-/,
+  /^deepseek-/,
+];
+
+/**
+ * Filter ensuring only official vendor models (OpenAI, Anthropic, Google, DeepSeek)
+ * are collected, dropping cloud wrappers (Azure, Bedrock) and community long-tail models.
+ */
+export function isOfficialModel(modelKey: string): boolean {
+  if (!modelKey || typeof modelKey !== "string") return false;
+  const lower = modelKey.toLowerCase().trim();
+
+  for (const blocked of THIRD_PARTY_PREFIX_BLOCKLIST) {
+    if (lower.startsWith(blocked)) return false;
+  }
+
+  for (const allowed of OFFICIAL_PREFIX_ALLOWLIST) {
+    if (lower.startsWith(allowed)) {
+      const remainder = lower.slice(allowed.length);
+      return !remainder.includes("/") && remainder.length > 0;
+    }
+  }
+
+  if (lower.includes("/")) {
+    return false;
+  }
+
+  return OFFICIAL_MODEL_PATTERNS.some((pattern) => pattern.test(lower));
+}
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -50,6 +114,7 @@ export function convertLiteLlmPricing(raw: unknown): Record<string, ModelPricing
     if (!isRecord(data)) continue;
     // Skip template / documentation objects
     if (modelKey === "sample_spec") continue;
+    if (!isOfficialModel(modelKey)) continue;
 
     const inputCost = data.input_cost_per_token;
     const outputCost = data.output_cost_per_token;
@@ -79,7 +144,7 @@ export function convertLiteLlmPricing(raw: unknown): Record<string, ModelPricing
     if (modelKey.includes("/")) {
       const parts = modelKey.split("/");
       const baseModel = parts[parts.length - 1];
-      if (baseModel && !result[baseModel]) {
+      if (baseModel && isOfficialModel(baseModel) && !result[baseModel]) {
         result[baseModel] = { ...pricing };
       }
     }
@@ -97,6 +162,8 @@ export function convertOpenRouterPricing(raw: unknown): Record<string, ModelPric
 
   for (const item of raw.data) {
     if (!isRecord(item) || typeof item.id !== "string" || !isRecord(item.pricing)) continue;
+    if (!isOfficialModel(item.id)) continue;
+
     const promptStr = item.pricing.prompt;
     const completionStr = item.pricing.completion;
 
@@ -115,7 +182,7 @@ export function convertOpenRouterPricing(raw: unknown): Record<string, ModelPric
     if (item.id.includes("/")) {
       const parts = item.id.split("/");
       const baseModel = parts[parts.length - 1];
-      if (baseModel && !result[baseModel]) {
+      if (baseModel && isOfficialModel(baseModel) && !result[baseModel]) {
         result[baseModel] = { ...pricing };
       }
     }
@@ -190,21 +257,36 @@ export async function fetchRemotePricingCatalog(options: {
   urls?: readonly string[];
   dataDir?: string;
   timeoutMs?: number;
+  signal?: AbortSignal;
 } = {}): Promise<PricingCatalog | null> {
   const urls = options.urls ?? pricingTableURLs;
   const timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
   const dataDir = options.dataDir ?? getDataDir();
 
   for (const url of urls) {
+    if (options.signal?.aborted) return null;
     try {
       const controller = new AbortController();
+      const onAbort = () => controller.abort();
+      if (options.signal) {
+        options.signal.addEventListener("abort", onAbort, { once: true });
+      }
       const timer = setTimeout(() => controller.abort(), timeoutMs);
 
-      const res = await fetch(url, {
-        signal: controller.signal,
-        headers: { Accept: "application/json" },
-      });
-      clearTimeout(timer);
+      let res: Response;
+      try {
+        res = await fetch(url, withFetchDispatcher({
+          signal: controller.signal,
+          headers: { Accept: "application/json" },
+        }));
+      } finally {
+        clearTimeout(timer);
+        if (options.signal) {
+          options.signal.removeEventListener("abort", onAbort);
+        }
+      }
+
+      if (options.signal?.aborted) return null;
 
       if (!res.ok) {
         console.warn(`[pricing] ${url} returned HTTP ${res.status}, trying next mirror...`);
@@ -212,6 +294,8 @@ export async function fetchRemotePricingCatalog(options: {
       }
 
       const json: unknown = await res.json();
+      if (options.signal?.aborted) return null;
+
       const parsedEntries = parseRemotePayload(json);
       if (!parsedEntries || Object.keys(parsedEntries).length === 0) {
         console.warn(`[pricing] ${url} returned invalid or empty pricing catalog, trying next mirror...`);
@@ -221,21 +305,24 @@ export async function fetchRemotePricingCatalog(options: {
       const catalog = createPricingCatalog(parsedEntries);
       setDynamicPricingCatalog(catalog);
 
-      // Persist disk cache if dataDir is accessible
-      try {
-        mkdirSync(dataDir, { recursive: true });
-        writeFileSync(
-          resolve(dataDir, CACHE_FILE_NAME),
-          JSON.stringify({ models: parsedEntries, fetched_at: new Date().toISOString() }, null, 2),
-          "utf8",
-        );
-      } catch (err) {
-        console.warn(`[pricing] failed to save disk cache: ${err instanceof Error ? err.message : String(err)}`);
+      // Persist disk cache if dataDir is accessible and not aborted
+      if (!options.signal?.aborted) {
+        try {
+          mkdirSync(dataDir, { recursive: true });
+          writeFileSync(
+            resolve(dataDir, CACHE_FILE_NAME),
+            JSON.stringify({ models: parsedEntries, fetched_at: new Date().toISOString() }, null, 2),
+            "utf8",
+          );
+        } catch (err) {
+          console.warn(`[pricing] failed to save disk cache: ${err instanceof Error ? err.message : String(err)}`);
+        }
       }
 
       console.info(`[pricing] successfully loaded dynamic pricing table (${Object.keys(catalog).length} models) from ${url}`);
       return catalog;
     } catch (err) {
+      if (options.signal?.aborted) return null;
       const msg = err instanceof Error ? err.message : String(err);
       console.warn(`[pricing] failed to fetch from ${url}: ${msg}, trying next mirror...`);
     }
@@ -264,7 +351,7 @@ export function loadCachedPricingCatalog(dataDir = getDataDir()): PricingCatalog
 
 /**
  * Start periodic background sync scheduler for pricing tables.
- * Returns an unregister/stop function.
+ * Returns an unregister/stop function that also aborts any in-flight fetch.
  */
 export function startPricingSyncScheduler(options: {
   intervalMs?: number;
@@ -273,15 +360,20 @@ export function startPricingSyncScheduler(options: {
 } = {}): () => void {
   const intervalMs = options.intervalMs ?? DEFAULT_SYNC_INTERVAL_MS;
   let timer: ReturnType<typeof setTimeout> | null = null;
+  let activeController: AbortController | null = null;
   let stopped = false;
 
   const scheduleNext = () => {
     if (stopped) return;
     timer = setTimeout(async () => {
+      if (stopped) return;
+      activeController = new AbortController();
       try {
-        await fetchRemotePricingCatalog(options);
+        await fetchRemotePricingCatalog({ ...options, signal: activeController.signal });
       } catch (err) {
         console.warn(`[pricing] background sync cycle failed: ${err instanceof Error ? err.message : String(err)}`);
+      } finally {
+        activeController = null;
       }
       if (!stopped) scheduleNext();
     }, intervalMs);
@@ -293,5 +385,6 @@ export function startPricingSyncScheduler(options: {
   return () => {
     stopped = true;
     if (timer) clearTimeout(timer);
+    if (activeController) activeController.abort();
   };
 }

@@ -16,9 +16,12 @@ describe("Pricing real service E2E", () => {
 
       expect(catalog).not.toBeNull();
       const modelCount = Object.keys(catalog!).length;
-      expect(modelCount).toBeGreaterThan(1000);
+      expect(modelCount).toBeGreaterThan(100);
+      expect(modelCount).toBeLessThan(1000);
       expect(catalog!["gpt-5"]).toBeDefined();
-      expect(catalog!["claude-3-5-sonnet-20241022"]).toBeDefined();
+      expect(catalog!["claude-sonnet-4-5"]).toBeDefined();
+      expect(catalog!["deepseek-chat"]).toBeDefined();
+      expect(catalog!["Beam-1.0"]).toBeUndefined();
 
       const elapsed = Date.now() - start;
       console.log(`[E2E] Iteration ${i}/3 succeeded: ${modelCount} models loaded in ${elapsed}ms`);

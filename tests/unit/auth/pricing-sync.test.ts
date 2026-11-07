@@ -8,6 +8,7 @@ import {
   pricingTableURLs,
   fetchRemotePricingCatalog,
   startPricingSyncScheduler,
+  isOfficialModel,
 } from "@src/auth/pricing-sync.js";
 import {
   loadPricingCatalog,
@@ -70,17 +71,45 @@ describe("pricing sync - conversion", () => {
 
   it("defaults cached_input_usd_per_million to input_usd_per_million if uncached", () => {
     const raw = {
-      "basic-model": {
+      "gpt-4-turbo": {
         input_cost_per_token: 0.000003,
         output_cost_per_token: 0.000015,
       },
     };
     const converted = convertLiteLlmPricing(raw);
-    expect(converted["basic-model"]).toEqual({
+    expect(converted["gpt-4-turbo"]).toEqual({
       input_usd_per_million: 3,
       cached_input_usd_per_million: 3,
       output_usd_per_million: 15,
     });
+  });
+
+  it("filters out non-official models and third-party cloud wrappers in convertLiteLlmPricing", () => {
+    const raw = {
+      "azure/gpt-6.1-sol": {
+        input_cost_per_token: 0.000002,
+        output_cost_per_token: 0.00001,
+      },
+      "bedrock/anthropic.claude-3-sonnet": {
+        input_cost_per_token: 0.000003,
+        output_cost_per_token: 0.000015,
+      },
+      "ALIA-40b-instruct_Q8_0": {
+        input_cost_per_token: 0.000001,
+        output_cost_per_token: 0.000001,
+      },
+      "openai/gpt-4o": {
+        input_cost_per_token: 0.0000025,
+        output_cost_per_token: 0.00001,
+      },
+    };
+    const converted = convertLiteLlmPricing(raw);
+    expect(converted["azure/gpt-6.1-sol"]).toBeUndefined();
+    expect(converted["gpt-6.1-sol"]).toBeUndefined();
+    expect(converted["bedrock/anthropic.claude-3-sonnet"]).toBeUndefined();
+    expect(converted["ALIA-40b-instruct_Q8_0"]).toBeUndefined();
+    expect(converted["openai/gpt-4o"]).toBeDefined();
+    expect(converted["gpt-4o"]).toBeDefined();
   });
 
   it("converts OpenRouter models to ModelPricing format", () => {
@@ -148,11 +177,10 @@ describe("pricing sync - pricingTableURLs & multi-source dynamic pull", () => {
     vi.restoreAllMocks();
   });
 
-  it("defines default pricingTableURLs containing CDN and proxy mirrors", () => {
-    expect(pricingTableURLs.length).toBeGreaterThanOrEqual(3);
+  it("defines default pricingTableURLs containing CDN and raw GitHub fallback", () => {
+    expect(pricingTableURLs.length).toBeGreaterThanOrEqual(2);
     expect(pricingTableURLs.some((u) => u.includes("jsdelivr"))).toBe(true);
     expect(pricingTableURLs.some((u) => u.includes("raw.githubusercontent.com"))).toBe(true);
-    expect(pricingTableURLs.some((u) => u.includes("ghproxy"))).toBe(true);
   });
 
   it("fetches from the first available URL in pricingTableURLs", async () => {
@@ -299,5 +327,80 @@ describe("pricing sync - pricingTableURLs & multi-source dynamic pull", () => {
     stop();
     vi.advanceTimersByTime(20_000);
     vi.useRealTimers();
+  });
+
+  it("aborts in-flight fetch when abort signal is triggered", async () => {
+    const controller = new AbortController();
+    controller.abort();
+
+    const fetchSpy = vi.fn();
+    vi.stubGlobal("fetch", fetchSpy);
+
+    const result = await fetchRemotePricingCatalog({
+      urls: ["https://example.com/pricing.json"],
+      dataDir: tmpDir,
+      signal: controller.signal,
+    });
+
+    expect(result).toBeNull();
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
+  it("ensures local catalog overrides dynamic remote pricing for identical model keys", () => {
+    // Dynamic catalog sets gpt-6.1-sol to low price
+    setDynamicPricingCatalog({
+      "gpt-6.1-sol": {
+        input_usd_per_million: 1,
+        cached_input_usd_per_million: 0.1,
+        output_usd_per_million: 2,
+      },
+      "claude-remote-only": {
+        input_usd_per_million: 3,
+        cached_input_usd_per_million: 0.3,
+        output_usd_per_million: 15,
+      },
+    });
+
+    // Default loadPricingCatalog loads local config/model-pricing.yaml merged with dynamic
+    const merged = loadPricingCatalog();
+
+    // Local model-pricing.yaml has gpt-6.1-sol = 5 / 0.5 / 30
+    expect(merged["gpt-6.1-sol"]?.input_usd_per_million).toBe(5);
+    expect(merged["gpt-6.1-sol"]?.output_usd_per_million).toBe(30);
+
+    // Remote-only model is preserved
+    expect(merged["claude-remote-only"]?.input_usd_per_million).toBe(3);
+  });
+});
+
+describe("pricing sync - isOfficialModel filter", () => {
+  it("allows official OpenAI models and prefixes", () => {
+    expect(isOfficialModel("openai/gpt-4o")).toBe(true);
+    expect(isOfficialModel("gpt-4o")).toBe(true);
+    expect(isOfficialModel("gpt-5.5")).toBe(true);
+    expect(isOfficialModel("gpt-image-2")).toBe(true);
+    expect(isOfficialModel("o1-preview")).toBe(true);
+    expect(isOfficialModel("o3-mini")).toBe(true);
+  });
+
+  it("allows official Anthropic, Google, and DeepSeek models", () => {
+    expect(isOfficialModel("anthropic/claude-3-5-sonnet")).toBe(true);
+    expect(isOfficialModel("claude-3-5-sonnet-20241022")).toBe(true);
+    expect(isOfficialModel("google/gemini-2.5-flash")).toBe(true);
+    expect(isOfficialModel("gemini-2.5-flash")).toBe(true);
+    expect(isOfficialModel("deepseek/deepseek-chat")).toBe(true);
+    expect(isOfficialModel("deepseek-chat")).toBe(true);
+    expect(isOfficialModel("deepseek-r1")).toBe(true);
+  });
+
+  it("rejects third-party cloud wrappers, proxies, and unrelated models", () => {
+    expect(isOfficialModel("azure/gpt-6.1-sol")).toBe(false);
+    expect(isOfficialModel("azure_ai/gpt-4o")).toBe(false);
+    expect(isOfficialModel("bedrock/anthropic.claude-3-sonnet")).toBe(false);
+    expect(isOfficialModel("zerogpu/gpt-4.1-mini")).toBe(false);
+    expect(isOfficialModel("Beam-1.0-501B-A23B")).toBe(false);
+    expect(isOfficialModel("ALIA-40b-instruct_Q8_0")).toBe(false);
+    expect(isOfficialModel("openrouter/auto")).toBe(false);
+    expect(isOfficialModel("random-model")).toBe(false);
   });
 });

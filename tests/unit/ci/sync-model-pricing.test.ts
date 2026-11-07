@@ -15,16 +15,24 @@ describe("sync-model-pricing script & workflow", () => {
     expect(parsed.name).toBe("Sync model pricing");
   });
 
-  it("converts LiteLLM models accurately in script", () => {
+  it("converts LiteLLM models accurately in script for official models", () => {
     const input = {
-      "test/gpt-5": {
+      "openai/gpt-5": {
         input_cost_per_token: 0.00000125,
         output_cost_per_token: 0.00001,
         cache_read_input_token_cost: 0.000000125,
       },
+      "azure/gpt-6.1-sol": {
+        input_cost_per_token: 0.000002,
+        output_cost_per_token: 0.00001,
+      },
+      "random-community-model": {
+        input_cost_per_token: 0.000001,
+        output_cost_per_token: 0.000005,
+      },
     };
     const output = convertLiteLlm(input);
-    expect(output["test/gpt-5"]).toEqual({
+    expect(output["openai/gpt-5"]).toEqual({
       input_usd_per_million: 1.25,
       cached_input_usd_per_million: 0.125,
       output_usd_per_million: 10,
@@ -34,6 +42,8 @@ describe("sync-model-pricing script & workflow", () => {
       cached_input_usd_per_million: 0.125,
       output_usd_per_million: 10,
     });
+    expect(output["azure/gpt-6.1-sol"]).toBeUndefined();
+    expect(output["random-community-model"]).toBeUndefined();
   });
 
   it("converts OpenRouter models accurately in script", () => {

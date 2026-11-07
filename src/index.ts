@@ -220,8 +220,13 @@ export async function startServer(options?: StartOptions): Promise<ServerHandle>
   if (cfg.pricing?.auto_sync !== false) {
     const urls = cfg.pricing?.table_urls;
     const intervalMs = (cfg.pricing?.sync_interval_hours ?? 24) * 60 * 60 * 1000;
-    stopPricingSync = startPricingSyncScheduler({ urls, intervalMs });
-    fetchRemotePricingCatalog({ urls }).catch(() => {});
+    const startupAbort = new AbortController();
+    const stopScheduler = startPricingSyncScheduler({ urls, intervalMs });
+    stopPricingSync = () => {
+      startupAbort.abort();
+      stopScheduler();
+    };
+    fetchRemotePricingCatalog({ urls, signal: startupAbort.signal }).catch(() => {});
   }
 
   // Initialize Client Key pool for distribution

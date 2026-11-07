@@ -26,6 +26,67 @@ const LITELLM_URLS = [
 
 const OPENROUTER_URL = "https://openrouter.ai/api/v1/models";
 
+const OFFICIAL_PREFIX_ALLOWLIST = [
+  "openai/",
+  "anthropic/",
+  "google/",
+  "deepseek/",
+];
+
+const THIRD_PARTY_PREFIX_BLOCKLIST = [
+  "azure/",
+  "azure_ai/",
+  "bedrock/",
+  "bedrock_mantle/",
+  "openrouter/",
+  "together_ai/",
+  "groq/",
+  "fireworks_ai/",
+  "deepinfra/",
+  "perplexity/",
+  "cloudflare/",
+  "vertex_ai/",
+  "sagemaker/",
+  "anyscale/",
+  "replicate/",
+  "databricks/",
+  "kyma/",
+  "gmi/",
+  "zerogpu/",
+  "github_copilot/",
+];
+
+const OFFICIAL_MODEL_PATTERNS = [
+  /^gpt-/,
+  /^chatgpt-/,
+  /^o[1-9](?:-|$)/,
+  /^claude-/,
+  /^gemini-/,
+  /^deepseek-/,
+];
+
+export function isOfficialModel(modelKey) {
+  if (!modelKey || typeof modelKey !== "string") return false;
+  const lower = modelKey.toLowerCase().trim();
+
+  for (const blocked of THIRD_PARTY_PREFIX_BLOCKLIST) {
+    if (lower.startsWith(blocked)) return false;
+  }
+
+  for (const allowed of OFFICIAL_PREFIX_ALLOWLIST) {
+    if (lower.startsWith(allowed)) {
+      const remainder = lower.slice(allowed.length);
+      return !remainder.includes("/") && remainder.length > 0;
+    }
+  }
+
+  if (lower.includes("/")) {
+    return false;
+  }
+
+  return OFFICIAL_MODEL_PATTERNS.some((pattern) => pattern.test(lower));
+}
+
 function isRecord(value) {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
@@ -63,6 +124,7 @@ export function convertLiteLlm(raw) {
 
   for (const [modelKey, data] of Object.entries(raw)) {
     if (!isRecord(data) || modelKey === "sample_spec") continue;
+    if (!isOfficialModel(modelKey)) continue;
 
     const inputCost = data.input_cost_per_token;
     const outputCost = data.output_cost_per_token;
@@ -90,7 +152,7 @@ export function convertLiteLlm(raw) {
     if (modelKey.includes("/")) {
       const parts = modelKey.split("/");
       const baseModel = parts[parts.length - 1];
-      if (baseModel && !result[baseModel]) {
+      if (baseModel && isOfficialModel(baseModel) && !result[baseModel]) {
         result[baseModel] = { ...pricing };
       }
     }
@@ -105,6 +167,7 @@ export function convertOpenRouter(raw) {
 
   for (const item of raw.data) {
     if (!isRecord(item) || typeof item.id !== "string" || !isRecord(item.pricing)) continue;
+    if (!isOfficialModel(item.id)) continue;
     const promptStr = item.pricing.prompt;
     const completionStr = item.pricing.completion;
 
@@ -180,12 +243,12 @@ export async function runSync(options = {}) {
     }
   }
 
-  // Merge: localBase -> openRouterModels -> litellmModels
-  // (upstream LiteLLM takes precedence, but preserves local-only models like gpt-reserve)
+  // Merge: openRouterModels -> litellmModels -> localBase
+  // (local base catalog takes precedence to preserve official curated prices)
   const merged = {
-    ...localBase,
     ...openRouterModels,
     ...litellmModels,
+    ...localBase,
   };
 
   // Sort model keys alphabetically for deterministic diffs
@@ -212,11 +275,12 @@ export async function runSync(options = {}) {
   writeFileSync(jsonPath, jsonContent, "utf8");
   console.log(`[sync-pricing] wrote JSON: ${jsonPath}`);
 
-  // Write YAML
-  const yamlHeader = `# Official and upstream API pricing catalog.\n# Unit: USD per 1,000,000 tokens.\n# Automatically synchronized by GitHub Actions.\n\n`;
-  const yamlPath = options.yamlOutFile || YAML_OUT_FILE;
-  writeFileSync(yamlPath, yamlHeader + yaml.dump({ models: sortedModels }), "utf8");
-  console.log(`[sync-pricing] wrote YAML: ${yamlPath}`);
+  // Write YAML only if explicitly requested; never overwrite base model-pricing.yaml by default
+  if (options.yamlOutFile) {
+    const yamlHeader = `# Official and upstream API pricing catalog.\n# Unit: USD per 1,000,000 tokens.\n# Automatically synchronized by GitHub Actions.\n\n`;
+    writeFileSync(options.yamlOutFile, yamlHeader + yaml.dump({ models: sortedModels }), "utf8");
+    console.log(`[sync-pricing] wrote YAML: ${options.yamlOutFile}`);
+  }
 
   return { models: sortedModels, count: modelCount };
 }

@@ -77,35 +77,53 @@ function parsePricingMapping(parsed: unknown, sourceFile: string): PricingCatalo
 }
 
 export function loadPricingCatalog(configDir = getConfigDir(), dataDir = getDataDir()): PricingCatalog {
-  // If an in-memory dynamic catalog has been loaded, use it
-  if (dynamicPricingCatalog && configDir === getConfigDir()) {
-    return dynamicPricingCatalog;
+  // 1. Load local catalog from configDir (primary source of truth)
+  let localCatalog: PricingCatalog | null = null;
+  const yamlPath = resolve(configDir, PRICE_FILE_YAML);
+  const jsonPath = resolve(configDir, PRICE_FILE_JSON);
+
+  if (existsSync(yamlPath)) {
+    const parsed: unknown = yaml.load(readFileSync(yamlPath, "utf8"));
+    localCatalog = parsePricingMapping(parsed, PRICE_FILE_YAML);
+  } else if (existsSync(jsonPath)) {
+    const parsed: unknown = JSON.parse(readFileSync(jsonPath, "utf8"));
+    localCatalog = parsePricingMapping(parsed, PRICE_FILE_JSON);
+  } else if (configDir !== getConfigDir()) {
+    throw new Error(`${PRICE_FILE_YAML} must contain a models mapping`);
   }
 
-  // If disk cache exists in dataDir, use it
-  if (configDir === getConfigDir()) {
+  // If a custom configDir is passed (e.g. isolated test fixtures), return local directly
+  if (configDir !== getConfigDir()) {
+    return localCatalog ?? createPricingCatalog({});
+  }
+
+  // 2. Resolve fallback dynamic/cached catalog
+  let fallbackCatalog: PricingCatalog | null = dynamicPricingCatalog;
+  if (!fallbackCatalog) {
     const cacheFile = resolve(dataDir, "model-pricing-cache.json");
     if (existsSync(cacheFile)) {
       try {
-        const raw = JSON.parse(readFileSync(cacheFile, "utf8"));
-        return parsePricingMapping(raw, cacheFile);
+        const raw: unknown = JSON.parse(readFileSync(cacheFile, "utf8"));
+        fallbackCatalog = parsePricingMapping(raw, cacheFile);
       } catch {
-        // Fall back to configDir files
+        // Fall back to local catalog on corrupt cache
       }
     }
   }
 
-  // Check model-pricing.json in configDir
-  const jsonPath = resolve(configDir, PRICE_FILE_JSON);
-  if (existsSync(jsonPath)) {
-    const parsed: unknown = JSON.parse(readFileSync(jsonPath, "utf8"));
-    return parsePricingMapping(parsed, PRICE_FILE_JSON);
+  // 3. Merge: fallback dynamic catalog fills missing models, but localCatalog ALWAYS overrides
+  if (fallbackCatalog && Object.keys(fallbackCatalog).length > 0) {
+    return createPricingCatalog({
+      ...fallbackCatalog,
+      ...(localCatalog ?? {}),
+    });
   }
 
-  // Check model-pricing.yaml in configDir
-  const yamlPath = resolve(configDir, PRICE_FILE_YAML);
-  const parsed: unknown = yaml.load(readFileSync(yamlPath, "utf8"));
-  return parsePricingMapping(parsed, PRICE_FILE_YAML);
+  if (localCatalog) {
+    return localCatalog;
+  }
+
+  throw new Error(`${PRICE_FILE_YAML} must contain a models mapping`);
 }
 
 const PRICING_WARN_COOLDOWN_MS = 5 * 60_000;
