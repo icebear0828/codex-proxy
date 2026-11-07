@@ -1,5 +1,3 @@
-#!/usr/bin/env node
-
 /**
  * Synchronize model pricing catalog from LiteLLM and OpenRouter.
  *
