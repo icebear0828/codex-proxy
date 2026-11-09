@@ -8,6 +8,7 @@ import type {
   CodexInputItem,
   CodexContentPart,
 } from "../proxy/codex-api.js";
+import { CodexApiError } from "../proxy/codex-types.js";
 import { parseModelName, getModelInfo } from "../models/model-store.js";
 import { getConfig } from "../config.js";
 import { buildInstructions, prepareSchema } from "./shared-utils.js";
@@ -22,6 +23,10 @@ import {
 function extractText(content: ChatMessage["content"]): string {
   if (content == null) return "";
   if (typeof content === "string") return content;
+  const unsupported = content.find((p) => p.type !== "text");
+  if (unsupported) {
+    throw new CodexApiError(400, `Unsupported OpenAI content part type in text-only message: ${String(unsupported.type)}`);
+  }
   return content
     .filter((p) => p.type === "text" && p.text)
     .map((p) => p.text!)
@@ -38,6 +43,10 @@ function extractContent(
   if (content == null) return "";
   if (typeof content === "string") return content;
 
+  const unsupported = content.find((p) => p.type !== "text" && p.type !== "image_url");
+  if (unsupported) {
+    throw new CodexApiError(400, `Unsupported OpenAI content part type: ${String(unsupported.type)}`);
+  }
   const hasImage = content.some((p) => p.type === "image_url");
   if (!hasImage) {
     // Text-only: return plain string (preserves existing behavior)
@@ -58,11 +67,14 @@ function extractContent(
         | string
         | { url: string; detail?: string }
         | undefined;
-      if (!imageUrl) continue;
-      const url = typeof imageUrl === "string" ? imageUrl : imageUrl.url;
-      if (url) {
-        parts.push({ type: "input_image", image_url: url });
+      if (!imageUrl) {
+        throw new CodexApiError(400, "OpenAI image_url content part is missing its URL");
       }
+      const url = typeof imageUrl === "string" ? imageUrl : imageUrl.url;
+      if (typeof url !== "string" || url.length === 0) {
+        throw new CodexApiError(400, "OpenAI image_url content part is missing its URL");
+      }
+      parts.push({ type: "input_image", image_url: url });
     }
   }
 

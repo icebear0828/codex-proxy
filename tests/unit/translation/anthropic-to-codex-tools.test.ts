@@ -37,6 +37,7 @@ vi.mock("@src/translation/shared-utils.js", async (importOriginal) => {
 vi.mock("@src/translation/tool-format.js", () => ({
   anthropicToolsToCodex: vi.fn((tools: unknown[]) => tools),
   anthropicToolChoiceToCodex: vi.fn(() => undefined),
+  anthropicDisableParallelToolUse: vi.fn((choice: { disable_parallel_tool_use?: boolean } | undefined) => choice?.disable_parallel_tool_use),
 }));
 
 vi.mock("@src/models/model-store.js", () => ({
@@ -73,6 +74,12 @@ describe("translateAnthropicToCodexRequest — tools & content", () => {
       ];
       translateAnthropicToCodexRequest(makeRequest({ tools }));
       expect(anthropicToolsToCodex).toHaveBeenCalledWith(tools);
+    });
+
+    it("maps disable_parallel_tool_use to parallel_tool_calls=false", () => {
+      const toolChoice = { type: "auto", disable_parallel_tool_use: true } as AnthropicMessagesRequest["tool_choice"];
+      const result = translateAnthropicToCodexRequest(makeRequest({ tool_choice: toolChoice }));
+      expect(result.parallel_tool_calls).toBe(false);
     });
 
     it("delegates tool_choice to anthropicToolChoiceToCodex", () => {

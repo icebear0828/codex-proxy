@@ -31,8 +31,32 @@ describe("translateCodexToAnthropicRequest", () => {
       { type: "function", name: "clock" },
     ] });
     expect(translateCodexToAnthropicRequest(req, req.model).tools).toEqual([
-      { name: "weather", description: "Get weather", input_schema: { type: "object", properties: { city: { type: "string" } } } },
+      { name: "weather", description: "Get weather", input_schema: { type: "object", properties: { city: { type: "string" } } }, strict: true },
       { name: "clock", input_schema: { type: "object", properties: {} } },
+    ]);
+  });
+
+  it("preserves allowed_callers from the internal tool on the Anthropic body", () => {
+    const req = makeBaseRequest({ tools: [
+      { type: "function", name: "restricted", parameters: { type: "object", properties: {} }, allowed_callers: ["code_execution_20260120"] },
+      { type: "function", name: "unrestricted" },
+    ] as CodexResponsesRequest["tools"] });
+    expect(translateCodexToAnthropicRequest(req, req.model).tools).toEqual([
+      { name: "restricted", input_schema: { type: "object", properties: {} }, allowed_callers: ["code_execution_20260120"] },
+      { name: "unrestricted", input_schema: { type: "object", properties: {} } },
+    ]);
+  });
+
+  it("preserves strict on the Anthropic body only when the tool requested it", () => {
+    const req = makeBaseRequest({ tools: [
+      { type: "function", name: "strict_tool", strict: true },
+      { type: "function", name: "lax_tool", strict: false },
+      { type: "function", name: "unspecified" },
+    ] as CodexResponsesRequest["tools"] });
+    expect(translateCodexToAnthropicRequest(req, req.model).tools).toEqual([
+      { name: "strict_tool", input_schema: { type: "object", properties: {} }, strict: true },
+      { name: "lax_tool", input_schema: { type: "object", properties: {} } },
+      { name: "unspecified", input_schema: { type: "object", properties: {} } },
     ]);
   });
 
@@ -44,6 +68,27 @@ describe("translateCodexToAnthropicRequest", () => {
   ])("converts Codex tool choice %j", (tool_choice, expected) => {
     const req = makeBaseRequest({ tools: [{ type: "function", name: "weather" }], tool_choice: tool_choice as CodexResponsesRequest["tool_choice"] });
     expect(translateCodexToAnthropicRequest(req, req.model).tool_choice).toEqual(expected);
+  });
+
+  it("emits disable_parallel_tool_use with an explicit Anthropic tool choice", () => {
+    const req = makeBaseRequest({
+      tools: [{ type: "function", name: "weather" }],
+      tool_choice: { type: "function", name: "weather" },
+      parallel_tool_calls: false,
+    });
+    expect(translateCodexToAnthropicRequest(req, req.model).tool_choice).toEqual({
+      type: "tool", name: "weather", disable_parallel_tool_use: true,
+    });
+  });
+
+  it("emits auto tool_choice when only disabling parallel calls", () => {
+    const req = makeBaseRequest({
+      tools: [{ type: "function", name: "weather" }],
+      parallel_tool_calls: false,
+    });
+    expect(translateCodexToAnthropicRequest(req, req.model).tool_choice).toEqual({
+      type: "auto", disable_parallel_tool_use: true,
+    });
   });
 
   it("rejects unsupported tool types instead of silently dropping them", () => {

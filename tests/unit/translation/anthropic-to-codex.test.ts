@@ -58,6 +58,7 @@ vi.mock("@src/translation/shared-utils.js", async (importOriginal) => ({
 vi.mock("@src/translation/tool-format.js", () => ({
   anthropicToolsToCodex: vi.fn((tools: unknown[]) => tools),
   anthropicToolChoiceToCodex: vi.fn(() => undefined),
+  anthropicDisableParallelToolUse: vi.fn(() => undefined),
 }));
 
 vi.mock("@src/models/model-store.js", () => ({
@@ -368,6 +369,31 @@ describe("translateAnthropicToCodexRequest", () => {
       expect(serialized).not.toContain("internal reasoning");
       expect(serialized).not.toContain("sig_abc");
       expect(serialized).not.toContain("opaque");
+    });
+
+    it("preserves URL-backed image blocks as input_image content parts", () => {
+      const result = translateAnthropicToCodexRequest(
+        makeRequest({
+          messages: [{
+            role: "user",
+            content: [{
+              type: "image" as const,
+              source: { type: "url" as const, url: "https://example.com/image.jpg" },
+            }],
+          }],
+        }),
+      );
+      expect(result.input[0]).toEqual({
+        role: "user",
+        content: [{ type: "input_image", image_url: "https://example.com/image.jpg" }],
+      });
+    });
+
+    it.each(["document", "container_upload"])("rejects unsupported Anthropic %s blocks instead of dropping them", (type) => {
+      const req = makeRequest({
+        messages: [{ role: "user", content: [{ type, source: { type: "base64", data: "abc" } }] }],
+      });
+      expect(() => translateAnthropicToCodexRequest(req)).toThrow(`Unsupported Anthropic content block type: ${type}`);
     });
 
     it("converts image block to input_image content part", () => {

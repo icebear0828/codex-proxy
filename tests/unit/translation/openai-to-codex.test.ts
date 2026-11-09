@@ -306,6 +306,15 @@ describe("translateToCodexRequest — multimodal content", () => {
     expect(parts[1]).toEqual({ type: "input_image", image_url: "https://example.com/img.jpg" });
   });
 
+  it("rejects unsupported file content parts instead of silently dropping them", () => {
+    expect(() => translateToCodexRequest(makeRequest({
+      messages: [{
+        role: "user",
+        content: [{ type: "file", file: { file_id: "file_123" } }],
+      }],
+    }))).toThrow("Unsupported OpenAI content part type: file");
+  });
+
   it("converts text-only array content to plain string", () => {
     const result = translateToCodexRequest(makeRequest({
       messages: [
@@ -483,28 +492,16 @@ describe("translateToCodexRequest — content edge cases", () => {
     expect(fcItem).toBeDefined();
   });
 
-  it("skips image_url part when image_url is null/undefined", () => {
-    const result = translateToCodexRequest(makeRequest({
-      messages: [
-        {
-          role: "user",
-          content: [
-            { type: "text", text: "Describe" },
-            { type: "image_url", image_url: null },
-          ],
-        },
-      ],
-    }));
-    // Should not crash; the null image_url part should be skipped
-    const item = result.input[0];
-    if (Array.isArray(item.content)) {
-      // Only text part should remain
-      expect(item.content).toHaveLength(1);
-      expect(item.content[0]).toEqual({ type: "input_text", text: "Describe" });
-    } else {
-      // Or collapsed to string if only text
-      expect(typeof item.content).toBe("string");
-    }
+  it("rejects image_url parts without a URL instead of silently dropping them", () => {
+    expect(() => translateToCodexRequest(makeRequest({
+      messages: [{
+        role: "user",
+        content: [
+          { type: "text", text: "Describe" },
+          { type: "image_url", image_url: null },
+        ],
+      }],
+    }))).toThrow("OpenAI image_url content part is missing its URL");
   });
 
   it("converts function role message without name to fc_unknown", () => {
