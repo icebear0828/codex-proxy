@@ -8,7 +8,9 @@
 
 ## [Unreleased]
 
-> 暂无已记录的变更。
+### Added
+
+- Antigravity 账号卡片的模型额度展示按 Google AI Pro 官方共享配额池分组：Gemini 与 Claude / GPT 各显示一条简洁概览（取该池内最受限模型的剩余百分比与重置时间），未知模型单独归入「其他模型」组、绝不并入主池；每组默认折叠，可展开查看全部原始 per-model 额度明细。纯展示层改动，不影响模型路由与配额判断逻辑；无任何模型上报剩余额度时显示占位符而不伪造 100%。（`web/src/components/AntigravityAccounts.tsx`、`shared/i18n/translations.ts`）（#874）
 
 ## [v2.1.x](https://github.com/icebear0828/codex-proxy/releases?q=2.1) - 2026-09-01 至 2026-09-07
 
