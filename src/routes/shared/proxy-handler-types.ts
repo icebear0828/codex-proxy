@@ -52,6 +52,10 @@ export interface ResponseMetadata {
    *  from `prematureClose` for diagnostics; both poison an implicit-resume
    *  chain the same way. */
   terminalFailure?: boolean;
+  /** Set when that terminal frame was an upstream safety-policy rejection.
+   *  Carries the upstream code/message so the conversation can be quarantined
+   *  without re-parsing the frame. See `src/proxy/policy-rejection.ts`. */
+  policyRejection?: { code: string; message: string };
 }
 
 export interface FormatStreamTranslatorOptions {

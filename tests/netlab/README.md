@@ -39,8 +39,24 @@ NETLAB_TOXIPROXY=docker node …       # 容器模式(需要 Docker Desktop 的
 toxiproxy 默认以原生二进制运行(host loopback,无容器网络依赖);
 首次运行自动下载到 `tests/netlab/.bin/`。报告输出到 `tests/netlab/reports/`。
 
-## 场景(scenarios.mjs)
+## 安全策略守卫烟测(policy-guard-smoke.mjs)
 
+不属于弱网基线,是 `policy_guard`(上游安全策略拒绝 → 会话隔离)的端到端烟测:
+
+```bash
+npm run netlab:policy-guard              # 12 项检查,全绿退出码 0
+node tests/netlab/policy-guard-smoke.mjs --keep --port 8199
+```
+
+不依赖 toxiproxy:mock 上游用 `MOCK_POLICY_REJECT_CODE` 直接回一个终态
+`response.failed`(带 sub2api 的 `session_blocked_by_cyber_policy`),代理侧走
+API-key 直连上游 + 隔离 runtime(local.yaml 里 `policy_guard.enabled: true`)。
+断言链路:首轮放行且上游只收到 1 次 → 次轮本地 400 且上游 0 次 →
+`/admin/policy-guard-quarantines` 列出并可解除 → 解除后重新放行 →
+设置 API 自定义 error_codes 可持久化。核心口径是"同一会话第二次请求上游零到达"
+(防封号的实际验收),runtime 在系统临时目录,不触碰仓库 `data/`。
+
+## 场景(scenarios.mjs)
 | 场景 | 注入 | 度量目标 |
 |---|---|---|
 | baseline-plain | 无 | 明文字节基准(压缩对照) |

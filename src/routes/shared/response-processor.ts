@@ -10,6 +10,7 @@ import type { FormatAdapter, ResponseMetadata, UsageHint } from "./proxy-handler
 import type { UsageInfo } from "../../translation/codex-event-extractor.js";
 import { debugDump, debugDumpEnabled } from "../../utils/debug-dump.js";
 import { recordStreamCloseEvent } from "../../logs/stream-close-event.js";
+import { extractPolicyErrorCode, isPolicyRejection } from "../../proxy/policy-rejection.js";
 import {
   applyWrittenChunkTrace,
   createWrittenStreamTrace,
@@ -222,6 +223,19 @@ export async function streamResponse(options: StreamResponseOptions): Promise<vo
     const errStatus = err instanceof CodexApiError ? err.status : "?";
     const errBody = err instanceof CodexApiError ? err.body : undefined;
     const responseStatus = streamErrorStatus(err);
+    // Non-passthrough streaming formats (chat/completions, Anthropic, Gemini)
+    // surface a terminal safety-policy frame as a thrown typed error, which
+    // this catch turns into an error event for the client and then swallows.
+    // Report the verdict so the caller can quarantine the conversation — the
+    // client's next turn would otherwise resend the same rejected content.
+    if (isPolicyRejection(err)) {
+      onResponseMetadata?.({
+        policyRejection: {
+          code: extractPolicyErrorCode(errBody ?? "") ?? "policy_rejection",
+          message: errMsg,
+        },
+      });
+    }
     if (debugDumpEnabled()) {
       debugDump("stream-error", {
         rid: diagnostics?.requestId,

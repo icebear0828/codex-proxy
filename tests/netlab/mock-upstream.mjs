@@ -28,6 +28,14 @@
  *   MOCK_FAIL_FIRST_REQUESTS  hard-reset the socket for the first N POST
  *                           /responses requests, then behave normally
  *                           (建流前瞬断 — one-shot connect failure)
+ *   MOCK_POLICY_REJECT_CODE  answer with a terminal safety-policy rejection
+ *                           carrying this error code instead of a completion
+ *                           (e.g. session_blocked_by_cyber_policy). Used by
+ *                           policy-guard-smoke.mjs; when set, MOCK_EVENTS is
+ *                           ignored except for MOCK_POLICY_REJECT_AFTER_EVENTS.
+ *   MOCK_POLICY_REJECT_MESSAGE       human-readable message for that frame
+ *   MOCK_POLICY_REJECT_AFTER_EVENTS  deltas to emit before the rejection (default 0)
+ *   MOCK_POLICY_REJECT_FRAME         "response.failed" (default) | "error"
  */
 
 import { createServer } from "node:http";
@@ -42,6 +50,11 @@ const GZIP = process.env.MOCK_GZIP === "1";
 const CUT_AFTER_BYTES = Number(process.env.MOCK_CUT_AFTER_BYTES ?? 0);
 const STALL_AFTER_BYTES = Number(process.env.MOCK_STALL_AFTER_BYTES ?? 0);
 const FAIL_FIRST_REQUESTS = Number(process.env.MOCK_FAIL_FIRST_REQUESTS ?? 0);
+const POLICY_REJECT_CODE = process.env.MOCK_POLICY_REJECT_CODE ?? "";
+const POLICY_REJECT_MESSAGE = process.env.MOCK_POLICY_REJECT_MESSAGE
+  ?? "该会话已被网络安全策略屏蔽，请开启新会话 / This session is blocked by cyber-security policy, please start a new session";
+const POLICY_REJECT_AFTER_EVENTS = Number(process.env.MOCK_POLICY_REJECT_AFTER_EVENTS ?? 0);
+const POLICY_REJECT_FRAME = process.env.MOCK_POLICY_REJECT_FRAME === "error" ? "error" : "response.failed";
 let failRequestsRemaining = FAIL_FIRST_REQUESTS;
 
 // Natural-ish English text — gzip ratio lands in a realistic 3-5x band for
@@ -83,6 +96,30 @@ function buildParts(requestId) {
       response: { id: requestId, status: "in_progress" },
     }),
   ];
+  if (POLICY_REJECT_CODE) {
+    // Safety-policy rejection: the upstream gate answers as a function of the
+    // content, so the stream ends in a terminal failure frame instead of a
+    // completion. Shape mirrors what the relay/OpenAI send on the wire.
+    for (let i = 0; i < POLICY_REJECT_AFTER_EVENTS; i++) {
+      parts.push(sseEvent("response.output_text.delta", {
+        type: "response.output_text.delta",
+        delta: deltaText(i),
+      }));
+    }
+    const error = {
+      type: "permission_error",
+      code: POLICY_REJECT_CODE,
+      message: POLICY_REJECT_MESSAGE,
+    };
+    parts.push(sseEvent(POLICY_REJECT_FRAME, POLICY_REJECT_FRAME === "error"
+      ? { type: "error", error }
+      : {
+        type: "response.failed",
+        response: { id: requestId, status: "failed" },
+        error,
+      }));
+    return parts;
+  }
   for (let i = 0; i < EVENTS; i++) {
     parts.push(sseEvent("response.output_text.delta", {
       type: "response.output_text.delta",
