@@ -33,9 +33,9 @@ export const PROVIDER_CATALOG: Record<BuiltinProvider, ProviderMeta> = {
     displayName: "OpenAI",
     defaultBaseUrl: "https://api.openai.com/v1",
     models: [
-      { id: "gpt-4.1", displayName: "GPT-4.1" },
-      { id: "gpt-4.1-mini", displayName: "GPT-4.1 Mini" },
-      { id: "o4-mini", displayName: "o4 Mini" },
+      { id: "gpt-5.6-sol", displayName: "GPT-5.6 Sol" },
+      { id: "gpt-5.6-terra", displayName: "GPT-5.6 Terra" },
+      { id: "gpt-5.6-luna", displayName: "GPT-5.6 Luna" },
     ],
   },
   gemini: {
@@ -51,7 +51,9 @@ export const PROVIDER_CATALOG: Record<BuiltinProvider, ProviderMeta> = {
     defaultBaseUrl: "https://openrouter.ai/api/v1",
     models: [
       { id: "anthropic/claude-sonnet-4-5", displayName: "Claude Sonnet 4.5" },
-      { id: "openai/gpt-4.1", displayName: "GPT-4.1" },
+      { id: "openai/gpt-5.6-sol", displayName: "GPT-5.6 Sol" },
+      { id: "openai/gpt-5.6-terra", displayName: "GPT-5.6 Terra" },
+      { id: "openai/gpt-5.6-luna", displayName: "GPT-5.6 Luna" },
       { id: "google/gemini-2.5-pro", displayName: "Gemini 2.5 Pro" },
       { id: "deepseek/deepseek-r1", displayName: "DeepSeek R1" },
     ],

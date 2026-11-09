@@ -1,3 +1,4 @@
+import type { LanRuntimeState } from "../utils/lan-access.js";
 import { Hono } from "hono";
 import type { Context } from "hono";
 import { serveStatic } from "@hono/node-server/serve-static";
@@ -26,6 +27,7 @@ export function createWebRoutes(
   usageStats: UsageStatsStore,
   clientKeyPool?: ClientKeyPool,
   keepaliveScheduler?: KeepaliveScheduler,
+  getLanRuntime?: () => LanRuntimeState | null,
 ): Hono {
   const app = new Hono();
 
@@ -92,7 +94,7 @@ export function createWebRoutes(
   app.route("/", createHealthRoutes(accountPool));
   app.route("/", createUpdateRoutes());
   app.route("/", createConnectionRoutes(accountPool));
-  app.route("/", createSettingsRoutes(accountPool));
+  app.route("/", createSettingsRoutes(accountPool, getLanRuntime));
   app.route("/", createOllamaAdminRoutes());
   app.route("/", createUsageStatsRoutes(accountPool, usageStats));
   app.route("/", createLogRoutes());

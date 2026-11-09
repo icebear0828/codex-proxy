@@ -347,19 +347,15 @@ curl http://localhost:8080/v1/chat/completions \
 
 | 模型 ID | 推理等级 | 当前上下文 | 最大上下文 | 最大输出 | 输出 | 说明 |
 |---------|---------|------------|------------|----------|------|------|
-| `gpt-6-astra` | low / medium / high / xhigh / max / ultra | 1,050,000 | 1,050,000 | 128,000 | 文本 | GPT-6 前沿旗舰：复杂推理与端到端 Agent 编码（`gpt-6` 为其别名） |
-| `gpt-6-astra-aeon` | low / medium / high / xhigh / max / ultra | 1,050,000 | 1,050,000 | 128,000 | 文本 | GPT-6 长程多 Agent 编排与深度推理变体 |
-| `gpt-reserve` | low / medium / high / xhigh / max | 272,000 | 872,000 | 128,000 | 文本 | 快速高性价比 Agent 编码模型（全计划开放） |
-| `gpt-5.6-sol` | low / medium / high / xhigh / max / ultra | 1,050,000 | 1,050,000 | 128,000 | 文本 | GPT-5.6 旗舰：复杂推理与编码（默认；`gpt-5.6` 为其别名） |
-| `gpt-5.6-terra` | low / medium / high / xhigh / max / ultra | 1,050,000 | 1,050,000 | 128,000 | 文本 | GPT-5.6 智能与成本平衡 |
-| `gpt-5.6-luna` | low / medium / high / xhigh / max / ultra | 1,050,000 | 1,050,000 | 128,000 | 文本 | GPT-5.6 高性价比 / 高吞吐 |
+| `gpt-6.1-sol` | low / medium / high / xhigh / max / ultra | 272,000 | 872,000 | 128,000 | 文本 | GPT-6.1 最新工作主力：编码与日常任务（默认） |
+| `gpt-6-astra` | low / medium / high / xhigh / max / ultra | 272,000 | 872,000 | 128,000 | 文本 | GPT-6 前沿旗舰：复杂推理与端到端 Agent 编码（`gpt-6` 为其别名） |
+| `gpt-6-sol` | low / medium / high / xhigh / max / ultra | 272,000 | 872,000 | 128,000 | 文本 | 上一代 GPT-6 工作主力模型 |
+| `gpt-6-luna` | low / medium / high / xhigh / max | 272,000 | 872,000 | 128,000 | 文本 | 快速且经济，适合轻量任务 |
+| `gpt-5.6-sol` | low / medium / high / xhigh / max / ultra | 272,000 | 872,000 | 128,000 | 文本 | GPT-5.6 旗舰：复杂推理与编码（`gpt-5.6` 为其别名） |
+| `gpt-6.1-terra` | low / medium / high / xhigh / max / ultra | 500,000 | 872,000 | 128,000 | 文本 | GPT-6.1 Terra Codex 模型 |
+| `gpt-5.6-terra` | low / medium / high / xhigh / max / ultra | 272,000 | 872,000 | 128,000 | 文本 | GPT-5.6 智能与成本平衡 |
+| `gpt-5.6-luna` | low / medium / high / xhigh / max | 272,000 | 872,000 | 128,000 | 文本 | GPT-5.6 高性价比 / 高吞吐 |
 | `gpt-5.5` | low / medium / high / xhigh | 272,000 | 272,000 | 128,000 | 文本 | 复杂编码、研究和真实工作流 |
-| `gpt-5.4` | low / medium / high / xhigh | 272,000 | 1,000,000 | 128,000 | 文本 | 日常编码强模型 |
-| `gpt-5.4-mini` | low / medium / high / xhigh | 400,000 | — | 128,000 | 文本 | 5.4 轻量版 |
-| `gpt-5.3-codex` | low / medium / high / xhigh | 400,000 | — | 128,000 | 文本 | 5.3 编程优化模型 |
-| `gpt-5.2` | low / medium / high / xhigh | 400,000 | — | 128,000 | 文本 | 专业工作 + 长时间代理 |
-| `gpt-5-codex` | low / medium / high | 400,000 | — | 128,000 | 文本 | GPT-5 编程优化模型 |
-| `gpt-5-codex-mini` | medium / high | — | — | — | 文本 | 轻量 Codex / CLI 编程模型 |
 | `gpt-oss-120b` | low / medium / high | 131,072 | — | — | 文本 | 开源 120B 模型 |
 | `gpt-oss-20b` | low / medium / high | 131,072 | — | — | 文本 | 开源 20B 模型 |
 | `gpt-image-2` | — | — | — | — | 图像 | 图像生成工具后端（通过 `image_generation` 调用） |
@@ -416,7 +412,7 @@ curl -N http://localhost:8080/v1/responses \
 
 ## 🔗 客户端接入
 
-> 所有客户端的 API Key 均从控制面板 (`http://localhost:8080`) 获取。模型名填具体 ID（默认 `gpt-5.6-sol`）或任意 [可用模型](#-可用模型) ID。
+> 所有客户端的 API Key 均从控制面板 (`http://localhost:8080`) 获取。模型名填具体 ID（默认 `gpt-6.1-sol`）或任意 [可用模型](#-可用模型) ID。
 
 <details>
 <summary><h3>Claude Code (CLI)</h3></summary>
@@ -665,14 +661,14 @@ aider --model openai/gpt-5.6-sol
         {
           "id": "gpt-5.6-sol",
           "name": "Codex GPT-5.6 Sol",
-          "contextWindow": 1050000,
+          "contextWindow": 272000,
           "maxTokens": 128000,
           "input": ["text", "image"]
         },
         {
           "id": "gpt-5.6-terra",
           "name": "Codex GPT-5.6 Terra",
-          "contextWindow": 1050000,
+          "contextWindow": 272000,
           "maxTokens": 128000,
           "input": ["text", "image"]
         }
@@ -700,7 +696,7 @@ aider --model openai/gpt-5.6-sol
         {
           "id": "gpt-5.6-sol",
           "name": "Codex GPT-5.6 Sol",
-          "contextWindow": 1050000,
+          "contextWindow": 272000,
           "maxTokens": 128000,
           "input": ["text", "image"]
         }
@@ -726,7 +722,7 @@ aider --model openai/gpt-5.6-sol
         {
           "id": "gpt-5.6-sol",
           "name": "Codex GPT-5.6 Sol",
-          "contextWindow": 1050000,
+          "contextWindow": 272000,
           "maxTokens": 128000,
           "input": ["text", "image"]
         }
@@ -837,7 +833,7 @@ server:
 | `server` | `host`, `port`, `proxy_api_key` | 监听地址与 API 密钥 |
 | `api` | `base_url`, `timeout_seconds` | 上游 API 地址与超时 |
 | `client` | `profile`, `originator`, `app_version`, `build_number`, `platform`, `arch`, `chromium_version` | 客户端指纹预设（`codex_cli` / `codex_desktop` / `opencode` / `pi` / `custom`）及版本参数 |
-| `model` | `default`, `default_reasoning_effort`, `default_service_tier`, `aliases`, `custom_models`, `inject_desktop_context` | 默认模型、推理配置、模型映射与自定义模型目录 |
+| `model` | `default`, `default_reasoning_effort`, `default_service_tier`, `aliases`, `custom_models`, `inject_desktop_context`, `official_catalog_sync`, `official_catalog_refresh_hours` | 默认模型、推理配置、模型映射与自定义模型目录 |
 | `auth` | `rotation_strategy`, `rate_limit_backoff_seconds` | 轮换策略与限流退避 |
 | `tls` | `proxy_url`, `force_http11` | TLS 代理与 HTTP 版本 |
 | `quota` | `refresh_interval_minutes`, `warning_thresholds`, `skip_exhausted` | 用量快照、阈值配置与耗尽账号跳过 |
@@ -845,6 +841,8 @@ server:
 | `session` | `ttl_minutes`, `cleanup_interval_minutes` | Dashboard session 管理 |
 | `ollama` | `enabled`, `host`, `port`, `version`, `disable_vision` | Ollama 兼容桥接 |
 | `official_agent` | `enabled`, `api_key`, `app_server_url`, `auth` | 官方 Codex app-server 桥接，用于复用 Chrome/browser 插件 |
+
+`model.official_catalog_sync`（默认 `true`）会从 `openai/codex` 仓库的官方 `models.json` 同步模型目录，无需账号凭据；缓存位于 `data/official-model-catalog.json`。`model.official_catalog_refresh_hours`（默认 6，最小 1）控制重新拉取间隔，进程运行期间定时检查并在过期后自动刷新，因此官方新增模型无需手工改表；仅在没有任何账号后端快照时才用该目录兜底，账号返回的实时列表始终优先。
 
 ### 客户端 Profile 与指纹预设
 

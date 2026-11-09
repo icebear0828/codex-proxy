@@ -258,16 +258,15 @@ AI からストリーミング応答が返ってくれば正常に動作して�
 
 | モデル ID | 推論レベル | 現在のコンテキスト | 最大コンテキスト | 最大出力 | 出力種別 | 説明 |
 |-----------|------------|-------------------|------------------|----------|----------|------|
-| `gpt-5.6-sol` | low / medium / high / xhigh / max / ultra | 1,050,000 | 1,050,000 | 128,000 | テキスト | GPT-5.6 フラッグシップ：高度な推論とコーディング（デフォルト、`gpt-5.6` はエイリアス） |
-| `gpt-5.6-terra` | low / medium / high / xhigh / max / ultra | 1,050,000 | 1,050,000 | 128,000 | テキスト | GPT-5.6 知能とコストのバランスモデル |
-| `gpt-5.6-luna` | low / medium / high / xhigh / max / ultra | 1,050,000 | 1,050,000 | 128,000 | テキスト | GPT-5.6 高コストパフォーマンス / 高スループット |
+| `gpt-6.1-sol` | low / medium / high / xhigh / max / ultra | 272,000 | 872,000 | 128,000 | テキスト | GPT-6.1 最新のワークホース：コーディングと日常タスク（デフォルト） |
+| `gpt-6-astra` | low / medium / high / xhigh / max / ultra | 272,000 | 872,000 | 128,000 | テキスト | GPT-6 フロンティア flagship：高度な推論とエンドツーエンドの Agent コーディング（`gpt-6` はエイリアス） |
+| `gpt-6-sol` | low / medium / high / xhigh / max / ultra | 272,000 | 872,000 | 128,000 | テキスト | 前世代 GPT-6 ワークホースモデル |
+| `gpt-6-luna` | low / medium / high / xhigh / max | 272,000 | 872,000 | 128,000 | テキスト | 高速で経済的、軽量タスク向け |
+| `gpt-5.6-sol` | low / medium / high / xhigh / max / ultra | 272,000 | 872,000 | 128,000 | テキスト | GPT-5.6 フラッグシップ：高度な推論とコーディング（`gpt-5.6` はエイリアス） |
+| `gpt-6.1-terra` | low / medium / high / xhigh / max / ultra | 500,000 | 872,000 | 128,000 | テキスト | GPT-6.1 Terra Codex モデル |
+| `gpt-5.6-terra` | low / medium / high / xhigh / max / ultra | 272,000 | 872,000 | 128,000 | テキスト | GPT-5.6 知能とコストのバランスモデル |
+| `gpt-5.6-luna` | low / medium / high / xhigh / max | 272,000 | 872,000 | 128,000 | テキスト | GPT-5.6 高コストパフォーマンス / 高スループット |
 | `gpt-5.5` | low / medium / high / xhigh | 272,000 | 272,000 | 128,000 | テキスト | 複雑なコーディング、研究、実践的ワークフロー向け |
-| `gpt-5.4` | low / medium / high / xhigh | 272,000 | 1,000,000 | 128,000 | テキスト | 日常的なコーディングに強力なモデル |
-| `gpt-5.4-mini` | low / medium / high / xhigh | 400,000 | — | 128,000 | テキスト | GPT-5.4 軽量版 |
-| `gpt-5.3-codex` | low / medium / high / xhigh | 400,000 | — | 128,000 | テキスト | GPT-5.3 プログラミング特化モデル |
-| `gpt-5.2` | low / medium / high / xhigh | 400,000 | — | 128,000 | テキスト | プロフェッショナル業務 + 長時間エージェントタスク |
-| `gpt-5-codex` | low / medium / high | 400,000 | — | 128,000 | テキスト | GPT-5 プログラミング特化モデル |
-| `gpt-5-codex-mini` | medium / high | — | — | — | テキスト | 軽量 Codex / CLI コーディングモデル |
 | `gpt-oss-120b` | low / medium / high | 131,072 | — | — | テキスト | オープンソース 120B モデル |
 | `gpt-oss-20b` | low / medium / high | 131,072 | — | — | テキスト | オープンソース 20B モデル |
 | `gpt-image-2` | — | — | — | — | 画像 | 画像生成ツールバックエンド（`image_generation` 経由で呼び出し） |
@@ -312,7 +311,7 @@ curl -N http://localhost:8080/v1/responses \
 
 ## 🔗 クライアント設定
 
-> すべてのクライアントで使用する API Key はコントロールパネル（`http://localhost:8080`）から取得してください。モデル名には具体的な ID（デフォルト: `gpt-5.6-sol`）または任意の [利用可能なモデル](#-利用可能なモデル) ID を入力します。
+> すべてのクライアントで使用する API Key はコントロールパネル（`http://localhost:8080`）から取得してください。モデル名には具体的な ID（デフォルト: `gpt-6.1-sol`）または任意の [利用可能なモデル](#-利用可能なモデル) ID を入力します。
 
 <details>
 <summary><h3>Claude Code (CLI)</h3></summary>
@@ -546,14 +545,14 @@ aider --model openai/gpt-5.6-sol
         {
           "id": "gpt-5.6-sol",
           "name": "Codex GPT-5.6 Sol",
-          "contextWindow": 1050000,
+          "contextWindow": 272000,
           "maxTokens": 128000,
           "input": ["text", "image"]
         },
         {
           "id": "gpt-5.6-terra",
           "name": "Codex GPT-5.6 Terra",
-          "contextWindow": 1050000,
+          "contextWindow": 272000,
           "maxTokens": 128000,
           "input": ["text", "image"]
         }
@@ -581,7 +580,7 @@ aider --model openai/gpt-5.6-sol
         {
           "id": "gpt-5.6-sol",
           "name": "Codex GPT-5.6 Sol",
-          "contextWindow": 1050000,
+          "contextWindow": 272000,
           "maxTokens": 128000,
           "input": ["text", "image"]
         }
@@ -607,7 +606,7 @@ aider --model openai/gpt-5.6-sol
         {
           "id": "gpt-5.6-sol",
           "name": "Codex GPT-5.6 Sol",
-          "contextWindow": 1050000,
+          "contextWindow": 272000,
           "maxTokens": 128000,
           "input": ["text", "image"]
         }

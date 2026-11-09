@@ -11,7 +11,7 @@ client:
   chromium_version: "146"
 
 model:
-  default: gpt-5.6-sol
+  default: gpt-6.1-sol
   # Codex host model for POST /v1/images/generations. The client-facing
   # gpt-image-2 identifier only means "generate an image" — it is never
   # sent upstream as the chat model itself.
@@ -33,6 +33,11 @@ model:
   # The two `_inline` modes can bypass Codex backend's built-in base prompt prior
   # in cases where the `instructions` field is overridden by server-injected context.
   system_prompt_strategy: instructions
+  # Sync the official Codex model catalog from the openai/codex repository
+  # (no credentials). Failures are silent and fall back to backend fetching.
+  official_catalog_sync: true
+  # Re-fetch the cached official catalog at most this often (hours, min 1).
+  official_catalog_refresh_hours: 6
 auth:
   jwt_token: null
   chatgpt_oauth: true

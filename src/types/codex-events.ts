@@ -11,6 +11,8 @@ import type { CodexSSEEvent } from "../proxy/codex-api.js";
 
 export interface CodexResponseData {
   id?: string;
+  /** Truncation/filter reason from response.incomplete (official values: "max_output_tokens", "content_filter"). */
+  incomplete_details?: { reason?: string };
   usage?: {
     input_tokens: number;
     output_tokens: number;
@@ -287,6 +289,11 @@ function parseResponseData(data: unknown): CodexResponseData | undefined {
   if (!isRecord(resp)) return undefined;
   const result: CodexResponseData = {};
   if (typeof resp.id === "string") result.id = resp.id;
+  // Truncation reason rides on response.incomplete's response object.
+  const incompleteDetails = isRecord(resp.incomplete_details) ? resp.incomplete_details : undefined;
+  if (incompleteDetails && typeof incompleteDetails.reason === "string") {
+    result.incomplete_details = { reason: incompleteDetails.reason };
+  }
   if (isRecord(resp.usage)) {
     result.usage = {
       input_tokens: typeof resp.usage.input_tokens === "number" ? resp.usage.input_tokens : 0,

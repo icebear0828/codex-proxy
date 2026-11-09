@@ -81,7 +81,15 @@ export const ConfigSchema = z.object({
   }),
 
   model: z.object({
-    default: z.string().default("gpt-5.6-sol"),
+    default: z.string().default("gpt-6.1-sol"),
+    /** Sync the official Codex model manifest from the openai/codex repository.
+     *  Credential-free; failures silently fall back to the backend fetch. */
+    official_catalog_sync: z.boolean().default(true),
+    /** How often the cached official manifest is re-fetched. Values <= 0 fall
+     *  back to the default (6h); the minimum effective value is 1h. */
+    official_catalog_refresh_hours: z.number()
+      .default(6)
+      .transform((hours) => (Number.isFinite(hours) && hours > 0 ? Math.max(1, Math.round(hours)) : 6)),
     /** Codex chat model that hosts `POST /v1/images/generations` requests via the
      *  Responses `image_generation` tool. Cannot be `gpt-image-2` — that name is
      *  only the Images API's client-facing identifier, not a routable Codex model. */
@@ -222,6 +230,17 @@ export const ConfigSchema = z.object({
     auto_download: z.boolean().default(false),
     show_update_dialog: z.boolean().default(false),
     allow_prerelease: z.boolean().default(false),
+  }).default({}),
+  pricing: z.object({
+    /** URLs to dynamically fetch updated model pricing tables from. */
+    table_urls: z.array(z.string().url()).default([
+      "https://cdn.jsdelivr.net/gh/BerriAI/litellm@main/model_prices_and_context_window.json",
+      "https://raw.githubusercontent.com/BerriAI/litellm/main/model_prices_and_context_window.json",
+    ]),
+    /** Enable automatic background sync of pricing catalog. */
+    auto_sync: z.boolean().default(true),
+    /** Sync interval in hours. */
+    sync_interval_hours: z.number().positive().default(24),
   }).default({}),
   /** WebSocket connection pool — pins same (entryId, conversationId) to the
    *  same physical WS so the upstream LB keeps prompt cache warm across

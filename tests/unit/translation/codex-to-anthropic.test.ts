@@ -89,6 +89,92 @@ describe("streamCodexToAnthropic", () => {
     expect(thinkingStart).toBeDefined();
   });
 
+  it("emits a non-empty signature_delta before the thinking block stops", async () => {
+    const chunks = await collectStreamOutput(reasoningStream(), true);
+    const events = parseSSEEvents(chunks);
+
+    const thinkingStartIdx = events.findIndex(
+      (e) => e.event === "content_block_start" && (e.data.content_block as Record<string, unknown>)?.type === "thinking",
+    );
+    expect(thinkingStartIdx).toBeGreaterThanOrEqual(0);
+    const thinkingIndex = (events[thinkingStartIdx].data as { index: number }).index;
+
+    const signatureDeltas = events.filter(
+      (e) =>
+        e.event === "content_block_delta"
+        && e.data.index === thinkingIndex
+        && (e.data.delta as Record<string, unknown>)?.type === "signature_delta",
+    );
+    expect(signatureDeltas).toHaveLength(1);
+    const signature = (signatureDeltas[0].data.delta as Record<string, unknown>).signature;
+    expect(typeof signature).toBe("string");
+    expect((signature as string).length).toBeGreaterThan(0);
+
+    // The signature must arrive before the thinking block's content_block_stop.
+    const signatureIdx = events.indexOf(signatureDeltas[0]);
+    const thinkingStopIdx = events.findIndex(
+      (e, i) => i > thinkingStartIdx && e.event === "content_block_stop" && e.data.index === thinkingIndex,
+    );
+    expect(signatureIdx).toBeLessThan(thinkingStopIdx);
+  });
+
+  it("derives a stable signature for identical reasoning text", async () => {
+    const first = await collectStreamOutput(reasoningStream(), true);
+    const second = await collectStreamOutput(reasoningStream(), true);
+    const signatureOf = (chunks: string[]) =>
+      parseSSEEvents(chunks).find(
+        (e) =>
+          e.event === "content_block_delta"
+          && (e.data.delta as Record<string, unknown>)?.type === "signature_delta",
+      )?.data.delta as { signature?: string } | undefined;
+
+    expect(signatureOf(first)?.signature).toBe(signatureOf(second)?.signature);
+  });
+
+  it("does not emit a thinking signature when thinking is not requested", async () => {
+    const chunks = await collectStreamOutput(reasoningStream(), false);
+    const events = parseSSEEvents(chunks);
+    expect(
+      events.some((e) => (e.data.delta as Record<string, unknown>)?.type === "signature_delta"),
+    ).toBe(false);
+  });
+
+  it("forwards an upstream reasoning signature emitted as its own event", async () => {
+    const base = reasoningStream();
+    // Real streams emit `response.reasoning_summary_part.done` after the last
+    // summary delta but before any output_text delta. That event carries no
+    // reasoningDelta, only the signature.
+    mockEvents = base.flatMap((evt) => {
+      if (!evt.reasoningDelta) return [evt];
+      const isLastReasoning = !base[base.indexOf(evt) + 1]?.reasoningDelta;
+      if (!isLastReasoning) return [evt];
+      return [
+        evt,
+        {
+          typed: {
+            type: "response.reasoning_summary_part.done" as const,
+            itemId: "rs_1",
+            outputIndex: 0,
+            part: { type: "summary_text", text: "Let me think... I need to consider" },
+          },
+          reasoningSignature: "upstream_sig_stream",
+        },
+      ];
+    });
+    const chunks: string[] = [];
+    for await (const chunk of streamCodexToAnthropic(
+      fakeCodexApi, fakeResponse, "gpt-5.4", undefined, undefined, true,
+    )) {
+      chunks.push(chunk);
+    }
+    const signature = parseSSEEvents(chunks).find(
+      (e) =>
+        e.event === "content_block_delta"
+        && (e.data.delta as Record<string, unknown>)?.type === "signature_delta",
+    )?.data.delta as { signature?: string } | undefined;
+    expect(signature?.signature).toBe("upstream_sig_stream");
+  });
+
   it("emits tool_use blocks for function calls", async () => {
     const chunks = await collectStreamOutput(toolCallStream());
     const events = parseSSEEvents(chunks);
@@ -160,6 +246,28 @@ describe("collectCodexToAnthropicResponse", () => {
     const thinkingBlock = response.content.find((b) => b.type === "thinking");
     expect(thinkingBlock).toBeDefined();
     expect(thinkingBlock!.thinking).toContain("think");
+  });
+
+  it("adds a non-empty signature to the collected thinking block", async () => {
+    mockEvents = reasoningStream();
+    const { response } = await collectCodexToAnthropicResponse(
+      fakeCodexApi, fakeResponse, "gpt-5.4", true,
+    );
+    const thinkingBlock = response.content.find((b) => b.type === "thinking");
+    expect(thinkingBlock).toBeDefined();
+    expect(typeof thinkingBlock!.signature).toBe("string");
+    expect(thinkingBlock!.signature!.length).toBeGreaterThan(0);
+  });
+
+  it("forwards an upstream reasoning signature verbatim when present", async () => {
+    mockEvents = reasoningStream().map((evt) =>
+      evt.reasoningDelta ? { ...evt, reasoningSignature: "upstream_sig_abc" } : evt,
+    );
+    const { response } = await collectCodexToAnthropicResponse(
+      fakeCodexApi, fakeResponse, "gpt-5.4", true,
+    );
+    const thinkingBlock = response.content.find((b) => b.type === "thinking");
+    expect(thinkingBlock!.signature).toBe("upstream_sig_abc");
   });
 
   it("collects tool_use blocks", async () => {

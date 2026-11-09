@@ -10,7 +10,7 @@
  * Non-streaming: collect all text, return Anthropic message response.
  */
 
-import { randomUUID } from "crypto";
+import { createHash, randomUUID } from "crypto";
 import type { UpstreamAdapter } from "../proxy/upstream-adapter.js";
 import type {
   AnthropicContentBlock,
@@ -18,6 +18,7 @@ import type {
   AnthropicUsage,
 } from "../types/anthropic.js";
 import { iterateCodexEvents, EmptyResponseError, type UsageInfo } from "./codex-event-extractor.js";
+import { incompleteReasonToAnthropicStopReason } from "./incomplete-stop-reason.js";
 import { isRecord } from "./shared-utils.js";
 import { codexApiErrorFromEvent } from "./codex-api-error-from-event.js";
 
@@ -27,6 +28,23 @@ interface CacheUsageHint {
 
 interface ResponseMetadata {
   functionCallIds?: string[];
+}
+
+/**
+ * Claude Code round-trips `thinking` blocks with their `signature`. The Codex
+ * backend exposes reasoning summaries only as `response.reasoning_summary_text`
+ * deltas — no signed reasoning payload — so there is nothing to forward.
+ * Emitting no signature at all makes Claude Code reject the replayed block on
+ * the next turn, so derive a deterministic non-empty placeholder from the
+ * text itself: retries of the same response produce the same value, and the
+ * value is never mistaken for a real upstream signature.
+ */
+function placeholderThinkingSignature(thinking: string): string {
+  const digest = createHash("sha256")
+    .update("codex-proxy:thinking:")
+    .update(thinking)
+    .digest("base64");
+  return `codex_proxy_${digest.replace(/=+$/, "")}`;
 }
 
 function sanitizeToolInput(toolName: string, input: Record<string, unknown>): Record<string, unknown> {
@@ -97,9 +115,20 @@ export async function* streamCodexToAnthropic(
   let cachedTokens: number | undefined;
   let hasToolCalls = false;
   let hasContent = false;
+  /** Set when the stream ends with response.incomplete — drives the real stop_reason. */
+  let incompleteReason: string | undefined;
   let contentIndex = 0;
   let textBlockStarted = false;
   let thinkingBlockStarted = false;
+  /** Accumulated thinking text for the currently open thinking block. Drives
+   *  the `signature_delta` emitted just before `content_block_stop`. */
+  let thinkingBlockText = "";
+  /** Real upstream signature for the current thinking block, when the backend
+   *  emits one on `response.reasoning_summary_part.done`. Held here because the
+   *  part.done event can arrive just before or just after the last delta; the
+   *  value is consumed (and cleared) when the thinking block closes. */
+  let thinkingBlockSignature: string | undefined;
+  let pendingThinkingSignature: string | undefined;
   const functionCallIds = new Set<string>();
   const callIdsWithForwardedDeltas = new Set<string>();
   const functionCallNames = new Map<string, string>();
@@ -117,12 +146,29 @@ export async function* streamCodexToAnthropic(
 
   // Helper: close an open block and advance the index
   function* closeBlock(blockType: "thinking" | "text"): Generator<string> {
+    if (blockType === "thinking") {
+      // Anthropic streams the thinking signature as a delta before the stop.
+      // Without it Claude Code cannot replay the block on the next turn.
+      yield formatSSE("content_block_delta", {
+        type: "content_block_delta",
+        index: contentIndex,
+        delta: {
+          type: "signature_delta",
+          signature: thinkingBlockSignature ?? placeholderThinkingSignature(thinkingBlockText),
+        },
+      });
+    }
     yield formatSSE("content_block_stop", {
       type: "content_block_stop",
       index: contentIndex,
     });
     contentIndex++;
-    if (blockType === "thinking") thinkingBlockStarted = false;
+    if (blockType === "thinking") {
+      thinkingBlockStarted = false;
+      thinkingBlockText = "";
+      thinkingBlockSignature = undefined;
+      pendingThinkingSignature = undefined;
+    }
     else textBlockStarted = false;
   }
 
@@ -147,6 +193,21 @@ export async function* streamCodexToAnthropic(
       textBlockStarted = true;
     }
   }
+
+  // Shared terminal-usage capture: both response.completed and
+  // response.incomplete carry the final usage object.
+  const captureUsage = (usage: UsageInfo): void => {
+    inputTokens = usage.input_tokens;
+    outputTokens = usage.output_tokens;
+    const adjusted = resolveCacheUsage(inputTokens, usage.cached_tokens, usageHint);
+    cachedTokens = adjusted.cacheReadTokens || undefined;
+    onUsage?.({
+      input_tokens: inputTokens,
+      output_tokens: outputTokens,
+      cached_tokens: cachedTokens,
+      reasoning_tokens: usage.reasoning_tokens,
+    });
+  };
 
   // 1. message_start
   yield formatSSE("message_start", {
@@ -186,13 +247,25 @@ export async function* streamCodexToAnthropic(
           content_block: { type: "thinking", thinking: "" },
         });
         thinkingBlockStarted = true;
+        thinkingBlockText = "";
+        // A signature may have arrived before the block opened; consume it.
+        thinkingBlockSignature = pendingThinkingSignature;
+        pendingThinkingSignature = undefined;
       }
+      thinkingBlockText += evt.reasoningDelta;
       yield formatSSE("content_block_delta", {
         type: "content_block_delta",
         index: contentIndex,
         delta: { type: "thinking_delta", thinking: evt.reasoningDelta },
       });
       continue;
+    }
+
+    // A reasoning summary part carrying an upstream signature: remember it so
+    // closeBlock can forward the real value instead of the placeholder.
+    if (evt.reasoningSignature && wantThinking) {
+      if (thinkingBlockStarted) thinkingBlockSignature = evt.reasoningSignature;
+      else pendingThinkingSignature = evt.reasoningSignature;
     }
 
     // Handle function call start → close open blocks, open tool_use block
@@ -341,19 +414,33 @@ export async function* streamCodexToAnthropic(
 
       case "response.completed": {
         if (evt.usage) {
-          inputTokens = evt.usage.input_tokens;
-          outputTokens = evt.usage.output_tokens;
-          const adjusted = resolveCacheUsage(inputTokens, evt.usage.cached_tokens, usageHint);
-          cachedTokens = adjusted.cacheReadTokens || undefined;
-          onUsage?.({
-            input_tokens: inputTokens,
-            output_tokens: outputTokens,
-            cached_tokens: cachedTokens,
-            reasoning_tokens: evt.usage.reasoning_tokens,
-          });
+          captureUsage(evt.usage);
         }
         onResponseCompleted?.(evt.responseId);
         // Inject error text if stream completed with no content
+        if (!hasContent) {
+          yield* ensureTextBlock();
+          yield formatSSE("content_block_delta", {
+            type: "content_block_delta",
+            index: contentIndex,
+            delta: { type: "text_delta", text: "[Error] Codex returned an empty response. Please retry." },
+          });
+        }
+        break;
+      }
+
+      case "response.incomplete": {
+        // response.incomplete is a terminal event too. Before this case
+        // existed it fell through the switch: usage was dropped, the stream
+        // ended via the generic close path, and a truncated answer was
+        // reported as a normal "end_turn" in the closing message_delta.
+        if (evt.usage) {
+          captureUsage(evt.usage);
+        }
+        onResponseCompleted?.(evt.responseId);
+        incompleteReason = evt.incompleteReason;
+        // Same empty-stream guard as response.completed: a truncated-but-
+        // empty stream still deserves an explicit hint instead of silence.
         if (!hasContent) {
           yield* ensureTextBlock();
           yield formatSSE("content_block_delta", {
@@ -375,9 +462,15 @@ export async function* streamCodexToAnthropic(
   // Anthropic API: input_tokens = uncached only, cache_read_input_tokens = cached
   // cacheCreationTokens here = inputTokens - cacheReadTokens = uncached portion
   const { cacheReadTokens, cacheCreationTokens } = resolveCacheUsage(inputTokens, cachedTokens, usageHint);
+  // Truncation/filter wins over the tool_use/end_turn priority: a response cut
+  // by max_output_tokens must not be reported as a clean end_turn, and
+  // content_filter maps to Anthropic's refusal stop_reason.
+  const stopReason =
+    incompleteReasonToAnthropicStopReason(incompleteReason) ??
+    (hasToolCalls ? "tool_use" : "end_turn");
   yield formatSSE("message_delta", {
     type: "message_delta",
-    delta: { stop_reason: hasToolCalls ? "tool_use" : "end_turn" },
+    delta: { stop_reason: stopReason },
     usage: {
       input_tokens: cacheCreationTokens,
       output_tokens: outputTokens,
@@ -410,10 +503,13 @@ export async function collectCodexToAnthropicResponse(
   const id = `msg_${randomUUID().replace(/-/g, "").slice(0, 24)}`;
   let fullText = "";
   let fullReasoning = "";
+  let fullReasoningSignature: string | undefined;
   let inputTokens = 0;
   let outputTokens = 0;
   let cachedTokens: number | undefined;
   let responseId: string | null = null;
+  /** Set when the stream ends with response.incomplete — drives the real stop_reason. */
+  let incompleteReason: string | undefined;
   const functionCallIds = new Set<string>();
 
   // Collect tool calls
@@ -426,6 +522,8 @@ export async function collectCodexToAnthropicResponse(
     }
     if (evt.textDelta) fullText += evt.textDelta;
     if (evt.reasoningDelta) fullReasoning += evt.reasoningDelta;
+    if (evt.reasoningSignature) fullReasoningSignature = evt.reasoningSignature;
+    if (evt.incompleteReason) incompleteReason = evt.incompleteReason;
     if (evt.usage) {
       inputTokens = evt.usage.input_tokens;
       outputTokens = evt.usage.output_tokens;
@@ -474,7 +572,11 @@ export async function collectCodexToAnthropicResponse(
   const content: AnthropicContentBlock[] = [];
   // Thinking block comes first if requested and available
   if (wantThinking && fullReasoning) {
-    content.push({ type: "thinking", thinking: fullReasoning });
+    content.push({
+      type: "thinking",
+      thinking: fullReasoning,
+      signature: fullReasoningSignature ?? placeholderThinkingSignature(fullReasoning),
+    });
   }
   if (fullText) {
     content.push({ type: "text", text: fullText });
@@ -500,7 +602,11 @@ export async function collectCodexToAnthropicResponse(
       role: "assistant",
       content,
       model,
-      stop_reason: hasToolCalls ? "tool_use" : "end_turn",
+      // Truncation/filter wins over tool_use/end_turn (mirrors the streaming
+      // path): a max_output_tokens cut must not be reported as a clean end_turn.
+      stop_reason:
+        incompleteReasonToAnthropicStopReason(incompleteReason) ??
+        (hasToolCalls ? "tool_use" : "end_turn"),
       stop_sequence: null,
       usage,
     },

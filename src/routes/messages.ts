@@ -35,6 +35,7 @@ import { summarizeRequestForLog } from "../logs/request-summary.js";
 import { resolveDefaultTools, mergeDefaultTools } from "./shared/default-tools.js";
 import { isRecord } from "../translation/shared-utils.js";
 import { getApiKeyLogAccount } from "./shared/log-account.js";
+import { estimateTextTokens, estimateUnknownTokens } from "../utils/token-estimate.js";
 
 function makeError(
   type: AnthropicErrorType,
@@ -43,36 +44,6 @@ function makeError(
   return { type: "error", error: { type, message } };
 }
 
-
-
-function estimateTextTokens(text: string): number {
-  const trimmed = text.trim();
-  if (!trimmed) return 0;
-
-  const cjkMatches = trimmed.match(/[\u3400-\u9fff\uf900-\ufaff]/g);
-  const cjkCount = cjkMatches?.length ?? 0;
-  const nonCjkCount = Math.max(0, trimmed.length - cjkCount);
-
-  return Math.ceil(nonCjkCount / 4) + cjkCount;
-}
-
-function estimateUnknownTokens(value: unknown): number {
-  if (value === null || value === undefined) return 0;
-  if (typeof value === "string") return estimateTextTokens(value);
-  if (typeof value === "number" || typeof value === "boolean") {
-    return estimateTextTokens(String(value));
-  }
-  if (Array.isArray(value)) {
-    return value.reduce((sum, item) => sum + estimateUnknownTokens(item), 0) + value.length;
-  }
-  if (typeof value === "object") {
-    return Object.entries(value as Record<string, unknown>).reduce(
-      (sum, [key, item]) => sum + estimateTextTokens(key) + estimateUnknownTokens(item),
-      2,
-    );
-  }
-  return estimateTextTokens(String(value));
-}
 
 function estimateMessageContentTokens(content: AnthropicMessagesRequest["messages"][number]["content"]): number {
   if (typeof content === "string") return estimateTextTokens(content);

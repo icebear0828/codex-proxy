@@ -206,7 +206,9 @@ export interface AnthropicMessagesResponse {
   role: "assistant";
   content: AnthropicContentBlock[];
   model: string;
-  stop_reason: "end_turn" | "max_tokens" | "stop_sequence" | "tool_use" | null;
+  // "refusal" is a legal Anthropic stop_reason (API value) used when a Codex
+  // response.incomplete carries reason "content_filter".
+  stop_reason: "end_turn" | "max_tokens" | "stop_sequence" | "tool_use" | "refusal" | null;
   stop_sequence: string | null;
   usage: AnthropicUsage;
 }

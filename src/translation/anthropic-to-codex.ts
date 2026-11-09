@@ -47,11 +47,43 @@ function mapThinkingToEffort(
 /**
  * Extract text-only content from Anthropic blocks.
  */
+/**
+ * Anthropic-only fields that must never reach the Codex upstream.
+ *
+ * `cache_control` is a *client-side* prompt-cache breakpoint: the Anthropic
+ * API uses it to mark where server-side caching may start. The Codex backend
+ * has no equivalent per-block directive — it caches by
+ * `prompt_cache_key`/conversation identity, which this proxy already sets
+ * independently — so translating the marker into anything upstream would be
+ * pure noise (and an unknown field the backend may reject). Claude Code sends
+ * this on nearly every long system prompt and tool definition, so it must be
+ * stripped deliberately rather than relying on incidental filtering.
+ *
+ * `signature` on `thinking` blocks is likewise Anthropic-issued; Codex
+ * reasoning summaries are unsigned. Thinking blocks themselves are not
+ * replayed upstream (see contentToInputItems), so there is nothing to verify.
+ */
+const ANTHROPIC_CLIENT_ONLY_BLOCK_FIELDS = ["cache_control"] as const;
+
+function stripAnthropicClientOnlyFields(
+  block: Record<string, unknown>,
+): Record<string, unknown> {
+  let stripped: Record<string, unknown> | null = null;
+  for (const field of ANTHROPIC_CLIENT_ONLY_BLOCK_FIELDS) {
+    if (field in block) {
+      stripped ??= { ...block };
+      delete stripped[field];
+    }
+  }
+  return stripped ?? block;
+}
+
 function extractTextContent(
   content: string | Array<Record<string, unknown>>,
 ): string {
   if (typeof content === "string") return content;
   return content
+    .map(stripAnthropicClientOnlyFields)
     .filter((b) => b.type === "text" && typeof b.text === "string")
     .map((b) => b.text as string)
     .join("\n");
@@ -87,7 +119,8 @@ function extractMultimodalContent(
   if (!hasImage) return extractTextContent(content);
 
   const parts: CodexContentPart[] = [];
-  for (const block of content) {
+  for (const rawBlock of content) {
+    const block = stripAnthropicClientOnlyFields(rawBlock);
     if (block.type === "text" && typeof block.text === "string") {
       parts.push({ type: "input_text", text: block.text });
     } else if (block.type === "image") {
@@ -124,7 +157,12 @@ function contentToInputItems(
     messageBlocks = [];
   };
 
-  for (const block of content) {
+  for (const rawBlock of content) {
+    // `thinking` / `redacted_thinking` blocks are intentionally dropped: Codex
+    // returns reasoning summaries without the signed payload Anthropic clients
+    // replay, and forwarding the text as a normal message would both pollute
+    // the prompt and duplicate the assistant turn.
+    const block = stripAnthropicClientOnlyFields(rawBlock);
     if (block.type === "text" || block.type === "image") {
       messageBlocks.push(block);
       continue;

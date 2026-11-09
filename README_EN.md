@@ -259,19 +259,15 @@ If you see streaming AI text, the setup is working. If you get 401, double-check
 
 | Model ID | Reasoning | Current context | Max context | Max output | Output | Description |
 |----------|-----------|-----------------|-------------|------------|--------|-------------|
-| `gpt-6-astra` | low / medium / high / xhigh / max / ultra | 1,050,000 | 1,050,000 | 128,000 | text | GPT-6 frontier flagship for complex reasoning & coding (`gpt-6` is an alias) |
-| `gpt-6-astra-aeon` | low / medium / high / xhigh / max / ultra | 1,050,000 | 1,050,000 | 128,000 | text | GPT-6 variant for long-horizon multi-agent tasks & deep reasoning |
-| `gpt-reserve` | low / medium / high / xhigh / max | 272,000 | 872,000 | 128,000 | text | Fast and affordable agentic coding model (all plans) |
-| `gpt-5.6-sol` | low / medium / high / xhigh / max / ultra | 1,050,000 | 1,050,000 | 128,000 | text | GPT-5.6 flagship for complex reasoning & coding (default; `gpt-5.6` is an alias) |
-| `gpt-5.6-terra` | low / medium / high / xhigh / max / ultra | 1,050,000 | 1,050,000 | 128,000 | text | GPT-5.6 balanced intelligence and cost |
-| `gpt-5.6-luna` | low / medium / high / xhigh / max / ultra | 1,050,000 | 1,050,000 | 128,000 | text | GPT-5.6 cost-efficient / high-throughput |
+| `gpt-6.1-sol` | low / medium / high / xhigh / max / ultra | 272,000 | 872,000 | 128,000 | text | GPT-6.1 latest workhorse for coding and everyday tasks (default) |
+| `gpt-6-astra` | low / medium / high / xhigh / max / ultra | 272,000 | 872,000 | 128,000 | text | GPT-6 frontier flagship for complex reasoning & coding (`gpt-6` is an alias) |
+| `gpt-6-sol` | low / medium / high / xhigh / max / ultra | 272,000 | 872,000 | 128,000 | text | Previous-generation GPT-6 workhorse |
+| `gpt-6-luna` | low / medium / high / xhigh / max | 272,000 | 872,000 | 128,000 | text | Fast and economical for lightweight tasks |
+| `gpt-5.6-sol` | low / medium / high / xhigh / max / ultra | 272,000 | 872,000 | 128,000 | text | GPT-5.6 flagship for complex reasoning & coding (`gpt-5.6` is an alias) |
+| `gpt-6.1-terra` | low / medium / high / xhigh / max / ultra | 500,000 | 872,000 | 128,000 | text | GPT-6.1 Terra Codex model |
+| `gpt-5.6-terra` | low / medium / high / xhigh / max / ultra | 272,000 | 872,000 | 128,000 | text | GPT-5.6 balanced intelligence and cost |
+| `gpt-5.6-luna` | low / medium / high / xhigh / max | 272,000 | 872,000 | 128,000 | text | GPT-5.6 cost-efficient / high-throughput |
 | `gpt-5.5` | low / medium / high / xhigh | 272,000 | 272,000 | 128,000 | text | Complex coding, research, and real-world work |
-| `gpt-5.4` | low / medium / high / xhigh | 272,000 | 1,000,000 | 128,000 | text | Strong model for everyday coding |
-| `gpt-5.4-mini` | low / medium / high / xhigh | 400,000 | — | 128,000 | text | GPT-5.4 lightweight model |
-| `gpt-5.3-codex` | low / medium / high / xhigh | 400,000 | — | 128,000 | text | GPT-5.3 coding-optimized model |
-| `gpt-5.2` | low / medium / high / xhigh | 400,000 | — | 128,000 | text | Professional work & long-running agents |
-| `gpt-5-codex` | low / medium / high | 400,000 | — | 128,000 | text | GPT-5 coding-optimized model |
-| `gpt-5-codex-mini` | medium / high | — | — | — | text | Lightweight Codex / CLI coding model |
 | `gpt-oss-120b` | low / medium / high | 131,072 | — | — | text | Open-source 120B model |
 | `gpt-oss-20b` | low / medium / high | 131,072 | — | — | text | Open-source 20B model |
 | `gpt-image-2` | — | — | — | — | image | Image-generation tool backend, invoked via `image_generation` |
@@ -314,7 +310,7 @@ In the stream, the `image_generation_call` item's `result` field is a base64-enc
 
 ## 🔗 Client Setup
 
-> Get your API Key from the dashboard (`http://localhost:8080`). Use a concrete model ID (default `gpt-5.6-sol`) or any [model ID](#-available-models) as the model name.
+> Get your API Key from the dashboard (`http://localhost:8080`). Use a concrete model ID (default `gpt-6.1-sol`) or any [model ID](#-available-models) as the model name.
 
 ### Claude Code (CLI)
 
@@ -495,14 +491,14 @@ Edit `~/.pi/agent/models.json`:
         {
           "id": "gpt-5.6-sol",
           "name": "Codex GPT-5.6 Sol",
-          "contextWindow": 1050000,
+          "contextWindow": 272000,
           "maxTokens": 128000,
           "input": ["text", "image"]
         },
         {
           "id": "gpt-5.6-terra",
           "name": "Codex GPT-5.6 Terra",
-          "contextWindow": 1050000,
+          "contextWindow": 272000,
           "maxTokens": 128000,
           "input": ["text", "image"]
         }
@@ -527,7 +523,7 @@ Edit `~/.pi/agent/models.json`:
         {
           "id": "gpt-5.6-sol",
           "name": "Codex GPT-5.6 Sol",
-          "contextWindow": 1050000,
+          "contextWindow": 272000,
           "maxTokens": 128000,
           "input": ["text", "image"]
         }
@@ -550,7 +546,7 @@ Edit `~/.pi/agent/models.json`:
         {
           "id": "gpt-5.6-sol",
           "name": "Codex GPT-5.6 Sol",
-          "contextWindow": 1050000,
+          "contextWindow": 272000,
           "maxTokens": 128000,
           "input": ["text", "image"]
         }
@@ -646,12 +642,14 @@ server:
 | `server` | `host`, `port`, `proxy_api_key` | Listen address and API key |
 | `api` | `base_url`, `timeout_seconds` | Upstream API URL and timeout |
 | `client` | `profile`, `originator`, `app_version`, `build_number`, `platform`, `arch`, `chromium_version` | Client fingerprint preset (`codex_cli` / `codex_desktop` / `opencode` / `pi` / `custom`) and version metadata |
-| `model` | `default`, `default_reasoning_effort`, `default_service_tier`, `aliases`, `custom_models`, `inject_desktop_context` | Default model, reasoning config, aliases, and custom catalog entries |
+| `model` | `default`, `default_reasoning_effort`, `default_service_tier`, `aliases`, `custom_models`, `inject_desktop_context`, `official_catalog_sync`, `official_catalog_refresh_hours` | Default model, reasoning config, aliases, and custom catalog entries |
 | `auth` | `rotation_strategy`, `rate_limit_backoff_seconds` | Rotation strategy and rate limit backoff |
 | `tls` | `proxy_url`, `force_http11` | TLS proxy and HTTP version |
 | `quota` | `refresh_interval_minutes`, `warning_thresholds`, `skip_exhausted` | Usage snapshots, threshold config, exhausted-account skipping |
 | `session` | `ttl_minutes`, `cleanup_interval_minutes` | Dashboard session management |
 | `ollama` | `enabled`, `host`, `port`, `version`, `disable_vision` | Ollama-compatible bridge |
+
+`model.official_catalog_sync` (default `true`) keeps the model catalog aligned with the official `models.json` published in the `openai/codex` repository — no account credentials required. The snapshot is cached at `data/official-model-catalog.json`, and `model.official_catalog_refresh_hours` (default 6, minimum 1) controls how often it is re-fetched. A running proxy re-checks the snapshot on its refresh cycle, so newly released official models appear without hand-editing catalog tables. The snapshot only seeds the store when no authenticated backend snapshot exists; live account data always takes precedence.
 
 ### Client Profile & Fingerprint Presets
 

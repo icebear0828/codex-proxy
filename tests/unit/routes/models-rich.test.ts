@@ -284,7 +284,7 @@ describe("GET /v1/models/catalog/codex", () => {
     expect(partial!.service_tiers).toEqual([{ id: "fast", name: "fast", description: "" }]);
   });
 
-  it("includes static and runtime models with defaults", async () => {
+  it("includes runtime models with defaults but not stale static entries", async () => {
     const mockApiKeyPool = {
       getActiveModels: vi.fn(() => ["gpt-9999-runtime"]),
       hasActiveModel: vi.fn(() => true),
@@ -293,11 +293,10 @@ describe("GET /v1/models/catalog/codex", () => {
     const res = await app.request("/v1/models/catalog/codex");
     const body = (await res.json()) as { models: Array<Record<string, unknown>> };
 
-    // Static built-in metadata (KNOWN_OFFICIAL_MODELS) is part of the catalog.
-    const astra = body.models.find((m) => m.slug === "gpt-6-astra");
-    expect(astra).toBeDefined();
-    expect(astra!.display_name).toBe("GPT-6 Astra");
-    expect(astra!.context_window).toBe(1_050_000);
+    // Static built-in metadata (KNOWN_OFFICIAL_MODELS) is no longer appended.
+    expect(body.models.some((m) => m.slug === "gpt-6-astra")).toBe(false);
+    expect(body.models.some((m) => m.slug === "gpt-reserve")).toBe(false);
+    expect(body.models.some((m) => m.slug === "gpt-6-astra-aeon")).toBe(false);
 
     const runtime = body.models.find((m) => m.slug === "gpt-9999-runtime");
     expect(runtime).toBeDefined();
@@ -306,6 +305,16 @@ describe("GET /v1/models/catalog/codex", () => {
     expect(runtime!.supported_reasoning_levels).toEqual([
       { effort: "medium", description: "Default" },
     ]);
+  });
+
+  it("serves backend models from the loaded snapshot in /v1/models", async () => {
+    const app = createModelRoutes();
+    const res = await app.request("/v1/models");
+    const body = (await res.json()) as { data: Array<{ id: string }> };
+
+    for (const slug of ["gpt-5.4", "gpt-5.3-codex", "gpt-5.2"]) {
+      expect(body.data.some((m) => m.id === slug)).toBe(true);
+    }
   });
 
   it("honors client key allowed_models filtering", async () => {

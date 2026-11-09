@@ -4,6 +4,10 @@ import { extractErrorMessage } from "../utils/extract-error";
 export type SystemPromptStrategy = "instructions" | "developer_inline" | "system_inline";
 
 export interface GeneralSettingsData {
+  host: string;
+  lan_access: boolean;
+  lan_runtime: { host: string; port: number } | null;
+  lan_ipv4_addresses: string[];
   port: number;
   proxy_url: string | null;
   force_http11: boolean;
@@ -77,6 +81,10 @@ export function useGeneralSettings(apiKey: string | null) {
       }
       const result = await resp.json() as GeneralSettingsSaveResponse;
       setData({
+        host: result.host,
+        lan_access: result.lan_access,
+        lan_runtime: result.lan_runtime,
+        lan_ipv4_addresses: result.lan_ipv4_addresses,
         port: result.port,
         proxy_url: result.proxy_url,
         force_http11: result.force_http11,
@@ -110,6 +118,7 @@ export function useGeneralSettings(apiKey: string | null) {
       setTimeout(() => setSaved(false), 3000);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
+      throw err;
     } finally {
       setSaving(false);
     }

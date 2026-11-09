@@ -111,6 +111,12 @@ export interface CodexModelInfo {
   experimentalSupportedTools?: string[];
   /** Whether the model supports the built-in search tool. */
   supportsSearchTool?: boolean;
+  /** First-run availability nudge copy reported by the backend, when present. */
+  availabilityNux?: Record<string, unknown> | null;
+  /** Backend model prompt/message overrides (instructions template, etc.). */
+  modelMessages?: Record<string, unknown> | null;
+  /** Minimum Codex CLI version the backend requires for this model. */
+  minimalClientVersion?: string;
   /** Where this model entry came from */
   source?: "static" | "backend" | "custom" | "runtime";
 }
@@ -188,6 +194,9 @@ export interface BackendModelEntry {
   comp_hash?: string;
   experimental_supported_tools?: string[];
   supports_search_tool?: boolean;
+  availability_nux?: Record<string, unknown> | null;
+  model_messages?: Record<string, unknown> | null;
+  minimal_client_version?: string;
   available_in_plans?: string[];
 }
 
@@ -219,8 +228,89 @@ export const KNOWN_OFFICIAL_MODELS: ReadonlyMap<string, CodexModelInfo> = new Ma
       displayName: "GPT-6 Astra",
       description: "Flagship frontier model for complex reasoning, coding, and end-to-end agentic work.",
       isDefault: false,
-      contextWindow: 1050000,
-      maxContextWindow: 1050000,
+      contextWindow: 272000,
+      maxContextWindow: 872000,
+      maxOutputTokens: 128000,
+      inputModalities: ["text", "image"],
+      outputModalities: ["text"],
+      supportedReasoningEfforts: [
+        { reasoningEffort: "low", description: "Fast responses with lighter reasoning" },
+        { reasoningEffort: "medium", description: "Balances speed and reasoning depth for everyday tasks" },
+        { reasoningEffort: "high", description: "Greater reasoning depth for complex problems" },
+        { reasoningEffort: "xhigh", description: "Extra high reasoning depth for complex problems" },
+        { reasoningEffort: "max", description: "Maximum reasoning depth for the hardest problems" },
+        { reasoningEffort: "ultra", description: "Maximum reasoning with automatic task delegation" },
+      ],
+      defaultReasoningEffort: "low",
+      supportsPersonality: false,
+      upgrade: null,
+      source: "static",
+    },
+  ],
+  [
+    "gpt-6.1-sol",
+    {
+      id: "gpt-6.1-sol",
+      displayName: "GPT-6.1-Sol",
+      description: "Latest workhorse model for coding and everyday work. Requires Codex CLI >= 0.153.0.",
+      isDefault: false,
+      contextWindow: 272000,
+      maxContextWindow: 872000,
+      maxOutputTokens: 128000,
+      inputModalities: ["text", "image"],
+      outputModalities: ["text"],
+      supportedReasoningEfforts: [
+        { reasoningEffort: "low", description: "Fast responses with lighter reasoning" },
+        { reasoningEffort: "medium", description: "Balances speed and reasoning depth for everyday tasks" },
+        { reasoningEffort: "high", description: "Greater reasoning depth for complex problems" },
+        { reasoningEffort: "xhigh", description: "Extra high reasoning depth for complex problems" },
+        { reasoningEffort: "max", description: "Maximum reasoning depth for the hardest problems" },
+        { reasoningEffort: "ultra", description: "Maximum reasoning with automatic task delegation" },
+      ],
+      defaultReasoningEffort: "low",
+      supportsPersonality: false,
+      supportedInApi: true,
+      priority: 1,
+      upgrade: null,
+      source: "static",
+    },
+  ],
+  [
+    "gpt-6.1-terra",
+    {
+      id: "gpt-6.1-terra",
+      displayName: "GPT-6.1 Terra",
+      description: "GPT-6.1 Terra Codex model. Requires Codex CLI >= 0.153.0.",
+      isDefault: false,
+      contextWindow: 500000,
+      maxContextWindow: 872000,
+      maxOutputTokens: 128000,
+      inputModalities: ["text", "image"],
+      outputModalities: ["text"],
+      supportedReasoningEfforts: [
+        { reasoningEffort: "low", description: "Fast responses with lighter reasoning" },
+        { reasoningEffort: "medium", description: "Balances speed and reasoning depth for everyday tasks" },
+        { reasoningEffort: "high", description: "Greater reasoning depth for complex problems" },
+        { reasoningEffort: "xhigh", description: "Extra high reasoning depth for complex problems" },
+        { reasoningEffort: "max", description: "Maximum reasoning depth for the hardest problems" },
+        { reasoningEffort: "ultra", description: "Maximum reasoning with automatic task delegation" },
+      ],
+      defaultReasoningEffort: "low",
+      supportsPersonality: false,
+      priority: 7,
+      upgrade: null,
+      source: "static",
+    },
+  ],
+  [
+    "gpt-6-sol",
+    {
+      id: "gpt-6-sol",
+      displayName: "GPT-6-Sol",
+      description: "Previous generation workhorse model. Requires Codex CLI >= 0.155.0.",
+      isDefault: false,
+      contextWindow: 272000,
+      maxContextWindow: 872000,
       maxOutputTokens: 128000,
       inputModalities: ["text", "image"],
       outputModalities: ["text"],
@@ -234,42 +324,17 @@ export const KNOWN_OFFICIAL_MODELS: ReadonlyMap<string, CodexModelInfo> = new Ma
       ],
       defaultReasoningEffort: "medium",
       supportsPersonality: false,
+      priority: 3,
       upgrade: null,
       source: "static",
     },
   ],
   [
-    "gpt-6-astra-aeon",
+    "gpt-6-luna",
     {
-      id: "gpt-6-astra-aeon",
-      displayName: "GPT-6 Astra Aeon",
-      description: "Specialized variant for long-horizon multi-agent tasks and extended reasoning runs.",
-      isDefault: false,
-      contextWindow: 1050000,
-      maxContextWindow: 1050000,
-      maxOutputTokens: 128000,
-      inputModalities: ["text", "image"],
-      outputModalities: ["text"],
-      supportedReasoningEfforts: [
-        { reasoningEffort: "low", description: "Fast responses with lighter reasoning" },
-        { reasoningEffort: "medium", description: "Balances speed and reasoning depth for everyday tasks" },
-        { reasoningEffort: "high", description: "Greater reasoning depth for complex problems" },
-        { reasoningEffort: "xhigh", description: "Extra high reasoning depth for complex problems" },
-        { reasoningEffort: "max", description: "Maximum reasoning depth for the hardest problems" },
-        { reasoningEffort: "ultra", description: "Maximum reasoning with automatic task delegation" },
-      ],
-      defaultReasoningEffort: "high",
-      supportsPersonality: false,
-      upgrade: null,
-      source: "static",
-    },
-  ],
-  [
-    "gpt-reserve",
-    {
-      id: "gpt-reserve",
-      displayName: "GPT-Reserve",
-      description: "Fast and affordable agentic coding model.",
+      id: "gpt-6-luna",
+      displayName: "GPT-6-Luna",
+      description: "Fast and affordable model for easier tasks. Requires Codex CLI >= 0.155.0.",
       isDefault: false,
       contextWindow: 272000,
       maxContextWindow: 872000,
@@ -285,6 +350,7 @@ export const KNOWN_OFFICIAL_MODELS: ReadonlyMap<string, CodexModelInfo> = new Ma
       ],
       defaultReasoningEffort: "medium",
       supportsPersonality: false,
+      priority: 4,
       upgrade: null,
       source: "static",
     },
@@ -294,6 +360,14 @@ export const KNOWN_OFFICIAL_MODELS: ReadonlyMap<string, CodexModelInfo> = new Ma
 export const BUILTIN_MODEL_ALIASES: Readonly<Record<string, string>> = {
   "gpt-6": "gpt-6-astra",
 };
+
+/**
+ * Pseudo plan used for the credential-free official catalog sync.
+ *
+ * It is not an account plan: models registered here must never be used for
+ * account routing (no account has this plan type), so the plan index skips it.
+ */
+export const OFFICIAL_CATALOG_PLAN = "official";
 
 function isAdmittedBackendModel(model: Pick<CodexModelInfo, "id">): boolean {
   return !CHATGPT_ONLY_MODEL_IDS.has(model.id);
@@ -396,6 +470,13 @@ export class ModelStore {
             this.planModelSnapshots.set(planType, backendModels);
             this.planModelMap.set(planType, new Set(backendModels.map((m) => m.id)));
           }
+          // The credential-free official fallback must not linger once real
+          // account snapshots are cached — it would keep advertising models
+          // the accounts may not be entitled to.
+          if (this.hasAccountSnapshots()) {
+            this.planModelSnapshots.delete(OFFICIAL_CATALOG_PLAN);
+            this.planModelMap.delete(OFFICIAL_CATALOG_PLAN);
+          }
           this.rebuildCatalogFromPlanSnapshots();
           console.log(`[ModelStore] Loaded ${this.catalog.length} cached backend models from data/models-cache.yaml`);
         } else {
@@ -452,6 +533,28 @@ export class ModelStore {
 
   isPlanFetched(planType: string): boolean {
     return this.planModelMap.has(planType);
+  }
+
+  /**
+   * Whether any authenticated backend snapshot (per plan) is present.
+   *
+   * The official catalog pseudo-plan is excluded: it is a credential-free
+   * fallback and must not mask "we have never talked to a real account".
+   */
+  hasAccountSnapshots(): boolean {
+    for (const planType of this.planModelSnapshots.keys()) {
+      if (planType !== OFFICIAL_CATALOG_PLAN) return true;
+    }
+    return false;
+  }
+
+  /** Drop one plan snapshot (used to retire the official fallback). */
+  removePlanSnapshot(planType: string): void {
+    if (!this.planModelSnapshots.has(planType) && !this.planModelMap.has(planType)) return;
+    this.planModelSnapshots.delete(planType);
+    this.planModelMap.delete(planType);
+    this.rebuildCatalogFromPlanSnapshots();
+    this.syncCache();
   }
 
   resolveModelId(input: string): string {
@@ -650,6 +753,10 @@ export class ModelStore {
   private rebuildPlanIndex(): void {
     this.modelPlanIndex = new Map();
     for (const [plan, modelIds] of this.planModelMap) {
+      // The official catalog is not an account plan: indexing it would make
+      // `getModelPlanTypes()` report "official" and account-lifecycle would
+      // then find no eligible account for those models.
+      if (plan === OFFICIAL_CATALOG_PLAN) continue;
       for (const id of modelIds) {
         let plans = this.modelPlanIndex.get(id);
         if (!plans) {
@@ -791,6 +898,17 @@ function normalizeBackendModel(raw: BackendModelEntry): NormalizedModelWithMeta 
   if (typeof raw.comp_hash === "string") out.compHash = raw.comp_hash;
   if (Array.isArray(raw.experimental_supported_tools)) out.experimentalSupportedTools = raw.experimental_supported_tools;
   if (typeof raw.supports_search_tool === "boolean") out.supportsSearchTool = raw.supports_search_tool;
+  // Codex catalog passthrough fields: keep whatever the backend sent, and let
+  // the serializer emit null (or omit the key) when the backend did not.
+  if (raw.availability_nux && typeof raw.availability_nux === "object" && !Array.isArray(raw.availability_nux)) {
+    out.availabilityNux = raw.availability_nux;
+  }
+  if (raw.model_messages && typeof raw.model_messages === "object" && !Array.isArray(raw.model_messages)) {
+    out.modelMessages = raw.model_messages;
+  }
+  if (typeof raw.minimal_client_version === "string" && raw.minimal_client_version.trim()) {
+    out.minimalClientVersion = raw.minimal_client_version.trim();
+  }
   // Only set outputModalities when backend provided it — otherwise the spread
   // in applyBackendModels would clobber the static catalog value with undefined.
   if (raw.output_modalities) out.outputModalities = raw.output_modalities;
@@ -922,6 +1040,14 @@ export function getModelPlanTypes(modelId: string): string[] {
 
 export function isPlanFetched(planType: string): boolean {
   return _instance.isPlanFetched(planType);
+}
+
+export function hasAccountSnapshots(): boolean {
+  return _instance.hasAccountSnapshots();
+}
+
+export function removePlanSnapshot(planType: string): void {
+  _instance.removePlanSnapshot(planType);
 }
 
 export function resolveModelId(input: string): string {

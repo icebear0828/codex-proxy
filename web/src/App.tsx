@@ -54,8 +54,16 @@ function useUpdateMessage() {
     msg = parts.length > 0 ? parts.join(" · ") : t("upToDate");
   } else if (!update.checking && update.error) { msg = update.error; color = "text-red-500"; }
 
-  const hasUpdate = update.status?.proxy.update_available ?? false;
-  const showUpdateDialog = getShowUpdateDialogPreference(update.status);
+  const desktop = update.status?.desktop;
+  if (desktop?.error) { msg = desktop.error; color = "text-red-500"; }
+  else if (desktop?.updateAvailable) {
+    if (update.error) { msg = update.error; color = "text-red-500"; }
+    else if (update.applying || update.restarting) { msg = t("desktopUpdateRestarting"); color = "text-amber-500"; }
+    else if (desktop.downloaded) { msg = t("desktopUpdateReady", { version: desktop.version ?? "" }); color = "text-amber-500"; }
+    else { msg = t("desktopUpdateDownloading", { version: desktop.version ?? "", progress: desktop.progress }); color = "text-amber-500"; }
+  }
+  const hasUpdate = desktop ? desktop.updateAvailable : update.status?.proxy.update_available ?? false;
+  const showUpdateDialog = !desktop && getShowUpdateDialogPreference(update.status);
   const proxyUpdateInfo = hasUpdate
     ? { mode: update.status!.proxy.mode, commits: update.status!.proxy.commits, changelog: update.status!.proxy.changelog ?? null, release: update.status!.proxy.release }
     : null;
@@ -166,7 +174,11 @@ function Dashboard() {
       <Header
         onAddAccount={accounts.startAdd}
         onCheckUpdate={update.checkForUpdate}
-        onOpenUpdateModal={() => setShowModal(true)}
+        onOpenUpdateModal={() => {
+            if (update.status?.desktop) {
+              if (update.status.desktop.downloaded && !update.applying && !update.restarting) void update.applyUpdate();
+            } else setShowModal(true);
+          }}
         checking={update.checking}
         updateStatusMsg={update.msg}
         updateStatusColor={update.color}
@@ -282,6 +294,7 @@ function Dashboard() {
               models={status.models}
               layoutMode={layoutMode}
               onLayoutModeChange={handleLayoutModeChange}
+              isDesktop={!!update.status?.desktop}
             />
           )}
         </div>

@@ -107,8 +107,14 @@ export interface ExtractedEvent {
   responseId?: string;
   textDelta?: string;
   reasoningDelta?: string;
+  /** Upstream-provided signature for the reasoning summary part, when the
+   *  backend emits one. Anthropic clients replay `thinking` blocks with a
+   *  signature, so this is forwarded verbatim instead of synthesizing one. */
+  reasoningSignature?: string;
   usage?: UsageInfo;
   error?: { code: string; message: string };
+  /** Truncation/filter reason from response.incomplete (e.g. "max_output_tokens"). */
+  incompleteReason?: string;
   functionCallStart?: FunctionCallStart;
   functionCallDelta?: FunctionCallDelta;
   functionCallDone?: FunctionCallDone;
@@ -155,6 +161,13 @@ export async function* iterateCodexEvents(
 
       case "response.reasoning_summary_text.delta":
         extracted.reasoningDelta = typed.delta;
+        break;
+
+      case "response.reasoning_summary_part.added":
+      case "response.reasoning_summary_part.done":
+        if (typeof typed.part.signature === "string" && typed.part.signature) {
+          extracted.reasoningSignature = typed.part.signature;
+        }
         break;
 
       case "response.output_item.added":
@@ -271,6 +284,9 @@ export async function* iterateCodexEvents(
         // Response was truncated/incomplete
         if (typed.response.id) extracted.responseId = typed.response.id;
         if (typed.response.usage) extracted.usage = typed.response.usage;
+        if (typed.response.incomplete_details?.reason) {
+          extracted.incompleteReason = typed.response.incomplete_details.reason;
+        }
         break;
 
       case "response.queued":

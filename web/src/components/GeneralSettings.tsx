@@ -1,3 +1,4 @@
+import { LanAccessSettings } from "./LanAccessSettings";
 import { useState, useCallback, useRef, useEffect } from "preact/hooks";
 import { useT } from "../../../shared/i18n/context";
 import { useGeneralSettings, type SystemPromptStrategy } from "../../../shared/hooks/use-general-settings";
@@ -8,9 +9,10 @@ import { SettingItemControl } from "./settings/SettingItemControl";
 interface GeneralSettingsProps {
   layoutMode?: LayoutMode;
   onLayoutModeChange?: (mode: LayoutMode) => void;
+  isDesktop?: boolean;
 }
 
-export function GeneralSettings({ layoutMode, onLayoutModeChange }: GeneralSettingsProps = {}) {
+export function GeneralSettings({ layoutMode, onLayoutModeChange, isDesktop = false }: GeneralSettingsProps = {}) {
   const t = useT();
   const settings = useSettings();
   const gs = useGeneralSettings(settings.apiKey);
@@ -277,6 +279,7 @@ export function GeneralSettings({ layoutMode, onLayoutModeChange }: GeneralSetti
         </div>
 
         <div class="px-5 py-2">
+          {isDesktop && <LanAccessSettings settings={gs} />}
           {/* Server Port */}
           <SettingItemControl
             label={t("generalSettingsPort")}
@@ -377,7 +380,7 @@ export function GeneralSettings({ layoutMode, onLayoutModeChange }: GeneralSetti
               value={displayDefaultModel}
               onInput={(e) => setDraftDefaultModel((e.target as HTMLInputElement).value)}
               onKeyDown={(e) => { if (e.key === "Enter") handleSaveDefaultModel(); }}
-              placeholder="gpt-5.2-codex"
+              placeholder="gpt-6.1-sol"
             />
           </SettingItemControl>
 
@@ -400,7 +403,7 @@ export function GeneralSettings({ layoutMode, onLayoutModeChange }: GeneralSetti
               list="image-host-model-allowed-models"
               onInput={(e) => setDraftImageHostModel((e.target as HTMLInputElement).value)}
               onKeyDown={(e) => { if (e.key === "Enter") handleSaveImageHostModel(); }}
-              placeholder="gpt-5.5"
+              placeholder="gpt-6.1-sol"
             />
             <datalist id="image-host-model-allowed-models">
               {currentImageHostModelAllowedModels.map((model: string) => <option key={model} value={model} />)}
@@ -759,7 +762,8 @@ export function GeneralSettings({ layoutMode, onLayoutModeChange }: GeneralSetti
               </label>
             </SettingItemControl>
 
-            {/* Auto Download */}
+            {/* Desktop updates run automatically — the legacy download/dialog options don't apply */}
+            {!isDesktop && (
             <SettingItemControl
               label={t("generalSettingsAutoDownload")}
               hint={t("generalSettingsAutoDownloadHint")}
@@ -786,6 +790,7 @@ export function GeneralSettings({ layoutMode, onLayoutModeChange }: GeneralSetti
                 {t("generalSettingsAutoDownload")}
               </label>
             </SettingItemControl>
+            )}
 
             {/* Allow Prerelease / Beta */}
             <SettingItemControl
@@ -811,7 +816,7 @@ export function GeneralSettings({ layoutMode, onLayoutModeChange }: GeneralSetti
               </label>
             </SettingItemControl>
 
-            {/* Update Dialog */}
+            {!isDesktop && (
             <SettingItemControl
               label={t("generalSettingsShowUpdateDialog")}
               hint={t("generalSettingsShowUpdateDialogHint")}
@@ -834,6 +839,7 @@ export function GeneralSettings({ layoutMode, onLayoutModeChange }: GeneralSetti
                 {t("generalSettingsShowUpdateDialog")}
               </label>
             </SettingItemControl>
+            )}
           </div>
         )}
       </section>

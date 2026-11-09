@@ -637,4 +637,45 @@ describe("CodexApi upstream body hygiene", () => {
     expect(sentBody).not.toHaveProperty("opencodeSessionId");
     expect(sentBody).toHaveProperty("model", "gpt-5.6-sol");
   });
+
+  it("drops public Responses controls and pins store:false for the Codex backend", async () => {
+    const post = vi.fn().mockImplementation(() =>
+      Promise.resolve({
+        status: 200,
+        body: new ReadableStream<Uint8Array>({
+          start(controller) {
+            controller.close();
+          },
+        }),
+        headers: new Headers({ "content-type": "text/event-stream" }),
+        setCookieHeaders: [],
+      }),
+    );
+    vi.mocked(getTransport).mockReturnValue({
+      post,
+      get: vi.fn(),
+      simplePost: vi.fn(),
+      isImpersonate: vi.fn(() => false),
+    } as unknown as TlsTransport);
+
+    const api = new CodexApi("test-token", null);
+    await api.createResponse({
+      model: "gpt-5.6-sol",
+      input: [{ role: "user" as const, content: "hi" }],
+      stream: true as const,
+      store: true,
+      truncation: "auto",
+      safety_identifier: "user-1",
+      metadata: { team: "core" },
+    });
+
+    const sentBody = JSON.parse(String(post.mock.calls[0][2]));
+    // The ChatGPT Codex backend only accepts store:false and does not know
+    // these public Responses controls; they are forwarded by the third-party
+    // Responses adapter instead.
+    expect(sentBody.store).toBe(false);
+    for (const dropped of ["truncation", "safety_identifier", "metadata"]) {
+      expect(sentBody).not.toHaveProperty(dropped);
+    }
+  });
 });

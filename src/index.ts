@@ -1,3 +1,4 @@
+import { readLanRuntime, type LanRuntimeState } from "./utils/lan-access.js";
 import "./utils/install-dev-logger.js";
 
 import { Hono } from "hono";
@@ -33,12 +34,19 @@ import { ResponsesWebSocketServer } from "./routes/responses-websocket.js";
 import { createImagesRoutes } from "./routes/images.js";
 import { startUpdateChecker, stopUpdateChecker } from "./update-checker.js";
 import { startMemoModelRefresher } from "./memo-model-refresher.js";
+import { fetchRemotePricingCatalog, startPricingSyncScheduler } from "./auth/pricing-sync.js";
 import { startProxyUpdateChecker, stopProxyUpdateChecker, setCloseHandler, getDeployMode } from "./self-update.js";
 import { initProxy } from "./tls/proxy.js";
 import { cleanupStaleLocks } from "./auth/refresh-lock.js";
 import { initTransport, getTransport } from "./tls/transport.js";
-import { loadStaticModels } from "./models/model-store.js";
+import {
+  loadStaticModels,
+  applyBackendModelsForPlan,
+  hasAccountSnapshots,
+  OFFICIAL_CATALOG_PLAN,
+} from "./models/model-store.js";
 import { startModelRefresh, stopModelRefresh } from "./models/model-fetcher.js";
+import { OfficialCatalogSync, toBackendModelEntries } from "./models/official-model-catalog.js";
 import { startQuotaRefresh, stopQuotaRefresh } from "./auth/usage-refresher.js";
 import { ActiveQuotaRefresher } from "./auth/active-quota-refresher.js";
 import { UsageStatsStore } from "./auth/usage-stats.js";
@@ -93,6 +101,29 @@ export async function startServer(options?: StartOptions): Promise<ServerHandle>
 
   // Load static model catalog (before transport/auth init)
   loadStaticModels();
+
+  // Official catalog sync (Branch C). Runs after loadStaticModels() so the
+  // normal config/data cache load happens first. The snapshot is refreshed
+  // when missing or older than `model.official_catalog_refresh_hours`, and
+  // seeds the store only when no authenticated snapshot exists. ModelFetcher
+  // keeps it fresh on later cycles. No credentials are involved, so all
+  // failures only warn and startup continues to the authenticated fetch.
+  let officialCatalogSync: OfficialCatalogSync | null = null;
+  if (config.model.official_catalog_sync) {
+    officialCatalogSync = new OfficialCatalogSync({
+      maxAgeMs: config.model.official_catalog_refresh_hours * 60 * 60 * 1000,
+    });
+    try {
+      const snapshot = await officialCatalogSync.refreshIfStale();
+      if (snapshot && snapshot.models.length > 0 && !hasAccountSnapshots()) {
+        applyBackendModelsForPlan(OFFICIAL_CATALOG_PLAN, toBackendModelEntries(snapshot.models));
+        console.log(`[Init] Seeded ${snapshot.models.length} official models from ${snapshot.sourceUrl}`);
+      }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      console.warn(`[Init] Official catalog seed skipped: ${msg}`);
+    }
+  }
 
   // Detect proxy (config > env > auto-detect local ports)
   await initProxy();
@@ -184,6 +215,20 @@ export async function startServer(options?: StartOptions): Promise<ServerHandle>
     if (memoCount > 0) console.log(`[Init] Memo model refresher: daily cycle for ${memoCount} memo(s)`);
   }
 
+  // Multi-source dynamic pricing catalog sync (opt-out via pricing.auto_sync: false)
+  let stopPricingSync: (() => void) | null = null;
+  if (cfg.pricing?.auto_sync !== false) {
+    const urls = cfg.pricing?.table_urls;
+    const intervalMs = (cfg.pricing?.sync_interval_hours ?? 24) * 60 * 60 * 1000;
+    const startupAbort = new AbortController();
+    const stopScheduler = startPricingSyncScheduler({ urls, intervalMs });
+    stopPricingSync = () => {
+      startupAbort.abort();
+      stopScheduler();
+    };
+    fetchRemotePricingCatalog({ urls, signal: startupAbort.signal }).catch(() => {});
+  }
+
   // Initialize Client Key pool for distribution
   const clientKeyPool = new ClientKeyPool(
     undefined,
@@ -209,7 +254,8 @@ export async function startServer(options?: StartOptions): Promise<ServerHandle>
   const proxyRoutes = createProxyRoutes(proxyPool, accountPool);
   const usageStats = new UsageStatsStore();
   usageStats.recoverBaseline(accountPool);
-  const webRoutes = createWebRoutes(accountPool, usageStats, clientKeyPool, keepaliveScheduler);
+  let getLanRuntime: () => LanRuntimeState | null = () => null;
+  const webRoutes = createWebRoutes(accountPool, usageStats, clientKeyPool, keepaliveScheduler, () => getLanRuntime());
 
   app.route("/", createDashboardAuthRoutes());
   app.route("/", authRoutes);
@@ -268,7 +314,7 @@ export async function startServer(options?: StartOptions): Promise<ServerHandle>
   }
 
   // Start background model refresh (requires auth to be ready)
-  startModelRefresh(accountPool, cookieJar, proxyPool);
+  startModelRefresh(accountPool, cookieJar, proxyPool, officialCatalogSync);
 
   // Start usage stats snapshot timer (no upstream requests — quota is collected passively)
   startQuotaRefresh(accountPool, usageStats);
@@ -309,6 +355,7 @@ export async function startServer(options?: StartOptions): Promise<ServerHandle>
   // Resolve actual port (may differ from requested when port=0)
   const addr = server.address();
   const actualPort = (addr && typeof addr === "object") ? addr.port : port;
+  getLanRuntime = () => readLanRuntime(server);
   const upstreamBaseUrl = `http://${urlHostForLocalRequest(host)}:${actualPort}`;
   await startOllamaBridge(getConfig(), { upstreamBaseUrl });
 
@@ -319,6 +366,7 @@ export async function startServer(options?: StartOptions): Promise<ServerHandle>
       server.close(() => {
         stopUpdateChecker();
         stopMemoModelRefresher?.();
+        stopPricingSync?.();
         stopProxyUpdateChecker();
         stopModelRefresh();
         stopQuotaRefresh();

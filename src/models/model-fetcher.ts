@@ -6,16 +6,22 @@
  */
 
 import { CodexApi } from "../proxy/codex-api.js";
-import { applyBackendModelsForPlan } from "./model-store.js";
+import {
+  applyBackendModelsForPlan,
+  hasAccountSnapshots,
+  OFFICIAL_CATALOG_PLAN,
+  removePlanSnapshot,
+} from "./model-store.js";
+import { toBackendModelEntries, type OfficialCatalogSync } from "./official-model-catalog.js";
 import type { AccountPool } from "../auth/account-pool.js";
 import type { CookieJar } from "../proxy/cookie-jar.js";
 import type { ProxyPool } from "../proxy/proxy-pool.js";
 import { jitter } from "../utils/jitter.js";
 
-const REFRESH_INTERVAL_HOURS = 1;
+const REFRESH_INTERVAL_HOURS = 6;
 const INITIAL_DELAY_MS = 1_000;
 const RETRY_DELAY_MS = 10_000;
-const MAX_RETRIES = 12;
+const MAX_RETRIES = 24;
 
 export class ModelFetcher {
   private refreshTimer: ReturnType<typeof setTimeout> | null = null;
@@ -24,11 +30,18 @@ export class ModelFetcher {
   private pool: AccountPool;
   private cookieJar: CookieJar;
   private proxyPool: ProxyPool | null;
+  private officialSync: OfficialCatalogSync | null;
 
-  constructor(pool: AccountPool, cookieJar: CookieJar, proxyPool: ProxyPool | null) {
+  constructor(
+    pool: AccountPool,
+    cookieJar: CookieJar,
+    proxyPool: ProxyPool | null,
+    officialSync: OfficialCatalogSync | null = null,
+  ) {
     this.pool = pool;
     this.cookieJar = cookieJar;
     this.proxyPool = proxyPool;
+    this.officialSync = officialSync;
   }
 
   start(): void {
@@ -50,7 +63,8 @@ export class ModelFetcher {
   }
 
   triggerImmediate(): void {
-    this.fetchModelsFromBackend()
+    this.refreshOfficialCatalog()
+      .then(() => this.fetchModelsFromBackend())
       .then((success) => {
         if (success) this.hasFetchedOnce = true;
       })
@@ -65,7 +79,9 @@ export class ModelFetcher {
   }
 
   private async fetchModelsFromBackend(): Promise<boolean> {
-    if (!this.pool.isAuthenticated()) return false;
+    if (!this.pool.isAuthenticated()) {
+      return false;
+    }
 
     const planAccounts = this.pool.getDistinctPlanAccounts();
     if (planAccounts.length === 0) {
@@ -102,12 +118,45 @@ export class ModelFetcher {
       }
     }
 
+    // Real account data is available now: retire the credential-free fallback
+    // so the advertised catalog reflects what these accounts can actually use.
+    if (anySuccess) removePlanSnapshot(OFFICIAL_CATALOG_PLAN);
+
     return anySuccess;
+  }
+
+  /**
+   * Keep the credential-free official catalog fresh (TTL-based, so repeated
+   * cycles usually do no network work) and seed the store from it when no
+   * authenticated backend snapshot is available.
+   *
+   * Account snapshots always win: the official manifest is a cold-start /
+   * outage fallback, and injecting it while account data exists would
+   * advertise models those accounts may not be entitled to.
+   */
+  private async refreshOfficialCatalog(): Promise<void> {
+    if (!this.officialSync) return;
+    try {
+      const snapshot = await this.officialSync.refreshIfStale();
+      if (!snapshot || snapshot.models.length === 0) return;
+      if (hasAccountSnapshots()) {
+        console.log(
+          `[ModelFetcher] Official catalog refreshed (${snapshot.models.length} models); account snapshots take precedence`,
+        );
+        return;
+      }
+      applyBackendModelsForPlan(OFFICIAL_CATALOG_PLAN, toBackendModelEntries(snapshot.models));
+      console.log(`[ModelFetcher] Official catalog seeded: ${snapshot.models.length} models`);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      console.warn(`[ModelFetcher] Official catalog refresh failed: ${msg}`);
+    }
   }
 
   private attemptInitialFetch(attempt: number): void {
     if (this.stopped) return;
-    this.fetchModelsFromBackend()
+    this.refreshOfficialCatalog()
+      .then(() => this.fetchModelsFromBackend())
       .then((success) => {
         if (this.stopped) return;
         if (success) {
@@ -133,6 +182,7 @@ export class ModelFetcher {
     const intervalMs = jitter(REFRESH_INTERVAL_HOURS * 3600 * 1000, 0.15);
     this.refreshTimer = setTimeout(async () => {
       try {
+        await this.refreshOfficialCatalog();
         await this.fetchModelsFromBackend();
       } finally {
         if (!this.stopped) this.scheduleNext();
@@ -149,9 +199,10 @@ export function startModelRefresh(
   accountPool: AccountPool,
   cookieJar: CookieJar,
   proxyPool?: ProxyPool,
+  officialSync?: OfficialCatalogSync | null,
 ): void {
   _instance?.stop();
-  _instance = new ModelFetcher(accountPool, cookieJar, proxyPool ?? null);
+  _instance = new ModelFetcher(accountPool, cookieJar, proxyPool ?? null, officialSync ?? null);
   _instance.start();
 }
 
