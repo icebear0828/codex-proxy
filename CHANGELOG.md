@@ -8,7 +8,9 @@
 
 ## [Unreleased]
 
-> 暂无已记录的变更。
+### Changed
+
+- Antigravity 及所有 API-key 上游的使用计数不再在请求热路径上同步写盘：`ApiKeyPool.markUsed()` / `recordUsage()` 与五小时用量窗口滚动改为内存更新后按 1 秒防抖批量持久化（对齐 `AccountRegistry` 既有模式），有 usage 的请求路径从最多两次同步 `writeFileSync` 降为零次；账号配置变更（增删、状态、标签、代理绑定、导入）仍立即落盘，优雅停机时 flush 待写计数。极端情况下进程崩溃最多丢失最近 1 秒的用量统计，账号与密钥配置不受影响。（`src/auth/api-key-pool.ts`、`src/index.ts`、`tests/unit/auth/api-key-pool.test.ts`）（#871）
 
 ## [v2.1.x](https://github.com/icebear0828/codex-proxy/releases?q=2.1) - 2026-09-01 至 2026-09-07
 

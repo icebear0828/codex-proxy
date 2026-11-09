@@ -23,6 +23,8 @@ import { isBuiltinProvider, PROVIDER_CATALOG } from "./api-key-catalog.js";
 
 export type ApiKeyStatus = "active" | "disabled" | "error";
 const ANTIGRAVITY_USAGE_WINDOW_MS = 5 * 60 * 60 * 1000;
+/** Debounce window for deferred usage-counter persistence (see schedulePersist). */
+const USAGE_PERSIST_DEBOUNCE_MS = 1000;
 export const API_KEY_CAPABILITIES = ["chat", "embeddings"] as const;
 export type ApiKeyCapability = typeof API_KEY_CAPABILITIES[number];
 
@@ -116,6 +118,7 @@ export function createFsApiKeyPersistence(): ApiKeyPersistence {
 export class ApiKeyPool {
   private entries: ApiKeyEntry[];
   private persistence: ApiKeyPersistence;
+  private persistTimer: ReturnType<typeof setTimeout> | null = null;
 
   constructor(persistence?: ApiKeyPersistence) {
     this.persistence = persistence ?? createFsApiKeyPersistence();
@@ -133,7 +136,7 @@ export class ApiKeyPool {
       this.ensureUsageWindow(entry, now);
       if (entry.usageWindowStartedAt !== previous) changed = true;
     }
-    if (changed) this.persist();
+    if (changed) this.schedulePersist();
     return [...this.entries];
   }
 
@@ -220,7 +223,7 @@ export class ApiKeyPool {
       lastUsedAt: null,
     };
     this.entries.push(entry);
-    this.persist();
+    this.persistNow();
     return entry;
   }
 
@@ -228,7 +231,7 @@ export class ApiKeyPool {
     const idx = this.entries.findIndex((e) => e.id === id);
     if (idx === -1) return false;
     this.entries.splice(idx, 1);
-    this.persist();
+    this.persistNow();
     return true;
   }
 
@@ -236,7 +239,7 @@ export class ApiKeyPool {
     const target = this.entries.find((entry) => entry.id === id && entry.provider === "antigravity");
     if (!target) return false;
     this.entries = this.entries.filter((entry) => entry.provider !== "antigravity" || entry.apiKey !== target.apiKey);
-    this.persist();
+    this.persistNow();
     return true;
   }
 
@@ -246,7 +249,7 @@ export class ApiKeyPool {
     for (const entry of this.entries) {
       if (entry.provider === "antigravity" && entry.apiKey === target.apiKey) entry.status = status;
     }
-    this.persist();
+    this.persistNow();
     return true;
   }
 
@@ -258,7 +261,7 @@ export class ApiKeyPool {
       if (metadata.email?.trim()) entry.email = metadata.email.trim();
       if (metadata.planType?.trim()) entry.planType = metadata.planType.trim();
     }
-    this.persist();
+    this.persistNow();
     return true;
   }
 
@@ -266,7 +269,7 @@ export class ApiKeyPool {
     const entry = this.entries.find((e) => e.id === id);
     if (!entry) return false;
     entry.label = label;
-    this.persist();
+    this.persistNow();
     return true;
   }
 
@@ -274,7 +277,7 @@ export class ApiKeyPool {
     const entry = this.entries.find((e) => e.id === id);
     if (!entry) return false;
     entry.status = status;
-    this.persist();
+    this.persistNow();
     return true;
   }
 
@@ -282,7 +285,7 @@ export class ApiKeyPool {
     const entry = this.entries.find((e) => e.id === id);
     if (!entry) return false;
     entry.proxyId = normalizeProxyId(proxyId);
-    this.persist();
+    this.persistNow();
     return true;
   }
 
@@ -294,7 +297,7 @@ export class ApiKeyPool {
       entry.lastUsedAt = now.toISOString();
       entry.requestCount = (entry.requestCount ?? 0) + 1;
       entry.windowRequestCount = (entry.windowRequestCount ?? 0) + 1;
-      this.persist();
+      this.schedulePersist();
     }
   }
 
@@ -309,7 +312,7 @@ export class ApiKeyPool {
       entry.imageRequestCount = (entry.imageRequestCount ?? 0) + 1;
       entry.windowImageRequestCount = (entry.windowImageRequestCount ?? 0) + 1;
     }
-    this.persist();
+    this.schedulePersist();
   }
 
   private ensureUsageWindow(entry: ApiKeyEntry, now: Date): void {
@@ -383,11 +386,39 @@ export class ApiKeyPool {
     }));
   }
 
+  /**
+   * Flush pending usage counters to disk immediately and cancel any
+   * scheduled usage flush. Configuration changes stay synchronous so an
+   * admin edit is durable as soon as the API call returns.
+   */
   persistNow(): void {
+    if (this.persistTimer) {
+      clearTimeout(this.persistTimer);
+      this.persistTimer = null;
+    }
     this.persist();
   }
 
+  /** Flush pending usage counters and stop the scheduled flush. */
+  destroy(): void {
+    this.persistNow();
+  }
+
   // ── Internal ───────────────────────────────────────────────────
+
+  /**
+   * Defer persistence of usage counters (request/token tallies) so hot
+   * request paths avoid synchronous writes; bursts collapse into one save
+   * after a short debounce, mirroring AccountRegistry.schedulePersist().
+   * Configuration mutations must not use this path.
+   */
+  private schedulePersist(): void {
+    if (this.persistTimer) return;
+    this.persistTimer = setTimeout(() => {
+      this.persistTimer = null;
+      this.persist();
+    }, USAGE_PERSIST_DEBOUNCE_MS);
+  }
 
   private persist(): void {
     this.persistence.save(this.entries);

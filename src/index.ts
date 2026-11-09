@@ -377,6 +377,7 @@ export async function startServer(options?: StartOptions): Promise<ServerHandle>
         proxyPool.destroy();
         cookieJar.destroy();
         accountPool.destroy();
+        apiKeyPool.destroy();
         resolve();
       });
     });
