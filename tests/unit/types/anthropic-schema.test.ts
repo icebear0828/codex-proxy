@@ -15,6 +15,17 @@ describe("AnthropicMessagesRequestSchema", () => {
     expect(result.success).toBe(true);
   });
 
+  it("preserves disable_parallel_tool_use on tool_choice", () => {
+    const result = AnthropicMessagesRequestSchema.safeParse({
+      ...BASE_REQUEST,
+      tool_choice: { type: "auto", disable_parallel_tool_use: true },
+    });
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.tool_choice).toEqual({ type: "auto", disable_parallel_tool_use: true });
+    }
+  });
+
   it("accepts known array content (text block)", () => {
     const result = AnthropicMessagesRequestSchema.safeParse({
       ...BASE_REQUEST,

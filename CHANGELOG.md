@@ -8,7 +8,11 @@
 
 ## [Unreleased]
 
-> 暂无已记录的变更。
+### Fixed
+
+- 保留 Anthropic `tool_choice.disable_parallel_tool_use` 并在内部请求与 Anthropic 上游之间传递单工具调用限制；OpenAI 的 `parallel_tool_calls` 已可端到端透传。Gemini GenerateContent API 没有等价字段，现对显式 `parallel_tool_calls: false` 请求返回 400，而不是静默丢弃该限制。（#824）
+- 保留 Anthropic 工具上的 `allowed_callers` 限制与 `strict` 校验标记，并在回发 Anthropic 上游时原样带回，不再静默丢失。（#818）
+- 正确转换 Anthropic base64 与 URL 图片、将 Gemini URL 图片作为 `fileData` 发送；对当前不支持的 OpenAI 文件内容、Anthropic 文档/上传内容及无效图片块返回明确的 400，避免静默丢弃用户输入。（#825）
 
 ## [v2.1.x](https://github.com/icebear0828/codex-proxy/releases?q=2.1) - 2026-09-01 至今
 

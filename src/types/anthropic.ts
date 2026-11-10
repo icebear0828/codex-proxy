@@ -71,9 +71,9 @@ const AnthropicContentBlockSchema = z.union([
     AnthropicThinkingContentSchema,
     AnthropicRedactedThinkingContentSchema,
   ]),
-  // Catch-all: forward-compatibility for new content block types (e.g. "document")
-  // introduced by Claude Code updates. Unknown types are passed through and ignored
-  // by translation functions.
+  // Catch-all: accept new content block types (e.g. "document") from Claude Code
+  // without a schema error. Translators must explicitly handle or reject them so
+  // unsupported payloads are not silently dropped.
   z.object({ type: z.string() }).passthrough(),
 ]);
 
@@ -154,10 +154,13 @@ export const AnthropicMessagesRequestSchema = z.object({
     }).passthrough(),
   ])).optional(),
   tool_choice: z.union([
-    z.object({ type: z.literal("auto") }),
-    z.object({ type: z.literal("any") }),
-    z.object({ type: z.literal("none") }),
-    z.object({ type: z.literal("tool"), name: z.string() }),
+    // `.passthrough()` keeps `disable_parallel_tool_use` — the parallel limit
+    // is stripped at parse time without it and never reaches the internal
+    // request (issue #824).
+    z.object({ type: z.literal("auto") }).passthrough(),
+    z.object({ type: z.literal("any") }).passthrough(),
+    z.object({ type: z.literal("none") }).passthrough(),
+    z.object({ type: z.literal("tool"), name: z.string() }).passthrough(),
   ]).optional(),
 });
 

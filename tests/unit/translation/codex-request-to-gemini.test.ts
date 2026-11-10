@@ -7,6 +7,14 @@ function request(input: CodexResponsesRequest["input"], tools?: unknown[]): Code
 }
 
 describe("Codex to Gemini tool translation", () => {
+  it("rejects an explicit single-call limit the Gemini API cannot represent", () => {
+    const req = request([{ role: "user", content: "hi" }], [{ type: "function", name: "weather" }]);
+    req.parallel_tool_calls = false;
+    expect(() => translateCodexToGeminiRequest(req)).toThrow(
+      "Gemini does not support parallel_tool_calls: false",
+    );
+  });
+
   it("filters unsupported schema keywords and resolves local references", () => {
     const body = translateCodexToGeminiRequest(request([{ role: "user", content: "hi" }], [{
       type: "function", name: "Read", parameters: {
@@ -126,6 +134,25 @@ describe("Codex to Gemini tool translation", () => {
     });
     expect(body.toolConfig).toEqual({ functionCallingConfig: { mode: "ANY", allowedFunctionNames: ["Read"] } });
     expect(body.contents[0].parts[0]).toEqual({ inlineData: { mimeType: "image/png", data: "YWJj" } });
+  });
+
+  it("sends HTTPS URL images as fileData with an inferred MIME type", () => {
+    const body = translateCodexToGeminiRequest(request([
+      { role: "user", content: [{ type: "input_image", image_url: "https://example.com/image.jpg?signature=abc" }] },
+    ]));
+    expect(body.contents[0].parts[0]).toEqual({
+      fileData: { mimeType: "image/jpeg", fileUri: "https://example.com/image.jpg?signature=abc" },
+    });
+  });
+
+  it.each([
+    ["HTTP", "http://example.com/image.png", "public or signed HTTPS URL"],
+    ["missing image extension", "https://example.com/image", "supported image extension"],
+    ["malformed data URI", "data:image/png;base64,%%%", "valid base64 image data URI"],
+  ])("rejects unsupported URL image inputs (%s)", (_label, imageUrl, message) => {
+    expect(() => translateCodexToGeminiRequest(request([
+      { role: "user", content: [{ type: "input_image", image_url: imageUrl }] },
+    ]))).toThrow(message);
   });
 
   it("rejects malformed tool arguments and unmatched results", () => {

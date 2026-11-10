@@ -261,6 +261,38 @@ describe("anthropicToolsToCodex", () => {
     expect(result[0]).not.toHaveProperty("parameters");
   });
 
+  it("preserves allowed_callers on the converted tool", () => {
+    const result = anthropicToolsToCodex([
+      { name: "restricted", input_schema: { type: "object", properties: {} }, allowed_callers: ["code_execution_20260120"] },
+    ] as AnthropicMessagesRequest["tools"]);
+    expect(result[0]).toMatchObject({ type: "function", name: "restricted", allowed_callers: ["code_execution_20260120"] });
+  });
+
+  it("preserves strict on the converted tool", () => {
+    const result = anthropicToolsToCodex([
+      { name: "strict_tool", input_schema: { type: "object", properties: {} }, strict: true },
+    ] as AnthropicMessagesRequest["tools"]);
+    expect(result[0]).toMatchObject({ type: "function", name: "strict_tool", strict: true });
+  });
+
+  it("does not emit strict when the caller set it to false or omitted it", () => {
+    const result = anthropicToolsToCodex([
+      { name: "lax_tool", strict: false },
+      { name: "plain_tool" },
+    ] as AnthropicMessagesRequest["tools"]);
+    expect(result[0]).not.toHaveProperty("strict");
+    expect(result[1]).not.toHaveProperty("strict");
+  });
+
+  it("omits allowed_callers when the caller list is empty or malformed", () => {
+    const result = anthropicToolsToCodex([
+      { name: "no_callers", allowed_callers: [] },
+      { name: "bad_callers", allowed_callers: [42, "valid"] },
+    ] as AnthropicMessagesRequest["tools"]);
+    expect(result[0]).not.toHaveProperty("allowed_callers");
+    expect(result[1].allowed_callers).toEqual(["valid"]);
+  });
+
   it("normalizes object input_schema without properties", () => {
     const result = anthropicToolsToCodex([
       { name: "empty", input_schema: { type: "object" } },

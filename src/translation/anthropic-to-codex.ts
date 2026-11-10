@@ -8,6 +8,7 @@ import type {
   CodexInputItem,
   CodexContentPart,
 } from "../proxy/codex-api.js";
+import { CodexApiError } from "../proxy/codex-types.js";
 import { parseModelName, getModelInfo } from "../models/model-store.js";
 import { getConfig } from "../config.js";
 import { buildInstructions, budgetToEffort, clampReasoningEffortToModel, isRecord, isRecognizedReasoningEffort } from "./shared-utils.js";
@@ -15,6 +16,7 @@ import type { ModelConfigOverride } from "./shared-utils.js";
 import {
   anthropicToolsToCodex,
   anthropicToolChoiceToCodex,
+  anthropicDisableParallelToolUse,
   type AnthropicToolConversionOptions,
 } from "./tool-format.js";
 
@@ -90,22 +92,27 @@ function extractTextContent(
 }
 
 const BILLING_HEADER_PREFIX = "x-anthropic-billing-header:";
+const SUPPORTED_ANTHROPIC_CONTENT_BLOCKS = new Set([
+  "text", "image", "tool_use", "tool_result", "thinking", "redacted_thinking",
+]);
 
 function normalizeSystemInstructionText(text: string): string {
   const trimmed = text.trim();
   return trimmed.startsWith(BILLING_HEADER_PREFIX) ? "" : trimmed;
 }
 
-function imageContentToCodexPart(block: Record<string, unknown>): CodexContentPart | null {
-  if (!isRecord(block.source)) return null;
+function imageContentToCodexPart(block: Record<string, unknown>): CodexContentPart {
+  if (!isRecord(block.source)) {
+    throw new CodexApiError(400, "Unsupported Anthropic image source");
+  }
   const source = block.source;
   if (source.type === "base64" && typeof source.media_type === "string" && typeof source.data === "string") {
     return { type: "input_image", image_url: `data:${source.media_type};base64,${source.data}` };
   }
-  if (source.type === "url" && typeof source.url === "string") {
+  if (source.type === "url" && typeof source.url === "string" && source.url.length > 0) {
     return { type: "input_image", image_url: source.url };
   }
-  return null;
+  throw new CodexApiError(400, "Unsupported Anthropic image source; expected base64 data or a URL");
 }
 
 /**
@@ -163,6 +170,9 @@ function contentToInputItems(
     // replay, and forwarding the text as a normal message would both pollute
     // the prompt and duplicate the assistant turn.
     const block = stripAnthropicClientOnlyFields(rawBlock);
+    if (!SUPPORTED_ANTHROPIC_CONTENT_BLOCKS.has(String(block.type))) {
+      throw new CodexApiError(400, `Unsupported Anthropic content block type: ${String(block.type)}`);
+    }
     if (block.type === "text" || block.type === "image") {
       messageBlocks.push(block);
       continue;
@@ -200,8 +210,9 @@ function contentToInputItems(
         // Extract image blocks for a follow-up user message
         for (const b of blocks) {
           if (b.type === "image") {
-            const imagePart = imageContentToCodexPart(b);
-            if (imagePart) imageParts.push(imagePart);
+            imageParts.push(imageContentToCodexPart(b));
+          } else if (b.type !== "text") {
+            throw new CodexApiError(400, `Unsupported Anthropic tool_result content block type: ${String(b.type)}`);
           }
         }
       }
@@ -338,6 +349,10 @@ export function translateAnthropicToCodexRequest(
   // Add tool_choice if specified
   if (codexToolChoice) {
     request.tool_choice = codexToolChoice;
+  }
+  const disableParallel = anthropicDisableParallelToolUse(req.tool_choice);
+  if (disableParallel !== undefined) {
+    request.parallel_tool_calls = !disableParallel;
   }
 
   // Reasoning effort: output_config.effort > thinking config > suffix > config default

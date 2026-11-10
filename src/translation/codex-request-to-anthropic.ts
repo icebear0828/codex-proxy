@@ -30,8 +30,20 @@ export interface AnthropicMessageRequest {
   system?: string;
   max_tokens: number;
   stream: boolean;
-  tools?: Array<{ name: string; description?: string; input_schema: Record<string, unknown> }>;
-  tool_choice?: { type: "auto" | "none" | "any" } | { type: "tool"; name: string };
+  tools?: Array<{
+    name: string;
+    description?: string;
+    input_schema: Record<string, unknown>;
+    /** Strict tool schema validation, preserved when the caller set it. */
+    strict?: boolean;
+    /** Anthropic-only caller restriction, preserved from the inbound request. */
+    allowed_callers?: string[];
+  }>;
+  tool_choice?: {
+    type: "auto" | "none" | "any";
+    /** Anthropic's parallel limit rides on tool_choice, not a top-level field. */
+    disable_parallel_tool_use?: boolean;
+  } | { type: "tool"; name: string; disable_parallel_tool_use?: boolean };
   thinking?: { type: "enabled"; budget_tokens: number } | { type: "adaptive" };
   output_config?: { effort: "low" | "medium" | "high" | "xhigh" };
 }
@@ -57,20 +69,38 @@ function codexToolsToAnthropic(tools: unknown[]): NonNullable<AnthropicMessageRe
       input_schema: isRecord(tool.parameters) ? tool.parameters : { type: "object", properties: {} },
     };
     if (typeof tool.description === "string") converted.description = tool.description;
+    // Only forward `strict` when the caller asked for it: the internal
+    // default for OpenAI-sourced tools is false, which matches Anthropic's
+    // default, so the field stays off the wire unless it matters (issue #818).
+    if (tool.strict === true) converted.strict = true;
+    if (Array.isArray(tool.allowed_callers) && tool.allowed_callers.length > 0) {
+      converted.allowed_callers = tool.allowed_callers.filter((c): c is string => typeof c === "string");
+    }
     return converted;
   });
 }
 
 function codexToolChoiceToAnthropic(
   choice: CodexResponsesRequest["tool_choice"],
+  disableParallel?: boolean,
 ): AnthropicMessageRequest["tool_choice"] {
-  if (choice === "auto" || choice === "none") return { type: choice };
-  if (choice === "required") return { type: "any" };
-  if (choice && typeof choice === "object" && choice.type === "function" && typeof choice.name === "string") {
-    return { type: "tool", name: choice.name };
+  let converted: AnthropicMessageRequest["tool_choice"];
+  if (choice === "auto" || choice === "none") converted = { type: choice };
+  else if (choice === "required") converted = { type: "any" };
+  else if (choice && typeof choice === "object" && choice.type === "function" && typeof choice.name === "string") {
+    converted = { type: "tool", name: choice.name };
+  } else if (choice !== undefined) {
+    throw new TypeError("Unsupported Codex tool choice for Anthropic upstream");
   }
-  if (choice !== undefined) throw new TypeError("Unsupported Codex tool choice for Anthropic upstream");
-  return undefined;
+
+  // No explicit tool_choice defaults to auto when a parallel limit must be
+  // carried. Anthropic places this flag on tool_choice, unlike OpenAI's
+  // top-level field (#824).
+  if (disableParallel === true) {
+    converted ??= { type: "auto" };
+    return { ...converted, disable_parallel_tool_use: true };
+  }
+  return converted;
 }
 
 function inputItemsToAnthropicMessages(input: CodexInputItem[]): AnthropicMessage[] {
@@ -157,7 +187,10 @@ export function translateCodexToAnthropicRequest(
   if (req.tools?.length) {
     const tools = codexToolsToAnthropic(req.tools);
     body.tools = tools;
-    body.tool_choice = codexToolChoiceToAnthropic(req.tool_choice);
+    body.tool_choice = codexToolChoiceToAnthropic(
+      req.tool_choice,
+      req.parallel_tool_calls === false,
+    );
   }
 
   const forcedTool = body.tool_choice?.type === "any" || body.tool_choice?.type === "tool";

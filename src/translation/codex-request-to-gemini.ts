@@ -21,12 +21,14 @@ const GEMINI_SCHEMA_FIELDS = new Set([
 
 interface GeminiTextPart { text: string }
 interface GeminiInlineDataPart { inlineData: { mimeType: string; data: string } }
+interface GeminiFileDataPart { fileData: { mimeType: string; fileUri: string } }
 interface GeminiFunctionCallPart { functionCall: { name: string; args: Record<string, unknown>; id?: string }; thoughtSignature?: string }
 interface GeminiFunctionResponsePart { functionResponse: { name: string; response: unknown; id?: string } }
 
 type GeminiPart =
   | GeminiTextPart
   | GeminiInlineDataPart
+  | GeminiFileDataPart
   | GeminiFunctionCallPart
   | GeminiFunctionResponsePart;
 
@@ -63,11 +65,46 @@ export interface GeminiGenerateContentRequest {
   };
 }
 
+const IMAGE_MIME_BY_EXTENSION: Record<string, string> = {
+  jpg: "image/jpeg",
+  jpeg: "image/jpeg",
+  png: "image/png",
+  webp: "image/webp",
+  heic: "image/heic",
+  heif: "image/heif",
+};
+
+function imageMimeTypeFromUrl(value: string): string {
+  let url: URL;
+  try {
+    url = new URL(value);
+  } catch {
+    throw new CodexApiError(400, "Gemini URL image input must be a valid HTTPS URL");
+  }
+  if (url.protocol !== "https:") {
+    throw new CodexApiError(400, "Gemini URL image input requires a public or signed HTTPS URL");
+  }
+  const extension = /\.([a-z0-9]+)$/i.exec(url.pathname)?.[1]?.toLowerCase();
+  const mimeType = extension ? IMAGE_MIME_BY_EXTENSION[extension] : undefined;
+  if (!mimeType) {
+    throw new CodexApiError(400, "Gemini URL image input requires a supported image extension or a base64 data URI");
+  }
+  return mimeType;
+}
+
 function codexPartToGemini(part: CodexContentPart): GeminiPart {
   if (part.type === "input_text") return { text: part.text };
   const match = /^data:(image\/[a-z0-9.+-]+);base64,([A-Za-z0-9+/=]+)$/i.exec(part.image_url);
-  if (!match) throw new CodexApiError(400, "Gemini image input requires a base64 data URI");
-  return { inlineData: { mimeType: match[1], data: match[2] } };
+  if (match) return { inlineData: { mimeType: match[1], data: match[2] } };
+  if (part.image_url.startsWith("data:")) {
+    throw new CodexApiError(400, "Gemini image input requires a valid base64 image data URI");
+  }
+  return {
+    fileData: {
+      mimeType: imageMimeTypeFromUrl(part.image_url),
+      fileUri: part.image_url,
+    },
+  };
 }
 
 function inputItemsToGeminiContents(input: CodexInputItem[]): GeminiContent[] {
@@ -262,6 +299,13 @@ export function translateCodexToGeminiRequest(
     if (typeof choice === "object" && choice.type === "function" && choice.name) {
       body.toolConfig.functionCallingConfig = { mode: "ANY", allowedFunctionNames: [choice.name] };
     }
+  }
+
+  // Gemini's GenerateContent FunctionCallingConfig has no equivalent to
+  // `parallel_tool_calls: false`. Reject rather than silently dropping the
+  // caller's limit or sending an unsupported field (issue #824).
+  if (req.parallel_tool_calls === false) {
+    throw new CodexApiError(400, "Gemini does not support parallel_tool_calls: false");
   }
 
   if (req.text?.format || req.reasoning?.effort) {

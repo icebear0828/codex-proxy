@@ -53,6 +53,8 @@ export interface CodexToolDefinition {
   description?: string;
   parameters?: Record<string, unknown>;
   strict?: boolean;
+  /** Anthropic callers' allowed_callers list, carried for Anthropic upstreams. */
+  allowed_callers?: string[];
 }
 
 export interface CodexCustomToolDefinition {
@@ -272,6 +274,14 @@ export function anthropicToolsToCodex(
       name: t.name,
     };
     if (isRecord(t) && typeof t.description === "string") def.description = t.description;
+    // Anthropic tools carry strict schema validation on the definition itself;
+    // keep the flag when the caller set it so it can ride back to Anthropic
+    // upstreams (issue #818).
+    if (isRecord(t) && t.strict === true) def.strict = true;
+    if (isRecord(t) && Array.isArray(t.allowed_callers)) {
+      const callers = t.allowed_callers.filter((c): c is string => typeof c === "string");
+      if (callers.length > 0) def.allowed_callers = callers;
+    }
     if (isRecord(t) && isRecord(t.input_schema)) {
       const schema = t.name === "Read" ? augmentReadToolSchema(t.input_schema) : t.input_schema;
       def.parameters = normalizeSchema(schema);
@@ -302,6 +312,22 @@ export function anthropicToolChoiceToCodex(
     default:
       return undefined;
   }
+}
+
+/**
+ * Carry the caller's parallel-tool-call limit into the internal request.
+ * Anthropic clients set it as `tool_choice.disable_parallel_tool_use` (the
+ * schema keeps the field via passthrough — see src/types/anthropic.ts); OpenAI
+ * callers send `parallel_tool_calls` directly and are handled in
+ * openai-to-codex.ts. Without this the limit never reaches the internal
+ * request and every provider is free to return several calls per turn (#824).
+ */
+export function anthropicDisableParallelToolUse(
+  choice: AnthropicMessagesRequest["tool_choice"],
+): boolean | undefined {
+  if (!choice || typeof choice !== "object") return undefined;
+  const flag = (choice as { disable_parallel_tool_use?: unknown }).disable_parallel_tool_use;
+  return typeof flag === "boolean" ? flag : undefined;
 }
 
 // ── Gemini → Codex ──────────────────────────────────────────────
