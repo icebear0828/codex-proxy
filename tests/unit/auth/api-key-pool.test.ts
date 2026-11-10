@@ -402,3 +402,146 @@ describe("ApiKeyPool", () => {
   });
 });
 
+describe("ApiKeyPool usage persistence", () => {
+  function createCountingPersistence(): { persistence: ApiKeyPersistence; saves: ApiKeyEntry[][] } {
+    let stored: ApiKeyEntry[] = [];
+    const saves: ApiKeyEntry[][] = [];
+    return {
+      persistence: {
+        load: () => [...stored],
+        save: (keys) => { stored = [...keys]; saves.push([...keys]); },
+      },
+      saves,
+    };
+  }
+
+  it("persists configuration changes immediately", () => {
+    const { persistence, saves } = createCountingPersistence();
+    const pool = new ApiKeyPool(persistence);
+    const entry = pool.add({ provider: "antigravity", model: "gemini-test", apiKey: "refresh-token" });
+    expect(saves).toHaveLength(1);
+    pool.setLabel(entry.id, "Prod");
+    expect(saves).toHaveLength(2);
+    expect(saves[1].find((e) => e.id === entry.id)?.label).toBe("Prod");
+  });
+
+  it("defers usage counter persistence to the debounce window", () => {
+    vi.useFakeTimers();
+    try {
+      const { persistence, saves } = createCountingPersistence();
+      const pool = new ApiKeyPool(persistence);
+      const entry = pool.add({ provider: "antigravity", model: "gemini-test", apiKey: "refresh-token" });
+      saves.length = 0;
+
+      pool.markUsed(entry.id);
+      expect(saves).toHaveLength(0);
+      vi.advanceTimersByTime(999);
+      expect(saves).toHaveLength(0);
+      vi.advanceTimersByTime(1);
+      expect(saves).toHaveLength(1);
+      expect(saves[0].find((e) => e.id === entry.id)?.requestCount).toBe(1);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("collapses bursts of usage updates into a single save", () => {
+    vi.useFakeTimers();
+    try {
+      const { persistence, saves } = createCountingPersistence();
+      const pool = new ApiKeyPool(persistence);
+      const entry = pool.add({ provider: "antigravity", model: "gemini-test", apiKey: "refresh-token" });
+      saves.length = 0;
+
+      pool.markUsed(entry.id);
+      pool.markUsed(entry.id);
+      pool.recordUsage(entry.id, { input_tokens: 10, output_tokens: 5 });
+      pool.recordUsage(entry.id, { input_tokens: 1, output_tokens: 2 }, true);
+      expect(saves).toHaveLength(0);
+
+      vi.advanceTimersByTime(1000);
+      expect(saves).toHaveLength(1);
+      expect(saves[0].find((e) => e.id === entry.id)).toMatchObject({
+        requestCount: 2,
+        requestTokens: 18,
+        imageRequestCount: 1,
+      });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("configuration changes cancel a pending usage flush instead of double-saving", () => {
+    vi.useFakeTimers();
+    try {
+      const { persistence, saves } = createCountingPersistence();
+      const pool = new ApiKeyPool(persistence);
+      const entry = pool.add({ provider: "antigravity", model: "gemini-test", apiKey: "refresh-token" });
+      saves.length = 0;
+
+      pool.markUsed(entry.id);
+      pool.setAntigravityAccountStatus(entry.id, "disabled");
+      expect(saves).toHaveLength(1);
+      expect(saves[0].find((e) => e.id === entry.id)?.requestCount).toBe(1);
+
+      vi.advanceTimersByTime(5000);
+      expect(saves).toHaveLength(1);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("persistNow flushes pending usage counters immediately", () => {
+    const { persistence, saves } = createCountingPersistence();
+    const pool = new ApiKeyPool(persistence);
+    const entry = pool.add({ provider: "antigravity", model: "gemini-test", apiKey: "refresh-token" });
+    saves.length = 0;
+
+    pool.markUsed(entry.id);
+    expect(saves).toHaveLength(0);
+    pool.persistNow();
+    expect(saves).toHaveLength(1);
+    expect(saves[0].find((e) => e.id === entry.id)?.requestCount).toBe(1);
+  });
+
+  it("destroy flushes pending usage counters", () => {
+    vi.useFakeTimers();
+    try {
+      const { persistence, saves } = createCountingPersistence();
+      const pool = new ApiKeyPool(persistence);
+      const entry = pool.add({ provider: "antigravity", model: "gemini-test", apiKey: "refresh-token" });
+      saves.length = 0;
+
+      pool.markUsed(entry.id);
+      pool.destroy();
+      expect(saves).toHaveLength(1);
+      expect(saves[0].find((e) => e.id === entry.id)?.requestCount).toBe(1);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("defers the usage-window rollover persisted by getAll", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-10-13T12:00:00Z"));
+    try {
+      const { persistence, saves } = createCountingPersistence();
+      const pool = new ApiKeyPool(persistence);
+      const entry = pool.add({ provider: "antigravity", model: "gemini-test", apiKey: "refresh-token" });
+      saves.length = 0;
+      pool.markUsed(entry.id);
+      vi.advanceTimersByTime(5 * 60 * 60 * 1000 + 1);
+      expect(saves).toHaveLength(1); // markUsed flush fired during the advance
+
+      pool.getAll();
+      expect(saves).toHaveLength(1); // window rollover save is deferred, not synchronous
+
+      vi.advanceTimersByTime(1000);
+      expect(saves).toHaveLength(2);
+      expect(saves[1].find((e) => e.id === entry.id)?.windowRequestCount).toBe(0);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+});
+
